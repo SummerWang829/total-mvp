@@ -59,6 +59,7 @@ class TurnUpdate(BaseModel):
     saturation: float = Field(default=0.0, ge=0, le=1)
     covered_item_ids: list[str] = Field(default_factory=list)
     question_answered: bool = False
+    information_gain: float = Field(default=0.0, ge=0, le=1)  # how much new information the answer added (decides whether exploring goes on)
 
 
 class PacingDecision(BaseModel):
@@ -74,6 +75,7 @@ class PacingDecision(BaseModel):
     missed_item: MustCoverItem | None = None
     followup_allowed: bool = False
     end_reason: EndReason | None = None
+    explore_index: int | None = None       # EXPLORE only: which extra question of the topic this is (0, 1, ...); picks the operator
 
 
 class PacingSnapshot(BaseModel):
@@ -123,6 +125,9 @@ class TopicProgress(BaseModel):
     saturation: float = 0.0
     started_at_s: float | None = None
     probing_item_id: str | None = None
+    budget_s: float = 0.0           # this topic's time, set when it starts: time the earlier topics did not use is shared out
+    explore_count: int = 0          # extra deeper questions asked in this topic
+    last_info_gain: float = 1.0     # information the latest answer added (1.0 before any answer: nothing argues against exploring)
 
 
 class InterviewStateMachine:
@@ -153,6 +158,7 @@ class InterviewStateMachine:
         self._known_items = {i.id for t in guide.topics for i in t.must_cover}
         self._stimulus_questions = [q for s in guide.stimuli for q in s.questions]
         self._recovery_queue: list[MustCoverItem] = []
+        self._core_used_s = 0.0  # time the finished core topics actually used (the rest is shared out, see _topic_budget_now)
 
     # ---------- the transition gate ----------
     @staticmethod
@@ -207,6 +213,18 @@ class InterviewStateMachine:
         """Must-cover item ids the moderator has asked about on purpose (probe or recovery), whether or not the answer covered them."""
         return frozenset(self._asked_items)
 
+    def hurrying(self) -> bool:
+        """Whether the current core topic is running short of time while must-cover items are still unasked.
+
+        True once the topic has used `hurry_after_share` of its time and some of its must-cover items are neither covered nor
+        asked about yet (a talkative participant can use up a topic's time on the first questions). The moderator then stops
+        following up and goes to the items, so they are asked before the topic's time runs out."""
+        if self._phase is not Phase.CORE:
+            return False
+        progress = self._progress[self.current_topic.id]
+        unasked = [i for i in self.current_topic.must_cover if i.id not in self._covered and i.id not in self._asked_items]
+        return bool(unasked) and self._topic_elapsed() >= progress.budget_s * self.config.hurry_after_share
+
     def missed_items(self) -> list[MustCoverItem]:
         """Must-cover items not covered yet, in guide order."""
         return [i for t in self.guide.topics for i in t.must_cover if i.id not in self._covered]
@@ -221,7 +239,7 @@ class InterviewStateMachine:
             phase=self._phase, elapsed_s=elapsed, remaining_s=max(0.0, self.budget.total_s - elapsed), total_s=self.budget.total_s,
             phase_elapsed_s=self._phase_elapsed(), phase_budget_s=self.budget.phase_s.get(self._phase, 0.0),
             topic_id=topic.id if topic else None, topic_title=topic.title if topic else None,
-            topic_elapsed_s=self._topic_elapsed() if topic else 0.0, topic_budget_s=self.budget.topic_s[topic.id] if topic else 0.0,
+            topic_elapsed_s=self._topic_elapsed() if topic else 0.0, topic_budget_s=progress.budget_s if progress else 0.0,
             saturation=progress.saturation if progress else 0.0, followups_used=self._followups,
             followups_left=max(0, self.config.max_followups_per_question - self._followups) if self._phase in FOLLOWUP_PHASES else 0,
             uncovered_items=[i.text for i in topic.must_cover if i.id not in self._covered] if topic else [],
@@ -302,23 +320,26 @@ class InterviewStateMachine:
         return self._decision(PacingAction.NEXT_QUESTION, done, question=questions[self._question_index])
 
     def _on_core(self, update: TurnUpdate) -> PacingDecision:
-        """CORE: leave the topic when saturated, at its turn limit or out of its time; otherwise walk its prepared
-        questions, then explore its still-uncovered must-cover items one by one (so a topic uses its time)."""
+        """CORE: leave the topic at its turn limit or out of its time; when saturated or out of prepared questions, dig deeper
+        while the topic still has time and the answers still add information, then leave; otherwise walk its prepared
+        questions, then probe its still-uncovered must-cover items one by one."""
         progress = self._progress[self.current_topic.id]
-        if progress.saturation >= self.config.saturation_threshold:
-            return self._next_topic(TransitionReason.SATURATED)
         if progress.turns >= self.config.max_turns_per_topic:
             return self._next_topic(TransitionReason.TOPIC_TURN_LIMIT)
-        if self._topic_elapsed() >= self.budget.topic_s[self.current_topic.id]:
+        if self._topic_elapsed() >= progress.budget_s:
             return self._next_topic(TransitionReason.TOPIC_TIME_UP)
+        if progress.saturation >= self.config.saturation_threshold:
+            return self._explore_or_leave(progress, TransitionReason.SATURATED)
         done = self._question_done(update)
         if progress.probing_item_id in self._covered:
             done = TransitionReason.ITEM_COVERED
+        if self.hurrying():  # running short of time with must-cover items unasked: they come before more follow-ups and prepared questions
+            return self._probe_next_item(progress, TransitionReason.BEHIND_SCHEDULE)
         if done is None:
             return self._decision(PacingAction.CONTINUE, TransitionReason.IN_PROGRESS)
         if progress.probing_item_id is None and progress.question_index + 1 < len(self.current_topic.questions):
-            self._next_question()
-            progress.question_index = self._question_index
+            self._next_question()  # resets the follow-up count; the topic keeps its own place in its prepared questions
+            progress.question_index += 1  # (not self._question_index: probes and explore questions also advance that one, which ran past the list)
             return self._decision(PacingAction.NEXT_QUESTION, done, question=self.current_topic.questions[progress.question_index])
         return self._probe_next_item(progress, done)
 
@@ -331,11 +352,32 @@ class InterviewStateMachine:
         """
         item = next((i for i in self.current_topic.must_cover if i.id not in self._covered and i.id not in self._asked_items), None)
         if item is None:
-            return self._next_topic(TransitionReason.QUESTIONS_DONE)
+            return self._explore_or_leave(progress, TransitionReason.QUESTIONS_DONE)
         self._next_question()
         progress.probing_item_id = item.id
         self._asked_items.add(item.id)
         return self._decision(PacingAction.PROBE_ITEM, reason, missed_item=item)
+
+    def _can_explore(self, progress: TopicProgress) -> bool:
+        """Whether one more deeper question is worth asking in this topic.
+
+        Yes while: exploring is switched on and not used up for this topic; the topic has used less than `explore_until_share`
+        of its time; the turn limit is not reached; and the latest answer still added information (diminishing returns:
+        the moderator does not pad the time with questions that no longer get anything new)."""
+        cfg = self.config
+        return (cfg.max_explore_per_topic > 0 and progress.explore_count < cfg.max_explore_per_topic
+                and self._topic_elapsed() < progress.budget_s * cfg.explore_until_share
+                and progress.turns < cfg.max_turns_per_topic
+                and progress.last_info_gain >= cfg.explore_min_info_gain)
+
+    def _explore_or_leave(self, progress: TopicProgress, reason: TransitionReason) -> PacingDecision:
+        """The topic has what it needs: dig deeper if that is still worthwhile, otherwise move on."""
+        if not self._can_explore(progress):
+            return self._next_topic(reason)
+        self._next_question()  # an extra question is a new question: its follow-up count starts again
+        progress.probing_item_id = None
+        progress.explore_count += 1
+        return self._decision(PacingAction.EXPLORE, TransitionReason.EXPLORING, explore_index=progress.explore_count - 1)
 
     def _on_recovery(self, update: TurnUpdate) -> PacingDecision:
         """RECOVERY: each never-asked missed item is asked once (no follow-ups), while time before the planned end
@@ -362,6 +404,7 @@ class InterviewStateMachine:
 
     def _next_topic(self, reason: TransitionReason) -> PacingDecision:
         """Go to the next core topic, or past the core when the last one is done."""
+        self._core_used_s += self._topic_elapsed()
         if self._topic_index + 1 < len(self.guide.topics):
             return self._enter_topic(self._topic_index + 1, reason)
         if self._stimulus_questions:
@@ -376,6 +419,7 @@ class InterviewStateMachine:
         self._transition(Phase.CORE, reason)
         progress = self._progress[topic.id]
         progress.started_at_s = self.clock.now()
+        progress.budget_s = self._topic_budget_now(index)
         action = PacingAction.NEXT_TOPIC if index else PacingAction.ENTER_PHASE
         return self._decision(action, reason, question=topic.questions[0])
 
@@ -401,6 +445,15 @@ class InterviewStateMachine:
         return self._decision(PacingAction.END, reason, end_reason=end_reason)
 
     # ---------- helpers ----------
+    def _topic_budget_now(self, index: int) -> float:
+        """Time for topic number `index` when it starts: what the core has left, shared by weight among this and the later topics.
+
+        A topic that finished early leaves its unused time to the ones after it (they can then dig deeper); a topic that ran over
+        leaves them less. The first topic gets exactly its planned share."""
+        topics = self.guide.topics[index:]
+        remaining_core = max(0.0, self.budget.phase_s[Phase.CORE] - self._core_used_s)
+        return remaining_core * topics[0].weight / sum(t.weight for t in topics)
+
     def _apply(self, update: TurnUpdate) -> None:
         """Count the follow-up, store the topic's saturation and the covered items (unknown ids are logged and dropped)."""
         if update.was_followup:
@@ -413,6 +466,7 @@ class InterviewStateMachine:
             progress = self._progress[self.current_topic.id]
             progress.turns += 1
             progress.saturation = update.saturation
+            progress.last_info_gain = update.information_gain
 
     def _question_done(self, update: TurnUpdate) -> TransitionReason | None:
         """Why the current prepared question is finished, or None if the moderator should stay on it."""

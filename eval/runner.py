@@ -20,7 +20,7 @@ from app.moderator.providers import ModeratorChatProvider, OpenAICompatModerator
 
 from .checkers import SessionCheck, check_session
 from .config import judge_model, participant_model
-from .constants import RUBRIC_VERSION, SCENARIO_SET_VERSION, Split
+from .constants import RUBRIC_VERSION, SCENARIO_SET_VERSION, SIM_CLOCK_VERSION, Split
 from .judges import Calibration, Judge, JudgeScores, ModelJudge, calibrate
 from .mock_brain import MockBrain
 from .models import Persona, Scenario, load_guide, load_personas
@@ -94,7 +94,7 @@ def run(split: Split | None, seeds: list[int], brain: str, participant: str, use
     model_name = MockBrain.name if brain == MOCK else f"{settings.moderator_model}"
     versions = Versions(prompt=CURRENT_PROMPT_VERSION, scenarios=SCENARIO_SET_VERSION, rubric=RUBRIC_VERSION, model=model_name,
                         participant="rule-based" if participant == "rule" else participant_model().model,
-                        judge=judge_model().model if judge else "none")
+                        judge=judge_model().model if judge else "none", sim_clock=SIM_CLOCK_VERSION)
     return build_report(checks, judged, calibration, versions, split.value if split else "all", seeds, mock=brain == MOCK)
 
 

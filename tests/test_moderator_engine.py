@@ -1,5 +1,6 @@
 """Sprint 2: the AI moderator's per-turn pipeline with a scripted (mock) model. No real model is ever called."""
 import json
+import logging
 import pathlib
 
 import pytest
@@ -7,8 +8,9 @@ import pytest
 from app.moderator.clock import ManualClock
 from app.moderator.constants import AlertLevel, EndReason, Operator, Phase, RedLine, Speaker
 from app.moderator.engine import EngineStateError, ModeratorEngine
+from app.moderator.fsm import TurnUpdate
 from app.moderator.knowledge import InterviewGuide
-from app.moderator.prompts import load_prompts
+from app.moderator.prompts import CURRENT_PROMPT_VERSION, load_prompts
 from app.moderator.providers import ChatError, MockModeratorChat
 from app.moderator.templates import TEMPLATES
 
@@ -264,7 +266,7 @@ def test_every_turn_is_logged_and_memory_has_both_sides():
 
 
 def test_prompt_versions_are_complete():
-    assert PROMPTS.version == "v001" and set(PROMPTS.operators) == set(Operator)
+    assert PROMPTS.version == CURRENT_PROMPT_VERSION and set(PROMPTS.operators) == set(Operator)
     with pytest.raises(FileNotFoundError):
         load_prompts("v999")
 
@@ -368,3 +370,155 @@ def test_a_high_deep_dive_score_digs_even_when_the_reason_is_given():
     e, _ = started([rich], [say("那时候您是什么感受？")])
     p = e.handle_participant("因为朋友被骗过，我真的很生气，现在每次都怕。")
     assert p.plan.deep_dive and p.plan.operator is Operator.EMOTION and p.plan.decision.action.value == "continue"
+
+
+# ---- prompt versions ----
+@pytest.mark.parametrize("version", ["v001", "v002", "v003"])
+def test_every_prompt_version_loads_and_names_all_hard_rules(version):
+    p = load_prompts(version)
+    assert p.version == version and set(p.operators) == set(Operator)
+    assert "ONE" in p.speak and "FORBIDDEN_TOPICS" in p.speak and "PRODUCT_FACTS" in p.speak  # the red-line rules every version must keep
+
+
+def test_v003_fixes_what_the_rejected_drafts_of_run_081648_showed():
+    v2, v3 = load_prompts("v002"), load_prompts("v003")
+    for needle in ('never a command', '"是不是" or "对不对" at all', "NEW words", 'action is "explore"', "change the closing question"):
+        assert needle in v3.speak + v3.operators[Operator.REDIRECT], needle
+    assert "never a command" not in v2.speak and v2.operators[Operator.REDIRECT] != v3.operators[Operator.REDIRECT]
+    assert "never always" in v3.operators[Operator.REFLECT]
+
+
+def test_v002_adds_the_rules_the_first_real_runs_asked_for():
+    v1, v2 = load_prompts("v001").speak, load_prompts("v002").speak
+    for needle in ("ALREADY_ASKED", "at most 20 English words", "deleted 180 days", "Promise nothing else", "at most 12 words"):
+        assert needle in v2 and needle not in v1, needle
+
+
+# ---- permanent cases from eval run 20261012-080304 (prompt v002) ----
+def test_a_sticky_model_flag_does_not_make_the_ai_repeat_that_it_is_an_ai():
+    """The model kept saying "the participant asks if I am an AI" after the first time; the participant asked about observers."""
+    e, model = started([{**ANSWER, "asks_if_ai": True}], [say("观察员的身份我不能透露。您最近一次买护肤品，是怎么挑的？")])
+    p = e.handle_participant("这个客户观察员是谁啊？他们会不会知道我买了什么？")
+    assert not p.used_fallback and p.attempts == 1 and "AI" not in p.spoken_response
+    assert model.draft_calls[-1][1]["content"].count("\"ASKS_IF_AI\": false") == 1  # the speaking call was told it was not asked
+
+
+def test_the_model_flag_still_counts_when_the_words_are_about_ai():
+    e, _ = started([{**ANSWER, "asks_if_ai": True}], [say("这不重要。您平时在哪里买？"), say("我是 AI 主持人，不是真人。您平时在哪里买？")])
+    p = e.handle_participant("等一下，跟我说话的到底是个什么东西？是真人还是机器")
+    assert p.spoken_response.startswith("我是 AI 主持人") and p.attempts == 2
+
+
+def test_the_top_rung_of_the_ladder_means_move_on_not_reflect_again():
+    value = {"category": "answered", "ladder_level": "value", "saturation": 0.3, "question_answered": True,
+             "signals": {"information_gain": 0.9, "emotion": 0.9, "pain_point": 0.9, "contradiction": 0.5, "business_value": 0.9}}
+    e, _ = started([value], [say(GUIDE.warmup_questions[1])])
+    p = e.handle_participant("对我来说，安心比省钱重要得多，这是我选品牌的底线。")
+    assert p.plan.decision.action.value == "next_question" and p.plan.operator is Operator.TRANSITION
+
+
+# ---- Sprint 4, round 7: exploring (use a topic's time while the answers still add information) ----
+RICH = {"category": "answered", "ladder_level": "reason", "saturation": 0.9, "question_answered": True,
+        "signals": {"information_gain": 0.8, "emotion": 0.1, "pain_point": 0.1, "contradiction": 0.0, "business_value": 0.1}}
+
+
+def test_a_topic_with_time_left_gets_a_deeper_question_written_by_the_model():
+    from app.moderator.constants import PacingAction
+
+    e, model = started([RICH], [say("这件事后来给您带来了什么影响？")])
+    # both warm-up questions answered, then the first core topic is already saturated and has time left
+    e.fsm.record_turn(TurnUpdate(question_answered=True, information_gain=0.8))
+    e.fsm.record_turn(TurnUpdate(question_answered=True, information_gain=0.8))
+    assert e.fsm.phase is Phase.CORE
+    p = e.handle_participant("我一般在网上买，因为方便比价，这样不容易吃亏。")
+    assert p.plan.decision.action is PacingAction.EXPLORE and p.plan.decision.question is None
+    assert p.plan.operator is Operator.IMPACT and p.plan.deep_dive
+    sent = model.draft_calls[-1][1]["content"]
+    assert '"action": "explore"' in sent and '"operator": "impact"' in sent  # the speaking call is told to dig deeper, no prepared question
+    assert p.spoken_response == "这件事后来给您带来了什么影响？" and not p.used_fallback
+
+
+# ---- Sprint 4, round 10: regeneration and fallback reliability (eval run 20261012-091311) ----
+def test_the_fallback_pool_is_big_enough_that_a_long_run_of_fallbacks_never_repeats():
+    e, _ = started([ANSWER], [say("您是不是觉得太贵了？")])  # every draft breaks H2, so every turn falls back
+    said = [e.handle_participant(f"这是第 {i} 个回答，我一般在网上买护肤品。").spoken_response for i in range(12)]
+    assert len(set(said)) == 12, said  # the run had 5 fallbacks in one interview and the 5th repeated the 1st (a repeat reached the output)
+    assert all(not detect_repeat_pair(a, b) for i, a in enumerate(said) for b in said[:i])
+
+
+def detect_repeat_pair(a: str, b: str) -> bool:
+    from app.moderator.repeats import repeats_earlier
+    return repeats_earlier(a, [b])
+
+
+def test_the_model_is_told_the_exact_rejected_words_how_to_fix_them_and_sees_the_rejected_draft():
+    e, model = started([ANSWER], [say("您怎么判断它是不是正品？"), say("您怎么判断它是否真实？")])
+    p = e.handle_participant("我一般在网上买海外品牌。")
+    assert p.spoken_response == "您怎么判断它是否真实？" and p.attempts == 2
+    retry = json.loads(model.draft_calls[-1][1]["content"])
+    assert retry["REJECTED_BECAUSE"] == [["H2: leading wording: 是不是. FIX: rewrite without those words and without suggesting an answer; "
+                                          "Chinese: use 是否 / 有没有 instead of 是不是"]]
+    assert retry["REJECTED_DRAFTS"] == ["您怎么判断它是不是正品？"]
+    first = json.loads(model.draft_calls[-2][1]["content"])
+    assert first["REJECTED_BECAUSE"] == [] and first["REJECTED_DRAFTS"] == []
+
+
+def test_every_rule_has_a_fix_hint():
+    from app.moderator.constants import REJECTION_FIX_HINTS, QualityRule, RedLine
+    codes = {r.value for r in RedLine} - {"H11"} | {q.value for q in QualityRule}  # H11 never reaches the model: it is silent
+    assert codes <= set(REJECTION_FIX_HINTS)
+
+
+def test_the_details_of_a_rejection_name_the_words_not_a_regex():
+    from app.moderator.guardrails import GuardrailContext, check_utterance
+    ctx = GuardrailContext(guide=GUIDE)
+    assert [v.detail for v in check_utterance("您是不是觉得太贵了？", ctx)] == ["leading wording: 是不是"]
+    assert [v.detail for v in check_utterance("说得好！您为什么这样选？", ctx)] == ["evaluative wording: 说得好"]
+
+
+def test_an_unexpected_bug_never_kills_the_interview_and_never_hides(monkeypatch, caplog):
+    """The safety net: a pipeline failure becomes a safe sentence plus a red alert, with the full traceback in the log."""
+    e, _ = started([ANSWER], [say("最近一次是在哪里买的？")])
+
+    def broken(update):
+        raise IndexError("list index out of range")
+
+    monkeypatch.setattr(e.fsm, "record_turn", broken)
+    with caplog.at_level(logging.ERROR):
+        p = e.handle_participant("我一般在网上买护肤品，喜欢先看评价。")
+    assert p.internal_error and p.used_fallback and p.alert is AlertLevel.RED and "接管" in p.alert_reason
+    assert p.spoken_response in (ZH.followup, *ZH.alt_followups) and "？" in p.spoken_response
+    assert "IndexError" in caplog.text and "喜欢先看评价" not in caplog.text  # the traceback is kept; the participant's words are not logged
+    monkeypatch.undo()
+    assert e.handle_participant("Shopee 比较多。").spoken_response  # the next turn works normally
+
+
+def test_behind_schedule_a_shallow_answer_is_not_followed_up_but_the_next_item_is_asked():
+    from app.moderator.clock import ManualClock
+
+    shallow = {"category": "answered", "ladder_level": "fact", "saturation": 0.2, "question_answered": True}
+    clock = ManualClock()
+    model = Model([READY, shallow], [say(GUIDE.warmup_questions[0]), say("您一般从哪些渠道知道新品牌？")])
+    e = ModeratorEngine(GUIDE, model.chat, prompts=PROMPTS, clock=clock)
+    e.open()
+    e.handle_participant("好的，可以开始")
+    e.fsm.record_turn(TurnUpdate(question_answered=True, information_gain=0.8))
+    e.fsm.record_turn(TurnUpdate(question_answered=True, information_gain=0.8))
+    assert e.fsm.phase is Phase.CORE
+    clock.advance(e.fsm.snapshot().topic_budget_s * 0.6)  # a talkative participant has used most of the topic's time
+    p = e.handle_participant("我主要看小红书。")
+    assert p.plan.decision.action.value == "probe_item" and p.plan.decision.missed_item.id == "d_channels"  # not a "why did you..." follow-up
+
+
+def test_exploring_fallback_is_a_fresh_neutral_follow_up_not_a_repeat():
+    e, _ = started([RICH], [say("您是不是觉得太贵了？")])  # every draft violates H2, so the fallback speaks
+    e.fsm.record_turn(TurnUpdate(question_answered=True, information_gain=0.8))
+    e.fsm.record_turn(TurnUpdate(question_answered=True, information_gain=0.8))
+    said = [e.handle_participant(t).spoken_response for t in ("因为方便比价。", "因为朋友推荐过，所以放心。", "主要是怕买到假货。")]
+    assert len(set(said)) == len(said) and all("？" in s for s in said)
+
+
+def test_rejected_drafts_are_kept_for_the_failure_analysis():
+    e, _ = started([ANSWER], [say("说得好！您为什么这样选？"), say("您为什么这样选？")])
+    p = e.handle_participant("我一般在网上买护肤品。")
+    assert p.rejected_drafts == ["说得好！您为什么这样选？"] and len(p.rejected_drafts) == len(p.rejected)

@@ -7,7 +7,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.moderator.clock import ManualClock
-from app.moderator.constants import EndReason, PacingAction, Phase, Speaker, TransitionReason
+from app.moderator.constants import CONTEXT_ASKED_QUESTIONS, DIGEST_MAX_CHARS, EndReason, PacingAction, Phase, Speaker, TransitionReason
 from app.moderator.fsm import (ALLOWED_TRANSITIONS, IllegalTransitionError, InterviewStateError, InterviewStateMachine,
                                TurnUpdate)
 from app.moderator.knowledge import InterviewGuide
@@ -362,7 +362,7 @@ def test_brief_participant_never_runs_over_and_topics_use_their_items():
     fsm, clock = _simulate_hour(turn_s=40)
     assert clock.now() <= 60 * MIN
     reasons = [t.reason for t in fsm.transitions]
-    assert TransitionReason.SATURATED in reasons  # the second topic was explored until saturated, not dropped early
+    assert TransitionReason.TOPIC_TIME_UP not in reasons and TransitionReason.PHASE_TIME_UP not in reasons  # no topic was cut short for time
 
 
 def test_no_item_is_asked_twice():
@@ -421,20 +421,44 @@ def test_turns_must_be_in_time_order():
         m.add_turn(Speaker.PARTICIPANT, "late", at_s=0.5)
 
 
-def test_older_turns_are_summarised_and_none_are_lost():
+def test_older_turns_are_condensed_and_the_context_has_a_bounded_size():
     fsm, _ = machine()
     d = fsm.start()
     m = _memory_with(10, window=4)
     assert [t.index for t in m.turns_to_summarize()] == list(range(6))
     ctx = m.build_context(guide(), fsm.snapshot(), d)
-    assert [t.index for t in ctx.recent_turns] == list(range(10))  # no summary yet: nothing dropped
+    assert [t.index for t in ctx.recent_turns] == [6, 7, 8, 9]  # only the window is word for word
+    assert [line.split(": ", 1)[1] for line in ctx.summary.split("\n")] == ["line 1", "line 3", "line 5"]  # older participant answers, one short line each
     m.set_summary("受访者常在 TikTok 看评价。", upto_index=6)
     ctx = m.build_context(guide(), fsm.snapshot(), d)
-    assert ctx.summary.startswith("受访者") and [t.index for t in ctx.recent_turns] == [6, 7, 8, 9]
+    assert ctx.summary == "受访者常在 TikTok 看评价。" and [t.index for t in ctx.recent_turns] == [6, 7, 8, 9]
     assert m.turns_to_summarize() == []
     with pytest.raises(ValueError):
         m.set_summary("x", upto_index=3)  # never goes backwards
 
+
+def test_a_very_long_interview_never_grows_the_context():
+    fsm, _ = machine()
+    d = fsm.start()
+    sizes = []
+    for n in (20, 60, 200, 400):
+        m = ConversationMemory()
+        for i in range(n):
+            m.add_turn(Speaker.AI if i % 2 == 0 else Speaker.PARTICIPANT, f"这是第 {i} 句话，" + "很长的回答" * 30, at_s=float(i))
+        ctx = m.build_context(guide(), fsm.snapshot(), d)
+        sizes.append(len(ctx.model_dump_json()))
+        assert len(ctx.recent_turns) == 12 and len(ctx.summary) <= DIGEST_MAX_CHARS
+    assert max(sizes) < 1.2 * sizes[1]  # a 400-turn interview costs about the same per turn as a 60-turn one
+    assert len(ctx.asked_questions) == CONTEXT_ASKED_QUESTIONS and len(m.asked_questions()) == 200  # the model sees 20; the repeat guard sees all
+
+
+def test_the_digest_keeps_the_newest_lines_whole_when_it_has_to_cut():
+    m = ConversationMemory(recent_turns_verbatim=2)
+    for i in range(300):
+        m.add_turn(Speaker.PARTICIPANT, f"回答编号{i:03d}" + "字" * 60, at_s=float(i))
+    digest = m.history_digest(len(m.turns) - 2)
+    assert len(digest) <= DIGEST_MAX_CHARS and "回答编号297" in digest and "回答编号000" not in digest
+    assert all(line.split(": ", 1)[1].startswith("回答编号") for line in digest.split("\n"))  # no line was cut in half
 
 def test_asked_questions_cover_ai_and_human_moderators():
     m = ConversationMemory()
@@ -442,3 +466,165 @@ def test_asked_questions_cover_ai_and_human_moderators():
     m.add_turn(Speaker.PARTICIPANT, "你好", 1)
     m.add_turn(Speaker.HUMAN, "我接一下", 2)
     assert m.asked_questions() == ["您好", "我接一下"]
+
+
+# ---------- exploring: dig deeper while a topic has time and the answers still add information ----------
+GAIN = 0.6  # an answer that added plenty of new information
+
+
+def _used_up_topic(**cfg):
+    """A machine at the end of the first core topic: every prepared question and must-cover item has been asked."""
+    fsm, clock = machine(**cfg)
+    to_core(fsm)
+    fsm.record_turn(TurnUpdate(question_answered=True, information_gain=GAIN))
+    d = fsm.record_turn(TurnUpdate(question_answered=True, information_gain=GAIN))
+    while d.action is PacingAction.PROBE_ITEM:
+        d = fsm.record_turn(TurnUpdate(question_answered=True, information_gain=GAIN))
+    return fsm, clock, d
+
+
+def test_a_topic_with_time_left_gets_deeper_questions_instead_of_moving_on():
+    fsm, _, d = _used_up_topic()
+    assert d.action is PacingAction.EXPLORE and d.reason is TransitionReason.EXPLORING and d.explore_index == 0 and d.topic_id == "discovery"
+    assert d.question is None and d.followup_allowed  # no prepared question: the engine writes one about what was said
+    d = fsm.record_turn(TurnUpdate(question_answered=True, information_gain=GAIN))
+    assert d.action is PacingAction.EXPLORE and d.explore_index == 1
+
+
+def test_exploring_is_capped_per_topic():
+    fsm, _, d = _used_up_topic(max_explore_per_topic=2)
+    asked = 0
+    while d.action is PacingAction.EXPLORE:
+        asked += 1
+        d = fsm.record_turn(TurnUpdate(question_answered=True, information_gain=GAIN))
+    assert asked == 2 and d.topic_id == "barriers" and d.reason is TransitionReason.QUESTIONS_DONE
+
+
+def test_exploring_stops_when_the_answers_stop_adding_information():
+    fsm, _, d = _used_up_topic()
+    assert d.action is PacingAction.EXPLORE
+    d = fsm.record_turn(TurnUpdate(question_answered=True, information_gain=0.1))  # nothing new: do not pad the time
+    assert d.action is PacingAction.NEXT_TOPIC and d.topic_id == "barriers"
+
+
+def test_exploring_stops_near_the_end_of_the_topic_time():
+    fsm, clock, d = _used_up_topic()
+    clock.advance(fsm.snapshot().topic_budget_s * 0.9)
+    d = fsm.record_turn(TurnUpdate(question_answered=True, information_gain=GAIN))
+    assert d.action is PacingAction.NEXT_TOPIC
+
+
+def test_saturation_with_time_left_explores_and_without_it_moves_on():
+    fsm, clock = machine()
+    to_core(fsm)
+    d = fsm.record_turn(TurnUpdate(saturation=0.9, information_gain=GAIN))
+    assert d.action is PacingAction.EXPLORE
+    clock.advance(fsm.snapshot().topic_budget_s * 0.9)
+    d = fsm.record_turn(TurnUpdate(saturation=0.9, information_gain=GAIN))
+    assert d.reason is TransitionReason.SATURATED and d.topic_id == "barriers"
+
+
+def test_exploring_can_be_switched_off_and_never_beats_the_hard_limits():
+    fsm, _, d = _used_up_topic(max_explore_per_topic=0)
+    assert d.action is PacingAction.NEXT_TOPIC
+    fsm, _ = machine(max_turns_per_topic=3)
+    to_core(fsm)
+    reasons = [fsm.record_turn(TurnUpdate(information_gain=GAIN)).reason for _ in range(3)]
+    assert reasons[-1] is TransitionReason.TOPIC_TURN_LIMIT
+
+
+def test_time_a_topic_did_not_use_goes_to_the_topics_after_it():
+    fsm, clock = machine()
+    to_core(fsm)
+    planned = fsm.snapshot().topic_budget_s
+    clock.advance(planned * 0.25)  # the first topic finishes early
+    fsm.record_turn(TurnUpdate(saturation=0.9, information_gain=0.0))
+    s = fsm.snapshot()
+    assert s.topic_id == "barriers" and s.topic_budget_s > fsm.budget.topic_s["barriers"]
+    assert s.topic_budget_s == pytest.approx(fsm.budget.phase_s[Phase.CORE] - planned * 0.25)  # all that is left, the last topic gets it all
+
+
+def test_a_topic_that_ran_over_leaves_the_next_one_less():
+    fsm, clock = machine()
+    to_core(fsm)
+    clock.advance(fsm.snapshot().topic_budget_s)  # the whole budget used up
+    fsm.record_turn(TurnUpdate())
+    s = fsm.snapshot()
+    assert s.topic_id == "barriers" and s.topic_budget_s == pytest.approx(fsm.budget.phase_s[Phase.CORE] - fsm.budget.topic_s["discovery"])
+
+
+def test_prepared_questions_still_come_in_order_after_exploring_and_probing():
+    """Eval run 20261012-085748: IndexError in 2 of 40 interviews. Explore and probe questions advanced the shared counter,
+    so the next prepared question was looked up past the end of the list."""
+    fsm, _ = machine()
+    to_core(fsm)
+    topic = guide().topics[0]
+    d = fsm.record_turn(TurnUpdate(saturation=0.9, information_gain=GAIN))  # saturated early: an extra deeper question, prepared ones unasked
+    assert d.action is PacingAction.EXPLORE
+    d = fsm.record_turn(TurnUpdate(question_answered=True, information_gain=GAIN))
+    assert d.action is PacingAction.NEXT_QUESTION and d.question == topic.questions[1]  # the second prepared question, not an IndexError
+    d = fsm.record_turn(TurnUpdate(question_answered=True, information_gain=GAIN))
+    assert d.action is not PacingAction.NEXT_QUESTION  # the prepared questions are used up now: items, exploring or the next topic
+
+
+def test_every_mixture_of_probes_explores_and_questions_stays_inside_the_guide():
+    """Random but repeatable walks through the state machine: it must never raise and never leave the guide's questions."""
+    import random
+
+    for seed in range(60):
+        rng = random.Random(seed)
+        fsm, clock = machine()
+        fsm.start()
+        fsm.participant_ready()
+        for _ in range(120):
+            if fsm.phase is Phase.ENDED:
+                break
+            clock.advance(rng.choice([5, 20, 60, 150]))
+            d = fsm.record_turn(TurnUpdate(
+                was_followup=rng.random() < 0.3, saturation=rng.choice([0.1, 0.5, 0.9]), information_gain=rng.choice([0.0, 0.2, 0.7]),
+                question_answered=rng.random() < 0.6, covered_item_ids=rng.sample(["d_channels", "d_trust", "b_cert", "b_return", "nope"], rng.randint(0, 2))))
+            assert d.question is None or d.question in {*guide().warmup_questions, *(q for t in guide().topics for q in t.questions)}
+        assert fsm.phase is Phase.ENDED or fsm.snapshot().elapsed_s > 0
+
+
+def test_behind_schedule_the_items_come_before_more_follow_ups():
+    fsm, clock = machine()
+    to_core(fsm)
+    d = fsm.record_turn(TurnUpdate(was_followup=False))  # early in the topic: normal follow-up flow
+    assert d.action is PacingAction.CONTINUE and not fsm.hurrying()
+    clock.advance(fsm.snapshot().topic_budget_s * 0.5)  # half the topic's time is gone, three items still unasked
+    assert fsm.hurrying()
+    d = fsm.record_turn(TurnUpdate(information_gain=GAIN))  # a plain answer, no "answered" flag: it would normally get a follow-up
+    assert d.action is PacingAction.PROBE_ITEM and d.reason is TransitionReason.BEHIND_SCHEDULE and d.missed_item.id == "d_channels"
+
+
+def test_items_that_are_covered_or_asked_stop_the_hurry():
+    fsm, clock = machine()
+    to_core(fsm)
+    clock.advance(fsm.snapshot().topic_budget_s * 0.6)
+    assert fsm.hurrying()
+    fsm.record_turn(TurnUpdate(covered_item_ids=["d_channels", "d_trust", "d_price"]))
+    assert not fsm.hurrying()  # nothing left to be anxious about: back to the normal flow (and exploring, if the time allows)
+
+
+def test_the_hurry_can_be_moved_and_only_applies_in_the_core():
+    fsm, clock = machine(hurry_after_share=0.9)
+    to_core(fsm)
+    clock.advance(fsm.snapshot().topic_budget_s * 0.6)
+    assert not fsm.hurrying()
+    fsm2, _ = machine()
+    fsm2.start()
+    assert not fsm2.hurrying()  # intro / warm-up: no topic yet
+
+
+def test_the_exploring_operators_take_turns():
+    from app.moderator.constants import Operator
+    from app.moderator.operators import EXPLORE_ROTATION, choose_operator
+    from app.moderator.schemas import RespondentInputAnalysis
+
+    fsm, _, d = _used_up_topic()
+    seen = []
+    while d.action is PacingAction.EXPLORE:
+        seen.append(choose_operator(RespondentInputAnalysis(), d, "一段足够长的回答，里面有原因。").operator)
+        d = fsm.record_turn(TurnUpdate(question_answered=True, information_gain=GAIN))
+    assert seen == list(EXPLORE_ROTATION)[:len(seen)] and len(set(seen)) == len(seen) and Operator.REFLECT not in seen

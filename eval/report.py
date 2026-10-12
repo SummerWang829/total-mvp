@@ -17,7 +17,7 @@ LIMITATIONS = [
     "模拟受访者不是真人：这些分数只说明方向，能不能用最终看真人试点（任务说明第 8 节）。",
     "过渡时机正确率需要人工标注“该不该换题”，自动评估没有测，报告里标为“未测”。",
     "提纲覆盖率依据模型自己判断“哪个必问点已覆盖”，可能偏乐观；评分模型校准后再交叉核对。",
-    "时间按“说这些字大约要多久”模拟（中文每秒 4 字、英文每秒 2.5 词），不是真实的打字或说话时间。",
+    "时间是模拟的：每轮 = 说话时间（中文每秒 4 字、英文每秒 2.5 词）+ 5 秒阅读和思考 + AI 实际的生成耗时，不是真人的真实时间。",
 ]
 MOCK_NOTICE = "本次用的是“模拟大脑”（mock-brain），不是真模型：只证明整套流程能跑通，所有质量分数没有意义。"
 
@@ -33,6 +33,7 @@ class Versions(BaseModel):
     model: str
     participant: str
     judge: str
+    sim_clock: str = "c001"  # the simulated-time model; runs with different clocks are not comparable (old reports are c001)
 
 
 class Metric(BaseModel):
@@ -156,7 +157,8 @@ def _previous(report: RunReport) -> RunReport | None:
         except ValueError:
             continue  # not a run report (or an older format): nothing to compare with
         like_for_like = (old.split == report.split and old.versions.scenarios == report.versions.scenarios and old.mock == report.mock
-                         and old.versions.participant == report.versions.participant and old.sessions == report.sessions)  # a 2-session run says nothing about a 40-session one
+                         and old.versions.participant == report.versions.participant and old.sessions == report.sessions
+                         and old.versions.sim_clock == report.versions.sim_clock)  # a 2-session run says nothing about a 40-session one
         if like_for_like and old.run_id < report.run_id:
             candidates.append(old)
     return max(candidates, key=lambda r: r.run_id, default=None)
@@ -192,7 +194,7 @@ def to_markdown(report: RunReport) -> str:
     v = report.versions
     lines = [f"# AI 主持人评估报告 {report.run_id}", "",
              f"- 数据集：{report.split}（场景集 {v.scenarios}），{report.sessions} 场，随机种子 {report.seeds}",
-             f"- 版本：提示词 {v.prompt} · 评分标准 {v.rubric} · 被测模型 {v.model} · 模拟受访者 {v.participant} · 评分模型 {v.judge}", ""]
+             f"- 版本：提示词 {v.prompt} · 评分标准 {v.rubric} · 被测模型 {v.model} · 模拟受访者 {v.participant} · 评分模型 {v.judge} · 模拟时钟 {v.sim_clock}", ""]
     if report.mock:
         lines += [f"> ⚠️ {MOCK_NOTICE}", ""]
     lines += ["## 红线", "", f"**{'全部通过（0 违规）' if report.red_lines_ok else '失败'}**：违规 {len(report.red_line_findings)} 处，"

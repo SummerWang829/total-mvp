@@ -10,7 +10,7 @@ from app.moderator.knowledge import InterviewGuide
 from app.moderator.providers import ModeratorChatProvider
 from app.moderator.schemas import ModeratorTurnPayload
 
-from .constants import (CHARS_PER_SECOND_ZH, MAX_TURNS_PER_SESSION, THINK_PAUSE_S, WORDS_PER_SECOND_EN, EventKind)
+from .constants import (AI_NOMINAL_LATENCY_S, CHARS_PER_SECOND_ZH, MAX_TURNS_PER_SESSION, THINK_PAUSE_S, WORDS_PER_SECOND_EN, EventKind)
 from .models import Scenario
 from .simulator import Participant
 
@@ -34,6 +34,8 @@ class TurnRecord(BaseModel):
     topic_id: str | None = None
     covered: list[str] = Field(default_factory=list)
     rejected: list[list[RedLine | QualityRule]] = Field(default_factory=list)
+    rejected_drafts: list[str] = Field(default_factory=list)
+    internal_error: bool = False
     used_fallback: bool = False
     alert: AlertLevel = AlertLevel.NONE
     latency_s: float = 0.0
@@ -98,6 +100,8 @@ def run_session(scenario: Scenario, guide: InterviewGuide, chat: ModeratorChatPr
             clock.advance(speaking_seconds(answer, guide.language) + THINK_PAUSE_S)
             control = engine.control
             payload = engine.handle_participant(answer)
+            if payload.spoken_response:
+                clock.advance(AI_NOMINAL_LATENCY_S)  # a fixed nominal reply time: the interview's length must not depend on how fast the model API is today
             history.append(("participant", answer))
             if control is ControlMode.HUMAN:
                 engine.add_human_turn(HUMAN_LINE[guide.language])
@@ -144,5 +148,5 @@ def _record(index: int, answer: str, payload: ModeratorTurnPayload, engine: Mode
         operator=plan.operator if plan else None, deep_dive=plan.deep_dive if plan else False,
         information_gain=analysis.signals.information_gain if analysis else 0.0, ladder=analysis.ladder_level.value if analysis else None,
         topic_id=plan.decision.topic_id if plan else None, covered=list(analysis.covered_item_ids) if analysis else [],
-        rejected=[[v.red_line for v in vs] for vs in payload.rejected], used_fallback=payload.used_fallback, alert=payload.alert,
+        rejected=[[v.red_line for v in vs] for vs in payload.rejected], rejected_drafts=payload.rejected_drafts, internal_error=payload.internal_error, used_fallback=payload.used_fallback, alert=payload.alert,
         latency_s=payload.latency_s, control=control, asked_ai=bool(analysis and analysis.asks_if_ai))

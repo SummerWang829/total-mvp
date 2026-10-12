@@ -106,6 +106,7 @@ def show_conversation(result: dict, limit_turns: int = 14) -> list[str]:
     for t in result["turns"][:limit_turns]:
         flags = ("兜底 " if t["used_fallback"] else "") + (f"拦{len(t['rejected'])}次 " if t["rejected"] else "")
         lines += [f"人 : {t['participant']}", f"AI : {t['ai']}  [{t['operator']} {flags}{t['latency_s']:.1f}s]"]
+        lines += [f"     被拦下的草稿 {rules}: {draft}" for rules, draft in zip(t.get("rejected", []), t.get("rejected_drafts", []))]
     return lines
 
 

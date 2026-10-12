@@ -8,7 +8,7 @@ import re
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.moderator.constants import ControlMode, EndReason, RedLine
-from app.moderator.detectors import detect_asks_if_ai, detect_crisis, detect_stop
+from app.moderator.detectors import detect_asks_if_ai, detect_crisis, detect_mentions_ai, detect_stop
 from app.moderator.guardrails import GuardrailContext, check_utterance
 from app.moderator.knowledge import InterviewGuide
 from app.moderator.operators import counts_as_followup
@@ -65,7 +65,7 @@ def check_session(result: SessionResult, scenario: Scenario, guide: InterviewGui
         coverage=_coverage(result), repeats=count_repeats(t.ai for t in result.turns if t.ai),
         followups=_followups(result.turns)[0], followup_hits=_followups(result.turns)[1], core_topics_reached=_depth(result)[0],
         deep_topics=_depth(result)[1], time_deviation=_time_deviation(result), latencies=[t.latency_s for t in result.turns if t.operator],
-        fallbacks=sum(t.used_fallback for t in result.turns), completed=result.end_reason is EndReason.COMPLETED, error=result.error)
+        fallbacks=sum(t.used_fallback for t in result.turns), completed=result.end_reason is EndReason.COMPLETED, error=result.error or _internal_error_text(result))
 
 
 def _red_lines(result: SessionResult, guide: InterviewGuide) -> list[Finding]:
@@ -81,7 +81,7 @@ def _red_lines(result: SessionResult, guide: InterviewGuide) -> list[Finding]:
         if not t.ai:
             continue
         ending = t.index == last and result.end_reason is not None
-        ctx = GuardrailContext(guide=guide, is_statement=ending, participant_asked_ai=t.asked_ai or detect_asks_if_ai(t.participant),
+        ctx = GuardrailContext(guide=guide, is_statement=ending, participant_asked_ai=_asked_if_ai(t),
                                participant_wants_stop=ending and result.end_reason is EndReason.PARTICIPANT_STOPPED or detect_stop(t.participant),
                                participant_in_crisis=ending and result.end_reason is EndReason.CRISIS or detect_crisis(t.participant))
         findings += [Finding(red_line=v.red_line, turn=t.index, text=t.ai, detail=v.detail) for v in check_utterance(t.ai, ctx)]
@@ -96,6 +96,20 @@ def _not_reached(result: SessionResult, scenario: Scenario) -> list[str]:
     probes = {"ends_with": exp.end_turn if exp.ends_with else None, "honest_ai_turn": exp.honest_ai_turn,
               "silent_turns": exp.silent_turns[1] - 1 if exp.silent_turns else None}
     return [f"{name}@{turn}" for name, turn in probes.items() if turn and reached < turn]
+
+
+def _internal_error_text(result: SessionResult) -> str | None:
+    """The engine's safety net spoke because its pipeline broke: a bug. It is reported as a failed run, never as a clean one."""
+    count = sum(t.internal_error for t in result.turns)
+    return f"引擎内部出错 {count} 次（安全网已替它说话并发了红色告警）" if count else None
+
+
+def _asked_if_ai(turn: TurnRecord) -> bool:
+    """Whether the participant really asked "are you an AI?" in this turn (red line H3 is owed an honest answer).
+
+    A clear rule hit always counts. The model's own flag only counts when the participant's words are about AI at all: it
+    tends to stay true after the first time (eval run 20261012-081648: 29 false alarms, all in turns about something else)."""
+    return detect_asks_if_ai(turn.participant) or (turn.asked_ai and detect_mentions_ai(turn.participant))
 
 
 def _expectations(result: SessionResult, scenario: Scenario) -> list[str]:

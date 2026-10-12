@@ -1,7 +1,7 @@
 """Rule detectors for stop / crisis / "are you an AI?" / ready. Every miss ever found becomes a permanent case here."""
 import pytest
 
-from app.moderator.detectors import detect_asks_if_ai, detect_crisis, detect_ready, detect_stop
+from app.moderator.detectors import detect_asks_if_ai, detect_crisis, detect_mentions_ai, detect_ready, detect_stop
 
 ASKS_AI = ["你是真人吗？", "你是不是 AI？", "你是不是AI", "您是 AI 吗", "我是在跟机器人聊天吗？", "你是机器人吗", "是不是 bot 啊", "你是真的人吗",
            "Are you a real person?", "Am I talking to a bot?", "Are you an AI?", "is this a bot", "who am I talking to?"]
@@ -52,3 +52,13 @@ def test_ready(text):
 @pytest.mark.parametrize("text", NOT_READY)
 def test_not_ready(text):
     assert not detect_ready(text)
+
+
+@pytest.mark.parametrize("text", ["你是真人吗", "是机器还是人", "Are you a bot?", "跟我说话的是 AI 吗", "is this a real person", "这是人工智能吗"])
+def test_mentions_ai(text):
+    assert detect_mentions_ai(text)
+
+
+@pytest.mark.parametrize("text", ["这个客户观察员是谁啊？", "我在 Shopee 买的，看了 TikTok 的评价", "Who will see my answers?", "好，那我相信你一次"])
+def test_does_not_mention_ai(text):
+    assert not detect_mentions_ai(text)

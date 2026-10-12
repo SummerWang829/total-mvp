@@ -11,7 +11,7 @@ import time
 from .clock import Clock, SystemClock
 from .constants import (MAX_REGENERATIONS, RED_ALERT_AFTER_FAILED_TURNS, AlertLevel, ControlMode, EndReason, PacingAction, Phase,
                         QualityRule, ResponseCategory, Speaker, TransitionReason)
-from .detectors import detect_asks_if_ai, detect_crisis, detect_ready, detect_stop
+from .detectors import detect_asks_if_ai, detect_crisis, detect_mentions_ai, detect_ready, detect_stop
 from .fsm import FOLLOWUP_PHASES, InterviewStateMachine, PacingDecision, TurnUpdate
 from .guardrails import GuardrailContext, check_utterance
 from .knowledge import InterviewGuide
@@ -109,8 +109,22 @@ class ModeratorEngine:
         self.memory.add_turn(Speaker.PARTICIPANT, text, self._now())
         if self.control is ControlMode.HUMAN:
             return self._record(ModeratorTurnPayload(analysis=None, plan=None, spoken_response=None))  # H11: silent
-        payload = self._respond(text)
+        try:
+            payload = self._respond(text)
+        except Exception:  # noqa: BLE001 — a live interview must not die on an unexpected bug: say a safe sentence and call a human
+            log.exception("moderator pipeline failed; saying a safe sentence and alerting staff")
+            payload = self._internal_error_turn()
         return self._record(payload.model_copy(update={"latency_s": time.monotonic() - started}))
+
+    def _internal_error_turn(self) -> ModeratorTurnPayload:
+        """What is said when the pipeline itself broke: a fixed, checked neutral follow-up (never the same twice) and a red alert.
+
+        The participant gets an ordinary sentence instead of silence, and every staff member online is told to take over.
+        The evaluation counts these turns as errors, so the safety net can never hide a bug."""
+        candidates = [self.texts.followup, *self.texts.alt_followups]
+        sentence = next((c for c in candidates if not self._repeat_violations(c)), candidates[0])
+        return self._say(sentence, None, None, used_fallback=True, internal_error=True, alert=AlertLevel.RED,
+                         alert_reason="AI 内部出错，已改说安全句，请立即接管并通知技术人员")
 
     def add_whisper(self, text: str) -> None:
         """An observer's private note for the next turn (never shown to the participant)."""
@@ -145,7 +159,7 @@ class ModeratorEngine:
         if detect_stop(text):
             return self._end_with(EndReason.PARTICIPANT_STOPPED, None, asks_ai)
         analysis = self._analyze(text)
-        asks_ai = asks_ai or analysis.asks_if_ai
+        asks_ai = asks_ai or (analysis.asks_if_ai and detect_mentions_ai(text))  # the model's flag only counts when these words are about AI
         if analysis.category is ResponseCategory.CRISIS:
             return self._end_with(EndReason.CRISIS, analysis, asks_ai)
         if analysis.category is ResponseCategory.WANTS_TO_STOP:
@@ -179,7 +193,8 @@ class ModeratorEngine:
         # Only a real answer finishes a question: a model that says "too short" or "off topic" and "answered" in one breath is overruled.
         answered = analysis.question_answered and analysis.category is ResponseCategory.ANSWERED and not self._dig_deeper(analysis)
         update = TurnUpdate(was_followup=self._last_was_followup, saturation=analysis.saturation,
-                            covered_item_ids=analysis.covered_item_ids, question_answered=answered)
+                            covered_item_ids=analysis.covered_item_ids, question_answered=answered,
+                            information_gain=analysis.signals.information_gain)
         return self.fsm.record_turn(update)
 
     def _dig_deeper(self, analysis: RespondentInputAnalysis) -> bool:
@@ -192,28 +207,31 @@ class ModeratorEngine:
         used = snapshot.followups_used + int(self._last_was_followup)
         has_room = used < self.fsm.config.max_followups_per_question
         topic_has_time = snapshot.phase is not Phase.CORE or snapshot.topic_elapsed_s < snapshot.topic_budget_s
-        return wants_deeper(analysis) and self.fsm.phase in FOLLOWUP_PHASES and has_room and topic_has_time
+        return wants_deeper(analysis) and self.fsm.phase in FOLLOWUP_PHASES and has_room and topic_has_time and not self.fsm.hurrying()
 
     def _speak(self, analysis: RespondentInputAnalysis, plan: DialogueActionPlan, asks_ai: bool) -> ModeratorTurnPayload:
         """Draft, check, regenerate up to MAX_REGENERATIONS times; otherwise the safe fallback sentence and an alert."""
         ctx = self._context(plan.decision)
         gate = self._gate(asked_ai=asks_ai)
         rejected: list[list[Violation]] = []
+        rejected_drafts: list[str] = []
         for _ in range(1 + MAX_REGENERATIONS):
-            draft = self.calls.draft(ctx, plan, asks_ai, rejected)
+            draft = self.calls.draft(ctx, plan, asks_ai, rejected, rejected_drafts)
             if draft is None:
                 break  # the model gave nothing usable: regenerating cannot help
             found = check_utterance(draft.spoken_response, gate) + self._repeat_violations(draft.spoken_response)
             if not found:
                 self._failed_turns_in_row = 0
                 self._last_was_followup = counts_as_followup(plan.operator)
-                return self._say(draft.spoken_response, analysis, plan, note=draft.note, attempts=len(rejected) + 1, rejected=rejected)
+                return self._say(draft.spoken_response, analysis, plan, note=draft.note, attempts=len(rejected) + 1, rejected=rejected,
+                                 rejected_drafts=rejected_drafts)
             log.warning("moderator draft rejected: %s", ", ".join(v.red_line.value for v in found))
             rejected.append(found)
-        return self._fallback(analysis, plan, asks_ai, rejected)
+            rejected_drafts.append(draft.spoken_response)
+        return self._fallback(analysis, plan, asks_ai, rejected, rejected_drafts)
 
     def _fallback(self, analysis: RespondentInputAnalysis, plan: DialogueActionPlan, asks_ai: bool,
-                  rejected: list[list[Violation]]) -> ModeratorTurnPayload:
+                  rejected: list[list[Violation]], rejected_drafts: list[str]) -> ModeratorTurnPayload:
         """Say a fixed, checked sentence instead (never a violating one) and alert staff; red after repeated failures."""
         self._failed_turns_in_row += 1
         self._last_was_followup = False
@@ -226,7 +244,7 @@ class ModeratorEngine:
         sentence = next((c for c in clean if not self._repeat_violations(c)), clean[0])  # a fresh sentence if there is one
         red = self._failed_turns_in_row >= RED_ALERT_AFTER_FAILED_TURNS
         reason = (f"AI 连续 {self._failed_turns_in_row} 轮没通过红线检查，建议接管" if red else "AI 这一轮没通过红线检查，已改用安全兜底句")
-        return self._say(sentence, analysis, plan, attempts=len(rejected), rejected=rejected, used_fallback=True,
+        return self._say(sentence, analysis, plan, attempts=len(rejected), rejected=rejected, rejected_drafts=rejected_drafts, used_fallback=True,
                          alert=AlertLevel.RED if red else AlertLevel.YELLOW, alert_reason=reason)
 
     def _fallback_question(self, decision: PacingDecision) -> str:

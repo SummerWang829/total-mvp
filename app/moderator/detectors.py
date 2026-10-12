@@ -29,6 +29,18 @@ _ASKS_AI = [
 ]
 
 
+_MENTIONS_AI = [r"\bAI\b", r"\bbot\b", r"robot", r"machine", r"artificial", r"\breal (?:person|human)\b", r"\bhuman\b", r"\bperson\b",
+                r"人工智能", r"机器", r"真人", r"AI", r"真的人", r"活人"]
+
+
+def detect_mentions_ai(text: str) -> bool:
+    """Whether the participant's words touch on AI, bots or "a real person" at all.
+
+    The model's own "the participant asks if I am an AI" flag tends to stay true after the first time; it only counts when the
+    participant's current words are about it (found by eval run 20261012-080304: "I am an AI" was repeated in every turn)."""
+    return any(re.search(p, text, flags=re.IGNORECASE) for p in _MENTIONS_AI)
+
+
 _READY = [
     r"^(?:ok|okay|yes|yeah|yep|sure|ready|go ahead|let'?s (?:start|begin|go)|sounds good|fine|alright|of course)\b",
     r"^(?:好|好的|好啊|可以|可以的|行|没问题|开始吧|开始|准备好了|嗯|嗯嗯|OK|ok)(?:[，,。.!！ ]|$)", r"可以开始", r"我们开始", r"准备好了",

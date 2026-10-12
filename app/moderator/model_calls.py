@@ -6,7 +6,7 @@ from typing import TypeVar
 
 from pydantic import ValidationError
 
-from .constants import MAX_PARSE_RETRIES
+from .constants import MAX_PARSE_RETRIES, REJECTION_FIX_HINTS
 from .memory import ModeratorContext
 from .prompts import PromptSet
 from .providers import ChatError, ChatMessage, ModeratorChatProvider
@@ -23,7 +23,7 @@ def _context_json(ctx: ModeratorContext) -> dict:
         "WHISPERS": ctx.whispers, "SUMMARY": ctx.summary,
         "RECENT_TURNS": [{"speaker": t.speaker.value, "text": t.text} for t in ctx.recent_turns],
         "HYPOTHESES": ctx.hypotheses_internal, "FORBIDDEN_TOPICS": ctx.forbidden_topics, "PRODUCT_FACTS": ctx.product_facts,
-        "BRAND_DISCLOSURE_ALLOWED": ctx.brand_disclosure_allowed, "ALREADY_ASKED": ctx.asked_questions[-20:],
+        "BRAND_DISCLOSURE_ALLOWED": ctx.brand_disclosure_allowed, "ALREADY_ASKED": ctx.asked_questions,
     }
 
 
@@ -57,7 +57,7 @@ class ModelCaller:
         return self._ask(messages, RespondentInputAnalysis, "analysis")
 
     def draft(self, ctx: ModeratorContext, plan: DialogueActionPlan, asks_if_ai: bool,
-              rejected: list[list[Violation]]) -> SpokenDraft | None:
+              rejected: list[list[Violation]], rejected_drafts: list[str] | None = None) -> SpokenDraft | None:
         """Draft the next sentence(s) to say.
 
         Args:
@@ -65,13 +65,16 @@ class ModelCaller:
             plan: chosen operator and the state machine's decision.
             asks_if_ai: the participant asked whether they talk to an AI.
             rejected: violations of earlier drafts in this turn, so the model can fix them.
+            rejected_drafts: the earlier drafts themselves, so the model sees exactly what not to write again.
 
         Returns:
             The validated draft, or None when the model gave nothing usable twice.
         """
         user = {**_context_json(ctx), "PLAN": {"operator": plan.operator.value, "decision": plan.decision.model_dump(mode="json")},
                 "OPERATOR_GUIDANCE": self.prompts.operators[plan.operator], "ASKS_IF_AI": asks_if_ai,
-                "REJECTED_BECAUSE": [[f"{v.red_line.value}: {v.detail}" for v in vs] for vs in rejected]}
+                "REJECTED_BECAUSE": [[f"{v.red_line.value}: {v.detail}. FIX: {REJECTION_FIX_HINTS.get(v.red_line.value, 'rewrite it')}" for v in vs]
+                                     for vs in rejected],
+                "REJECTED_DRAFTS": rejected_drafts or []}
         messages = [{"role": "system", "content": self.prompts.speak}, {"role": "user", "content": json.dumps(user, ensure_ascii=False)}]
         return self._ask(messages, SpokenDraft, "draft")
 

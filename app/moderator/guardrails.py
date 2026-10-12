@@ -51,6 +51,14 @@ def _found(patterns: list[str], text: str) -> str | None:
     return next((p for p in patterns if re.search(p, text, flags=re.IGNORECASE)), None)
 
 
+def _matched_text(patterns: list[str], text: str) -> str | None:
+    """The words in the text that the first matching pattern found (what to tell the model to avoid), or None."""
+    for pattern in patterns:
+        if match := re.search(pattern, text, flags=re.IGNORECASE):
+            return match.group(0).strip() or pattern
+    return None
+
+
 def _v(line: RedLine, detail: str) -> list[Violation]:
     """One violation, as a list (each check returns a list)."""
     return [Violation(red_line=line, detail=detail[:200])]
@@ -92,7 +100,7 @@ LEADING = [
 
 def check_leading(text: str, ctx: GuardrailContext) -> list[Violation]:
     """H2: no leading or suggestive wording (subtler cases are also scored by the judge model)."""
-    hit = _found(LEADING, text)
+    hit = _matched_text(LEADING, text)
     return _v(RedLine.H2_LEADING, f"leading wording: {hit}") if hit else []
 
 
@@ -174,7 +182,7 @@ EVALUATIVE = [
 
 def check_evaluative(text: str, ctx: GuardrailContext) -> list[Violation]:
     """H7: no praising, agreeing or contradicting."""
-    hit = _found(EVALUATIVE, text)
+    hit = _matched_text(EVALUATIVE, text)
     return _v(RedLine.H7_EVALUATIVE, f"evaluative wording: {hit}") if hit else []
 
 
@@ -204,7 +212,7 @@ ADVICE = [r"\byou should\b", r"\bi (?:would |'d )?(?:recommend|suggest|advise)\b
 
 def check_advice(text: str, ctx: GuardrailContext) -> list[Violation]:
     """H9: no medical, legal, investment or purchase advice."""
-    hit = _found(ADVICE, text)
+    hit = _matched_text(ADVICE, text)
     return _v(RedLine.H9_ADVICE, f"gives advice: {hit}") if hit else []
 
 

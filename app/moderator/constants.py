@@ -47,6 +47,7 @@ class PacingAction(str, Enum):
     NEXT_TOPIC = "next_topic"        # transition to the next core topic
     ENTER_PHASE = "enter_phase"      # a new phase has started (its opening question is due)
     PROBE_ITEM = "probe_item"        # prepared questions used up: explore this uncovered must-cover item of the topic
+    EXPLORE = "explore"              # prepared questions and items are used up but the topic still has time: dig deeper into what was said
     ASK_MISSED_ITEM = "ask_missed"   # recovery: ask this never-asked must-cover item, once
     END = "end"
 
@@ -72,6 +73,8 @@ class TransitionReason(str, Enum):
     FOLLOWUP_LIMIT = "followup_limit"      # 3 follow-ups on one question (hard cap)
     QUESTIONS_DONE = "questions_done"      # nothing left to ask in this topic / phase (prepared questions and items)
     ITEM_COVERED = "item_covered"          # the item being explored is now covered
+    BEHIND_SCHEDULE = "behind_schedule"    # time is running out in the topic and must-cover items are still unasked: go straight to them
+    EXPLORING = "exploring"              # time is left in the topic and the answers still add information: dig deeper
     SATURATED = "saturated"                # topic saturation >= threshold
     TOPIC_TURN_LIMIT = "topic_turn_limit"
     TOPIC_TIME_UP = "topic_time_up"
@@ -89,9 +92,16 @@ REFERENCE_DURATION_MIN = 60.0
 PHASE_MINUTES_AT_60: dict[Phase, float] = {Phase.INTRO: 4.0, Phase.WARMUP: 6.5, Phase.STIMULI: 11.0, Phase.RECOVERY: 1.5, Phase.WRAPUP: 4.0}
 DEFAULT_SATURATION_THRESHOLD = 0.8
 DEFAULT_MAX_FOLLOWUPS_PER_QUESTION = 3
-DEFAULT_OVERTIME_FORCE_RATIO = 1.15   # 15 % over the total budget: wrap up now
+DEFAULT_HURRY_AFTER_SHARE = 0.5       # past this share of a topic's time, with must-cover items still unasked: no more follow-ups, ask the items
+DEFAULT_EXPLORE_UNTIL_SHARE = 0.85   # keep exploring a topic while less than this share of its time budget is used
+DEFAULT_MAX_EXPLORE_PER_TOPIC = 6     # at most this many extra deeper questions per topic
+DEFAULT_EXPLORE_MIN_INFO_GAIN = 0.3   # stop exploring when the latest answer added less new information than this (diminishing returns)
+DEFAULT_OVERTIME_FORCE_RATIO = 1.15  # 15 % over the total budget: wrap up now
 DEFAULT_MAX_TURNS_PER_TOPIC = 14
-DEFAULT_RECENT_TURNS_VERBATIM = 12    # older turns are summarised for the model
+DEFAULT_RECENT_TURNS_VERBATIM = 12    # older turns are condensed for the model
+DIGEST_LINE_CHARS = 70                # one older participant answer, cut to this many characters in the condensed history
+CONTEXT_ASKED_QUESTIONS = 20          # the model is shown only the last 20 questions asked (the repeat guard in the engine checks all of them)
+DIGEST_MAX_CHARS = 1800               # the condensed history never grows past this (the newest lines win)
 
 class ResponseCategory(str, Enum):
     """What kind of answer the participant just gave (task doc 4.2 "judge")."""
@@ -177,6 +187,23 @@ class QualityRule(str, Enum):
 
 
 REPEAT_SIMILARITY = 0.9  # two AI questions this similar (difflib ratio, spaces ignored) count as a repeat
+
+# What the model is told when a draft of its was rejected: the rule, the exact words, and how to fix it (the first real runs showed
+# that a bare rule code was not enough: the same forbidden phrase was written three times in a row).
+REJECTION_FIX_HINTS: dict[str, str] = {
+    "H1": "write exactly one question with one question mark; no second question, no \"or\" alternatives",
+    "H2": "rewrite without those words and without suggesting an answer; Chinese: use 是否 / 有没有 instead of 是不是",
+    "H3": "say plainly that you are an AI moderator, not a person, before the question (only if they asked)",
+    "H4": "do not ask for any personal data",
+    "H5": "stop the interview politely, with no question",
+    "H6": "write the whole reply in the interview language",
+    "H7": "no praise, agreement or disagreement: start with the question or a neutral 3-word acknowledgement",
+    "H8": "do not name the client brand, other participants or invent facts",
+    "H9": "no advice of any kind",
+    "H10": "do not touch that topic",
+    "H12": "each sentence at most 20 English words or 30 Chinese characters: cut it, split it",
+    "Q1": "ask a DIFFERENT question: new words and a narrower angle, or the next question from the decision",
+}
 
 # Engine limits (task doc 4.2 / 4.4)
 MAX_REGENERATIONS = 2          # after a red-line failure; then the safe fallback sentence

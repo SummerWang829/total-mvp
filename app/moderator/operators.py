@@ -15,6 +15,8 @@ NEXT_RUNG: dict[LadderLevel, Operator] = {
     LadderLevel.FACT: Operator.SPECIFY, LadderLevel.BEHAVIOUR: Operator.WHY, LadderLevel.REASON: Operator.EMOTION,
     LadderLevel.EMOTION: Operator.IMPACT, LadderLevel.VALUE: Operator.REFLECT,
 }
+# Extra deeper questions in a topic that has time left, in turn: impact, comparison, feeling, indirect, reason, concrete example.
+EXPLORE_ROTATION: tuple[Operator, ...] = (Operator.IMPACT, Operator.CONTRAST, Operator.EMOTION, Operator.PROJECTIVE, Operator.WHY, Operator.SPECIFY)
 # The answer itself says how to respond, whatever the scores.
 BY_CATEGORY: dict[ResponseCategory, Operator] = {
     ResponseCategory.NOT_UNDERSTOOD: Operator.REPHRASE, ResponseCategory.EMOTIONAL: Operator.REASSURE,
@@ -66,6 +68,8 @@ def choose_operator(analysis: RespondentInputAnalysis, decision: PacingDecision,
     if analysis.category is ResponseCategory.TOO_SHORT:
         short = len(participant_text.strip()) < NUDGE_MAX_CHARS
         return OperatorChoice(operator=Operator.NUDGE if short else Operator.SCALE, deep_dive_score=score, deep_dive=False)
+    if decision.action is PacingAction.EXPLORE:  # the topic has time left: a new deeper question, a different kind each time
+        return OperatorChoice(operator=EXPLORE_ROTATION[(decision.explore_index or 0) % len(EXPLORE_ROTATION)], deep_dive_score=score, deep_dive=True)
     if not decision.followup_allowed:
         return OperatorChoice(operator=Operator.TRANSITION, deep_dive_score=score, deep_dive=False)
     operator = NEXT_RUNG[analysis.ladder_level] if (deep or analysis.ladder_level in SHALLOW_RUNGS) else Operator.SPECIFY
@@ -84,8 +88,8 @@ def wants_deeper(analysis: RespondentInputAnalysis, weights: dict[str, float] = 
         weights: deep-dive signal weights.
         threshold: score at or above which the moderator digs deeper.
     """
-    if analysis.category not in DIGGABLE_CATEGORIES:
-        return False
+    if analysis.category not in DIGGABLE_CATEGORIES or analysis.ladder_level is LadderLevel.VALUE:
+        return False  # not a real answer, or already at the top rung: there is nothing deeper to ask
     return analysis.ladder_level in SHALLOW_RUNGS or analysis.signals.deep_dive_score(weights) >= threshold
 
 

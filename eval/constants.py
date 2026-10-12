@@ -68,7 +68,9 @@ class EventKind(str, Enum):
 # Speaking speed for the simulated clock (voice-equivalent time, so text runs measure the same pacing as voice).
 CHARS_PER_SECOND_ZH = 4.0
 WORDS_PER_SECOND_EN = 2.5
-THINK_PAUSE_S = 2.0
+THINK_PAUSE_S = 5.0  # reading the question + thinking before answering, per turn (c001 used 2 s: a one-word answer then "took" 2.7 s)
+AI_NOMINAL_LATENCY_S = 2.5  # the AI's reply time in the simulated clock: fixed, so results do not move with the model API's speed
+SIM_CLOCK_VERSION = "c003"  # c003: 5 s read-and-think + 2.5 s nominal AI reply per turn (c002 used the measured AI time, so a faster AI made shorter interviews; c001: 2 s, no AI time)
 
 # Quality gates on the holdout set (task doc 6.3). None = needs human labels, not measured automatically.
 GATE_COVERAGE = 0.95

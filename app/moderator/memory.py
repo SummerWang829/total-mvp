@@ -6,7 +6,7 @@
 """
 from pydantic import BaseModel, ConfigDict, Field
 
-from .constants import DEFAULT_RECENT_TURNS_VERBATIM, MAX_WHISPER_CHARS, Speaker
+from .constants import CONTEXT_ASKED_QUESTIONS, DEFAULT_RECENT_TURNS_VERBATIM, DIGEST_LINE_CHARS, DIGEST_MAX_CHARS, MAX_WHISPER_CHARS, Speaker
 from .fsm import PacingDecision, PacingSnapshot
 from .knowledge import InterviewGuide
 
@@ -111,6 +111,26 @@ class ConversationMemory:
         self.summary = summary.strip()
         self.summarized_upto = upto_index
 
+    def history_digest(self, window_start: int) -> str:
+        """The condensed history of everything before the verbatim window, so the context stays a fixed size however long the interview.
+
+        A model-written summary (set_summary) covers the first `summarized_upto` turns; the turns after it, up to the window, are
+        condensed by rule: one short line per participant answer (the questions are already in ALREADY_ASKED). Without this the
+        context grew with every turn (found in eval run 20261012-065429: 80-90 turn interviews had the slowest turns).
+
+        Args:
+            window_start: index of the first verbatim turn.
+
+        Returns:
+            At most DIGEST_MAX_CHARS characters; when over, the oldest lines are dropped.
+        """
+        covered = min(self.summarized_upto, window_start)
+        lines = [f"{t.at_s / 60:.0f}分: {t.text[:DIGEST_LINE_CHARS]}" for t in self.turns[covered:window_start] if t.speaker is Speaker.PARTICIPANT]
+        digest = "\n".join(lines)
+        if len(digest) > DIGEST_MAX_CHARS:
+            digest = digest[-DIGEST_MAX_CHARS:].split("\n", 1)[-1]  # keep the newest lines, whole lines only
+        return (self.summary + "\n" + digest).strip() if self.summary and covered else digest
+
     def asked_questions(self) -> list[str]:
         """Everything the AI or a human moderator has said, in order (the model avoids repeating it)."""
         return [t.text for t in self.turns if t.speaker is not Speaker.PARTICIPANT]
@@ -129,12 +149,11 @@ class ConversationMemory:
         Returns:
             The validated context.
         """
-        # Never lose a turn: if the summary lags behind, the not-yet-summarised turns stay verbatim too.
         window_start = max(0, len(self.turns) - self.recent_turns_verbatim)
-        recent = self.turns[min(self.summarized_upto, window_start):]
+        recent = self.turns[window_start:]
         return ModeratorContext(
             language=guide.language, research_goal=guide.research_goal, pacing=snapshot, decision=decision,
-            whispers=[w.text for w in self.take_whispers()] if consume_whispers else [], summary=self.summary, recent_turns=recent,
+            whispers=[w.text for w in self.take_whispers()] if consume_whispers else [], summary=self.history_digest(window_start), recent_turns=recent,
             hypotheses_internal=list(guide.hypotheses), forbidden_topics=list(guide.forbidden_topics),
             product_facts=list(guide.product_facts), brand_disclosure_allowed=guide.brand_disclosure_allowed,
-            asked_questions=self.asked_questions())
+            asked_questions=self.asked_questions()[-CONTEXT_ASKED_QUESTIONS:])

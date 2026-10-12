@@ -110,7 +110,9 @@ class ModeratorTurnPayload(BaseModel):
     note: InternalNote = Field(default_factory=InternalNote)
     attempts: int = Field(default=0, ge=0)             # speaking calls made (1 + regenerations)
     rejected: list[list[Violation]] = Field(default_factory=list)  # violations of each rejected draft
+    rejected_drafts: list[str] = Field(default_factory=list)       # the rejected drafts themselves (AI text only), for the training loop's failure analysis
     used_fallback: bool = False
+    internal_error: bool = False                       # the pipeline broke and the safety net spoke (a bug: the evaluation counts it as an error)
     alert: AlertLevel = AlertLevel.NONE
     alert_reason: str = ""
     latency_s: float = Field(default=0.0, ge=0)

@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from ..constants import Operator
 
 PROMPT_DIR = Path(__file__).parent
-CURRENT_PROMPT_VERSION = "v001"
+CURRENT_PROMPT_VERSION = "v003"  # v003 (2026-10-12): questions only (no commands), no "是不是", reword instead of repeating, explore instruction; v001/v002 stay on disk for comparison
 
 
 class PromptSet(BaseModel):
