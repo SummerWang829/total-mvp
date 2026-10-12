@@ -105,8 +105,9 @@ AUDIT_JS = r"""
   document.querySelectorAll('button, a.btn, .tag, .top nav a, .tabs a').forEach((el) => {
     if (!visible(el) || !el.textContent.trim()) return;
     const rg = document.createRange(); rg.selectNodeContents(el);
-    const tops = new Set([...rg.getClientRects()].map((r) => Math.round(r.top / 4)));
-    if (tops.size > 1) out.wrap.push(`"${el.textContent.trim().slice(0, 16)}"`);
+    const rs = [...rg.getClientRects()].filter((r) => r.height > 0).sort((a, b) => a.top - b.top);
+    const lineH = Math.min(...rs.map((r) => r.height));   // a real second line starts a whole line lower; fonts only shift boxes by a px or two
+    if (rs.length && rs[rs.length - 1].top - rs[0].top > lineH * 0.6) out.wrap.push(`"${el.textContent.trim().slice(0, 16)}"`);
   });
   return out;
 }

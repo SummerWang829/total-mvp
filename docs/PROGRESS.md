@@ -24,6 +24,14 @@
 
 ---
 
+## 2026-10-12 · SW 电脑环境同步 + 换行检查改稳
+**做了什么**：在 SW（云端 Linux 容器）从 GitHub 拉取 LW 推送的 main（只有两个提交，内容一致），装好 Python 依赖、LiveKit 1.8.4、Chromium，`.env` 从模板生成（密钥待用户填，未读取）；演示数据 `python -m app.seed` 已能生成。`tests/qa_site.py` 的"文字换行"检查原先按顶部位置取整比较，换了中文字体就误报；改为"第二行要比第一行低出 0.6 个行高"，不依赖字体，阈值没放宽。
+**qa.sh**：589 / 1403 / 144 / 一键启动未在容器测。
+**还差什么**：Sprint 4 第 3 轮真模型结果（要在填了密钥的电脑上跑）；SW 上还没填 DeepSeek / 腾讯云密钥；Windows 本机上再跑一次 qa.sh 确认。
+**风险**：LW 上若有未推送的改动，SW 上看不到；同一时间只在一台电脑改代码。
+
+---
+
 ## 2026-10-12 · Sprint 4 训练循环：第 1、2 轮完成，第 3 轮进行中
 **做了什么**
 - 命令行沙盒 `python -m eval.sandbox`：自己扮演受访者，快捷操作 /whisper /angry /terse /stop /crisis /ai /takeover /handback /state。
