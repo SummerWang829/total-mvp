@@ -112,6 +112,7 @@ class ModeratorTurnPayload(BaseModel):
     rejected: list[list[Violation]] = Field(default_factory=list)  # violations of each rejected draft
     rejected_drafts: list[str] = Field(default_factory=list)       # the rejected drafts themselves (AI text only), for the training loop's failure analysis
     used_fallback: bool = False
+    fatal_service_error: bool = False                  # the model service refused us (no balance, bad key): staff must be told, an evaluation must stop
     internal_error: bool = False                       # the pipeline broke and the safety net spoke (a bug: the evaluation counts it as an error)
     alert: AlertLevel = AlertLevel.NONE
     alert_reason: str = ""

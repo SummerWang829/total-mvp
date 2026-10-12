@@ -9,7 +9,7 @@ from pydantic import ValidationError
 from .constants import MAX_PARSE_RETRIES, REJECTION_FIX_HINTS
 from .memory import ModeratorContext
 from .prompts import PromptSet
-from .providers import ChatError, ChatMessage, ModeratorChatProvider
+from .providers import ChatError, ChatFatalError, ChatMessage, ModeratorChatProvider
 from .schemas import DialogueActionPlan, RespondentInputAnalysis, SpokenDraft, Violation
 
 log = logging.getLogger(__name__)
@@ -51,6 +51,9 @@ class ModelCaller:
 
         Returns:
             The validated analysis, or None when the model gave nothing usable twice (the caller then uses a neutral reading).
+
+        Raises:
+            ChatFatalError: the service refused (bad key, no balance, ...): never turned into a neutral reading.
         """
         user = {**_context_json(ctx), "UNCOVERED_ITEMS": uncovered, "ANSWER": answer}
         messages = [{"role": "system", "content": self.prompts.analyze}, {"role": "user", "content": json.dumps(user, ensure_ascii=False)}]
@@ -83,6 +86,8 @@ class ModelCaller:
         for attempt in range(1 + MAX_PARSE_RETRIES):
             try:
                 raw = self.chat.complete(messages, seed=self.seed)
+            except ChatFatalError:
+                raise  # no balance / bad key: not a bad reply to work around. It goes up to the safety net and stops an evaluation
             except ChatError:
                 log.warning("moderator %s: model call failed (attempt %d)", what, attempt + 1, exc_info=True)
                 continue

@@ -4,10 +4,10 @@ import logging
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.moderator.clock import ManualClock
-from app.moderator.constants import AlertLevel, ControlMode, EndReason, Operator, Phase, QualityRule, RedLine
+from app.moderator.constants import MSG_SERVICE_UNAVAILABLE, AlertLevel, ControlMode, EndReason, Operator, Phase, QualityRule, RedLine
 from app.moderator.engine import ModeratorEngine
 from app.moderator.knowledge import InterviewGuide
-from app.moderator.providers import ModeratorChatProvider
+from app.moderator.providers import ChatFatalError, ModeratorChatProvider
 from app.moderator.schemas import ModeratorTurnPayload
 
 from .constants import (AI_NOMINAL_LATENCY_S, CHARS_PER_SECOND_ZH, MAX_TURNS_PER_SESSION, THINK_PAUSE_S, WORDS_PER_SECOND_EN, EventKind)
@@ -15,6 +15,15 @@ from .models import Scenario
 from .simulator import Participant
 
 log = logging.getLogger(__name__)
+
+
+class ServiceUnavailableError(Exception):
+    """A model service refused the evaluation (no balance, bad key, ...): the whole run must stop and no report is written.
+
+    Carrying on would only record the engine's fallback sentences as if they were results (a 4-hour run did exactly that
+    when the DeepSeek balance ran out). The message is in Chinese, for the person running the evaluation."""
+
+
 HUMAN_LINE = {"zh": "我是研究员，我来接着问：您平时最常在哪里买？", "en": "I'm a researcher stepping in: where do you usually buy?"}
 
 
@@ -96,10 +105,12 @@ def run_session(scenario: Scenario, guide: InterviewGuide, chat: ModeratorChatPr
     try:
         for index in range(1, MAX_TURNS_PER_SESSION + 1):
             said = _apply_events(scenario, index, engine, guide.language)
-            answer = said or participant.reply(last_ai, history)
+            answer = said or _participant_reply(participant, last_ai, history)
             clock.advance(speaking_seconds(answer, guide.language) + THINK_PAUSE_S)
             control = engine.control
             payload = engine.handle_participant(answer)
+            if payload.fatal_service_error:
+                raise ServiceUnavailableError(payload.alert_reason)
             if payload.spoken_response:
                 clock.advance(AI_NOMINAL_LATENCY_S)  # a fixed nominal reply time: the interview's length must not depend on how fast the model API is today
             history.append(("participant", answer))
@@ -115,6 +126,8 @@ def run_session(scenario: Scenario, guide: InterviewGuide, chat: ModeratorChatPr
                 break
         else:
             error = f"did not end within {MAX_TURNS_PER_SESSION} turns"
+    except ServiceUnavailableError:
+        raise  # not one broken scenario: the service itself is gone, so the whole run stops
     except Exception as e:  # noqa: BLE001 — one broken scenario must not stop the batch; it is reported as a failure
         log.exception("scenario %s broke", scenario.id)
         error = f"{type(e).__name__}: {e}"
@@ -123,6 +136,14 @@ def run_session(scenario: Scenario, guide: InterviewGuide, chat: ModeratorChatPr
         end_reason=engine.fsm.end_reason, elapsed_s=clock.now(), planned_s=engine.fsm.budget.total_s,
         covered=sorted(engine.fsm.covered_items), asked=sorted(engine.fsm.asked_items), must_cover=[i.id for t in guide.topics for i in t.must_cover],
         topic_ids=[t.id for t in guide.topics], transitions=[t.model_dump(mode="json") for t in engine.fsm.transitions], error=error)
+
+
+def _participant_reply(participant: Participant, ai_text: str, history: list[tuple[str, str]]) -> str:
+    """The simulated participant's answer; a refused service stops the run instead of becoming a "let me think" answer."""
+    try:
+        return participant.reply(ai_text, history)
+    except ChatFatalError as e:
+        raise ServiceUnavailableError(MSG_SERVICE_UNAVAILABLE.format(status=e.status_code, reason=e.reason)) from e
 
 
 def _apply_events(scenario: Scenario, index: int, engine: ModeratorEngine, language: str) -> str | None:

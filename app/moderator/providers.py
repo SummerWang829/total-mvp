@@ -18,8 +18,8 @@ from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_ex
 from ..config import Settings, settings
 from .compliance import moderator_runs_locally
 from .constants import (CHAT_COMPLETIONS_PATH, CHAT_DEFAULT_TEMPERATURE, CHAT_RETRY_ATTEMPTS, CHAT_RETRY_FIRST_WAIT_S,
-                        CHAT_RETRY_MAX_WAIT_S, HTTP_SERVER_ERROR_MIN, JSON_RESPONSE_FORMAT, MOCK_DEFAULT_REPLY,
-                        MSG_UNKNOWN_PROVIDER, VENDOR_REQUEST_DEFAULTS, ModeratorProviderName)
+                        CHAT_RETRY_MAX_WAIT_S, FATAL_HTTP_REASONS, HTTP_SERVER_ERROR_MIN, JSON_RESPONSE_FORMAT,
+                        MOCK_DEFAULT_REPLY, MSG_UNKNOWN_PROVIDER, TRANSIENT_HTTP_STATUS, VENDOR_REQUEST_DEFAULTS, ModeratorProviderName)
 
 log = logging.getLogger(__name__)
 
@@ -32,6 +32,23 @@ class ChatError(Exception):
 
     The message never contains the model's output or the conversation: both may hold the participant's words.
     """
+
+
+class ChatFatalError(ChatError):
+    """The model service refused the request for a reason that retrying cannot fix (bad key, no balance, no permission, wrong model).
+
+    Unlike a plain ChatError this is never swallowed into a neutral reading or a fallback sentence by the callers: it travels up to
+    the engine's safety net (a red alert for staff) and, in an evaluation, stops the whole run (no report is written).
+
+    Attributes:
+        status_code: the HTTP status the service answered.
+        reason: the cause in plain Chinese, for staff.
+    """
+
+    def __init__(self, status_code: int) -> None:
+        self.status_code = status_code
+        self.reason = FATAL_HTTP_REASONS.get(status_code, "服务拒绝")
+        super().__init__(f"HTTP {status_code}")
 
 
 class _TransientChatError(ChatError):
@@ -118,8 +135,9 @@ class OpenAICompatModeratorChat:
         """POST once (tenacity repeats it) and return the reply text.
 
         Raises:
-            _TransientChatError: network error, timeout or 5xx (retried).
-            ChatError: 4xx (bad key, unknown model) or an unexpected response shape (not retried: asking again cannot help).
+            _TransientChatError: network error, timeout, rate limit (429) or 5xx (retried with backoff).
+            ChatFatalError: 401 / 402 / 403 / 404: bad key, no balance, no permission, wrong model (not retried, not swallowed).
+            ChatError: another 4xx or an unexpected response shape (not retried: asking again cannot help).
         """
         url = self.config.moderator_base_url.rstrip("/") + CHAT_COMPLETIONS_PATH
         started = time.monotonic()
@@ -131,9 +149,13 @@ class OpenAICompatModeratorChat:
             raise _TransientChatError(type(e).__name__) from e
         finally:
             self.last_latency_s = time.monotonic() - started
-        if response.status_code >= HTTP_SERVER_ERROR_MIN:
+        if response.status_code >= HTTP_SERVER_ERROR_MIN or response.status_code in TRANSIENT_HTTP_STATUS:
             log.warning("moderator model at %s answered HTTP %s", url, response.status_code)
             raise _TransientChatError(f"HTTP {response.status_code}")
+        if response.status_code in FATAL_HTTP_REASONS:
+            fatal = ChatFatalError(response.status_code)
+            log.error("moderator model at %s refused the request: HTTP %s, %s", url, response.status_code, fatal.reason)
+            raise fatal
         if response.is_error:
             log.error("moderator model at %s refused the request: HTTP %s (check MODERATOR_API_KEY / MODERATOR_MODEL)", url, response.status_code)
             raise ChatError(f"HTTP {response.status_code}")

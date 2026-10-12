@@ -230,6 +230,12 @@ CHAT_RETRY_FIRST_WAIT_S = 0.5
 CHAT_RETRY_MAX_WAIT_S = 4.0
 CHAT_DEFAULT_TEMPERATURE = 0.3
 HTTP_SERVER_ERROR_MIN = 500
+# The model service refused in a way that no retry and no fallback sentence can fix: the run must stop and say why (found when the
+# DeepSeek balance ran out mid-evaluation and 4 hours of "results" were fallback sentences).
+FATAL_HTTP_REASONS: dict[int, str] = {401: "密钥无效或已失效", 402: "账号余额不足（请到服务商后台充值）", 403: "密钥没有权限", 404: "接口地址或模型名不对"}
+TRANSIENT_HTTP_STATUS = frozenset({408, 409, 425, 429})  # timeouts and rate limits: wait and ask again, with backoff
+MSG_SERVICE_UNAVAILABLE = "AI 模型服务拒绝了请求（HTTP {status}：{reason}）。请检查 .env 里的 MODERATOR_API_KEY、MODERATOR_MODEL 和账号余额。"
+ALERT_SERVICE_UNAVAILABLE = "AI 模型服务不可用（{reason}），已改说安全句，请立即接管并联系管理员"
 CHAT_COMPLETIONS_PATH = "/chat/completions"
 JSON_RESPONSE_FORMAT: dict[str, str] = {"type": "json_object"}
 MOCK_DEFAULT_REPLY: dict[str, str] = {"spoken_response": "Could you tell me a bit more about that?"}

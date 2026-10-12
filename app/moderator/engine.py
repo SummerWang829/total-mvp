@@ -9,7 +9,7 @@ import logging
 import time
 
 from .clock import Clock, SystemClock
-from .constants import (MAX_REGENERATIONS, RED_ALERT_AFTER_FAILED_TURNS, AlertLevel, ControlMode, EndReason, PacingAction, Phase,
+from .constants import (ALERT_SERVICE_UNAVAILABLE, MAX_REGENERATIONS, RED_ALERT_AFTER_FAILED_TURNS, AlertLevel, ControlMode, EndReason, PacingAction, Phase,
                         QualityRule, ResponseCategory, Speaker, TransitionReason)
 from .detectors import detect_asks_if_ai, detect_crisis, detect_mentions_ai, detect_ready, detect_stop
 from .fsm import FOLLOWUP_PHASES, InterviewStateMachine, PacingDecision, TurnUpdate
@@ -21,7 +21,7 @@ from .operators import choose_operator, counts_as_followup, wants_deeper
 from .pacing import PacingConfig
 from .repeats import repeats_earlier
 from .prompts import PromptSet, load_prompts
-from .providers import ModeratorChatProvider
+from .providers import ChatFatalError, ModeratorChatProvider
 from .schemas import DialogueActionPlan, ModeratorTurnPayload, RespondentInputAnalysis, Violation
 from .templates import LanguageTemplates, templates_for
 
@@ -111,20 +111,23 @@ class ModeratorEngine:
             return self._record(ModeratorTurnPayload(analysis=None, plan=None, spoken_response=None))  # H11: silent
         try:
             payload = self._respond(text)
-        except Exception:  # noqa: BLE001 — a live interview must not die on an unexpected bug: say a safe sentence and call a human
+        except Exception as error:  # noqa: BLE001 — a live interview must not die on an unexpected bug: say a safe sentence and call a human
             log.exception("moderator pipeline failed; saying a safe sentence and alerting staff")
-            payload = self._internal_error_turn()
+            payload = self._internal_error_turn(error)
         return self._record(payload.model_copy(update={"latency_s": time.monotonic() - started}))
 
-    def _internal_error_turn(self) -> ModeratorTurnPayload:
+    def _internal_error_turn(self, error: Exception) -> ModeratorTurnPayload:
         """What is said when the pipeline itself broke: a fixed, checked neutral follow-up (never the same twice) and a red alert.
 
         The participant gets an ordinary sentence instead of silence, and every staff member online is told to take over.
-        The evaluation counts these turns as errors, so the safety net can never hide a bug."""
+        The evaluation counts these turns as errors, so the safety net can never hide a bug. When the cause is the model service
+        refusing us (no balance, bad key), staff are told exactly that, and the evaluation stops instead of carrying on."""
         candidates = [self.texts.followup, *self.texts.alt_followups]
         sentence = next((c for c in candidates if not self._repeat_violations(c)), candidates[0])
-        return self._say(sentence, None, None, used_fallback=True, internal_error=True, alert=AlertLevel.RED,
-                         alert_reason="AI 内部出错，已改说安全句，请立即接管并通知技术人员")
+        fatal = isinstance(error, ChatFatalError)
+        reason = ALERT_SERVICE_UNAVAILABLE.format(reason=error.reason) if fatal else "AI 内部出错，已改说安全句，请立即接管并通知技术人员"
+        return self._say(sentence, None, None, used_fallback=True, internal_error=True, fatal_service_error=fatal, alert=AlertLevel.RED,
+                         alert_reason=reason)
 
     def add_whisper(self, text: str) -> None:
         """An observer's private note for the next turn (never shown to the participant)."""

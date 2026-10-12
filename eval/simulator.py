@@ -10,7 +10,7 @@ import random
 from typing import Protocol
 
 from app.moderator.knowledge import InterviewGuide
-from app.moderator.providers import ChatError, ModeratorChatProvider
+from app.moderator.providers import ChatError, ChatFatalError, ModeratorChatProvider
 
 from .constants import Intensity, PersonaType
 from .models import Persona
@@ -100,6 +100,8 @@ class ModelParticipant:
                     {"role": "user", "content": json.dumps({"conversation_so_far": transcript, "interviewer_just_said": ai_text}, ensure_ascii=False)}]
         try:
             reply = str(self.chat.complete(messages, temperature=0.8, seed=self.seed).get("reply", "")).strip()
+        except ChatFatalError:
+            raise  # a refused service is not a shy participant: the run stops (see eval.session.ServiceUnavailableError)
         except ChatError:
             log.warning("simulated participant: model call failed", exc_info=True)
             reply = ""
