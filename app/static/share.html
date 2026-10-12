@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>访谈片段 · 星桐</title><link rel="stylesheet" href="/app.css"></head>
+<body class="participant"><div class="pbar" id="logobar"></div><div class="pwrap" style="max-width:760px" id="box"><p class="mut">加载中…</p></div>
+<script src="/app.js"></script>
+<script src="/logo.js"></script>
+<script>$("#logobar").innerHTML = LOGO_SVG; brandPlay();</script>
+<script>
+const t = new URLSearchParams(location.search).get("t") || "";
+(async () => {
+  const box = $("#box");
+  let v;
+  try { v = await api(`/public/share/${encodeURIComponent(t)}`, { auth: false }); }
+  catch { box.innerHTML = `<h1>链接无效或已过期</h1><p class="mut">请联系分享给你的人。</p>`; return; }
+  const wm = Array.from({ length: 18 }, () => `<span>${esc(v.watermark)}</span>`).join("");
+  box.innerHTML = `<h1>${esc(v.title)}</h1>${v.theme ? `<p class="mut">${esc(v.theme)}</p>` : ""}
+    ${v.playback ? `<div class="tile" style="margin:14px 0"><video id="vid" controls controlsList="nodownload noremoteplayback" disablepictureinpicture playsinline src="${esc(v.playback.url)}#t=${v.playback.start_ms / 1000},${v.playback.end_ms / 1000}"></video><div class="wm" aria-hidden="true">${wm}</div></div>`
+      : `<div class="card empty">视频还没有准备好</div>`}
+    ${v.quote ? `<div class="quote">“${esc(v.quote)}”</div>` : ""}
+    <p class="sm mut">本链接到 ${esc(new Date(v.expires_at + "Z").toLocaleString())} 失效。请勿转发。</p>`;
+  const vid = $("#vid"); if (vid) { vid.addEventListener("contextmenu", (e) => e.preventDefault()); vid.addEventListener("error", () => { vid.closest(".tile").insertAdjacentHTML("beforeend", `<div class="tnote">视频暂时无法播放</div>`); }); }
+})();
+</script></body></html>

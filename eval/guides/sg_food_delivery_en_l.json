@@ -1,0 +1,103 @@
+{
+  "research_goal": "Understand how Singapore office workers choose a food-delivery app for weekday lunch, what would make them switch, and what keeps them loyal.",
+  "participant_topic": "food delivery",
+  "language": "en",
+  "duration_min": 60,
+  "warmup_questions": [
+    "To start, could you tell me what a typical weekday lunch looks like for you?",
+    "When did you last order food for delivery?",
+    "How often do you order lunch to your office or home?"
+  ],
+  "topics": [
+    {
+      "id": "choice",
+      "title": "Choosing an app and a meal",
+      "questions": ["How do you decide which app to open when you want lunch delivered?", "Could you walk me through the last time you picked a meal in the app?", "How much do you compare apps before ordering?"],
+      "must_cover": [
+        {"id": "c_app", "text": "which apps they use and why"},
+        {"id": "c_fees", "text": "how delivery fees and promotions affect the choice"},
+        {"id": "c_time", "text": "how long they are willing to wait"},
+        {"id": "c_compare", "text": "whether they compare apps before ordering"}
+      ]
+    },
+    {
+      "id": "experience",
+      "title": "The delivery experience",
+      "questions": ["What does a good delivery experience look like for you?", "Has an order ever gone wrong?", "How did the app or the rider handle it?"],
+      "must_cover": [
+        {"id": "x_good", "text": "what makes a delivery feel good"},
+        {"id": "x_wrong", "text": "problems they have had and how they were handled"},
+        {"id": "x_tracking", "text": "how much they use live order tracking"},
+        {"id": "x_rider", "text": "the role of the rider in how they feel about an app"}
+      ]
+    },
+    {
+      "id": "switching",
+      "title": "Switching and loyalty",
+      "questions": ["Have you ever stopped using a delivery app?", "What would make you try a new delivery app?", "What would it take for you to move to it for good?"],
+      "must_cover": [
+        {"id": "s_trigger", "text": "what made them stop using an app"},
+        {"id": "s_trust", "text": "what makes a new app trustworthy"},
+        {"id": "s_sub", "text": "views on paid subscriptions"},
+        {"id": "s_multi", "text": "using more than one app at the same time"}
+      ],
+      "weight": 1.3
+    },
+    {
+      "id": "payment",
+      "title": "Paying and promotions",
+      "questions": ["How do you usually pay for a delivery order?", "How do vouchers or promotions change what you order?", "Do you order together with colleagues?"],
+      "must_cover": [
+        {"id": "m_payment", "text": "preferred payment methods"},
+        {"id": "m_voucher", "text": "use of vouchers and codes"},
+        {"id": "m_group", "text": "ordering together with colleagues"}
+      ]
+    },
+    {
+      "id": "food",
+      "title": "Food choices",
+      "questions": ["What kind of food do you usually order for lunch?", "How do you decide between a familiar dish and something new?", "How important are reviews and photos in the app?"],
+      "must_cover": [
+        {"id": "f_type", "text": "the kinds of food they usually order"},
+        {"id": "f_new", "text": "willingness to try new restaurants"},
+        {"id": "f_reviews", "text": "the role of ratings, reviews and photos"}
+      ]
+    },
+    {
+      "id": "health",
+      "title": "Health and budget",
+      "questions": ["How do you think about health when you order lunch?", "Do you set a budget for a delivery lunch?"],
+      "must_cover": [
+        {"id": "h_health", "text": "how health affects their choices"},
+        {"id": "h_budget", "text": "the budget they have in mind per meal"}
+      ]
+    },
+    {
+      "id": "workday",
+      "title": "Delivery and the working day",
+      "questions": ["How does ordering lunch fit into your working day?", "What happens when you are too busy to order?", "How do meetings or deadlines change what you do?"],
+      "must_cover": [
+        {"id": "w_routine", "text": "how ordering fits into the working day"},
+        {"id": "w_busy", "text": "what they do on very busy days"},
+        {"id": "w_office", "text": "delivery to the office building: pickup points and waiting"}
+      ]
+    },
+    {
+      "id": "future",
+      "title": "What they would change",
+      "questions": ["If you could change one thing about delivery apps, what would it be?", "What would a perfect lunch delivery look like?"],
+      "must_cover": [
+        {"id": "u_change", "text": "the one change they want most"},
+        {"id": "u_ideal", "text": "their picture of an ideal service"}
+      ]
+    }
+  ],
+  "hypotheses": [
+    "Delivery fees matter more than meal price for the weekday lunch decision",
+    "Subscriptions lock users in more than promotions do"
+  ],
+  "forbidden_topics": ["politics", "religion", "salary"],
+  "brand_disclosure_allowed": false,
+  "client_brand_names": ["QuickBite"],
+  "product_facts": []
+}

@@ -1,0 +1,49 @@
+import os
+
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+from starlette.responses import Response
+
+from .config import settings
+from .db import Base, engine
+from .recording import start_worker
+from .routers import auth, interviews, overview, projects, public
+
+@asynccontextmanager
+async def lifespan(_app):
+    Base.metadata.create_all(engine)  # dev convenience; use Alembic migrations in production
+    if settings.run_worker:
+        start_worker()  # mixes uploaded recordings once an interview recording stops
+    yield
+
+
+app = FastAPI(title="星桐 TOTAL MVP", version="0.1.0", lifespan=lifespan)
+for r in (auth.router, projects.router, interviews.router, overview.router, public.router):
+    app.include_router(r)
+
+
+@app.get("/api/health")
+def health():
+    return {"ok": True}
+
+
+STATIC = os.path.join(os.path.dirname(__file__), "static")
+
+
+class RevalidatedStaticFiles(StaticFiles):
+    """Static files that browsers must re-check before reuse.
+
+    Without a Cache-Control header browsers guess a cache lifetime from the file's age and keep showing an old page,
+    script or logo after an update. "no-cache" still lets them reuse the file when it is unchanged (ETag answer 304).
+    """
+
+    async def get_response(self, path: str, scope: dict) -> Response:
+        """Serve the file as StaticFiles does, adding Cache-Control: no-cache."""
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
+app.mount("/", RevalidatedStaticFiles(directory=STATIC, html=True), name="static")

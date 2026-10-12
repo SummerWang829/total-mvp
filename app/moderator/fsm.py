@@ -1,0 +1,462 @@
+"""Interview state machine: phases, time budget, saturation, follow-up cap, forced wrap-up, missed must-cover items.
+
+Code decides the flow (task doc 4.3); the model only supplies scores (saturation 0-1, which items an answer covered,
+whether the prepared question is answered). Every phase change goes through `can_transition` (Quality Charter: FSM first).
+
+Typical use per live turn:
+    fsm.start()                       -> ENTER_PHASE intro
+    fsm.participant_ready()           -> ENTER_PHASE warmup + first warm-up question
+    fsm.record_turn(TurnUpdate(...))  -> what to do next (continue / next question / next topic / ask missed item / end)
+    fsm.stop(EndReason.CRISIS)        -> ended at once
+"""
+import logging
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from .clock import Clock, SystemClock
+from .constants import EndReason, PacingAction, Phase, TransitionReason
+from .knowledge import GuideTopic, InterviewGuide, MustCoverItem
+from .pacing import PacingConfig, TimeBudget
+
+log = logging.getLogger(__name__)
+
+# Every legal phase change. WRAPUP is reachable from any running phase (forced wrap-up on overtime);
+# ENDED from any running phase (participant asks to stop, or a crisis signal).
+ALLOWED_TRANSITIONS: dict[Phase, frozenset[Phase]] = {
+    Phase.INTRO: frozenset({Phase.WARMUP, Phase.WRAPUP, Phase.ENDED}),
+    Phase.WARMUP: frozenset({Phase.CORE, Phase.WRAPUP, Phase.ENDED}),
+    Phase.CORE: frozenset({Phase.CORE, Phase.STIMULI, Phase.RECOVERY, Phase.WRAPUP, Phase.ENDED}),  # CORE -> CORE: next topic
+    Phase.STIMULI: frozenset({Phase.RECOVERY, Phase.WRAPUP, Phase.ENDED}),
+    Phase.RECOVERY: frozenset({Phase.WRAPUP, Phase.ENDED}),
+    Phase.WRAPUP: frozenset({Phase.ENDED}),
+    Phase.ENDED: frozenset(),
+}
+QUESTION_LIST_PHASES = frozenset({Phase.WARMUP, Phase.STIMULI})
+FOLLOWUP_PHASES = frozenset({Phase.WARMUP, Phase.CORE, Phase.STIMULI})
+
+
+class IllegalTransitionError(Exception):
+    """A phase change that ALLOWED_TRANSITIONS does not permit (a bug in the caller, never silently ignored)."""
+
+
+class InterviewStateError(Exception):
+    """An action that makes no sense in the current state, e.g. recording a turn before start() or after the end."""
+
+
+class TurnUpdate(BaseModel):
+    """What the engine learned from the participant's latest answer (task doc 4.2 "judge"); model output, validated here.
+
+    Attributes:
+        was_followup: the moderator's question that this answers was a follow-up (counts against the cap of 3).
+        saturation: the model's 0-1 score for how fully the current topic is covered.
+        covered_item_ids: must-cover items this answer covered (any topic; unknown ids are ignored and logged).
+        question_answered: the engine judged the current prepared question answered; no deep-dive needed.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    was_followup: bool = False
+    saturation: float = Field(default=0.0, ge=0, le=1)
+    covered_item_ids: list[str] = Field(default_factory=list)
+    question_answered: bool = False
+
+
+class PacingDecision(BaseModel):
+    """The state machine's instruction for the next moderator turn."""
+
+    model_config = ConfigDict(frozen=True)
+
+    action: PacingAction
+    phase: Phase
+    reason: TransitionReason
+    topic_id: str | None = None
+    question: str | None = None            # the prepared question now due (NEXT_QUESTION / NEXT_TOPIC / ENTER_PHASE)
+    missed_item: MustCoverItem | None = None
+    followup_allowed: bool = False
+    end_reason: EndReason | None = None
+
+
+class PacingSnapshot(BaseModel):
+    """The clock and position the model sees every turn (task doc 4.3: "AI 每轮能看到")."""
+
+    model_config = ConfigDict(frozen=True)
+
+    phase: Phase
+    elapsed_s: float
+    remaining_s: float
+    total_s: float
+    phase_elapsed_s: float
+    phase_budget_s: float
+    topic_id: str | None
+    topic_title: str | None
+    topic_elapsed_s: float
+    topic_budget_s: float
+    saturation: float
+    followups_used: int
+    followups_left: int
+    uncovered_items: list[str]
+    overtime: bool
+
+
+class TransitionRecord(BaseModel):
+    """One phase change, for the turn log and the eval's "过渡时机正确率"."""
+
+    model_config = ConfigDict(frozen=True)
+
+    at_s: float
+    from_phase: Phase
+    to_phase: Phase
+    reason: TransitionReason
+    topic_id: str | None = None
+
+
+class TopicProgress(BaseModel):
+    """Mutable progress of one core topic.
+
+    Attributes:
+        probing_item_id: the must-cover item being explored after the prepared questions ran out (None while on them).
+    """
+
+    topic_id: str
+    question_index: int = 0
+    turns: int = 0
+    saturation: float = 0.0
+    started_at_s: float | None = None
+    probing_item_id: str | None = None
+
+
+class InterviewStateMachine:
+    """Drives one interview through the phases.
+
+    Args:
+        guide: the project's validated discussion guide.
+        config: pacing limits; defaults from the task doc.
+        clock: time source; SystemClock live, ManualClock in tests and simulations.
+    """
+
+    def __init__(self, guide: InterviewGuide, config: PacingConfig | None = None, clock: Clock | None = None) -> None:
+        self.guide = guide
+        self.config = config or PacingConfig()
+        self.clock = clock or SystemClock()
+        self.budget = TimeBudget.for_guide(guide)
+        self.transitions: list[TransitionRecord] = []
+        self.end_reason: EndReason | None = None
+        self._phase = Phase.INTRO
+        self._started_at: float | None = None
+        self._phase_started_at = 0.0
+        self._question_index = 0
+        self._followups = 0
+        self._topic_index = 0
+        self._progress = {t.id: TopicProgress(topic_id=t.id) for t in guide.topics}
+        self._covered: set[str] = set()
+        self._asked_items: set[str] = set()  # items already asked about (probe or recovery): never asked twice
+        self._known_items = {i.id for t in guide.topics for i in t.must_cover}
+        self._stimulus_questions = [q for s in guide.stimuli for q in s.questions]
+        self._recovery_queue: list[MustCoverItem] = []
+
+    # ---------- the transition gate ----------
+    @staticmethod
+    def can_transition(from_phase: Phase, to_phase: Phase) -> bool:
+        """Whether moving from one phase to another is legal (ALLOWED_TRANSITIONS)."""
+        return to_phase in ALLOWED_TRANSITIONS[from_phase]
+
+    def _transition(self, to_phase: Phase, reason: TransitionReason) -> None:
+        """The only place the phase changes.
+
+        Raises:
+            IllegalTransitionError: the move is not in ALLOWED_TRANSITIONS.
+        """
+        if not self.can_transition(self._phase, to_phase):
+            raise IllegalTransitionError(f"{self._phase.value} -> {to_phase.value} ({reason.value})")
+        now = self._elapsed()
+        self.transitions.append(TransitionRecord(at_s=now, from_phase=self._phase, to_phase=to_phase, reason=reason,
+                                                 topic_id=self.current_topic.id if to_phase is Phase.CORE else None))
+        log.info("moderator phase %s -> %s (%s) at %.0fs", self._phase.value, to_phase.value, reason.value, now)
+        self._phase = to_phase
+        self._phase_started_at = self.clock.now()
+        self._question_index = 0
+        self._followups = 0
+
+    # ---------- public state ----------
+    @property
+    def phase(self) -> Phase:
+        """The current phase."""
+        return self._phase
+
+    @property
+    def started(self) -> bool:
+        """Whether start() has been called."""
+        return self._started_at is not None
+
+    @property
+    def current_topic(self) -> GuideTopic:
+        """The core topic in progress (or next due, before the core phase)."""
+        return self.guide.topics[self._topic_index]
+
+    def followup_allowed(self) -> bool:
+        """Whether one more follow-up on the current question is allowed (hard cap per question, task doc 4.3)."""
+        return self._phase in FOLLOWUP_PHASES and self._followups < self.config.max_followups_per_question
+
+    @property
+    def covered_items(self) -> frozenset[str]:
+        """Must-cover item ids covered so far (only ids that exist in the guide)."""
+        return frozenset(self._covered)
+
+    @property
+    def asked_items(self) -> frozenset[str]:
+        """Must-cover item ids the moderator has asked about on purpose (probe or recovery), whether or not the answer covered them."""
+        return frozenset(self._asked_items)
+
+    def missed_items(self) -> list[MustCoverItem]:
+        """Must-cover items not covered yet, in guide order."""
+        return [i for t in self.guide.topics for i in t.must_cover if i.id not in self._covered]
+
+    def snapshot(self) -> PacingSnapshot:
+        """The clock and position, for the model's context."""
+        elapsed = self._elapsed()
+        in_core = self._phase is Phase.CORE
+        topic = self.current_topic if in_core else None
+        progress = self._progress[topic.id] if topic else None
+        return PacingSnapshot(
+            phase=self._phase, elapsed_s=elapsed, remaining_s=max(0.0, self.budget.total_s - elapsed), total_s=self.budget.total_s,
+            phase_elapsed_s=self._phase_elapsed(), phase_budget_s=self.budget.phase_s.get(self._phase, 0.0),
+            topic_id=topic.id if topic else None, topic_title=topic.title if topic else None,
+            topic_elapsed_s=self._topic_elapsed() if topic else 0.0, topic_budget_s=self.budget.topic_s[topic.id] if topic else 0.0,
+            saturation=progress.saturation if progress else 0.0, followups_used=self._followups,
+            followups_left=max(0, self.config.max_followups_per_question - self._followups) if self._phase in FOLLOWUP_PHASES else 0,
+            uncovered_items=[i.text for i in topic.must_cover if i.id not in self._covered] if topic else [],
+            overtime=self._overtime())
+
+    # ---------- events ----------
+    def start(self) -> PacingDecision:
+        """Begin the interview in INTRO (the engine discloses the AI, purpose, recording and privacy).
+
+        Raises:
+            InterviewStateError: already started.
+        """
+        if self.started:
+            raise InterviewStateError("interview already started")
+        self._started_at = self._phase_started_at = self.clock.now()
+        log.info("moderator interview started, budget %.0fs", self.budget.total_s)
+        return self._decision(PacingAction.ENTER_PHASE, TransitionReason.STARTED)
+
+    def participant_ready(self) -> PacingDecision:
+        """The participant confirmed they are ready: leave INTRO for the first warm-up question.
+
+        Raises:
+            InterviewStateError: not in INTRO, or not started.
+        """
+        self._require_running()
+        if self._phase is not Phase.INTRO:
+            raise InterviewStateError(f"participant_ready only in intro, not {self._phase.value}")
+        self._transition(Phase.WARMUP, TransitionReason.PARTICIPANT_READY)
+        return self._decision(PacingAction.ENTER_PHASE, TransitionReason.PARTICIPANT_READY, question=self.guide.warmup_questions[0])
+
+    def record_turn(self, update: TurnUpdate) -> PacingDecision:
+        """Take in the engine's reading of the latest answer and decide the next step.
+
+        Args:
+            update: scores for the answer just given.
+
+        Returns:
+            What the moderator should do next.
+
+        Raises:
+            InterviewStateError: not started, or already ended.
+        """
+        self._require_running()
+        self._apply(update)
+        if self._overtime() and self._phase is not Phase.WRAPUP:
+            return self._enter_wrapup(TransitionReason.OVERTIME)  # missed items are not chased when time is gone
+        handler = {Phase.INTRO: self._on_intro, Phase.WARMUP: self._on_question_list, Phase.CORE: self._on_core,
+                   Phase.STIMULI: self._on_question_list, Phase.RECOVERY: self._on_recovery, Phase.WRAPUP: self._on_wrapup}[self._phase]
+        return handler(update)
+
+    def stop(self, reason: EndReason) -> PacingDecision:
+        """End at once (red line H5: the participant wants to stop, or a crisis signal).
+
+        Raises:
+            InterviewStateError: not started, or already ended.
+        """
+        self._require_running()
+        why = {EndReason.CRISIS: TransitionReason.CRISIS, EndReason.PARTICIPANT_STOPPED: TransitionReason.PARTICIPANT_STOPPED}.get(
+            reason, TransitionReason.WRAPUP_ANSWERED)
+        return self._end(reason, why)
+
+    # ---------- per-phase rules ----------
+    def _on_intro(self, update: TurnUpdate) -> PacingDecision:
+        """INTRO ends only through participant_ready(): the participant must say they are ready."""
+        return self._decision(PacingAction.CONTINUE, TransitionReason.IN_PROGRESS)
+
+    def _on_question_list(self, update: TurnUpdate) -> PacingDecision:
+        """WARMUP and STIMULI: prepared questions in order, each with up to N follow-ups, within the phase budget."""
+        questions = self._phase_questions()
+        if self._phase_elapsed() >= self.budget.phase_s[self._phase]:
+            return self._leave_question_list(TransitionReason.PHASE_TIME_UP)
+        done = self._question_done(update)
+        if done is None:
+            return self._decision(PacingAction.CONTINUE, TransitionReason.IN_PROGRESS)
+        if self._question_index + 1 >= len(questions):
+            return self._leave_question_list(TransitionReason.QUESTIONS_DONE)
+        self._next_question()
+        return self._decision(PacingAction.NEXT_QUESTION, done, question=questions[self._question_index])
+
+    def _on_core(self, update: TurnUpdate) -> PacingDecision:
+        """CORE: leave the topic when saturated, at its turn limit or out of its time; otherwise walk its prepared
+        questions, then explore its still-uncovered must-cover items one by one (so a topic uses its time)."""
+        progress = self._progress[self.current_topic.id]
+        if progress.saturation >= self.config.saturation_threshold:
+            return self._next_topic(TransitionReason.SATURATED)
+        if progress.turns >= self.config.max_turns_per_topic:
+            return self._next_topic(TransitionReason.TOPIC_TURN_LIMIT)
+        if self._topic_elapsed() >= self.budget.topic_s[self.current_topic.id]:
+            return self._next_topic(TransitionReason.TOPIC_TIME_UP)
+        done = self._question_done(update)
+        if progress.probing_item_id in self._covered:
+            done = TransitionReason.ITEM_COVERED
+        if done is None:
+            return self._decision(PacingAction.CONTINUE, TransitionReason.IN_PROGRESS)
+        if progress.probing_item_id is None and progress.question_index + 1 < len(self.current_topic.questions):
+            self._next_question()
+            progress.question_index = self._question_index
+            return self._decision(PacingAction.NEXT_QUESTION, done, question=self.current_topic.questions[progress.question_index])
+        return self._probe_next_item(progress, done)
+
+    def _probe_next_item(self, progress: TopicProgress, reason: TransitionReason) -> PacingDecision:
+        """Explore the topic's next uncovered, never-asked item; when none is left the topic is done.
+
+        Args:
+            progress: the current topic's progress.
+            reason: why the previous question or item is finished (reported with the new probe).
+        """
+        item = next((i for i in self.current_topic.must_cover if i.id not in self._covered and i.id not in self._asked_items), None)
+        if item is None:
+            return self._next_topic(TransitionReason.QUESTIONS_DONE)
+        self._next_question()
+        progress.probing_item_id = item.id
+        self._asked_items.add(item.id)
+        return self._decision(PacingAction.PROBE_ITEM, reason, missed_item=item)
+
+    def _on_recovery(self, update: TurnUpdate) -> PacingDecision:
+        """RECOVERY: each never-asked missed item is asked once (no follow-ups), while time before the planned end
+        still leaves room for the wrap-up; then wrap up."""
+        self._recovery_queue = [i for i in self._recovery_queue if i.id not in self._covered]
+        if not self._recovery_queue:
+            return self._enter_wrapup(TransitionReason.MISSED_ITEMS)
+        if self._elapsed() + self.budget.phase_s[Phase.WRAPUP] >= self.budget.total_s:
+            return self._enter_wrapup(TransitionReason.PHASE_TIME_UP)
+        item = self._recovery_queue.pop(0)
+        self._asked_items.add(item.id)
+        return self._decision(PacingAction.ASK_MISSED_ITEM, TransitionReason.MISSED_ITEMS, missed_item=item)
+
+    def _on_wrapup(self, update: TurnUpdate) -> PacingDecision:
+        """WRAPUP: the participant's answer to "anything else?" ends the interview."""
+        return self._end(EndReason.COMPLETED, TransitionReason.WRAPUP_ANSWERED)
+
+    # ---------- moves ----------
+    def _leave_question_list(self, reason: TransitionReason) -> PacingDecision:
+        """End of WARMUP goes to the first core topic; end of STIMULI goes towards wrap-up."""
+        if self._phase is Phase.WARMUP:
+            return self._enter_topic(0, reason)
+        return self._leave_content(reason)
+
+    def _next_topic(self, reason: TransitionReason) -> PacingDecision:
+        """Go to the next core topic, or past the core when the last one is done."""
+        if self._topic_index + 1 < len(self.guide.topics):
+            return self._enter_topic(self._topic_index + 1, reason)
+        if self._stimulus_questions:
+            self._transition(Phase.STIMULI, reason)
+            return self._decision(PacingAction.ENTER_PHASE, reason, question=self._stimulus_questions[0])
+        return self._leave_content(reason)
+
+    def _enter_topic(self, index: int, reason: TransitionReason) -> PacingDecision:
+        """Start core topic number `index` (CORE -> CORE between topics)."""
+        self._topic_index = index
+        topic = self.current_topic
+        self._transition(Phase.CORE, reason)
+        progress = self._progress[topic.id]
+        progress.started_at_s = self.clock.now()
+        action = PacingAction.NEXT_TOPIC if index else PacingAction.ENTER_PHASE
+        return self._decision(action, reason, question=topic.questions[0])
+
+    def _leave_content(self, reason: TransitionReason) -> PacingDecision:
+        """After the last content phase: ask never-asked missed items once if there are any, else wrap up.
+        Items already explored in their topic are not asked again (the "重复提问 = 0" gate)."""
+        unasked = [i for i in self.missed_items() if i.id not in self._asked_items]
+        if not unasked:
+            return self._enter_wrapup(reason)
+        self._transition(Phase.RECOVERY, TransitionReason.MISSED_ITEMS)
+        self._recovery_queue = unasked
+        return self._on_recovery(TurnUpdate())
+
+    def _enter_wrapup(self, reason: TransitionReason) -> PacingDecision:
+        """Summarise and ask the closing question."""
+        self._transition(Phase.WRAPUP, reason)
+        return self._decision(PacingAction.ENTER_PHASE, reason)
+
+    def _end(self, end_reason: EndReason, reason: TransitionReason) -> PacingDecision:
+        """Finish; nothing more is said after this except the closing / safety statement."""
+        self._transition(Phase.ENDED, reason)
+        self.end_reason = end_reason
+        return self._decision(PacingAction.END, reason, end_reason=end_reason)
+
+    # ---------- helpers ----------
+    def _apply(self, update: TurnUpdate) -> None:
+        """Count the follow-up, store the topic's saturation and the covered items (unknown ids are logged and dropped)."""
+        if update.was_followup:
+            self._followups += 1
+        unknown = [i for i in update.covered_item_ids if i not in self._known_items]
+        if unknown:
+            log.warning("moderator model reported %d unknown must-cover id(s); ignored", len(unknown))
+        self._covered |= {i for i in update.covered_item_ids if i in self._known_items}
+        if self._phase is Phase.CORE:
+            progress = self._progress[self.current_topic.id]
+            progress.turns += 1
+            progress.saturation = update.saturation
+
+    def _question_done(self, update: TurnUpdate) -> TransitionReason | None:
+        """Why the current prepared question is finished, or None if the moderator should stay on it."""
+        if update.question_answered:
+            return TransitionReason.QUESTION_DONE
+        if self._followups >= self.config.max_followups_per_question:
+            return TransitionReason.FOLLOWUP_LIMIT
+        return None
+
+    def _next_question(self) -> None:
+        """Move to the next prepared question; its follow-up count starts again."""
+        self._question_index += 1
+        self._followups = 0
+
+    def _phase_questions(self) -> list[str]:
+        """Prepared questions of the current list phase."""
+        return self.guide.warmup_questions if self._phase is Phase.WARMUP else self._stimulus_questions
+
+    def _decision(self, action: PacingAction, reason: TransitionReason, **extra: object) -> PacingDecision:
+        """Build a decision stamped with the current phase, topic and follow-up allowance."""
+        topic_id = self.current_topic.id if self._phase is Phase.CORE else None
+        return PacingDecision(action=action, phase=self._phase, reason=reason, topic_id=topic_id,
+                              followup_allowed=self.followup_allowed(), **extra)
+
+    def _require_running(self) -> None:
+        """Raises InterviewStateError unless the interview has started and not ended."""
+        if not self.started:
+            raise InterviewStateError("interview not started")
+        if self._phase is Phase.ENDED:
+            raise InterviewStateError("interview already ended")
+
+    def _elapsed(self) -> float:
+        """Seconds since start (0 before start)."""
+        return self.clock.now() - self._started_at if self._started_at is not None else 0.0
+
+    def _phase_elapsed(self) -> float:
+        """Seconds in the current phase."""
+        return self.clock.now() - self._phase_started_at if self.started else 0.0
+
+    def _topic_elapsed(self) -> float:
+        """Seconds on the current core topic."""
+        started = self._progress[self.current_topic.id].started_at_s
+        return self.clock.now() - started if started is not None else 0.0
+
+    def _overtime(self) -> bool:
+        """Whether the interview is past its budget by more than the allowed ratio (forced wrap-up)."""
+        return self._elapsed() >= self.budget.total_s * self.config.overtime_force_ratio

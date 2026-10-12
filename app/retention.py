@@ -1,0 +1,86 @@
+"""Retention + erasure. Recordings, transcripts, quotes, clips and share links are personal data and are purged.
+
+Decided 2026-10-10: the 180 days run from project close; insight statements are kept (treated as de-identified).
+"""
+import os
+import shutil
+from datetime import timedelta
+
+from sqlalchemy import delete, select, update
+from sqlalchemy.orm import Session
+
+from .audit import audit
+from .config import settings
+from .media import purge_cache
+from .models import Clip, Evidence, Insight, Interview, Participant, Project, Recording, RecordingTrack, ShareLink, TranscriptSegment, utcnow
+
+PURGED = "[已按保留期删除]"
+
+
+def _delete_file(storage_key: str) -> None:
+    path = os.path.join(settings.media_dir, storage_key)
+    if os.path.isfile(path):
+        os.remove(path)
+    shutil.rmtree(path.rsplit(".", 1)[0], ignore_errors=True)  # per-speaker tracks, audio extracts
+
+
+def purge_interview(db: Session, itv: Interview, reason: str, actor: str = "system") -> None:
+    for rec in db.scalars(select(Recording).where(Recording.interview_id == itv.id)):
+        _delete_file(rec.storage_key)
+        purge_cache(rec.id)  # watermarked cuts
+        db.execute(delete(RecordingTrack).where(RecordingTrack.recording_id == rec.id))
+        rec.status = "deleted"
+    ins_ids = [i.id for i in db.scalars(select(Insight).where(Insight.interview_id == itv.id))]
+    if ins_ids:
+        db.execute(update(Evidence).where(Evidence.insight_id.in_(ins_ids)).values(quote=PURGED, segment_id=None))
+    db.execute(delete(TranscriptSegment).where(TranscriptSegment.interview_id == itv.id))
+    clip_ids = [c.id for c in db.scalars(select(Clip).where(Clip.interview_id == itv.id))]
+    if clip_ids:
+        db.execute(update(ShareLink).where(ShareLink.clip_id.in_(clip_ids)).values(revoked_at=utcnow()))
+        db.execute(delete(Clip).where(Clip.id.in_(clip_ids)))
+    itv.purged_at = utcnow()
+    audit(db, itv.org_id, actor, "interview.purge", itv.id, reason=reason)
+
+
+def anonymize_participant(db: Session, p: Participant) -> None:
+    p.name, p.email, p.anonymized_at = "已匿名", "", utcnow()
+
+
+def purge_date(project: Project):
+    """When this project's personal data will be deleted (None until the project is closed)."""
+    return project.closed_at + timedelta(days=settings.retention_days) if project.closed_at else None
+
+
+def run_retention(db: Session, now=None) -> int:
+    """Delete personal data 180 days after the PROJECT closed. Projects never closed hit the backstop
+    (RETENTION_BACKSTOP_DAYS after each interview ended) so data cannot be kept forever by forgetting to close."""
+    now = now or utcnow()
+    close_cut = now - timedelta(days=settings.retention_days)
+    back_cut = now - timedelta(days=settings.retention_backstop_days)
+    q = (select(Interview).join(Project, Project.id == Interview.project_id)
+         .where(Interview.purged_at.is_(None), Interview.ended_at.is_not(None))
+         .where((Project.closed_at < close_cut) | ((Project.closed_at.is_(None)) & (Interview.ended_at < back_cut))))
+    due = db.scalars(q).all()
+    for itv in due:
+        closed = db.get(Project, itv.project_id).closed_at is not None
+        purge_interview(db, itv, f"retention:{settings.retention_days}d-after-project-close" if closed else f"retention-backstop:{settings.retention_backstop_days}d")
+        anonymize_participant(db, itv.participant)
+    db.commit()
+    return len(due)
+
+
+def erase_participant(db: Session, p: Participant, actor: str) -> int:
+    itvs = db.scalars(select(Interview).where(Interview.participant_id == p.id, Interview.purged_at.is_(None))).all()
+    for itv in itvs:
+        purge_interview(db, itv, "data-subject-request", actor)
+    anonymize_participant(db, p)
+    audit(db, p.org_id, actor, "participant.erase", p.id)
+    db.commit()
+    return len(itvs)
+
+
+if __name__ == "__main__":  # python -m app.retention  (run daily from cron)
+    from .db import SessionLocal
+
+    with SessionLocal() as s:
+        print("purged interviews:", run_retention(s))

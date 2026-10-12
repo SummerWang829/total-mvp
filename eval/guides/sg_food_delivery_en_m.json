@@ -1,0 +1,61 @@
+{
+  "research_goal": "Understand how Singapore office workers choose a food-delivery app for weekday lunch and what would make them switch.",
+  "participant_topic": "food delivery",
+  "language": "en",
+  "duration_min": 20,
+  "warmup_questions": [
+    "To start, could you tell me what a typical weekday lunch looks like for you?",
+    "When did you last order food for delivery?"
+  ],
+  "topics": [
+    {
+      "id": "choice",
+      "title": "Choosing an app and a meal",
+      "questions": ["How do you decide which app to open when you want lunch delivered?", "Could you walk me through the last time you picked a meal in the app?"],
+      "must_cover": [
+        {"id": "c_app", "text": "which apps they use and why"},
+        {"id": "c_fees", "text": "how delivery fees and promotions affect the choice"},
+        {"id": "c_time", "text": "how long they are willing to wait"}
+      ]
+    },
+    {
+      "id": "experience",
+      "title": "The delivery experience",
+      "questions": ["What does a good delivery experience look like for you?", "Has an order ever gone wrong?"],
+      "must_cover": [
+        {"id": "x_good", "text": "what makes a delivery feel good"},
+        {"id": "x_wrong", "text": "problems they have had and how they were handled"},
+        {"id": "x_tracking", "text": "how much they use live order tracking"}
+      ]
+    },
+    {
+      "id": "switching",
+      "title": "Switching and loyalty",
+      "questions": ["Have you ever stopped using a delivery app?", "What would make you try a new delivery app?"],
+      "must_cover": [
+        {"id": "s_trigger", "text": "what made them stop using an app"},
+        {"id": "s_trust", "text": "what makes a new app trustworthy"},
+        {"id": "s_sub", "text": "views on paid subscriptions"}
+      ],
+      "weight": 1.3
+    },
+    {
+      "id": "payment",
+      "title": "Paying and promotions",
+      "questions": ["How do you usually pay for a delivery order?", "How do vouchers or promotions change what you order?"],
+      "must_cover": [
+        {"id": "m_payment", "text": "preferred payment methods"},
+        {"id": "m_voucher", "text": "use of vouchers and codes"},
+        {"id": "m_group", "text": "ordering together with colleagues"}
+      ]
+    }
+  ],
+  "hypotheses": [
+    "Delivery fees matter more than meal price for the weekday lunch decision",
+    "Subscriptions lock users in more than promotions do"
+  ],
+  "forbidden_topics": ["politics", "religion", "salary"],
+  "brand_disclosure_allowed": false,
+  "client_brand_names": ["QuickBite"],
+  "product_facts": []
+}

@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+node_modules/
+
+# Secrets and local config (never commit)
+.env
+*.pem
+*.key
+.claude/settings.local.json
+
+# Databases and backups
+*.db
+*.db-*
+*.db.bak*
+
+# Recordings, binaries, generated output
+media/
+bin/
+qa_shots/
+eval_reports/
+qa_report.md
+*.log
+*.mp4
+*.webm
+*.wav
+*.gguf
+models/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

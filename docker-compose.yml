@@ -1,0 +1,8 @@
+# Optional: run the LiveKit video server in Docker instead of scripts/get_livekit.sh (same config file as scripts/dev.sh uses).
+# Not needed for normal local development: `scripts/dev.sh` starts everything.
+services:
+  livekit:
+    image: livekit/livekit-server:v1.8.4
+    command: --config /etc/livekit.yaml
+    network_mode: host
+    volumes: ["./livekit.dev.yaml:/etc/livekit.yaml:ro"]

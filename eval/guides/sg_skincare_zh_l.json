@@ -1,0 +1,105 @@
+{
+  "research_goal": "了解新加坡消费者如何发现、评估并首次购买海外护肤品牌，找出阻碍尝试的主要顾虑，以及什么能让他们长期留下来。",
+  "participant_topic": "护肤品选购",
+  "language": "zh",
+  "duration_min": 60,
+  "warmup_questions": [
+    "先请您简单说说，您平时的护肤习惯是怎样的？",
+    "您最近一次买护肤品，是怎么买的？",
+    "您一般多久会买一次护肤品？"
+  ],
+  "topics": [
+    {
+      "id": "discovery",
+      "title": "发现新品牌",
+      "questions": ["您一般是从哪里知道一个新的护肤品牌的？", "最近有没有哪个新品牌让您印象深刻？", "社交媒体上的内容对您有多大影响？"],
+      "must_cover": [
+        {"id": "d_channels", "text": "信息来源渠道（社媒、朋友、电商等）"},
+        {"id": "d_trigger", "text": "什么让一个新品牌引起注意"},
+        {"id": "d_friends", "text": "朋友或家人的推荐有多大影响"},
+        {"id": "d_creators", "text": "达人或博主推荐的作用"}
+      ]
+    },
+    {
+      "id": "evaluation",
+      "title": "评估与信任",
+      "questions": ["看到一个没用过的海外品牌时，您会怎么判断它值不值得试？", "什么样的评价会让您觉得可信？", "您会不会去对比不同品牌？"],
+      "must_cover": [
+        {"id": "e_trust", "text": "判断可信度的依据"},
+        {"id": "e_price", "text": "对价格的预期"},
+        {"id": "e_ingredients", "text": "成分与功效宣称的作用"},
+        {"id": "e_compare", "text": "与其他品牌比较的方式"}
+      ]
+    },
+    {
+      "id": "barriers",
+      "title": "尝试新品牌的顾虑",
+      "questions": ["买海外新品牌时，什么最让您犹豫？", "有没有哪次本来想买、最后却没买的经历？", "当时是什么让您最终放弃的？"],
+      "must_cover": [
+        {"id": "b_authentic", "text": "对真假货的担心"},
+        {"id": "b_cert", "text": "认证（如清真认证）的重要性"},
+        {"id": "b_sensitive", "text": "对皮肤过敏的担心"},
+        {"id": "b_origin", "text": "对品牌来自海外的看法"}
+      ],
+      "weight": 1.3
+    },
+    {
+      "id": "purchase",
+      "title": "下单与售后",
+      "questions": ["您在网上下单时，最看重哪些服务？", "如果东西不合适，您希望怎么处理？", "您遇到过售后让您满意或失望的情况吗？"],
+      "must_cover": [
+        {"id": "p_return", "text": "退换货与售后"},
+        {"id": "p_delivery", "text": "配送速度"},
+        {"id": "p_packaging", "text": "包装的重要性"},
+        {"id": "p_payment", "text": "付款方式的偏好"}
+      ]
+    },
+    {
+      "id": "usage",
+      "title": "使用与效果",
+      "questions": ["刚买回来的新产品，您一般怎么开始用？", "您怎么判断一款产品对自己有没有效果？", "用了一段时间之后，什么情况会让您换掉它？"],
+      "must_cover": [
+        {"id": "u_trial", "text": "试用的方式和时长"},
+        {"id": "u_effect", "text": "判断效果的标准"},
+        {"id": "u_switch", "text": "什么情况会换掉一款产品"}
+      ]
+    },
+    {
+      "id": "promotion",
+      "title": "促销与价格",
+      "questions": ["促销活动会怎样影响您的购买？", "您会为了优惠囤货吗？", "什么样的价格让您觉得合适？"],
+      "must_cover": [
+        {"id": "pr_promo", "text": "促销对购买决定的影响"},
+        {"id": "pr_stock", "text": "囤货的习惯"},
+        {"id": "pr_range", "text": "能接受的价格范围"}
+      ]
+    },
+    {
+      "id": "loyalty",
+      "title": "长期留下来的原因",
+      "questions": ["您现在最常用的品牌，是怎么成为您的首选的？", "什么会让您一直用同一个品牌？", "如果它变了，您会怎么做？"],
+      "must_cover": [
+        {"id": "l_first", "text": "首选品牌形成的过程"},
+        {"id": "l_reason", "text": "长期使用的原因"},
+        {"id": "l_change", "text": "品牌变化时的反应"}
+      ]
+    },
+    {
+      "id": "gifting",
+      "title": "送礼与分享",
+      "questions": ["您有没有买护肤品送人的经历？", "送人的东西和自己用的，选择上有什么不同？"],
+      "must_cover": [
+        {"id": "g_gift", "text": "送礼场景的选择标准"},
+        {"id": "g_share", "text": "向身边人分享使用体验的习惯"}
+      ]
+    }
+  ],
+  "hypotheses": [
+    "清真认证是马来族消费者尝试新品牌的门槛条件",
+    "退货政策比价格更能降低首次尝试的顾虑"
+  ],
+  "forbidden_topics": ["政治", "宗教信仰本身的评价", "收入具体数字"],
+  "brand_disclosure_allowed": false,
+  "client_brand_names": ["Lumina Skin"],
+  "product_facts": []
+}

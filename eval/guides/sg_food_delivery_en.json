@@ -1,0 +1,46 @@
+{
+  "research_goal": "Understand how Singapore office workers choose a food-delivery app for weekday lunch and what would make them switch.",
+  "participant_topic": "food delivery",
+  "language": "en",
+  "duration_min": 45,
+  "warmup_questions": [
+    "To start, could you tell me what a typical weekday lunch looks like for you?",
+    "When did you last order food for delivery?"
+  ],
+  "topics": [
+    {
+      "id": "choice",
+      "title": "Choosing an app and a meal",
+      "questions": [
+        "How do you decide which app to open when you want lunch delivered?",
+        "Could you walk me through the last time you picked a meal in the app?"
+      ],
+      "must_cover": [
+        {"id": "c_app", "text": "which apps they use and why"},
+        {"id": "c_fees", "text": "how delivery fees and promotions affect the choice"},
+        {"id": "c_time", "text": "how long they are willing to wait"}
+      ]
+    },
+    {
+      "id": "switching",
+      "title": "Switching and loyalty",
+      "questions": [
+        "Have you ever stopped using a delivery app?",
+        "What would make you try a new delivery app?"
+      ],
+      "must_cover": [
+        {"id": "s_trigger", "text": "what made them stop using an app"},
+        {"id": "s_trust", "text": "what makes a new app trustworthy"},
+        {"id": "s_sub", "text": "views on paid subscriptions"}
+      ]
+    }
+  ],
+  "hypotheses": [
+    "Delivery fees matter more than meal price for the weekday lunch decision",
+    "Subscriptions lock users in more than promotions do"
+  ],
+  "forbidden_topics": ["politics", "religion", "salary"],
+  "brand_disclosure_allowed": false,
+  "client_brand_names": ["QuickBite"],
+  "product_facts": []
+}

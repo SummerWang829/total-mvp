@@ -1,0 +1,547 @@
+"""Whole-site QA in a real browser. Run:  python tests/qa_site.py   (scripts/qa.sh runs everything)
+
+Starts its own server on a temp database, seeds realistic data through the API, then for every role x every page x
+desktop+phone checks: console/page errors, failed requests, horizontal overflow, dead links, min font size,
+text contrast (WCAG AA), tap-target size, keyboard focus ring, plus the logic of the main user journeys.
+Exit code 1 if anything fails; a report is written to qa_report.md.
+"""
+import json
+import os
+import socket
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.request
+
+from playwright.sync_api import sync_playwright
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+FAILS: list[str] = []
+PASSES = 0
+NOTES: list[str] = []
+
+
+def ok(cond, msg):
+    global PASSES
+    if cond:
+        PASSES += 1
+    else:
+        FAILS.append(msg)
+        print("  FAIL", msg)
+    return cond
+
+
+def wait_until(fn, timeout=6.0):
+    t = time.time()
+    while time.time() - t < timeout:
+        if fn():
+            return True
+        time.sleep(0.25)
+    return False
+
+
+def free_port():
+    s = socket.socket(); s.bind(("127.0.0.1", 0)); p = s.getsockname()[1]; s.close(); return p
+
+
+PORT = free_port()
+B = f"http://127.0.0.1:{PORT}"
+
+
+def call(path, body=None, token=None, method=None):
+    req = urllib.request.Request(B + "/api" + path, data=json.dumps(body).encode() if body is not None else None,
+                                 method=method or ("POST" if body is not None else "GET"),
+                                 headers={"Content-Type": "application/json", **({"Authorization": "Bearer " + token} if token else {})})
+    return json.loads(urllib.request.urlopen(req).read() or b"null")
+
+
+# ---------------- in-page audit helpers ----------------
+AUDIT_JS = r"""
+() => {
+  const out = {small: [], contrast: [], tap: [], names: [], wrap: [], topH: (document.querySelector('.top')||{offsetHeight:0}).offsetHeight, overflow: document.documentElement.scrollWidth - innerWidth};
+  const parse = (c) => { const m = c.match(/rgba?\(([^)]+)\)/); if (!m) return null; const p = m[1].split(/[ ,\/]+/).filter(Boolean).map(Number); return [p[0], p[1], p[2], p.length > 3 ? p[3] : 1]; };
+  const lum = ([r, g, b]) => { const f = (v) => { v /= 255; return v <= .03928 ? v / 12.92 : Math.pow((v + .055) / 1.055, 2.4); }; return .2126 * f(r) + .7152 * f(g) + .0722 * f(b); };
+  const over = (top, bot) => { const a = top[3]; return [top[0] * a + bot[0] * (1 - a), top[1] * a + bot[1] * (1 - a), top[2] * a + bot[2] * (1 - a), 1]; };
+  const bgOf = (el) => {
+    const chain = []; for (let e = el; e; e = e.parentElement) chain.push(e);
+    let bg = [255, 255, 255, 1];
+    for (const e of chain.reverse()) {
+      const cs = getComputedStyle(e);
+      if (cs.backgroundImage !== 'none') return null;           // gradients/images: cannot judge
+      const c = parse(cs.backgroundColor); if (c && c[3] > 0) bg = over(c, bg);
+    } return bg;
+  };
+  const opacityOf = (el) => { let o = 1; for (let e = el; e; e = e.parentElement) o *= parseFloat(getComputedStyle(e).opacity); return o; };
+  const visible = (el) => { const r = el.getBoundingClientRect(); const cs = getComputedStyle(el); return r.width > 0 && r.height > 0 && cs.visibility !== 'hidden' && cs.display !== 'none'; };
+  const seen = new Set();
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  while (walker.nextNode()) {
+    const n = walker.currentNode, t = n.textContent.trim(); if (!t) continue;
+    const el = n.parentElement; if (!el || seen.has(el) || /SCRIPT|STYLE|OPTION|NOSCRIPT/.test(el.tagName) || el.closest('svg') || el.closest('pre') || el.closest('[aria-hidden=true]')) continue;
+    if (!visible(el)) continue; seen.add(el);
+    const cs = getComputedStyle(el), fs = parseFloat(cs.fontSize);
+    if (fs < 12) out.small.push(`${fs}px "${t.slice(0, 30)}"`);
+    else if (t.length > 40 && fs < 14) out.small.push(`${fs}px (long text) "${t.slice(0, 30)}"`);
+    const fg = parse(cs.color), bg = bgOf(el);
+    if (fg && bg) {
+      const eff = over([fg[0], fg[1], fg[2], fg[3] * opacityOf(el)], bg);
+      const L1 = lum(eff), L2 = lum(bg), ratio = (Math.max(L1, L2) + .05) / (Math.min(L1, L2) + .05);
+      const large = fs >= 24 || (fs >= 18.66 && parseInt(cs.fontWeight) >= 700);
+      if (ratio < (large ? 3 : 4.5)) out.contrast.push(`${ratio.toFixed(2)} "${t.slice(0, 30)}" ${cs.color} on rgb(${bg.slice(0, 3).map(Math.round)})`);
+    }
+  }
+  const mobile = innerWidth <= 480;
+  document.querySelectorAll('a[href],button,input:not([type=hidden]),select,textarea,[role=button]').forEach((el) => {
+    if (!visible(el)) return;
+    const r = el.getBoundingClientRect();
+    let w = r.width, h = r.height;
+    if (el.type === 'checkbox' || el.type === 'radio') { const l = el.closest('label'); if (l) { const lr = l.getBoundingClientRect(); w = lr.width; h = lr.height; } }
+    if (el.tagName === 'A' && el.closest('p,li,.sm,code')) return;   // inline text links
+    if (mobile && (h < 36 || w < 36)) out.tap.push(`${Math.round(w)}x${Math.round(h)} ${el.tagName} "${(el.textContent || el.getAttribute('aria-label') || el.name || '').trim().slice(0, 20)}"`);
+    const name = (el.getAttribute('aria-label') || el.textContent || el.getAttribute('title') || (el.labels && el.labels[0] && el.labels[0].textContent) || el.placeholder || '').trim();
+    if (!name) out.names.push(`${el.tagName}#${el.id}.${el.className}`);
+  });
+  document.querySelectorAll('button, a.btn, .tag, .top nav a, .tabs a').forEach((el) => {
+    if (!visible(el) || !el.textContent.trim()) return;
+    const rg = document.createRange(); rg.selectNodeContents(el);
+    const tops = new Set([...rg.getClientRects()].map((r) => Math.round(r.top / 4)));
+    if (tops.size > 1) out.wrap.push(`"${el.textContent.trim().slice(0, 16)}"`);
+  });
+  return out;
+}
+"""
+
+
+def audit_page(pg, label, errs, strict_contrast=True):
+    pg.mouse.move(1, 1)  # a hovered button shows its orange sweep (a pseudo-element the audit cannot see), so park the pointer
+    pg.wait_for_timeout(350)
+    a = pg.evaluate(AUDIT_JS)
+    ok(a["overflow"] <= 0, f"[{label}] horizontal overflow {a['overflow']}px")
+    ok(not a["small"], f"[{label}] text too small: {a['small'][:4]}")
+    if strict_contrast:
+        ok(not a["contrast"], f"[{label}] low contrast: {a['contrast'][:4]}")
+    ok(not a["tap"], f"[{label}] tap targets < 36px: {a['tap'][:4]}")
+    ok(not a["names"], f"[{label}] controls without a name: {a['names'][:4]}")
+    ok(not a["wrap"], f"[{label}] text wraps inside buttons/tabs/tags: {a['wrap'][:4]}")
+    ok(a["topH"] <= 66, f"[{label}] top bar too tall ({a['topH']}px)")
+    bad = [e for e in errs if e not in EXPECTED]
+    ok(not bad, f"[{label}] console/page errors: {bad[:3]}")
+    errs.clear()
+
+
+EXPECTED: set[str] = set()
+
+
+def new_page(br, w, h=860, token=None, room_theme=None, **kw):
+    ctx = br.new_context(viewport={"width": w, "height": h}, device_scale_factor=1, **kw)
+    if token:
+        ctx.add_init_script(f"try{{localStorage.setItem('tt_token','{token}')}}catch(e){{}}")
+    if room_theme:  # the video room remembers the chosen colours in this browser
+        ctx.add_init_script(f"try{{localStorage.setItem('tt_room_theme','{room_theme}')}}catch(e){{}}")
+    pg = ctx.new_page()
+    errs: list[str] = []
+    pg.on("pageerror", lambda e: errs.append("pageerror: " + str(e)))
+    pg.on("console", lambda m: errs.append("console: " + m.text) if m.type == "error" else None)
+    pg.route("**/cdn.jsdelivr.net/**", lambda r: r.abort())
+    return ctx, pg, errs
+
+
+def main():
+    tmp = tempfile.mkdtemp()
+    env = {**os.environ, "DATABASE_URL": f"sqlite:///{tmp}/qa.db", "MEDIA_DIR": f"{tmp}/media", "LIVEKIT_URL": "", "ASR_PROVIDER": "mock", "LLM_PROVIDER": "mock", "ASR_API_KEY": "", "LLM_API_KEY": "",
+           "MODERATOR_PROVIDER": "mock", "MODERATOR_API_KEY": "", "MODERATOR_VENDOR": ""}  # never use the developer's real keys or video server in QA
+    srv = subprocess.Popen([sys.executable, "-m", "uvicorn", "app.main:app", "--port", str(PORT), "--log-level", "warning"], cwd=ROOT, env=env)
+    try:
+        for _ in range(60):
+            try:
+                urllib.request.urlopen(B + "/api/health"); break
+            except Exception:
+                time.sleep(0.25)
+        run()
+    finally:
+        srv.terminate()
+    report()
+
+
+def seed():
+    r = call("/auth/register", {"org_name": "Acme 出海", "name": "王总", "email": "boss@acme.com", "password": "password123"})
+    adm = r["token"]
+    tok = {"admin": adm}
+    ids = {}
+    for role, name in (("researcher", "李研究"), ("moderator", "小周"), ("observer", "客户张")):
+        u = call("/users", {"name": name, "email": f"{role}@acme.com", "password": "password123", "role": role}, adm)
+        ids[role] = u["id"]
+        tok[role] = call("/auth/login", {"email": f"{role}@acme.com", "password": "password123"})["token"]
+    pid = call("/projects", {"name": "新加坡护肤品牌进入研究", "brief": "了解新加坡消费者如何选购海外护肤品牌", "market": "SG", "language": "en"}, adm)["id"]
+    mk = lambda name, country="SG", lang="en": call(f"/projects/{pid}/participants", {"name": name, "country": country, "language": lang}, adm)
+    people = {"en": mk("Wei Ling"), "zh": mk("陈美玲", lang="zh"), "ms": mk("Nur Aisyah", lang="ms"), "ta": mk("Kavitha", lang="ta"), "id": mk("Siti", "ID")}
+    itv = {}
+    for lang in ("en", "zh", "ms", "ta"):
+        itv[lang] = call(f"/projects/{pid}/interviews", {"participant_id": people[lang]["id"], "title": f"深访 {lang}", "language": lang,
+                                                         "moderator_id": ids["moderator"], "observer_ids": [ids["observer"]]}, adm)
+    p2 = mk("Priya")
+    itv["en2"] = call(f"/projects/{pid}/interviews", {"participant_id": p2["id"], "title": "深访 en2", "language": "en"}, adm)  # untouched: used for the consent journey
+    for lang in ("en", "zh", "ms", "ta"):  # AI-moderated sessions: their consent page must disclose the AI (task doc part 3)
+        pa = mk(f"AI {lang}", lang=lang)
+        itv[f"ai_{lang}"] = call(f"/projects/{pid}/interviews", {"participant_id": pa["id"], "title": f"AI 深访 {lang}", "language": lang, "moderation": "ai"}, adm)
+    main_i = itv["en"]
+    # drive the main interview through the whole pipeline
+    call(f"/public/join/{main_i['invite_token']}/consent", {"country": "SG", "recording": True, "observers": True, "cross_border": True})
+    call(f"/interviews/{main_i['id']}/start", {}, tok["moderator"])
+    call(f"/interviews/{main_i['id']}/recording/start", {}, tok["moderator"])
+    call(f"/interviews/{main_i['id']}/end", {}, tok["moderator"])
+    call(f"/interviews/{main_i['id']}/transcribe", {}, adm)
+    gen = call(f"/interviews/{main_i['id']}/insights/generate", {}, adm)
+    call(f"/insights/{gen['created'][0]['id']}/approve", {}, adm)
+    clip = call(f"/interviews/{main_i['id']}/clips", {"evidence_id": gen["created"][0]["evidence"][0]["id"]}, adm)
+    share = call(f"/clips/{clip['id']}/share", {}, adm)
+    # a second organisation: the demo company (every account @demo.test) is the only one allowed to clear its data
+    dadm = call("/auth/register", {"org_name": "演示公司", "name": "管理员", "email": "admin@demo.test", "password": "demo12345"})["token"]
+    dpid = call("/projects", {"name": "演示项目", "market": "SG", "language": "en"}, dadm)["id"]
+    dpart = call(f"/projects/{dpid}/participants", {"name": "测试受访者", "country": "SG", "language": "en"}, dadm)
+    call(f"/projects/{dpid}/interviews", {"participant_id": dpart["id"], "title": "演示访谈"}, dadm)
+    tok["demo_admin"] = dadm
+    return dict(tok=tok, pid=pid, itv=itv, main=main_i, share=share, ids=ids, people=people, demo_pid=dpid)
+
+
+def run():
+    os.makedirs(os.path.join(ROOT, "qa_shots"), exist_ok=True)
+    D = seed()
+    mi, pid = D["main"]["id"], D["pid"]
+    proj = [f"#/p/{pid}/rooms", f"#/p/{pid}/insights"]
+    staff_routes = [f"#/projects", f"#/p/{pid}/home", f"#/p/{pid}/people", f"#/p/{pid}/sessions"] + proj + [f"#/i/{mi}", f"#/i/{mi}/insights", f"#/i/{mi}/clips"]
+    role_routes = {
+        "demo_admin": ["#/projects", f"#/p/{D['demo_pid']}/home", "#/demo"],
+        "admin": staff_routes + ["#/team", "#/audit"],
+        "researcher": staff_routes,
+        "moderator": ["#/projects", f"#/p/{pid}"] + proj + [f"#/i/{mi}", f"#/i/{mi}/insights"],
+        "observer": ["#/projects", f"#/p/{pid}"] + proj + [f"#/i/{mi}", f"#/i/{mi}/insights", f"#/i/{mi}/clips"],
+    }
+    public_pages = {
+        "join-en": f"/join.html?t={D['itv']['en']['invite_token']}", "join-zh": f"/join.html?t={D['itv']['zh']['invite_token']}",
+        "join-ms": f"/join.html?t={D['itv']['ms']['invite_token']}", "join-ta": f"/join.html?t={D['itv']['ta']['invite_token']}",
+        "join-invalid": "/join.html?t=nope", "share": D["share"]["path"], "share-invalid": "/share.html?t=nope",
+    }
+    with sync_playwright() as p:
+        br = p.chromium.launch()
+        # ---------- A. every role x page x viewport ----------
+        for w, vp in ((1280, "desktop"), (390, "phone")):
+            for role, routes in role_routes.items():
+                ctx, pg, errs = new_page(br, w, token=D["tok"][role])
+                for r in routes:
+                    EXPECTED.clear()
+                    pg.goto(B + "/" + r); pg.wait_for_selector("main", timeout=8000)
+                    body = pg.inner_text("main")
+                    ok("请求失败" not in body and "不存在" not in body, f"[{role}/{vp}] {r} shows an error: {body[:60]!r}")
+                    audit_page(pg, f"{role}/{vp} {r}", errs)
+                ctx.close()
+            # dark mode (design spec: follows the system): same contrast / size rules for the staff pages
+            if vp == "desktop":
+                ctx, pg, errs = new_page(br, w, token=D["tok"]["admin"], color_scheme="dark")
+                for r in role_routes["admin"]:
+                    EXPECTED.clear()
+                    pg.goto(B + "/" + r); pg.wait_for_selector("main", timeout=8000)
+                    audit_page(pg, f"admin/dark {r}", errs)
+                ctx.close()
+            for name, path in public_pages.items():
+                ctx, pg, errs = new_page(br, w)
+                pg.goto(B + path); pg.wait_for_timeout(500)
+                EXPECTED.clear()
+                # the invalid pages and the share page's missing media file legitimately produce 4xx console lines
+                errs[:] = [e for e in errs if "Failed to load resource" not in e]
+                audit_page(pg, f"public/{vp} {name}", errs)
+                ctx.close()
+            # room pages (dev mode shows the real grants), in both colour themes: white light (default) and dark green
+            for theme in (None, "dark"):
+                for role, asr in (("moderator", "moderator"), ("observer", "observer"), ("admin", "observer")):
+                    ctx, pg, errs = new_page(br, w, token=D["tok"][role], room_theme=theme)
+                    # the main interview has ended; use a live-able one
+                    it = D["itv"]["zh"]
+                    pg.goto(B + f"/room.html?i={it['id']}&as={asr}"); pg.wait_for_selector("#claims", timeout=8000)
+                    claims = json.loads(pg.inner_text("#claims"))
+                    want = "t-dark" if theme else "t-light"
+                    ok(want in pg.evaluate("document.body.className"), f"[room {role}/{vp}] theme should be {want}")
+                    if asr == "observer":
+                        ok(claims["hidden"] is True and claims["canPublish"] is False and claims["canPublishData"] is False, f"[room {role}/{vp}] observer grants wrong: {claims}")
+                        ok(pg.locator("button:has-text('开始录制')").count() == 0, f"[room {role}/{vp}] observer sees record button")
+                        ok(not pg.is_visible("#wbox"), f"[room {role}/{vp}] observer must not see the waiting room controls")
+                    else:
+                        ok(claims["canPublish"] is True and claims["hidden"] is False, f"[room {role}/{vp}] moderator grants wrong")
+                        ok(pg.is_visible("#b-admit") and pg.is_visible("#b-hold"), f"[room {role}/{vp}] moderator has admit / hold")
+                    audit_page(pg, f"room-{role}/{theme or 'light'}/{vp}", errs)
+                    ctx.close()
+            # theme switch: one click, takes effect at once, remembered in this browser
+            ctx, pg, errs = new_page(br, w, token=D["tok"]["moderator"])
+            it = D["itv"]["zh"]
+            pg.goto(B + f"/room.html?i={it['id']}&as=moderator"); pg.wait_for_selector("#claims")
+            ok("深绿" in pg.inner_text("#theme"), f"[{vp}] theme button offers dark green")
+            pg.click("#theme"); ok("t-dark" in pg.evaluate("document.body.className") and pg.evaluate("localStorage.getItem('tt_room_theme')") == "dark", f"[{vp}] switching to dark green works and is remembered")
+            pg.reload(); pg.wait_for_selector("#claims"); ok("t-dark" in pg.evaluate("document.body.className") and "浅色" in pg.inner_text("#theme"), f"[{vp}] the room opens in the remembered theme")
+            pg.click("#theme"); ok("t-light" in pg.evaluate("document.body.className"), f"[{vp}] switching back to light works")
+            ctx.close()
+
+        # ---------- B. journeys & logic ----------
+        ctx, pg, errs = new_page(br, 1280)
+        pg.goto(B + "/#/projects"); pg.wait_for_selector("form#f")
+        ok("/#/login" in pg.url or "login" in pg.url, "logged-out visit to a protected page should redirect to login")
+        pg.fill("[name=email]", "boss@acme.com"); pg.fill("[name=password]", "wrong-password"); pg.click("form button")
+        pg.wait_for_selector(".toast.err"); ok("不对" in pg.inner_text(".toast"), "wrong password should show an error toast")
+        pg.fill("[name=password]", "password123"); pg.click("form button"); pg.wait_for_selector("text=新建项目")
+        ok(pg.locator("nav.side .brandsvg").count() == 1, "logo missing in the side nav")
+        ok("projects" in pg.url, "after login should land on projects")
+        # logo plays on login, then settles; hover replays; reduced motion respected
+        pg.wait_for_timeout(2700); ok(not pg.evaluate("document.querySelector('.brandsvg').classList.contains('play')"), "logo animation never settles")
+        pg.hover("nav.side .brandsvg"); pg.wait_for_timeout(120); ok(pg.evaluate("document.querySelector('.brandsvg').classList.contains('play')"), "hovering the logo should replay the wings")
+        # the side nav marks exactly one current page, and it is the one shown
+        pg.goto(B + f"/#/p/{pid}/sessions"); pg.wait_for_selector("h1:has-text('场次与邀请')")
+        cur = pg.locator("nav.side [aria-current=page]").all_inner_texts()
+        ok(cur == ["场次与邀请"], f"side nav should mark only 场次与邀请 as current, got {cur}")
+        # project home: big progress number, a next step that links to the right page, recent activity in plain words
+        pg.goto(B + f"/#/p/{pid}"); pg.wait_for_selector("h1:has-text('项目总览')")
+        ok(pg.locator(".hero-n b").inner_text().isdigit() and pg.locator(".meters .meter").count() == 3, "project home shows the big number and three progress bars")
+        ok(pg.inner_text("#nextstep").strip() != "" and pg.locator(".next a.btn").count() == 1, "project home says what to do next, with one button")
+        feed = pg.inner_text(".feed")  # newest 12 events; older ones are covered by test_journey.py
+        ok(1 <= pg.locator(".feed li").count() <= 12 and "受访者 打开了邀请" in feed and "客户 客户" not in feed, f"recent activity in plain words: {feed[:80]!r}")
+        ok("Wei Ling" not in feed and "127.0.0.1" not in feed, "activity shows no participant names or IP addresses")
+        # project list: cards with counts, search and status filter
+        pg.goto(B + "/#/projects"); pg.wait_for_selector(".pcard")
+        ok("受访者" in pg.inner_text(".pcard") and "场次完成" in pg.inner_text(".pcard"), "project cards show participants and finished sessions")
+        pg.fill("#pq", "没有这个项目"); ok(pg.is_visible("#pnone") and pg.locator(".pcard:visible").count() == 0, "search with no match explains what to do")
+        pg.fill("#pq", "护肤"); ok(pg.locator(".pcard:visible").count() == 1, "search finds the project by name")
+        pg.fill("#pq", "")
+        # project: close / reopen shows the deletion date
+        pg.goto(B + f"/#/p/{pid}"); pg.wait_for_selector("#closeproj")
+        pg.once("dialog", lambda d: d.accept()); pg.click("#closeproj"); pg.wait_for_selector("#reopen")
+        ok("自动删除" in pg.inner_text("main"), "closed project should state the auto-delete date")
+        pg.goto(B + "/#/projects"); pg.wait_for_selector("[data-pf=closed]")
+        ok(pg.locator(".pcard:visible").count() == 0, "a closed project is not in the default 'in progress' filter")
+        pg.click("[data-pf=closed]"); ok(pg.locator(".pcard:visible").count() == 1, "the 'closed' filter shows it"); pg.click("[data-pf=open]")
+        pg.goto(B + f"/#/p/{pid}"); pg.wait_for_selector("#reopen"); pg.click("#reopen"); pg.wait_for_selector("#closeproj")
+        # SG only: add participant dialog offers only Singapore; staff cannot create other-country interviews
+        pg.goto(B + f"/#/p/{pid}/people"); pg.wait_for_selector("#np")
+        pg.click("#np"); opts = pg.locator("#f [name=country] option").all_inner_texts(); ok(len(opts) == 1 and "SG" in opts[0], f"only Singapore should be selectable, got {opts}")
+        pg.keyboard.press("Escape"); pg.mouse.click(5, 5)
+        # id participant shows 'not open'
+        pg.goto(B + f"/#/p/{pid}/people"); pg.wait_for_selector("text=地区暂未开放")
+        # rooms are grouped: in progress / upcoming / ended
+        pg.goto(B + f"/#/p/{pid}/rooms"); pg.wait_for_selector(".group h2")
+        groups = pg.locator(".group h2").all_inner_texts(); ok(groups == ["待开始", "已结束"], f"room list grouped by status, got {groups}")
+        # team page: observer role label
+        pg.goto(B + "/#/team"); pg.wait_for_selector("text=客户张"); ok("观察员" in pg.inner_text("main"), "team page should show role names")
+        ok(pg.locator("nav.side a:has-text('演示数据')").count() == 0, "a real company has no 'clear demo data' entry")
+        pg.goto(B + "/#/demo"); pg.wait_for_selector("h1"); ok("demo" not in pg.url, "a real company cannot open the demo data page")
+        # logout
+        pg.click("#out"); pg.wait_for_selector("form#f"); ok(pg.evaluate("localStorage.getItem('tt_token')") is None, "logout should clear the token")
+        ctx.close()
+        # phones: list tables turn into labelled cards
+        ctx, pg, errs = new_page(br, 390, token=D["tok"]["admin"])
+        pg.goto(B + f"/#/p/{pid}/people"); pg.wait_for_selector(".tbl.rc")
+        ok(pg.evaluate("getComputedStyle(document.querySelector('.tbl.rc thead')).display") == "none", "phone: table header hidden, rows shown as cards")
+        ok(pg.evaluate("document.querySelector('.tbl.rc tbody td').dataset.l") == "编号", "phone: every card line carries its column name")
+        ctx.close()
+        # demo company: the admin can clear the demo data (and only that)
+        ctx, pg, errs = new_page(br, 1280, token=D["tok"]["demo_admin"])
+        pg.goto(B + "/#/demo"); pg.wait_for_selector("#demoreset")
+        ok(pg.locator("nav.side a:has-text('演示数据')").count() == 1, "the demo company's admin sees the 'demo data' entry")
+        pg.once("dialog", lambda d: d.accept()); pg.click("#demoreset"); pg.wait_for_selector("#demodone:not([hidden])")
+        ok("1 场访谈" in pg.inner_text("#demodone") and "python -m app.seed" in pg.inner_text("#demodone"), "after clearing, says what was removed and how to get fresh demo data")
+        ok(call(f"/projects/{pid}/interviews", token=D["tok"]["admin"]) != [], "clearing demo data never touches a real company")
+        ctx.close()
+
+        # role-based UI: what each role must NOT see
+        def see(role, route, sel):
+            c, g, e = new_page(br, 1280, token=D["tok"][role]); g.goto(B + "/" + route); g.wait_for_selector("main"); g.wait_for_timeout(300)
+            n = g.locator(sel).count(); c.close(); return n
+        ok(see("observer", "#/projects", "#np") == 0, "observer must not see 'new project'")
+        ok(see("moderator", "#/projects", "#np") == 0, "moderator must not see 'new project'")
+        ok(see("observer", f"#/i/{mi}/insights", "#gen") == 0, "observer must not see 'generate insights'")
+        ok(see("observer", f"#/i/{mi}", "#inv, #rot") == 0, "observer must never see the invite link")
+        ok(see("observer", f"#/i/{mi}/clips", "[data-sh]") == 0, "observer must not see 'share link'")
+        ok(see("researcher", "#/team", "#nu") == 0 and see("researcher", "#/team", "text=添加成员") == 0, "researcher must not manage the team")
+        ok(see("admin", "#/team", "#nu") == 1, "admin should manage the team")
+        ok(see("observer", f"#/i/{mi}", "text=Wei Ling") == 0, "observer must not see the participant's name")
+        # the recruiting / invitation pages are for the research team only
+        for role in ("observer", "moderator"):
+            ok(see(role, f"#/p/{pid}/rooms", "nav.side a:has-text('受访者招募'), nav.side a:has-text('场次与邀请')") == 0, f"{role} must not see recruiting / invitation pages in the nav")
+            ok(see(role, f"#/p/{pid}/people", "text=添加受访者") == 0, f"{role} must not reach the recruiting page by URL")
+        ok(see("observer", f"#/p/{pid}/rooms", "a:has-text('进入 TA 的房间')") == 0 and see("observer", f"#/p/{pid}/rooms", "a:has-text('隐身观察')") >= 1, "observer can only enter rooms hidden")
+        ok(see("observer", f"#/p/{pid}/rooms", "text=Wei Ling") == 0, "observer's room list never shows participant names")
+        ok(see("moderator", f"#/p/{pid}/rooms", "a:has-text('隐身观察')") == 0, "moderator enters as moderator, not as a hidden observer")
+        ok(see("researcher", f"#/p/{pid}/sessions", ".tag:has-text('未到场')") >= 1, "sessions page shows a participant who never came (ended without entering)")
+
+        # ---------- C. participant journey (4 languages, phone): invitation -> device test -> consent -> waiting room -> room ----------
+        expect = {"en2": ("Interview invitation", "Before you start", "Microphone"), "zh": ("访谈邀请", "开始之前", "麦克风"),
+                  "ms": ("Jemputan temu bual", "Sebelum anda mula", "Mikrofon"), "ta": ("நேர்காணல் அழைப்பு", "தொடங்குவதற்கு முன்", "ஒலிவாங்கி")}
+        state = lambda it: call(f"/interviews/{it['id']}", token=D["tok"]["researcher"])["invite_state"]
+        fake = p.chromium.launch(args=["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream"])  # a simulated camera + microphone
+        media = {"permissions": ["camera", "microphone"]}
+        # (a) no camera / microphone: every check fails visibly with what to do, and the participant cannot go on (decision 2026-10-10)
+        ctx, pg, errs = new_page(br, 390)
+        it = D["itv"]["en2"]
+        pg.goto(B + f"/join.html?t={it['invite_token']}"); pg.click("#accept"); pg.wait_for_selector("#micwarn:not([hidden])", timeout=15000)
+        ok(pg.is_disabled("#devnext"), "device test: without a working microphone the participant cannot continue")
+        ok(pg.is_visible("#e_mic") and pg.is_visible("#e_cam"), "device test: failed checks show red text with what to do")
+        audit_page(pg, "join en device test failed/phone", errs)
+        pg.screenshot(path=os.path.join(ROOT, "qa_shots", "join_en_2device_failed_390.png"), full_page=True)
+        ok(state(it) == "opened", "a failed device test must not count as 'device ok'")
+        ctx.close()
+        # (b) each language with a working (simulated) camera and microphone
+        for key, (t_inv, t_consent, t_mic) in expect.items():
+            ctx, pg, errs = new_page(fake, 390, **media)
+            it = D["itv"][key]
+            lang = key[:2]
+            pg.goto(B + f"/join.html?t={it['invite_token']}"); pg.wait_for_selector("#accept")
+            ok(t_inv in pg.inner_text("#box"), f"[join {lang}] invitation not in the right language")
+            ok(pg.evaluate("document.documentElement.lang") == ("zh-CN" if lang == "zh" else lang), f"[join {lang}] html lang attribute wrong")
+            ok(pg.locator(".psteps i.on").count() == 1, f"[join {lang}] step bar shows the current step")
+            audit_page(pg, f"join {lang} invitation/phone", errs)
+            shot = lambda step: pg.screenshot(path=os.path.join(ROOT, "qa_shots", f"join_{lang}_{step}_390.png"), full_page=True)
+            shot("1invite")
+            ok(wait_until(lambda: state(it) == "opened"), f"[join {lang}] staff should see the invitation as opened")
+            pg.click("#accept"); pg.wait_for_selector("#devnext:not([disabled])", timeout=15000)
+            ok(t_mic in pg.inner_text("#box"), f"[join {lang}] device test not in the right language")
+            ok(pg.locator("#c_mic.ok").count() == 1 and not pg.is_visible("#micwarn"), f"[join {lang}] a working microphone passes")
+            audit_page(pg, f"join {lang} device test/phone", errs)
+            shot("2device")
+            pg.click("#devnext"); pg.wait_for_selector("form#f")
+            ok(state(it) == "device_ok", f"[join {lang}] staff should see the device test as passed")
+            ok(t_consent in pg.inner_text("#box"), f"[join {lang}] consent page not in the right language")
+            ok("深访" not in pg.inner_text("#box"), f"[join {lang}] internal interview title leaked to the participant")
+            # no checkbox ticked -> browser keeps the form; tick two of three -> server refuses
+            boxes = pg.locator("input[type=checkbox]"); ok(boxes.count() == 3, f"[join {lang}] needs 3 separate consents")
+            audit_page(pg, f"join {lang} consent/phone", errs)
+            shot("3consent")
+            pg.select_option("[name=country]", "SG"); boxes.nth(0).check(); boxes.nth(1).check(); pg.click("form button")
+            pg.wait_for_selector(".toast.err"); ok(pg.locator("form").count() == 1, f"[join {lang}] must stay on the form with 2 of 3 consents")
+            if lang == "en":
+                pg.select_option("[name=country]", "ID"); boxes.nth(2).check(); pg.click("form button")
+                pg.wait_for_selector("h1:has-text('cannot take part')"); ok("not open" in pg.inner_text("#box"), "non-Singapore participants should be turned away politely")
+            ctx.close()
+        # (b2) AI-moderated sessions: the consent page discloses the AI first, in every language, and needs its own checkbox
+        ai_word = {"en": "AI interviewer", "zh": "AI 主持人", "ms": "pewawancara AI", "ta": "AI நேர்காணலாளர்"}
+        for lang, word in ai_word.items():
+            it = D["itv"][f"ai_{lang}"]
+            call(f"/public/join/{it['invite_token']}/device", {"camera": True, "microphone": True, "speaker": True})  # device test covered above
+            ctx, pg, errs = new_page(br, 390)
+            pg.goto(B + f"/join.html?t={it['invite_token']}"); pg.wait_for_selector("form#f")
+            text = pg.inner_text("form#f p")
+            ok(text.startswith(word) or text.find(word) < 40, f"[join AI {lang}] the AI disclosure must come first in the consent text")
+            boxes = pg.locator("input[type=checkbox]")
+            ok(boxes.count() == 4 and pg.locator("input[name=ai]").count() == 1, f"[join AI {lang}] needs a separate 'the interviewer is an AI' consent")
+            ok("AI" in pg.locator("label.chk").first.inner_text(), f"[join AI {lang}] the AI checkbox comes first")
+            ok("深访" not in pg.inner_text("#box"), f"[join AI {lang}] internal interview title leaked to the participant")
+            audit_page(pg, f"join AI {lang} consent/phone", errs)
+            pg.screenshot(path=os.path.join(ROOT, "qa_shots", f"join_ai_{lang}_3consent_390.png"), full_page=True)
+            pg.select_option("[name=country]", "SG")
+            for k in ("recording", "observers", "cross_border"):
+                pg.check(f"input[name={k}]")
+            pg.click("form button"); pg.wait_for_selector(".toast.err")
+            ok(pg.locator("form#f").count() == 1, f"[join AI {lang}] must not go on without agreeing to the AI interviewer")
+            pg.check("input[name=ai]"); pg.click("form button"); pg.wait_for_selector("#pw")
+            ok(state(it) == "consented", f"[join AI {lang}] agreeing to all four items reaches the waiting room")
+            ctx.close()
+        # (c) full journey: consent -> waiting room (locked until started AND let in) -> hold -> admit -> room -> leave
+        ctx, pg, errs = new_page(fake, 390, **media)
+        it = D["itv"]["zh"]
+        mod = D["tok"]["moderator"]
+        pg.goto(B + f"/join.html?t={it['invite_token']}"); pg.wait_for_selector("form#f")  # the device test passed above, so it resumes at consent
+        pg.select_option("[name=country]", "SG")
+        for i in range(3): pg.locator("input[type=checkbox]").nth(i).check()
+        pg.click("form button"); pg.wait_for_selector("#enter")
+        ok(state(it) == "consented", "staff should see the participant as consented")
+        ok(pg.get_attribute("#enter", "aria-disabled") == "true" and "等待主持人开始" in pg.inner_text("#pw"), "waiting room: the entry is locked")
+        pg.click("#enter", force=True); pg.wait_for_timeout(300); ok("join.html" in pg.url, "a locked entry button must not open the room")
+        ok(wait_until(lambda: call(f"/interviews/{it['id']}/live", token=mod)["participant"]["waiting"], 8), "the moderator sees the participant in the waiting room")
+        audit_page(pg, "join zh waiting room/phone", errs)
+        pg.screenshot(path=os.path.join(ROOT, "qa_shots", "join_zh_4waiting_390.png"), full_page=True)
+        pg.reload(); pg.wait_for_selector("#enter"); ok("候场室" in pg.inner_text("#box"), "reopening the link after consent goes straight back to the waiting room")
+        call(f"/interviews/{it['id']}/start", {}, mod)
+        pg.wait_for_timeout(3500); ok(pg.get_attribute("#enter", "aria-disabled") == "true", "started but not let in yet: still locked")
+        call(f"/interviews/{it['id']}/admit", {"admit": False}, mod)
+        ok(wait_until(lambda: "稍等" in pg.inner_text("#pw"), 8), "held: the participant is asked to wait a little longer")
+        audit_page(pg, "join zh waiting room held/phone", errs)
+        call(f"/interviews/{it['id']}/admit", {"admit": True}, mod)
+        ok(wait_until(lambda: pg.get_attribute("#enter", "aria-disabled") == "false", 8), "let in: the waiting room unlocks")
+        pg.click("#enter")
+        pg.wait_for_selector("#claims"); cl = json.loads(pg.inner_text("#claims")); ok(cl["canPublish"] and not cl["hidden"] and not cl["canPublishData"], f"participant grants wrong {cl}")
+        ok(state(it) == "entered", "staff should see the participant as entered")
+        ok(pg.locator("#lpan:visible, #rpan:visible").count() == 0, "participant room shows no internal side panels")
+        ok("t-light" in pg.evaluate("document.body.className") and "Dark" not in pg.inner_text("#theme"), "participant room: light by default, theme button in the interview language")
+        audit_page(pg, "participant room/light/phone", errs)
+        pg.click("#theme"); audit_page(pg, "participant room/dark/phone", errs); pg.click("#theme")
+        pg.click("#b-leave"); pg.wait_for_timeout(500)
+        ok("邀请链接" in pg.inner_text("#msg") and not call(f"/interviews/{it['id']}/live", token=mod)["participant"]["admitted"], "after leaving, coming back needs the moderator to let them in again")
+        ctx.close(); fake.close()
+
+        # ---------- C2. dialogs and expandable panels on the staff pages (both screen sizes) ----------
+        for w, vp in ((1280, "desktop"), (390, "phone")):
+            ctx, pg, errs = new_page(br, w, token=D["tok"]["admin"])
+            pg.goto(B + f"/#/i/{mi}/transcript"); pg.wait_for_selector("[data-edit]")
+            ok(pg.locator("#recs").count() == 1 and pg.locator("#tr").count() == 1, f"[{vp}] recordings card + transcribe button present")
+            pg.locator("[data-edit]").first.click(); pg.wait_for_selector(".modal form#f textarea")
+            audit_page(pg, f"dialog 校对/{vp}", errs)
+            ok(pg.locator(".modal textarea[name=text_orig]").input_value() != "", f"[{vp}] edit dialog is prefilled")
+            pg.keyboard.press("Escape"); pg.mouse.click(3, 3); pg.wait_for_timeout(100)
+            pg.goto(B + f"/#/i/{mi}/transcript"); pg.wait_for_selector("[data-ins]")
+            pg.locator("[data-ins]").first.click(); pg.wait_for_selector(".modal form#f input[name=theme]")
+            audit_page(pg, f"dialog 写洞察/{vp}", errs)
+            ok(pg.evaluate("document.querySelectorAll('.modal').length") == 1, f"[{vp}] exactly one dialog open")
+            pg.goto(B + f"/#/i/{mi}/clips"); pg.wait_for_selector("[data-sl]")
+            ok(pg.evaluate("document.querySelectorAll('.modal').length") == 0, f"[{vp}] a dialog must not survive a page change")
+            pg.click("[data-sl]"); pg.wait_for_selector("[data-rv]")
+            audit_page(pg, f"分享记录/{vp}", errs)
+            pg.click("[data-sh]"); pg.wait_for_selector(".modal code.copy")
+            audit_page(pg, f"dialog 分享链接/{vp}", errs)
+            # recruiting / sessions dialogs
+            pg.goto(B + f"/#/p/{pid}/people"); pg.wait_for_selector("#np"); pg.click("#np"); pg.wait_for_selector(".modal form#f")
+            audit_page(pg, f"dialog 添加受访者/{vp}", errs)
+            pg.keyboard.press("Escape"); ok(pg.locator(".modal").count() == 0, f"[{vp}] Escape closes the dialog")
+            pg.goto(B + f"/#/p/{pid}/sessions"); pg.wait_for_selector("#ni"); pg.click("#ni"); pg.wait_for_selector(".modal form#f [name=participant_id]")
+            audit_page(pg, f"dialog 新建场次/{vp}", errs)
+            pg.keyboard.press("Escape")
+            # sessions filter: picking a progress state shows only those rows
+            pg.click("[data-f=done]"); pg.wait_for_selector("[data-f=done][aria-pressed=true]")
+            ok(pg.locator(".tbl tbody tr").count() == 0 or all("已完成" in t for t in pg.locator(".tbl tbody tr").all_inner_texts()), f"[{vp}] sessions filter shows only matching rows")
+            pg.click("[data-f=all]")
+            ctx.close()
+
+        # ---------- D. keyboard focus visible ----------
+        ctx, pg, errs = new_page(br, 1280, token=D["tok"]["admin"])
+        pg.goto(B + "/#/projects"); pg.wait_for_selector("main")
+        pg.keyboard.press("Tab"); pg.keyboard.press("Tab")
+        ring = pg.evaluate("(()=>{const e=document.activeElement;const c=getComputedStyle(e);return [e.tagName,c.outlineStyle,c.outlineWidth]})()")
+        ok(ring[1] != "none" and ring[2] not in ("0px",), f"focus ring not visible on {ring}")
+        ctx.close()
+
+        # ---------- E. reduced motion ----------
+        ctx, pg, errs = new_page(br, 1280, token=D["tok"]["admin"], reduced_motion="reduce")
+        pg.goto(B + "/#/projects"); pg.wait_for_selector("main"); pg.wait_for_timeout(300)
+        ok(not pg.evaluate("document.querySelector('.brandsvg').classList.contains('play')"), "reduced motion: logo must stay still")
+        ctx.close()
+
+        # ---------- F. screenshots for a human glance ----------
+        os.makedirs(os.path.join(ROOT, "qa_shots"), exist_ok=True)
+        shots = [("admin", f"#/projects"), ("admin", f"#/p/{pid}/home"), ("admin", f"#/p/{pid}/people"), ("admin", f"#/p/{pid}/sessions"), ("admin", f"#/p/{pid}/rooms"), ("admin", f"#/p/{pid}/insights"),
+                 ("admin", f"#/i/{mi}/insights"), ("observer", f"#/p/{pid}/rooms"), ("observer", f"#/i/{mi}/insights")]
+        for role, r in shots:
+            for w in (1280, 390):
+                ctx, pg, errs = new_page(br, w, token=D["tok"][role]); pg.goto(B + "/" + r); pg.wait_for_selector("main"); pg.wait_for_timeout(2600)
+                parts = r.strip("#/").split("/")
+                name = parts[0] if len(parts) == 1 else f"{parts[0]}_{parts[-1] if len(parts) > 2 else 'detail'}"
+                pg.screenshot(path=os.path.join(ROOT, "qa_shots", f"{role}_{name}_{w}.png"), full_page=True); ctx.close()
+        br.close()
+
+
+def report():
+    lines = [f"# QA report\n", f"- checks passed: **{PASSES}**", f"- failures: **{len(FAILS)}**\n"]
+    lines += [f"- ❌ {f}" for f in FAILS]
+    open(os.path.join(ROOT, "qa_report.md"), "w").write("\n".join(lines) + "\n")
+    print(f"\nQA: {PASSES} checks passed, {len(FAILS)} failed  (report: qa_report.md, screenshots: qa_shots/)")
+    for f in FAILS[:60]:
+        print(" -", f)
+    sys.exit(1 if FAILS else 0)
+
+
+if __name__ == "__main__":
+    main()

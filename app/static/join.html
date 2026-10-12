@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>参加访谈 · 星桐</title><link rel="stylesheet" href="/app.css"></head>
+<body class="participant"><div class="pbar" id="logobar"></div><div class="pwrap" id="box"><p class="mut">…</p></div>
+<script src="/app.js"></script>
+<script src="/logo.js"></script>
+<script>$("#logobar").innerHTML = LOGO_SVG; brandPlay();</script>
+<script>
+// Participant journey (design spec part 3): invitation -> device test -> privacy & consent -> waiting room -> interview room -> thanks.
+// No login, pre-task or time picking yet: the invitation link is the credential and the research team sets the time.
+// Everything follows the consent language; ms/ta are machine drafts and need native-speaker + counsel review before real use.
+const t = new URLSearchParams(location.search).get("t") || "";
+const box = $("#box");
+const L = {
+  en: { steps: ["Invitation", "Device test", "Privacy & consent", "Waiting room", "Interview"], stepOf: "Step {n} of {N}",
+        invite: "Interview invitation", by: "Invited by {o}", time: "Time: {t}", timeTbd: "Time: the research team will confirm it with you",
+        how: "You can take part with your camera on, or with voice only. The camera can be switched off at any time. Please find a quiet place; earphones help.",
+        next: "Next: test your device, read the privacy notice, then wait in the waiting room. About 5 minutes.", accept: "Accept and start", decline: "Not a good time? Just close this page. Nothing happens.",
+        dev: "Test your device", devIntro: "We will ask to use your camera and microphone, only for this test and the interview.",
+        cam: "Camera", mic: "Microphone", spk: "Speaker", net: "Network", checking: "Checking…", ok: "Working", fail: "Not working", played: "Played",
+        camFix: "Allow the camera in your browser's address bar, then tap “Test again”. You can also take part without a camera.",
+        micFix: "Allow the microphone. If another app is using it, close that app and test again.", spkFix: "Tap “Play a sound”. If you hear it, your speaker works.",
+        netFix: "Your connection is slow. Move closer to your router or use a mobile hotspot.", play: "Play a sound", retry: "Test again", cont: "Continue",
+        micWarn: "A working microphone is needed to take part. Fix it as described above, then tap “Test again”.", held: "The moderator asked you to wait a little longer. Please stay on this page.", admittedWait: "The moderator has let you in. The interview will start shortly…",
+        before: "Before you start", where: "Country or region you are in now", pick: "Select", go: "Agree and continue", skip: "If you do not agree, simply close this page. Nothing happens.",
+        no: "You cannot take part right now", wait: "Waiting room", waiting: "Waiting for the moderator to start…", ready: "The moderator has started. You can enter the interview now.",
+        enter: "Enter the interview", tips: "Please use earphones and stay somewhere quiet. You can switch the camera off at any time.",
+        notTime: "It is not time yet, or the interview has ended. Refresh this page at the scheduled time.", ended: "The interview has ended. Thank you for taking part!",
+        bad: "Invalid link", badp: "This invitation link does not exist or has expired. Please ask the person who invited you for a new one." },
+  zh: { steps: ["邀请", "设备检测", "隐私与同意", "候场室", "访谈室"], stepOf: "第 {n} 步 / 共 {N} 步",
+        invite: "访谈邀请", by: "由 {o} 邀请", time: "时间：{t}", timeTbd: "时间：研究团队会和你确认",
+        how: "可以开摄像头视频参加，也可以只用语音参加，摄像头随时可以关闭。请找一个安静的地方，戴耳机效果更好。",
+        next: "接下来：测试设备 → 阅读隐私说明 → 进入候场室，大约 5 分钟。", accept: "接受邀请，开始", decline: "暂时不方便？直接关闭本页即可，不会有任何影响。",
+        dev: "测试设备", devIntro: "我们会请求使用你的摄像头和麦克风，只用于这次检测和访谈。",
+        cam: "摄像头", mic: "麦克风", spk: "扬声器", net: "网络", checking: "检测中…", ok: "正常", fail: "未通过", played: "已播放",
+        camFix: "在浏览器地址栏允许使用摄像头，然后点“重新检测”。不开摄像头也可以参加。",
+        micFix: "请允许使用麦克风；如果被其他软件占用，先关闭那个软件再重新检测。", spkFix: "点“播放提示音”，听到声音就说明扬声器正常。",
+        netFix: "网络较慢：请靠近路由器，或改用手机热点。", play: "播放提示音", retry: "重新检测", cont: "继续",
+        micWarn: "麦克风正常才能参加。请按上面的提示处理，再点“重新检测”。", held: "主持人请你再稍等一会儿，请不要关闭本页。", admittedWait: "主持人已放行，访谈马上开始…",
+        before: "开始之前", where: "你现在所在的国家或地区", pick: "请选择", go: "同意并继续", skip: "不同意就关闭页面即可，不会有任何影响。",
+        no: "暂时无法参加", wait: "候场室", waiting: "等待主持人开始…", ready: "主持人已开始，可以进入访谈室了。",
+        enter: "进入访谈室", tips: "请戴耳机，保持环境安静。进入后摄像头可以随时关闭。",
+        notTime: "还没到访谈时间，或访谈已结束。到时间后刷新本页。", ended: "访谈已结束，感谢你的参与！",
+        bad: "链接无效", badp: "这个邀请链接不存在或已失效，请向邀请你的人要一个新的。" },
+  ms: { steps: ["Jemputan", "Ujian peranti", "Privasi & persetujuan", "Bilik menunggu", "Temu bual"], stepOf: "Langkah {n} daripada {N}",
+        invite: "Jemputan temu bual", by: "Dijemput oleh {o}", time: "Masa: {t}", timeTbd: "Masa: pasukan penyelidik akan mengesahkannya dengan anda",
+        how: "Anda boleh menyertai dengan kamera dihidupkan, atau dengan suara sahaja. Kamera boleh dimatikan pada bila-bila masa. Sila cari tempat yang senyap; fon telinga membantu.",
+        next: "Seterusnya: uji peranti anda, baca notis privasi, kemudian tunggu di bilik menunggu. Kira-kira 5 minit.", accept: "Terima dan mula", decline: "Bukan masa yang sesuai? Tutup sahaja halaman ini. Tiada apa-apa akan berlaku.",
+        dev: "Uji peranti anda", devIntro: "Kami akan meminta untuk menggunakan kamera dan mikrofon anda, hanya untuk ujian ini dan temu bual.",
+        cam: "Kamera", mic: "Mikrofon", spk: "Pembesar suara", net: "Rangkaian", checking: "Sedang diuji…", ok: "Berfungsi", fail: "Tidak berfungsi", played: "Dimainkan",
+        camFix: "Benarkan kamera di bar alamat pelayar anda, kemudian ketik “Uji semula”. Anda juga boleh menyertai tanpa kamera.",
+        micFix: "Benarkan mikrofon. Jika aplikasi lain sedang menggunakannya, tutup aplikasi itu dan uji semula.", spkFix: "Ketik “Mainkan bunyi”. Jika anda mendengarnya, pembesar suara anda berfungsi.",
+        netFix: "Sambungan anda perlahan. Dekati penghala anda atau gunakan titik panas mudah alih.", play: "Mainkan bunyi", retry: "Uji semula", cont: "Teruskan",
+        micWarn: "Mikrofon yang berfungsi diperlukan untuk menyertai. Betulkannya seperti di atas, kemudian ketik “Uji semula”.", held: "Moderator meminta anda menunggu sebentar lagi. Sila kekal di halaman ini.", admittedWait: "Moderator telah membenarkan anda masuk. Temu bual akan bermula sebentar lagi…",
+        before: "Sebelum anda mula", where: "Negara atau wilayah anda sekarang", pick: "Pilih", go: "Setuju dan teruskan", skip: "Jika anda tidak bersetuju, tutup sahaja halaman ini. Tiada apa-apa akan berlaku.",
+        no: "Anda tidak dapat menyertai buat masa ini", wait: "Bilik menunggu", waiting: "Menunggu moderator memulakan…", ready: "Moderator telah memulakan. Anda boleh masuk ke temu bual sekarang.",
+        enter: "Masuk ke temu bual", tips: "Sila gunakan fon telinga dan berada di tempat yang senyap. Anda boleh mematikan kamera pada bila-bila masa.",
+        notTime: "Belum tiba masanya, atau temu bual telah tamat. Muat semula halaman ini pada masa yang dijadualkan.", ended: "Temu bual telah tamat. Terima kasih kerana mengambil bahagian!",
+        bad: "Pautan tidak sah", badp: "Pautan jemputan ini tidak wujud atau telah tamat tempoh. Sila minta pautan baharu daripada orang yang menjemput anda." },
+  ta: { steps: ["அழைப்பு", "சாதனச் சோதனை", "தனியுரிமை & ஒப்புதல்", "காத்திருப்பு அறை", "நேர்காணல்"], stepOf: "படி {n} / {N}",
+        invite: "நேர்காணல் அழைப்பு", by: "{o} அழைத்துள்ளது", time: "நேரம்: {t}", timeTbd: "நேரம்: ஆய்வுக் குழு உங்களுடன் உறுதிப்படுத்தும்",
+        how: "கேமராவை இயக்கியோ, குரல் மட்டும் பயன்படுத்தியோ பங்கேற்கலாம். கேமராவை எப்போது வேண்டுமானாலும் அணைக்கலாம். அமைதியான இடத்தைத் தேர்ந்தெடுங்கள்; காதணி ஒலிபெருக்கி உதவும்.",
+        next: "அடுத்து: உங்கள் சாதனத்தைச் சோதித்து, தனியுரிமை அறிவிப்பைப் படித்து, காத்திருப்பு அறையில் காத்திருங்கள். சுமார் 5 நிமிடங்கள்.", accept: "ஏற்றுக்கொண்டு தொடங்கு", decline: "இப்போது வசதியில்லையா? இந்தப் பக்கத்தை மூடிவிடுங்கள். எதுவும் நடக்காது.",
+        dev: "உங்கள் சாதனத்தைச் சோதிக்கவும்", devIntro: "இந்தச் சோதனைக்கும் நேர்காணலுக்கும் மட்டுமே உங்கள் கேமரா மற்றும் ஒலிவாங்கியைப் பயன்படுத்த அனுமதி கேட்போம்.",
+        cam: "கேமரா", mic: "ஒலிவாங்கி", spk: "ஒலிபெருக்கி", net: "இணையம்", checking: "சோதிக்கப்படுகிறது…", ok: "செயல்படுகிறது", fail: "செயல்படவில்லை", played: "இயக்கப்பட்டது",
+        camFix: "உலாவியின் முகவரிப் பட்டியில் கேமராவை அனுமதித்து, “மீண்டும் சோதி” என்பதைத் தட்டவும். கேமரா இல்லாமலும் பங்கேற்கலாம்.",
+        micFix: "ஒலிவாங்கியை அனுமதிக்கவும். வேறொரு செயலி அதைப் பயன்படுத்தினால், அதை மூடிவிட்டு மீண்டும் சோதிக்கவும்.", spkFix: "“ஒலியை இயக்கு” என்பதைத் தட்டவும். ஒலி கேட்டால் உங்கள் ஒலிபெருக்கி செயல்படுகிறது.",
+        netFix: "உங்கள் இணைப்பு மெதுவாக உள்ளது. ரவுட்டருக்கு அருகில் செல்லவும் அல்லது கைபேசி ஹாட்ஸ்பாட்டைப் பயன்படுத்தவும்.", play: "ஒலியை இயக்கு", retry: "மீண்டும் சோதி", cont: "தொடரவும்",
+        micWarn: "பங்கேற்க ஒலிவாங்கி செயல்பட வேண்டும். மேலே உள்ளபடி சரிசெய்து, “மீண்டும் சோதி” என்பதைத் தட்டவும்.", held: "நெறியாளர் இன்னும் சிறிது நேரம் காத்திருக்கச் சொன்னார். இந்தப் பக்கத்திலேயே இருங்கள்.", admittedWait: "நெறியாளர் உங்களை அனுமதித்துவிட்டார். நேர்காணல் விரைவில் தொடங்கும்…",
+        before: "தொடங்குவதற்கு முன்", where: "நீங்கள் இப்போது இருக்கும் நாடு அல்லது பகுதி", pick: "தேர்ந்தெடுக்கவும்", go: "ஒப்புக்கொண்டு தொடரவும்", skip: "ஒப்புக்கொள்ளாவிட்டால் இந்தப் பக்கத்தை மூடிவிடுங்கள். எதுவும் நடக்காது.",
+        no: "இப்போது உங்களால் பங்கேற்க முடியாது", wait: "காத்திருப்பு அறை", waiting: "நெறியாளர் தொடங்குவதற்காகக் காத்திருக்கிறது…", ready: "நெறியாளர் தொடங்கிவிட்டார். இப்போது நேர்காணலில் நுழையலாம்.",
+        enter: "நேர்காணலில் நுழையவும்", tips: "காதணி ஒலிபெருக்கியைப் பயன்படுத்தி, அமைதியான இடத்தில் இருங்கள். கேமராவை எப்போது வேண்டுமானாலும் அணைக்கலாம்.",
+        notTime: "இன்னும் நேரம் ஆகவில்லை, அல்லது நேர்காணல் முடிந்துவிட்டது. திட்டமிட்ட நேரத்தில் இந்தப் பக்கத்தை மீண்டும் ஏற்றவும்.", ended: "நேர்காணல் முடிந்தது. பங்கேற்றதற்கு நன்றி!",
+        bad: "தவறான இணைப்பு", badp: "இந்த அழைப்பு இணைப்பு இல்லை அல்லது காலாவதியாகிவிட்டது. உங்களை அழைத்தவரிடம் புதிய இணைப்பைக் கேளுங்கள்." },
+};
+const pub = (path, opt = {}) => api(`/public/join/${encodeURIComponent(t)}${path}`, { auth: false, ...opt });
+let info, x;
+
+function frame(step, inner) {  // step bar: done = green, current = orange
+  const N = x.steps.length;
+  box.innerHTML = `<div class="psteps" aria-hidden="true">${x.steps.map((_, i) => `<i class="${i < step ? "done" : i === step ? "on" : ""}"></i>`).join("")}</div>
+    <p class="pstep">${esc(x.stepOf.replace("{n}", step + 1).replace("{N}", N))} · ${esc(x.steps[step])}</p>${inner}`;
+  window.scrollTo(0, 0);
+}
+
+// ---------- 0. invitation ----------
+function inviteStep() {
+  const when = info.scheduled_at ? new Date(info.scheduled_at + "Z").toLocaleString() : "";
+  frame(0, `<h1>${x.invite}</h1><p class="mut">${esc(x.by.replace("{o}", info.org))}</p>
+    <div class="card"><p><b>${esc(when ? x.time.replace("{t}", when) : x.timeTbd)}</b></p><p>${esc(x.how)}</p><p class="mut" style="margin:0">${esc(x.next)}</p></div>
+    <button class="p pbig" id="accept">${x.accept}</button><p class="sm mut" style="margin-top:12px">${x.decline}</p>`);
+  $("#accept").onclick = () => deviceStep();
+}
+
+// ---------- 1. device test ----------
+let devStream = null;
+function stopDev() { if (devStream) { devStream.getTracks().forEach((k) => k.stop()); devStream = null; } }
+function deviceStep() {
+  frame(1, `<h1>${x.dev}</h1><p class="mut">${esc(x.devIntro)}</p>
+    <video id="devv" muted playsinline autoplay style="width:100%;aspect-ratio:16/9;background:#0E1A16;border-radius:14px;margin:0 0 12px;object-fit:cover" hidden></video>
+    ${["cam", "mic", "spk", "net"].map((k) => `<div class="pcheck" id="c_${k}"><span>${x[k]}</span>${k === "mic" ? `<span class="lvl" aria-hidden="true"><i id="lvl"></i></span>` : ""}<span class="st">${x.checking}</span></div><p class="perr sm" id="e_${k}" role="alert" hidden></p>`).join("")}
+    <div class="row"><button id="play">${x.play}</button><button id="devretry">${x.retry}</button></div>
+    <p class="perr sm" id="micwarn" role="alert" hidden>${esc(x.micWarn)}</p>
+    <button class="p pbig" id="devnext" disabled>${x.cont}</button>`);
+  const R = { camera: false, microphone: false, speaker: false };
+  const set = (k, ok, fix) => { const el = $("#c_" + k); el.className = "pcheck " + (ok ? "ok" : "bad"); $(".st", el).textContent = ok === "played" ? x.played : ok ? x.ok : x.fail; const e = $("#e_" + k); e.hidden = !!ok; e.textContent = ok ? "" : fix; };
+  $("#play").onclick = () => {
+    try { const ac = new (window.AudioContext || window.webkitAudioContext)(), o = ac.createOscillator(), g = ac.createGain(); o.frequency.value = 660; g.gain.value = .12; o.connect(g).connect(ac.destination); o.start(); o.stop(ac.currentTime + .5); R.speaker = true; set("spk", "played"); }
+    catch { set("spk", false, x.spkFix); }
+  };
+  const run = async () => {
+    stopDev(); $("#devnext").disabled = true;
+    ["cam", "mic", "net"].forEach((k) => { const el = $("#c_" + k); el.className = "pcheck"; $(".st", el).textContent = x.checking; $("#e_" + k).hidden = true; });
+    if (!R.speaker) { $(".st", $("#c_spk")).textContent = ""; $("#e_spk").hidden = false; $("#e_spk").textContent = x.spkFix; $("#e_spk").className = "sm mut"; }
+    const md = navigator.mediaDevices;
+    try { devStream = await md.getUserMedia({ audio: true, video: true }); }
+    catch { try { devStream = await md.getUserMedia({ audio: true }); } catch { devStream = null; } }
+    R.camera = !!devStream && devStream.getVideoTracks().length > 0;
+    R.microphone = !!devStream && devStream.getAudioTracks().length > 0;
+    set("cam", R.camera, x.camFix); set("mic", R.microphone, x.micFix);
+    const v = $("#devv"); v.hidden = !R.camera; if (R.camera) v.srcObject = devStream;
+    if (R.microphone) {  // live level bar, so people can see the microphone hears them
+      try {
+        const ac = new (window.AudioContext || window.webkitAudioContext)(), an = ac.createAnalyser(); ac.createMediaStreamSource(devStream).connect(an);
+        const buf = new Uint8Array(an.fftSize);
+        const loop = () => { if (!devStream || !$("#lvl")) return; an.getByteTimeDomainData(buf); let m = 0; for (const b of buf) m = Math.max(m, Math.abs(b - 128)); $("#lvl").style.width = Math.min(100, m * 1.6) + "%"; requestAnimationFrame(loop); };
+        loop();
+      } catch {}
+    }
+    const t0 = performance.now(); let netOk = false;
+    try { await fetch("/api/health", { cache: "no-store" }); netOk = performance.now() - t0 < 1500; } catch {}
+    set("net", netOk, x.netFix);
+    $("#micwarn").hidden = R.microphone;
+    $("#devnext").disabled = !R.microphone;  // decision 2026-10-10: the device test must pass (a working microphone; the camera may stay off)
+    pub("/device", { method: "POST", body: R }).catch(() => {});  // the research team sees the result, passed or not
+  };
+  $("#devretry").onclick = guard(run);
+  $("#devnext").onclick = guard(async () => {
+    if (!R.microphone) return;
+    stopDev();
+    const r = await pub("/device", { method: "POST", body: R });
+    info.device_ok = r.passed;
+    if (r.passed) consentStep();
+  });
+  run();
+}
+
+// ---------- 2. privacy & consent ----------
+function consentStep() {
+  const c = info.consent;
+  frame(2, `<form class="card" id="f"><h1 style="margin-bottom:10px">${x.before}</h1><p>${esc(c.text)}</p>
+    <label class="f"><span>${x.where}</span><select name="country" required><option value="">${x.pick}</option>${countryOpts("")}</select></label>
+    ${Object.keys(c.labels).map((k) => `<label class="chk"><input type="checkbox" name="${k}"><span>${esc(c.labels[k])}</span></label>`).join("")}
+    <button class="p pbig">${x.go}</button><p class="sm mut" style="margin:12px 0 0">${x.skip}</p></form>`);
+  const f = $("#f");
+  f.onsubmit = guard(async (e) => {
+    e.preventDefault();
+    const fd = new FormData(f);
+    const agreed = Object.fromEntries(Object.keys(c.labels).map((k) => [k, !!fd.get(k)]));  // AI interviews add "ai": the interviewer is an AI
+    try {
+      await pub("/consent", { method: "POST", body: { country: fd.get("country"), ...agreed } });
+      info.consented = true; waitStep();
+    } catch (err) {
+      if (err.status === 403) { frame(2, `<h1>${x.no}</h1><p class="mut">${esc(err.message)}</p>`); return; }
+      throw err;
+    }
+  });
+}
+
+// ---------- 3. waiting room: the entry button unlocks when the moderator starts ----------
+let waitTimer = null;
+function waitStep() {
+  frame(3, `<h1>${x.wait}</h1><div class="pwait" id="pw" role="status"><span class="dot" aria-hidden="true"></span><span id="pwt">${x.waiting}</span></div>
+    <p class="mut">${esc(x.tips)}</p><a class="btn p pbig" id="enter" href="/room.html?t=${encodeURIComponent(t)}" aria-disabled="true">${x.enter}</a>`);
+  const en = $("#enter");
+  en.addEventListener("click", (e) => { if (en.getAttribute("aria-disabled") === "true") e.preventDefault(); });
+  const poll = async () => {  // waiting=1 tells the moderator this person is in the waiting room right now
+    let st;
+    try { st = await pub("/live?waiting=1"); } catch { return; }
+    if (st.status === "ended") { clearInterval(waitTimer); $("#pw").className = "pwait go"; $("#pwt").textContent = x.ended; en.remove(); return; }
+    const open = st.status === "live" && st.admitted && info.can_enter_now;
+    $("#pw").className = "pwait" + (open ? " go" : "");
+    $("#pwt").textContent = !info.can_enter_now ? x.notTime : open ? x.ready : st.held ? x.held : st.admitted ? x.admittedWait : x.waiting;
+    en.setAttribute("aria-disabled", String(!open));
+  };
+  poll(); clearInterval(waitTimer); waitTimer = setInterval(poll, 3000);
+}
+
+(async () => {
+  try { info = await pub(""); }
+  catch { box.innerHTML = `<h1>${L.en.bad} · ${L.zh.bad}</h1><p class="mut">${L.en.badp}</p><p class="mut">${L.zh.badp}</p>`; return; }
+  x = L[info.consent.lang] || L.en;
+  document.documentElement.lang = info.consent.lang === "zh" ? "zh-CN" : info.consent.lang;
+  document.title = x.invite + " · 星桐";
+  pub("/opened", { method: "POST" }).catch(() => {});
+  if (info.status === "ended") { frame(4, `<h1>${x.ended}</h1>`); return; }
+  if (info.consented) return waitStep();
+  if (info.device_ok) return consentStep();
+  inviteStep();
+})();
+addEventListener("pagehide", stopDev);
+</script></body></html>

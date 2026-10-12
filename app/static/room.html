@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Interview room</title><link rel="stylesheet" href="/app.css"></head>
+<body class="stage t-light">
+<script>try { if (localStorage.getItem("tt_room_theme") === "dark") document.body.className = "stage t-dark"; } catch (e) {}</script>
+<header class="rhead">
+  <span id="logo" aria-hidden="true"></span>
+  <span id="who" class="rwho"></span>
+  <span id="state" class="tag"></span>
+  <span id="recdot" class="recdot" hidden></span>
+  <span id="warn" class="rwarn" hidden></span>
+  <button id="theme" class="thm" type="button"></button>
+</header>
+<div id="msg" class="rmsg" role="status"></div>
+<!-- staff: three columns (session + waiting room | stage | live panel); participant: one simple column, nothing internal.
+     Theme: white light by default, dark green on request (remembered in this browser only). -->
+<div class="rbody">
+  <aside class="rpan side" id="lpan" hidden><h3>本场</h3><div id="kv"></div>
+    <div id="wbox" hidden><h3 style="margin-top:6px">候场室</h3><div class="wst" id="wst" role="status"></div>
+      <div class="row" style="margin-top:8px"><button class="p s" id="b-admit" type="button">放行</button><button class="s" id="b-hold" type="button">暂缓</button></div></div></aside>
+  <section><div class="vgrid" id="grid"></div></section>
+  <aside class="rpan side" id="rpan" hidden><h3>实时字幕</h3><p>接入腾讯云实时语音识别后，这里会实时显示双方说的话和中文翻译，并可以一键引用。录制结束后的逐字转写在访谈页。</p></aside>
+</div>
+<div class="bar" id="bar"></div>
+<script src="/app.js"></script>
+<script src="/logo.js"></script>
+<script>document.getElementById("logo").innerHTML = LOGO_SVG;</script>
+<script>
+const q = new URLSearchParams(location.search);
+const iid = q.get("i"), inviteT = q.get("t"), asRole = q.get("as");
+
+// Participant-facing text (the participant sees the room in the interview's language). ms/ta are machine drafts: native review needed.
+const I18N = {
+  en: { title: "Interview room", you: "You", mod: "Moderator", waiting: "You're in. Please wait, the moderator will start the interview soon.", live: "The interview is in progress.",
+        rec: "Recording", mic: "Mic", micOff: "Mic off", cam: "Camera", camOff: "Camera off", leave: "Leave", left: "You have left the interview.", ended: "The interview has ended. Thank you for taking part!",
+        sound: "Tap to turn on sound", noDevice: "We could not access your camera or microphone. Please allow access in your browser, then reload this page.",
+        noCam: "Your camera is not available, joining with microphone only.", lost: "Connection lost. Please reload this page.", connecting: "Connecting…", upload: "Having trouble saving the recording. Please keep this page open.",
+        cantEnter: "Unable to enter", names: { moderator: "Moderator" }, toDark: "Dark green", toLight: "Light", themeName: "Room colours", leftBack: "To come back, open your invitation link again; the moderator will let you in." },
+  zh: { title: "访谈房间", you: "我", mod: "主持人", waiting: "你已进入。请稍等，主持人很快会开始访谈。", live: "访谈进行中。",
+        rec: "正在录制", mic: "麦克风", micOff: "麦克风已关", cam: "摄像头", camOff: "摄像头已关", leave: "离开", left: "你已离开访谈。", ended: "访谈已结束，感谢你的参与！",
+        sound: "点击开启声音", noDevice: "无法使用你的摄像头或麦克风。请在浏览器里允许访问后刷新本页。",
+        noCam: "摄像头不可用，将只用麦克风加入。", lost: "连接已断开，请刷新本页。", connecting: "正在连接…", upload: "录制保存遇到问题，请保持本页打开。",
+        cantEnter: "无法进入", names: {}, toDark: "深绿主题", toLight: "浅色主题", themeName: "切换房间配色", leftBack: "如需回来，请重新打开邀请链接，等主持人再次放行。" },
+  ms: { title: "Bilik temu bual", you: "Anda", mod: "Moderator", waiting: "Anda sudah masuk. Sila tunggu, moderator akan memulakan temu bual sebentar lagi.", live: "Temu bual sedang berlangsung.",
+        rec: "Sedang dirakam", mic: "Mikrofon", micOff: "Mikrofon dimatikan", cam: "Kamera", camOff: "Kamera dimatikan", leave: "Keluar", left: "Anda telah keluar dari temu bual.", ended: "Temu bual telah tamat. Terima kasih kerana mengambil bahagian!",
+        sound: "Ketik untuk menghidupkan bunyi", noDevice: "Kami tidak dapat mengakses kamera atau mikrofon anda. Sila benarkan akses dalam pelayar anda, kemudian muat semula halaman ini.",
+        noCam: "Kamera tidak tersedia, menyertai dengan mikrofon sahaja.", lost: "Sambungan terputus. Sila muat semula halaman ini.", connecting: "Menyambung…", upload: "Ada masalah menyimpan rakaman. Sila biarkan halaman ini terbuka.",
+        cantEnter: "Tidak dapat masuk", names: {}, toDark: "Hijau gelap", toLight: "Cerah", themeName: "Warna bilik", leftBack: "Untuk kembali, buka semula pautan jemputan anda; moderator akan membenarkan anda masuk." },
+  ta: { title: "நேர்காணல் அறை", you: "நீங்கள்", mod: "நெறியாளர்", waiting: "நீங்கள் உள்ளே வந்துவிட்டீர்கள். சிறிது காத்திருங்கள், நெறியாளர் விரைவில் நேர்காணலைத் தொடங்குவார்.", live: "நேர்காணல் நடைபெறுகிறது.",
+        rec: "பதிவு செய்யப்படுகிறது", mic: "ஒலிவாங்கி", micOff: "ஒலிவாங்கி அணைக்கப்பட்டது", cam: "கேமரா", camOff: "கேமரா அணைக்கப்பட்டது", leave: "வெளியேறு", left: "நீங்கள் நேர்காணலிலிருந்து வெளியேறிவிட்டீர்கள்.", ended: "நேர்காணல் முடிந்தது. பங்கேற்றதற்கு நன்றி!",
+        sound: "ஒலியை இயக்கத் தட்டவும்", noDevice: "உங்கள் கேமரா அல்லது ஒலிவாங்கியை அணுக முடியவில்லை. உலாவியில் அனுமதி அளித்து, இந்தப் பக்கத்தை மீண்டும் ஏற்றவும்.",
+        noCam: "கேமரா கிடைக்கவில்லை, ஒலிவாங்கியுடன் மட்டும் இணைகிறீர்கள்.", lost: "இணைப்பு துண்டிக்கப்பட்டது. இந்தப் பக்கத்தை மீண்டும் ஏற்றவும்.", connecting: "இணைக்கப்படுகிறது…", upload: "பதிவைச் சேமிப்பதில் சிக்கல். இந்தப் பக்கத்தைத் திறந்தே வைத்திருங்கள்.",
+        cantEnter: "உள்ளே நுழைய முடியவில்லை", names: {}, toDark: "அடர் பச்சை", toLight: "வெளிர்", themeName: "அறையின் நிறம்", leftBack: "திரும்ப வர, உங்கள் அழைப்பு இணைப்பை மீண்டும் திறக்கவும்; நெறியாளர் உங்களை அனுமதிப்பார்." },
+};
+let T = I18N.zh;                      // staff always see Chinese; participants get their interview's language after entering
+const $id = (x) => document.getElementById(x);
+const msg = (h) => ($id("msg").innerHTML = h);
+const bar = $id("bar"), grid = $id("grid");
+
+// room colours: white light by default; dark green on request, remembered in this browser only (never sent anywhere)
+function themeLabel() {
+  const b = $id("theme"); b.textContent = document.body.classList.contains("t-dark") ? T.toLight : T.toDark;
+  b.setAttribute("aria-label", `${T.themeName}: ${b.textContent}`);
+}
+$id("theme").onclick = () => {
+  const dark = !document.body.classList.contains("t-dark");
+  document.body.classList.toggle("t-dark", dark); document.body.classList.toggle("t-light", !dark);
+  try { localStorage.setItem("tt_room_theme", dark ? "dark" : "light"); } catch (e) {}
+  themeLabel();
+};
+themeLabel();
+let room = null, S = null, role = null, ended = false, localTracks = [], camTrack = null, micTrack = null;
+
+function addBtn(id, label, fn, cls = "") {
+  const b = document.createElement("button"); b.id = id; b.textContent = label; if (cls) b.className = cls;
+  if (id.startsWith("b-") && ["b-start", "b-rec", "b-stop", "b-end"].includes(id)) b.dataset.polled = "1";  // enabled/disabled by the live state, not by the click
+  b.onclick = guard(async () => { b.disabled = true; try { await fn(b); } finally { if (!b.dataset.polled) b.disabled = false; await poll(); } }); bar.appendChild(b); return b;
+}
+function tile(id, name) {
+  let el = document.getElementById("t_" + id);
+  if (!el) { el = document.createElement("div"); el.className = "tile"; el.id = "t_" + id; el.innerHTML = `<div class="nm"></div><div class="off" hidden></div>`; grid.appendChild(el); }
+  $(".nm", el).textContent = name; return el;
+}
+function setTileVideo(el, track) { el.querySelectorAll("video").forEach((v) => v.remove()); const v = track.attach(); v.setAttribute("playsinline", ""); el.prepend(v); }
+
+// ---------------- recording: this browser records ITS OWN camera+mic and uploads chunks ----------------
+const R = { mr: null, id: null, seq: 0, q: Promise.resolve(), offset: 0, bad: 0, mime: "", part: Math.random().toString(36).slice(2, 10) };  // a page reload gets a new "part", so a refresh mid-recording never corrupts the earlier part
+const authHdr = () => (inviteT ? {} : { Authorization: "Bearer " + (store.get("tt_token") || "") });
+const chunkUrl = (rid) => inviteT ? `/api/public/join/${encodeURIComponent(inviteT)}/recording/${rid}/chunk` : `/api/interviews/${iid}/recording/${rid}/chunk`;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+function pickMime(hasVideo) {
+  const c = hasVideo ? ["video/webm;codecs=vp8,opus", "video/webm;codecs=vp9,opus", "video/webm", "video/mp4"] : ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"];
+  return c.find((m) => window.MediaRecorder && MediaRecorder.isTypeSupported(m)) || "";
+}
+async function post(rid, seq, offset, blob, last, mime) {
+  const part = R.part;
+  for (let a = 0; a < 6; a++) {
+    try {
+      const r = await fetch(`${chunkUrl(rid)}?seq=${seq}&offset_ms=${offset}&last=${last ? 1 : 0}&part=${part}`, { method: "POST", headers: { ...authHdr(), "Content-Type": mime.split(";")[0] }, body: blob, keepalive: blob.size < 60000 });
+      if (r.ok) { R.bad = 0; return; }
+      if (r.status >= 400 && r.status < 500 && r.status !== 429) { return; }  // recording already finished or not allowed: retrying will not help
+    } catch {}
+    R.bad++; showWarn(true); await sleep(800 * 2 ** a);
+  }
+}
+function enqueue(rid, seq, offset, blob, last, mime) { R.q = R.q.then(() => post(rid, seq, offset, blob, last, mime)).then(() => { if (!R.bad) showWarn(false); }); }
+function showWarn(on) { const w = $id("warn"); w.hidden = !on; w.textContent = on ? T.upload : ""; }
+
+function startRecorder(rec, tPoll) {
+  if (R.mr || role === "observer" || !localTracks.length) return;
+  const tracks = localTracks.map((t) => t.mediaStreamTrack).filter((t) => t.readyState === "live");
+  if (!tracks.length) return;
+  R.mime = pickMime(tracks.some((t) => t.kind === "video"));
+  let mr;
+  try { mr = new MediaRecorder(new MediaStream(tracks), R.mime ? { mimeType: R.mime, videoBitsPerSecond: 900000, audioBitsPerSecond: 64000 } : undefined); }
+  catch (e) { showWarn(true); return; }
+  const rid = rec.id, mime = R.mime || "video/webm", offset = Math.round(rec.elapsed_ms + (performance.now() - tPoll));
+  R.id = rid; R.seq = 0; R.mr = mr;
+  mr.ondataavailable = (e) => { if (e.data && e.data.size) enqueue(rid, R.seq++, offset, e.data, false, mime); };
+  mr.onstop = () => { enqueue(rid, R.seq++, offset, new Blob([]), true, mime); R.mr = null; };
+  mr.start(4000);
+}
+function stopRecorder() { if (R.mr && R.mr.state !== "inactive") { try { R.mr.requestData(); } catch {} R.mr.stop(); } }
+
+// ---------------- state polling (2 s) ----------------
+let last = null, recStart = null;
+async function poll() {
+  if (ended) return;
+  const t0 = performance.now();
+  let st;
+  try {
+    const r = await fetch(inviteT ? `/api/public/join/${encodeURIComponent(inviteT)}/live` : `/api/interviews/${iid}/live`, { headers: authHdr() });
+    if (!r.ok) return;
+    st = await r.json();
+  } catch { return; }
+  last = st;
+  $id("state").textContent = role === "moderator" || role === "observer" ? ({ scheduled: "待开始", live: "进行中", ended: "已结束" }[st.status] || st.status) : "";
+  $id("state").hidden = !$id("state").textContent;
+  $id("state").className = "tag " + (st.status === "live" ? "live" : st.status === "ended" ? "ok" : "");
+  if (st.recording) {
+    recStart = { rid: st.recording.id, at: performance.now() - st.recording.elapsed_ms };
+    $id("recdot").hidden = false;
+    startRecorder(st.recording, t0);
+  } else { recStart = null; $id("recdot").hidden = true; stopRecorder(); }
+  if (st.status === "ended") { finish(); return; }
+  if (role === "participant") msg(st.status === "live" ? T.live : T.waiting);
+  if (role !== "participant") {
+    const kv = (k, v) => `<div class="kv"><span>${k}</span><b>${v}</b></div>`;
+    $id("kv").innerHTML = kv("你的身份", role === "moderator" ? "主持人" : "观察员（隐身）") + kv("访谈", { scheduled: "待开始", live: "进行中", ended: "已结束" }[st.status] || st.status) +
+      (role === "moderator" ? kv("受访者同意录制", st.consented ? "已同意" : "还没有") : "") + kv("录制", st.recording ? "录制中" : "未录制");
+  }
+  if (role === "moderator") {
+    const P = st.participant || {};
+    $id("wst").textContent = P.admitted ? "已放行：受访者可以进入房间" : P.waiting ? "受访者在候场室，等你放行" : P.held ? "已请受访者稍等" : "受访者还没进候场室";
+    $id("b-admit").disabled = !!P.admitted || st.status === "ended"; $id("b-hold").disabled = !!P.held || st.status === "ended";
+    const set = (id, on) => { const b = $id(id); if (b) b.disabled = !on; };
+    set("b-start", st.status === "scheduled"); set("b-rec", st.status === "live" && st.consented && !st.recording); set("b-stop", !!st.recording); set("b-end", true);
+    msg(`你是<b>主持人</b>。${P.waiting ? "受访者在候场室，点左侧“放行”让 TA 进来。" : ""}${st.status === "scheduled" ? "点“开始访谈”后，放行的受访者才能进入。" : st.consented ? (st.recording ? "正在录制，你和受访者的画面声音都在被记录。" : "受访者已同意，可以点“开始录制”。") : "受访者还没有同意录制，同意后才能录制。"}`);
+  }
+}
+function tick() { if (recStart) { const s = Math.floor((performance.now() - recStart.at) / 1000); $id("recdot").textContent = `${T.rec} ${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`; } }
+function finish() {
+  ended = true; stopRecorder(); localTracks.forEach((t) => { try { t.stop(); } catch {} }); if (room) room.disconnect();
+  $id("recdot").hidden = true; bar.querySelectorAll("button").forEach((b) => (b.disabled = true));
+  msg(role === "participant" ? T.ended : "访谈已结束。录像会在几十秒内合成，之后可以在访谈页转写。");
+  if (role !== "participant") bar.innerHTML = `<a class="btn" id="back" href="/#/i/${iid}">回到访谈页</a>`;
+}
+
+// ---------------- start ----------------
+async function start() {
+  msg(T.connecting);
+  try {
+    S = inviteT ? await api(`/public/join/${encodeURIComponent(inviteT)}/enter`, { method: "POST", auth: false })
+      : await api(`/interviews/${iid}/token`, { method: "POST", body: asRole ? { as: asRole } : {} });
+  } catch (e) { msg(`<b>${esc(T.cantEnter)}：</b>${esc(e.message)}`); return; }
+  role = S.role;
+  if (role === "participant") { T = I18N[S.language] || I18N.en; document.documentElement.lang = S.language || "en"; document.body.classList.add("solo"); themeLabel(); }
+  else { $id("lpan").hidden = false; $id("rpan").hidden = false; }
+  if (role === "moderator") {  // waiting room: let the participant in, or ask them to wait
+    $id("wbox").hidden = false;
+    const setAdmit = (admit) => guard(async () => { await api(`/interviews/${iid}/admit`, { method: "POST", body: { admit } }); toast(admit ? "已放行，受访者现在可以进入" : "已请受访者稍等"); await poll(); });
+    $id("b-admit").onclick = setAdmit(true); $id("b-hold").onclick = setAdmit(false);
+  }
+  document.title = T.title + " · 星桐";
+  $id("who").textContent = role === "participant" ? T.title : { moderator: "主持人", observer: "观察员（隐身）" }[role];
+  if (role === "observer") msg(`你以<b>观察员</b>身份隐身进入：受访者看不到你，你不能发言，也不会出现在录制里。`);
+
+  if (role === "moderator") {
+    addBtn("b-start", "开始访谈", () => api(`/interviews/${iid}/start`, { method: "POST" }).then(() => toast("访谈已开始")), "p");
+    addBtn("b-rec", "开始录制", () => api(`/interviews/${iid}/recording/start`, { method: "POST" }).then(() => toast("录制中")));
+    addBtn("b-stop", "停止录制", () => api(`/interviews/${iid}/recording/stop`, { method: "POST" }).then(() => toast("已停止，正在合成录像")));
+    addBtn("b-end", "结束访谈", async () => { if (confirm("结束后所有人会被移出，且不能再进入。")) { await api(`/interviews/${iid}/end`, { method: "POST" }); } }, "bad");
+  }
+  if (role !== "observer") {
+    addBtn("b-mic", T.mic, async (b) => { if (!micTrack) return; micTrack.mediaStreamTrack.enabled = !micTrack.mediaStreamTrack.enabled; b.textContent = micTrack.mediaStreamTrack.enabled ? T.mic : T.micOff; b.setAttribute("aria-pressed", String(!micTrack.mediaStreamTrack.enabled)); });
+    addBtn("b-cam", T.cam, async (b) => { if (!camTrack) return; const on = (camTrack.mediaStreamTrack.enabled = !camTrack.mediaStreamTrack.enabled); b.textContent = on ? T.cam : T.camOff; b.setAttribute("aria-pressed", String(!on)); const o = $id("t_me")?.querySelector(".off"); if (o) { o.hidden = on; o.textContent = T.camOff; } });
+  }
+  addBtn("b-leave", T.leave, async () => {
+    stopRecorder(); await R.q; localTracks.forEach((t) => { try { t.stop(); } catch {} }); if (room) room.disconnect(); ended = true;
+    if (inviteT) fetch(`/api/public/join/${encodeURIComponent(inviteT)}/leave`, { method: "POST" }).catch(() => {});  // coming back needs a new admit
+    msg(role === "participant" ? `${esc(T.left)} ${esc(T.leftBack)}` : "你已离开。"); bar.querySelectorAll("button").forEach((b) => (b.disabled = true));
+  }, "bad");
+  $id("b-mic")?.setAttribute("aria-pressed", "false"); $id("b-cam")?.setAttribute("aria-pressed", "false");
+  if (role === "moderator") ["b-rec", "b-stop"].forEach((i) => ($id(i).disabled = true));
+
+  if (!S.url) {  // no video server configured: show what this token would be allowed to do, so permissions can still be checked
+    const claims = JSON.parse(atob(S.token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+    grid.innerHTML = `<div style="grid-column:1/-1;padding:12px 14px;color:#CFE3DA;background:#15271F;border-radius:14px"><p><b>开发模式：</b>未配置 LIVEKIT_URL，没有视频。下面是这个令牌的实际权限（${role === "participant" ? "受访者" : { moderator: "主持人", observer: "观察员" }[role]}）。</p>
+      <pre id="claims" style="background:#1b2a24;padding:12px;border-radius:10px;overflow:auto">${esc(JSON.stringify({ room: claims.video.room, ...claims.video }, null, 2))}</pre></div>`;
+    poll(); setInterval(poll, 2000); setInterval(tick, 500);
+    return;
+  }
+  await new Promise((res, rej) => { const s = document.createElement("script"); s.src = "/vendor/livekit-client.umd.js"; s.onload = res; s.onerror = () => rej(new Error("video component failed to load")); document.head.appendChild(s); }).catch((e) => msg(esc(e.message)));
+  if (!window.LivekitClient) return;
+  const { Room, RoomEvent, Track, createLocalTracks } = LivekitClient;
+  room = new Room({ adaptiveStream: true, dynacast: true });
+  const nameOf = (p) => (p.identity.startsWith("participant:") ? "受访者" : role === "participant" ? T.mod : p.name || p.identity);  // real participant names never reach observers; participants only ever see "Moderator"
+  room.on(RoomEvent.ParticipantConnected, (p) => tile(p.identity, nameOf(p)));
+  room.on(RoomEvent.TrackSubscribed, (track, pub, p) => { const el = tile(p.identity, nameOf(p)); if (track.kind === Track.Kind.Video) setTileVideo(el, track); else el.appendChild(track.attach()); });
+  room.on(RoomEvent.TrackUnsubscribed, (track) => track.detach().forEach((x) => x.remove()));
+  room.on(RoomEvent.ParticipantDisconnected, (p) => document.getElementById("t_" + p.identity)?.remove());
+  room.on(RoomEvent.AudioPlaybackStatusChanged, () => { $id("snd")?.remove(); if (!room.canPlaybackAudio) { const b = document.createElement("button"); b.id = "snd"; b.textContent = T.sound; b.onclick = () => room.startAudio().then(() => b.remove()); bar.prepend(b); } });
+  room.on(RoomEvent.Disconnected, () => { if (!ended) { poll(); setTimeout(() => { if (!ended) msg(`<b>${esc(T.lost)}</b>`); }, 1500); } });
+  try {
+    await room.connect(S.url, S.token);
+    room.remoteParticipants.forEach((p) => { tile(p.identity, nameOf(p)); });
+    if (role !== "observer") {
+      try { localTracks = await createLocalTracks({ audio: true, video: { resolution: { width: 640, height: 360, frameRate: 25 } } }); }
+      catch { try { localTracks = await createLocalTracks({ audio: true, video: false }); msg(esc(T.noCam)); } catch { msg(`<b>${esc(T.noDevice)}</b>`); } }
+      camTrack = localTracks.find((t) => t.kind === "video") || null; micTrack = localTracks.find((t) => t.kind === "audio") || null;
+      for (const t of localTracks) await room.localParticipant.publishTrack(t);
+      const me = tile("me", T.you); me.id = "t_me"; me.classList.add("me");
+      if (camTrack) setTileVideo(me, camTrack);
+      if (!camTrack) $id("b-cam")?.setAttribute("disabled", "");
+    }
+  } catch (e) { msg(`<b>${esc(T.cantEnter)}：</b>${esc(e.message)}`); }
+  poll(); setInterval(poll, 2000); setInterval(tick, 500);
+}
+start();
+addEventListener("pagehide", () => { stopRecorder(); localTracks.forEach((t) => { try { t.stop(); } catch {} }); if (room) room.disconnect(); });
+</script></body></html>

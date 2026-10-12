@@ -1,0 +1,48 @@
+{
+  "research_goal": "了解新加坡消费者如何发现、评估并首次购买海外护肤品牌，找出阻碍尝试的主要顾虑。",
+  "participant_topic": "护肤品选购",
+  "language": "zh",
+  "duration_min": 60,
+  "warmup_questions": [
+    "先请您简单说说，您平时的护肤习惯是怎样的？",
+    "您最近一次买护肤品，是怎么买的？"
+  ],
+  "topics": [
+    {
+      "id": "discovery",
+      "title": "发现与评估新品牌",
+      "questions": [
+        "您一般是从哪里知道一个新的护肤品牌的？",
+        "看到一个没用过的海外品牌时，您会怎么判断它值不值得试？"
+      ],
+      "must_cover": [
+        {"id": "d_channels", "text": "信息来源渠道（社媒、朋友、电商等）"},
+        {"id": "d_trust", "text": "判断可信度的依据"},
+        {"id": "d_price", "text": "对价格的预期"}
+      ]
+    },
+    {
+      "id": "barriers",
+      "title": "尝试新品牌的顾虑",
+      "questions": [
+        "买海外新品牌时，什么最让您犹豫？",
+        "有没有哪次本来想买、最后却没买的经历？"
+      ],
+      "must_cover": [
+        {"id": "b_authentic", "text": "对真假货的担心"},
+        {"id": "b_cert", "text": "认证（如清真认证）的重要性"},
+        {"id": "b_return", "text": "退换货与售后"},
+        {"id": "b_delivery", "text": "配送速度"}
+      ],
+      "weight": 1.2
+    }
+  ],
+  "hypotheses": [
+    "清真认证是马来族消费者尝试新品牌的门槛条件",
+    "退货政策比价格更能降低首次尝试的顾虑"
+  ],
+  "forbidden_topics": ["政治", "宗教信仰本身的评价", "收入具体数字"],
+  "brand_disclosure_allowed": false,
+  "client_brand_names": ["Lumina Skin"],
+  "product_facts": []
+}
