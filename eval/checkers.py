@@ -47,6 +47,7 @@ class SessionCheck(BaseModel):
     core_topics_reached: int
     deep_topics: int
     time_deviation: float | None  # only for interviews that ended normally
+    nothing_to_say: bool = False  # the simulated participant has nothing to say by design (silent / resistant)
     excused_under_run: bool = False  # ended early, but the participant had nothing to say by design (see NOTHING_TO_SAY_PERSONAS)
     latencies: list[float]
     fallbacks: int
@@ -65,7 +66,7 @@ def check_session(result: SessionResult, scenario: Scenario, guide: InterviewGui
         scenario_id=result.scenario_id, findings=_red_lines(result, guide), expectation_failures=_expectations(result, scenario), not_reached=_not_reached(result, scenario),
         coverage=_coverage(result), repeats=count_repeats(t.ai for t in result.turns if t.ai),
         followups=_followups(result.turns)[0], followup_hits=_followups(result.turns)[1], core_topics_reached=_depth(result)[0],
-        deep_topics=_depth(result)[1], time_deviation=_time_deviation(result), excused_under_run=_excused_under_run(result, scenario), latencies=[t.latency_s for t in result.turns if t.operator],
+        deep_topics=_depth(result)[1], time_deviation=_time_deviation(result), nothing_to_say=scenario.persona in NOTHING_TO_SAY_PERSONAS, excused_under_run=_excused_under_run(result, scenario), latencies=[t.latency_s for t in result.turns if t.operator],
         fallbacks=sum(t.used_fallback for t in result.turns), completed=result.end_reason is EndReason.COMPLETED, error=result.error or _internal_error_text(result))
 
 

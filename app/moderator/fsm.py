@@ -31,6 +31,7 @@ ALLOWED_TRANSITIONS: dict[Phase, frozenset[Phase]] = {
     Phase.WRAPUP: frozenset({Phase.ENDED}),
     Phase.ENDED: frozenset(),
 }
+WRAPUP_RESERVE_EXCHANGES = 2  # the wrap-up is a closing question and its answer
 QUESTION_LIST_PHASES = frozenset({Phase.WARMUP, Phase.STIMULI})
 FOLLOWUP_PHASES = frozenset({Phase.WARMUP, Phase.CORE, Phase.STIMULI})
 
@@ -160,6 +161,7 @@ class InterviewStateMachine:
         self._stimulus_questions = [q for s in guide.stimuli for q in s.questions]
         self._recovery_queue: list[MustCoverItem] = []
         self._core_used_s = 0.0  # time the finished core topics actually used (the rest is shared out, see _topic_budget_now)
+        self._answers = 0            # answers taken so far (the average length of an exchange sets how much time the wrap-up needs)
         self._dry_streak = 0         # empty answers in a row since the phase / topic began
         self._last_try_used = False  # the one fresh-angle question of this phase / topic has been asked
 
@@ -415,7 +417,7 @@ class InterviewStateMachine:
             return self._enter_wrapup(TransitionReason.NO_NEW_INFO)  # near the end and nothing more to get: thank and finish
         if not self._recovery_queue:
             return self._enter_wrapup(TransitionReason.MISSED_ITEMS)
-        if self._elapsed() + self.budget.phase_s[Phase.WRAPUP] >= self.budget.total_s:
+        if self._elapsed() + self._wrapup_reserve() >= self.budget.total_s:
             return self._enter_wrapup(TransitionReason.PHASE_TIME_UP)
         item = self._recovery_queue.pop(0)
         self._asked_items.add(item.id)
@@ -475,13 +477,24 @@ class InterviewStateMachine:
         return self._decision(PacingAction.END, reason, end_reason=end_reason)
 
     # ---------- helpers ----------
-    def _topic_budget_now(self, index: int) -> float:
-        """Time for topic number `index` when it starts: what the core has left, shared by weight among this and the later topics.
+    def _wrapup_reserve(self) -> float:
+        """Seconds to keep for the wrap-up: its planned time, or two exchanges at the pace of this interview if that is longer.
 
-        A topic that finished early leaves its unused time to the ones after it (they can then dig deeper); a topic that ran over
-        leaves them less. The first topic gets exactly its planned share."""
+        A participant who gives two-minute answers needs more than the planned wrap-up minutes for the closing question and
+        its answer; reserving only the plan let those interviews run over the time gate."""
+        average_exchange_s = self._elapsed() / max(1, self._answers)
+        return max(self.budget.phase_s[Phase.WRAPUP], WRAPUP_RESERVE_EXCHANGES * average_exchange_s)
+
+    def _topic_budget_now(self, index: int) -> float:
+        """Time for topic number `index` when it starts: what is really left, shared by weight among this and the later topics.
+
+        "Left" = the planned total minus the time already used, minus what the phases after the core still need (stimuli,
+        recovery, wrap-up). Time the earlier phases or topics did not use goes to the topics after them (they can dig deeper);
+        a topic or phase that ran over leaves them less. The first topic of a 60-minute interview that opened quickly therefore
+        gets more than its planned share instead of the interview ending early with the time unspent."""
         topics = self.guide.topics[index:]
-        remaining_core = max(0.0, self.budget.phase_s[Phase.CORE] - self._core_used_s)
+        reserved = self.budget.phase_s.get(Phase.STIMULI, 0.0) + self.budget.phase_s.get(Phase.RECOVERY, 0.0) + self._wrapup_reserve()
+        remaining_core = max(0.0, self.budget.total_s - self._elapsed() - reserved)
         return remaining_core * topics[0].weight / sum(t.weight for t in topics)
 
     def _apply(self, update: TurnUpdate) -> None:
@@ -492,6 +505,7 @@ class InterviewStateMachine:
         if unknown:
             log.warning("moderator model reported %d unknown must-cover id(s); ignored", len(unknown))
         self._covered |= {i for i in update.covered_item_ids if i in self._known_items}
+        self._answers += 1
         self._dry_streak = self._dry_streak + 1 if update.dry else 0
         if self._phase is Phase.CORE:
             progress = self._progress[self.current_topic.id]

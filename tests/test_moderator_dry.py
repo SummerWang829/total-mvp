@@ -263,3 +263,16 @@ def test_the_report_counts_the_excused_runs_and_still_shows_the_strict_figure():
     metric = next(m for m in _metrics(rows, {}, None) if m.name.startswith("时间偏差"))
     assert abs(metric.value - 2 / 3) < 1e-9 and metric.passed is False
     assert "1 场" in metric.note and "33.3%" in metric.note  # excused count and the strict figure (1 of 3) are both on the report
+
+
+# ---------- the wrap-up keeps enough time for a talkative participant ----------
+def test_a_participant_with_long_answers_gets_a_longer_wrap_up_reserve_so_the_interview_ends_on_time():
+    fsm, clock = machine()
+    fsm.start()
+    fsm.participant_ready()
+    planned = fsm.budget.phase_s[Phase.WRAPUP]
+    assert fsm._wrapup_reserve() == planned  # nothing said yet: the plan
+    for _ in range(4):
+        clock.advance(300.0)  # five-minute exchanges
+        fsm.record_turn(TurnUpdate(information_gain=0.6))
+    assert fsm._wrapup_reserve() > planned and fsm._wrapup_reserve() >= 2 * fsm.snapshot().elapsed_s / 5

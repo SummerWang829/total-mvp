@@ -208,7 +208,7 @@ def test_topic_turn_limit():
 def test_topic_time_limit():
     fsm, clock = machine()
     to_core(fsm)
-    clock.advance(fsm.budget.topic_s["discovery"])
+    clock.advance(fsm.snapshot().topic_budget_s)
     d = fsm.record_turn(STAY)
     assert d.reason is TransitionReason.TOPIC_TIME_UP and d.topic_id == "barriers"
 
@@ -533,6 +533,20 @@ def test_exploring_can_be_switched_off_and_never_beats_the_hard_limits():
     assert reasons[-1] is TransitionReason.TOPIC_TURN_LIMIT
 
 
+def _left_for_the_core(fsm: InterviewStateMachine) -> float:
+    """What a topic that starts now may use: the planned total minus the time already used and minus the later phases' own budgets."""
+    later = fsm.budget.phase_s.get(Phase.STIMULI, 0.0) + fsm.budget.phase_s.get(Phase.RECOVERY, 0.0) + fsm._wrapup_reserve()
+    return fsm.budget.total_s - fsm.snapshot().elapsed_s - later
+
+
+def test_time_the_early_phases_did_not_use_goes_to_the_first_topic():
+    fsm, _ = machine()
+    to_core(fsm)  # the intro and the warm-up took no time at all
+    weights = [topic.weight for topic in guide().topics]
+    assert fsm.snapshot().topic_budget_s == pytest.approx(_left_for_the_core(fsm) * weights[0] / sum(weights))  # its share of everything that is left
+    assert fsm.snapshot().topic_budget_s > fsm.budget.topic_s["discovery"]  # more than its planned share: nothing is left unspent
+
+
 def test_time_a_topic_did_not_use_goes_to_the_topics_after_it():
     fsm, clock = machine()
     to_core(fsm)
@@ -541,7 +555,7 @@ def test_time_a_topic_did_not_use_goes_to_the_topics_after_it():
     fsm.record_turn(TurnUpdate(saturation=0.9, information_gain=0.0))
     s = fsm.snapshot()
     assert s.topic_id == "barriers" and s.topic_budget_s > fsm.budget.topic_s["barriers"]
-    assert s.topic_budget_s == pytest.approx(fsm.budget.phase_s[Phase.CORE] - planned * 0.25)  # all that is left, the last topic gets it all
+    assert s.topic_budget_s == pytest.approx(_left_for_the_core(fsm))  # all that is left, the last topic gets it all
 
 
 def test_a_topic_that_ran_over_leaves_the_next_one_less():
@@ -550,7 +564,7 @@ def test_a_topic_that_ran_over_leaves_the_next_one_less():
     clock.advance(fsm.snapshot().topic_budget_s)  # the whole budget used up
     fsm.record_turn(TurnUpdate())
     s = fsm.snapshot()
-    assert s.topic_id == "barriers" and s.topic_budget_s == pytest.approx(fsm.budget.phase_s[Phase.CORE] - fsm.budget.topic_s["discovery"])
+    assert s.topic_id == "barriers" and s.topic_budget_s == pytest.approx(_left_for_the_core(fsm))
 
 
 def test_prepared_questions_still_come_in_order_after_exploring_and_probing():
@@ -628,4 +642,5 @@ def test_the_exploring_operators_take_turns():
     while d.action is PacingAction.EXPLORE:
         seen.append(choose_operator(RespondentInputAnalysis(), d, "一段足够长的回答，里面有原因。").operator)
         d = fsm.record_turn(TurnUpdate(question_answered=True, information_gain=GAIN))
-    assert seen == list(EXPLORE_ROTATION)[:len(seen)] and len(set(seen)) == len(seen) and Operator.REFLECT not in seen
+    assert seen == [EXPLORE_ROTATION[i % len(EXPLORE_ROTATION)] for i in range(len(seen))] and Operator.REFLECT not in seen
+    assert len(set(seen[:len(EXPLORE_ROTATION)])) == min(len(seen), len(EXPLORE_ROTATION))  # a different kind each time, until the rotation starts over

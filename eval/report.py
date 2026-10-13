@@ -99,6 +99,8 @@ def _metrics(checks: list[SessionCheck], judged: dict[str, JudgeScores], calibra
     """The task doc 6.3 metrics with their gates."""
     covered = [c.coverage for c in checks if c.coverage is not None]  # completed interviews only
     coverage = _share(sum(covered), len(covered))
+    talkers = [c.coverage for c in checks if c.coverage is not None and not c.nothing_to_say]
+    coverage_talkers = _share(sum(talkers), len(talkers))
     followup = _share(sum(c.followup_hits for c in checks), sum(c.followups for c in checks))
     depth = _share(sum(c.deep_topics for c in checks), sum(c.core_topics_reached for c in checks))
     timed = [c for c in checks if c.time_deviation is not None]
@@ -114,7 +116,7 @@ def _metrics(checks: list[SessionCheck], judged: dict[str, JudgeScores], calibra
     gate = lambda v, ok: None if v is None else ok  # noqa: E731
     return [
         Metric(name="提纲必问要素覆盖率", value=coverage, gate=f"≥ {GATE_COVERAGE:.0%}", passed=gate(coverage, coverage is not None and coverage >= GATE_COVERAGE),
-               note=f"只统计正常结束的 {len(covered)} 场；“覆盖”= 已问到或已被回答"),
+               note=f"只统计正常结束的 {len(covered)} 场；“覆盖”= 已问到或已被回答。不含沉默型/抗拒型（没话可说时不凑问题，最后阶段致谢结束，漏掉的必问项因此更多）：{coverage_talkers:.1%}" if coverage_talkers is not None else ""),
         Metric(name="过渡时机正确率", value=None, gate=f"≥ {GATE_TRANSITION_TIMING:.0%}", passed=None, note="需要人工标注，未测"),
         Metric(name="追问命中率", value=followup, gate=f"≥ {GATE_FOLLOWUP_HIT:.0%}", passed=gate(followup, followup is not None and followup >= GATE_FOLLOWUP_HIT)),
         Metric(name="核心主题到达原因/价值层", value=depth, gate=f"≥ {GATE_DEPTH:.0%}", passed=gate(depth, depth is not None and depth >= GATE_DEPTH)),
