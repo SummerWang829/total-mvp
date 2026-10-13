@@ -42,25 +42,20 @@ def test_by_default_an_answer_with_substance_after_the_extra_question_keeps_the_
     assert fsm.record_turn(RICH).action is not PacingAction.NEXT_TOPIC
 
 
-def test_by_default_in_the_recovery_one_empty_answer_means_thank_and_finish():
+def test_in_the_recovery_every_missed_item_is_still_asked_once_even_when_the_answers_are_empty():
     fsm, _ = machine()
     to_core(fsm)
-    fsm.record_turn(DRY)
-    fsm.record_turn(DRY)  # topic 1 left
-    fsm.record_turn(DRY)
-    d = fsm.record_turn(DRY)  # topic 2 left -> recovery
+    for _ in range(4):
+        d = fsm.record_turn(DRY)  # both topics are left (one extra question each)
     assert d.phase is Phase.RECOVERY
-    assert fsm.record_turn(DRY).phase is Phase.WRAPUP
-
-
-
-def test_two_empty_answers_in_a_row_get_one_last_try_from_a_fresh_angle():
-    fsm, _ = machine(dry_streak_limit=2)
-    to_core(fsm)
-    assert fsm.record_turn(DRY).action is PacingAction.CONTINUE  # one empty answer is not yet a pattern
-    d = fsm.record_turn(DRY)
-    assert d.action is PacingAction.LAST_TRY and d.reason is TransitionReason.LAST_TRY and d.phase is Phase.CORE
-    assert d.followup_allowed and fsm.snapshot().followups_used == 0  # it is a new question
+    asked = [d.missed_item.id]
+    missed = {i.id for i in fsm.missed_items() if i.id not in fsm.asked_items} | set(asked)  # the first one is being asked right now
+    while d.phase is Phase.RECOVERY:
+        d = fsm.record_turn(DRY)  # empty answers do not end the recovery
+        if d.phase is Phase.RECOVERY:
+            asked.append(d.missed_item.id)
+    assert set(asked) == missed and len(asked) == len(set(asked))  # all asked, none twice
+    assert d.phase is Phase.WRAPUP
 
 
 def test_when_the_last_try_brings_nothing_either_the_next_topic_starts():
@@ -115,18 +110,6 @@ def test_the_last_topic_running_dry_still_ends_in_order():
     _dry_turns(fsm, 3)  # topic 1 -> topic 2
     d = _dry_turns(fsm, 3)  # topic 2 runs dry too
     assert d.phase in (Phase.RECOVERY, Phase.WRAPUP)  # unasked items are asked once in the recovery; with none, straight to the wrap-up
-
-
-def test_near_the_end_two_empty_answers_mean_thank_and_finish_without_asking_the_rest():
-    fsm, _ = machine(dry_streak_limit=2)
-    to_core(fsm)
-    d = _dry_turns(fsm, 3)  # topic 1 left (streak resets with it)
-    d = _dry_turns(fsm, 3)  # topic 2 left -> recovery with unasked items
-    assert d.phase is Phase.RECOVERY and d.missed_item is not None
-    assert fsm.record_turn(DRY).phase is Phase.RECOVERY  # the first empty answer there: one more item is still asked
-    d = fsm.record_turn(DRY)
-    assert d.phase is Phase.WRAPUP and d.reason is TransitionReason.NO_NEW_INFO
-    assert fsm.record_turn(TurnUpdate()).action is PacingAction.END
 
 
 def test_a_participant_who_keeps_giving_content_is_never_cut_short():

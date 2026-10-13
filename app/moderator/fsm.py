@@ -411,10 +411,9 @@ class InterviewStateMachine:
 
     def _on_recovery(self, update: TurnUpdate) -> PacingDecision:
         """RECOVERY: each never-asked missed item is asked once (no follow-ups), while time before the planned end
-        still leaves room for the wrap-up; then wrap up."""
+        still leaves room for the wrap-up; then wrap up. A short answer does not stop it: the must-cover items are what the
+        research needs, so even a participant with little to say is asked each of them once (user decision 2026-10-13)."""
         self._recovery_queue = [i for i in self._recovery_queue if i.id not in self._covered]
-        if self._dry_streak >= self.config.dry_streak_limit:
-            return self._enter_wrapup(TransitionReason.NO_NEW_INFO)  # near the end and nothing more to get: thank and finish
         if not self._recovery_queue:
             return self._enter_wrapup(TransitionReason.MISSED_ITEMS)
         if self._elapsed() + self._wrapup_reserve() >= self.budget.total_s:
