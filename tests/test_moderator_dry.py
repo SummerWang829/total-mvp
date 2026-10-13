@@ -10,6 +10,7 @@ from app.moderator.operators import choose_operator, counts_as_followup
 from app.moderator.prompts import load_prompts
 from app.moderator.schemas import RespondentInputAnalysis
 from eval.models import load_guide
+from app.moderator.pacing import PacingConfig
 from tests.test_moderator_engine import GUIDE, engine, say, started
 from tests.test_moderator_fsm import ANSWERED, guide, machine, to_core
 
@@ -184,7 +185,7 @@ def test_prompt_v004_tells_the_model_how_to_move_on_and_what_a_fresh_angle_is():
 
 # ---------- the engine decides what counts as an empty answer ----------
 def _engine():
-    e, _ = started([{"category": "too_short", "signals": {"information_gain": 0.05}}], [say("您平时用什么护肤品？")])
+    e, _ = started([{"category": "too_short", "signals": {"information_gain": 0.05}}], [say("您平时用什么护肤品？")], PacingConfig())
     return e
 
 
@@ -201,14 +202,14 @@ def test_only_short_answers_that_add_nothing_and_cover_nothing_are_empty():
 
 
 def test_in_english_the_length_is_counted_in_words():
-    e, _ = engine([{"category": "too_short"}], [say("What do you use?")], guide=load_guide("sg_food_delivery_en"))
+    e, _ = engine([{"category": "too_short"}], [say("What do you use?")], guide=load_guide("sg_food_delivery_en"), config=PacingConfig())
     a = RespondentInputAnalysis.model_validate({"category": "too_short", "signals": {"information_gain": 0.0}})
     assert e._is_dry(a, "Not sure, really.") and not e._is_dry(a, "I really have not thought about it that much before, to be honest with you.")
 
 
 def test_a_silent_participant_gets_one_fresh_angle_then_a_move_on_in_the_conversation():
     short = {"category": "too_short", "ladder_level": "fact", "signals": {"information_gain": 0.05}}
-    e, _ = started([short], [say("您平时用什么护肤品？"), say("那最近一次买的是什么？"), say("上周有没有逛过护肤品的店？"), say("您一般在哪里看评价？")])
+    e, _ = started([short], [say("您平时用什么护肤品？"), say("那最近一次买的是什么？"), say("上周有没有逛过护肤品的店？"), say("您一般在哪里看评价？")], PacingConfig())
     seen = []
     for answer in ("面霜。", "保湿的。", "不记得。", "没有。", "嗯。", "不知道。", "没了。", "随便。", "不清楚。", "没有。"):
         p = e.handle_participant(answer)

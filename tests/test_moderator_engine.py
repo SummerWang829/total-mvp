@@ -52,16 +52,20 @@ def say(text: str) -> dict:
     return {"spoken_response": text, "note": {"research_purpose": "了解渠道", "expected_information": "具体平台", "probe_logic": "先事实后原因"}}
 
 
-def engine(analyses: list, drafts: list, guide: InterviewGuide = GUIDE) -> tuple[ModeratorEngine, Model]:
+# The empty-answer rule (test_moderator_dry.py) is switched off for the tests about other things: their plain fixture answers are short
+# and score low, which would trigger it. Tests of the rule pass PacingConfig() (the real defaults).
+NO_DRY_RULE = PacingConfig(dry_streak_limit=10)
+
+
+def engine(analyses: list, drafts: list, guide: InterviewGuide = GUIDE, config: PacingConfig = NO_DRY_RULE) -> tuple[ModeratorEngine, Model]:
     model = Model(analyses, drafts)
-    # these tests are about other things: their plain fixture answers (information 0.25) must not count as empty; test_moderator_dry.py uses the real default
-    e = ModeratorEngine(guide, model.chat, prompts=PROMPTS, config=PacingConfig(dry_answer_gain=0.2), clock=ManualClock())
+    e = ModeratorEngine(guide, model.chat, prompts=PROMPTS, config=config, clock=ManualClock())
     return e, model
 
 
-def started(analyses: list, drafts: list) -> tuple[ModeratorEngine, Model]:
+def started(analyses: list, drafts: list, config: PacingConfig = NO_DRY_RULE) -> tuple[ModeratorEngine, Model]:
     """Opened and past the intro (now on the first warm-up question)."""
-    e, model = engine([READY, *analyses], [say(GUIDE.warmup_questions[0]), *drafts])
+    e, model = engine([READY, *analyses], [say(GUIDE.warmup_questions[0]), *drafts], config=config)
     e.open()
     e.handle_participant("好的，可以开始")
     return e, model
@@ -501,7 +505,7 @@ def test_behind_schedule_a_shallow_answer_is_not_followed_up_but_the_next_item_i
     shallow = {"category": "answered", "ladder_level": "fact", "saturation": 0.2, "question_answered": True}
     clock = ManualClock()
     model = Model([READY, shallow], [say(GUIDE.warmup_questions[0]), say("您一般从哪些渠道知道新品牌？")])
-    e = ModeratorEngine(GUIDE, model.chat, prompts=PROMPTS, clock=clock)
+    e = ModeratorEngine(GUIDE, model.chat, prompts=PROMPTS, config=NO_DRY_RULE, clock=clock)
     e.open()
     e.handle_participant("好的，可以开始")
     e.fsm.record_turn(TurnUpdate(question_answered=True, information_gain=0.8))
