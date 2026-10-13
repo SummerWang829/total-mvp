@@ -9,7 +9,7 @@ from starlette.responses import Response
 from .config import settings
 from .db import Base, engine
 from .recording import start_worker
-from .routers import auth, interviews, overview, projects, public
+from .routers import ai_room, auth, interviews, overview, projects, public
 
 @asynccontextmanager
 async def lifespan(_app):
@@ -20,7 +20,7 @@ async def lifespan(_app):
 
 
 app = FastAPI(title="星桐 TOTAL MVP", version="0.1.0", lifespan=lifespan)
-for r in (auth.router, projects.router, interviews.router, overview.router, public.router):
+for r in (auth.router, projects.router, interviews.router, overview.router, public.router, ai_room.router):
     app.include_router(r)
 
 

@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from .. import ai_room
 from ..audit import audit
 from ..config import settings
 from ..db import get_db
@@ -217,7 +218,7 @@ def room_token(iid: str, request: Request, body: TokenReq | None = None, ctx: Ct
     token = build_room_token(identity=f"{'obs' if role == 'observer' else 'staff'}:{ctx.user.id}", name=ctx.user.name, room=itv.room_name, role=role)
     audit(db, ctx.org_id, ctx.actor, "room.token", itv.id, ip=ctx.ip, role=role)
     db.commit()
-    return {"token": token, "url": url_for_client(request.headers.get("host")), "room": itv.room_name, "role": role, "dev_mode": not settings.livekit_url}
+    return {"token": token, "url": url_for_client(request.headers.get("host")), "room": itv.room_name, "role": role, "dev_mode": not settings.livekit_url, "moderation": itv.moderation}
 
 
 @router.post("/interviews/{iid}/start")
@@ -249,6 +250,7 @@ def end_interview(iid: str, ctx: Ctx = Depends(require_roles("admin", "researche
         if rec := _active_recording(db, iid):
             _stop_recording(db, rec)
         itv.status, itv.ended_at = "ended", utcnow()
+        ai_room.finalize(db, itv)  # an AI-moderated chat becomes the transcript
         audit(db, ctx.org_id, ctx.actor, "interview.end", itv.id)
         db.commit()
         delete_room(itv.room_name)  # everyone is removed from the video room

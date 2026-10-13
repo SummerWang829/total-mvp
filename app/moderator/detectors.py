@@ -8,7 +8,7 @@ import re
 
 # Each list: English patterns (word boundaries, case-insensitive) and Chinese substrings/patterns.
 _CRISIS = [
-    r"\bkill (?:myself|me)\b", r"\bsuicid", r"\bend (?:my|it) (?:life|all)\b", r"\bhurt(?:ing)? myself\b", r"\bself[- ]harm",
+    r"\bkill (?:myself|me)\b", r"\bsuicid", r"\bend(?:ing)? (?:my|it) (?:own )?(?:life|all)\b", r"\btake my own life\b", r"\bthinking (?:of|about) (?:dying|suicide)\b", r"\bkeep thinking about dying\b", r"\bhurt(?:ing)? myself\b", r"\bself[- ]harm",
     r"\bdon'?t want to (?:live|be alive)\b", r"\bno reason to live\b", r"\bwant to die\b", r"\bbetter off dead\b",
     r"自杀", r"不想活", r"轻生", r"伤害自己", r"结束(?:自己的)?生命", r"想死", r"活着没(?:有)?意思", r"自残", r"割腕", r"跳楼",
 ]

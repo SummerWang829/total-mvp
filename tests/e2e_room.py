@@ -375,6 +375,68 @@ def run(tmp):
         except urllib.error.HTTPError as e:
             ok(e.code == 409, "ended interview refuses new tokens")
         pm.screenshot(path=f"{SHOTS}/e2e_room_ended.png")
+
+        # ---- AI moderation (Sprint 5): the same three real browsers + real video room, the moderator is the AI ----
+        part2 = call(f"/projects/{pid}/participants", {"name": "Priya Nair", "country": "SG", "language": "en"}, tok["researcher"])
+        ai = call(f"/projects/{pid}/interviews", {"participant_id": part2["id"], "title": "AI 深访", "moderator_id": ids["moderator"], "observer_ids": [ids["observer"]],
+                                                  "moderation": "ai"}, tok["researcher"])
+        aid, atk = ai["id"], ai["invite_token"]
+        call(f"/public/join/{atk}/device", {"camera": True, "microphone": True, "speaker": True})
+        ok(urllib.request.urlopen(urllib.request.Request(f"{B}/api/public/join/{atk}")).status == 200, "AI interview: the invitation opens")
+        try:
+            call(f"/public/join/{atk}/consent", {"country": "SG", "recording": True, "observers": True, "cross_border": True})
+            ok(False, "AI interview: consent without the AI box must be refused")
+        except urllib.error.HTTPError as e:
+            ok(e.code == 422, "AI interview: consent without the AI box is refused")
+        call(f"/public/join/{atk}/consent", {"country": "SG", "recording": True, "observers": True, "cross_border": True, "ai": True})
+        call(f"/interviews/{aid}/start", {}, tok["moderator"])
+        call(f"/interviews/{aid}/admit", {"admit": True}, tok["moderator"])
+        cam, pam = ctx("ai-moderator", tok["moderator"])
+        cap, pap = ctx("ai-participant")
+        cao, pao = ctx("ai-observer", tok["observer"])
+        pam.goto(f"{B}/room.html?i={aid}&as=moderator"); pap.goto(f"{B}/room.html?t={atk}"); pao.goto(f"{B}/room.html?i={aid}&as=observer")
+        in_room = lambda pg: pg.evaluate("() => room && room.state === 'connected'")
+        ok(wait_for(lambda: in_room(pam) and in_room(pap) and in_room(pao), 30), "AI interview: everybody is in the real video room")
+        ok(pam.evaluate("() => room.remoteParticipants.size") == 1 and pap.evaluate("() => room.remoteParticipants.size") == 1,
+           "AI interview: the observer is still invisible to the moderator and the participant")
+        ok(pao.locator("#a-start, #a-take, #a-back, #wform, #hform").count() == 0, "AI interview: the observer has no controls")
+        ok("还没有启动" in pam.inner_text("#aist") and pap.is_disabled("#cin"), "AI interview: nothing is said and the participant cannot type before the AI is started")
+        pam.click("#a-start")
+        ok(wait_for(lambda: "AI moderator" in pap.inner_text("#clog") and "not a real person" in pap.inner_text("#clog"), 15),
+           "AI interview: the participant sees the AI's opening, which says it is an AI")
+        ok(wait_for(lambda: pap.is_enabled("#cin"), 10), "AI interview: the participant can type")
+        pap.fill("#cin", "I usually order lunch on Grab because it is quick."); pap.click("#csend")
+        ok(wait_for(lambda: pap.locator("#clog .m").count() >= 3, 20), "AI interview: the participant's answer is followed by the AI's next question")
+        ok("Grab" in pao.inner_text("#clog") or wait_for(lambda: "Grab" in pao.inner_text("#clog"), 10), "AI interview: the hidden observer follows the conversation")
+        pam.fill("#win", "Ask about delivery fees next"); pam.click("#wsend")
+        ok(wait_for(lambda: "Ask about delivery fees" in pam.inner_text("#clog"), 10), "AI interview: the whisper is in the team's log")
+        ok("delivery fees" not in pap.inner_text("body") and "delivery fees" not in pao.inner_text("body"), "AI interview: whispers never reach the participant or the observer")
+        pam.click("#a-take")
+        ok(wait_for(lambda: pam.is_visible("#hform"), 10), "AI interview: after taking over the moderator can reply")
+        n = pap.locator("#clog .m").count(); pap.fill("#cin", "Let me think about it."); pap.click("#csend")
+        ok(wait_for(lambda: pap.locator("#clog .m").count() == n + 1, 10), "AI interview: the participant's line is stored while a human has control")
+        time.sleep(3); ok(pap.locator("#clog .m").count() == n + 1, "AI interview: the AI stays silent while a human has control")
+        pam.fill("#hin", "Take your time, there is no rush."); pam.click("#hsend")
+        ok(wait_for(lambda: "Take your time" in pap.inner_text("#clog"), 10), "AI interview: the moderator's own line reaches the participant")
+        pam.click("#a-back")
+        ok(wait_for(lambda: "AI 正在主持" in pam.inner_text("#aist"), 10), "AI interview: the AI takes over again after the hand back")
+        pap.fill("#cin", "Honestly I want to end my life."); pap.click("#csend")
+        ok(wait_for(lambda: pam.is_visible("#aalert") and "红色" in pam.inner_text("#aalert"), 15), "AI interview: a crisis raises a red alert for the moderator")
+        ok(wait_for(lambda: "995" in pap.inner_text("#clog"), 10), "AI interview: the participant gets the fixed safety message with the hotline")
+        ok("红色" not in pap.inner_text("body") and "红色" not in pao.inner_text("body"), "AI interview: the alert is for the team only")
+        pam.screenshot(path=f"{SHOTS}/e2e_ai_room_moderator.png"); pap.screenshot(path=f"{SHOTS}/e2e_ai_room_participant.png")
+        for name, page in (("ai-moderator", pam), ("ai-participant", pap)):  # both colour themes in the real room too
+            page.click("#theme"); ok("t-dark" in page.evaluate("document.body.className"), f"{name}: dark green works in the AI room")
+            audit(page, f"{name}/ai-room/dark")
+            page.click("#theme")
+        pam.click("#b-end")
+        ok(wait_for(lambda: "thank you" in pap.inner_text("#msg").lower(), 15), "AI interview: the participant sees the thank-you after the end")
+        aseg = call(f"/interviews/{aid}/transcript", token=tok["researcher"])
+        ok({"ai_moderator", "participant", "moderator"} <= {s["speaker"] for s in aseg}, f"AI interview: the transcript labels the AI, the human moderator and the participant ({sorted({s['speaker'] for s in aseg})})")
+        ok(not any("delivery fees" in s["text_orig"] for s in aseg), "AI interview: whispers are not in the transcript")
+        for c in (cam, cap, cao):
+            c.close()
+
         finish(br, errs, n_before_end)
 
 

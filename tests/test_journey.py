@@ -171,3 +171,11 @@ def test_activity_says_failed_device_tests_and_folds_repeats(org):
     assert whats[:2] == ["完成了设备检测", "设备检测未通过"]  # newest first; two repeats each fold into one line
     s = org.c.get(f"/api/projects/{pid}/overview", headers=org.h()).json()["summary"]
     assert s["ended"] == 0 and s["transcribed"] == 0
+
+
+def test_timestamps_never_repeat_so_lists_sorted_by_time_have_a_stable_order():
+    """The Windows clock ticks every ~15 ms: two events in one tick used to share a timestamp and swap places (a flaky activity feed)."""
+    from app.models import utcnow
+
+    stamps = [utcnow() for _ in range(2000)]
+    assert stamps == sorted(stamps) and len(set(stamps)) == len(stamps)

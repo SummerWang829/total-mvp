@@ -253,6 +253,29 @@ body.participant .tag.o,body.participant .tag.live,.stage.t-light .tag.o,.stage.
 .bar button[aria-pressed=true]{border-color:#FF6A00;box-shadow:inset 0 0 0 1px #FF6A00}
 .bar button:disabled{opacity:1;background:var(--r-dis);border:1px dashed var(--r-btnline);color:var(--r-disink)}
 @media (max-width:1100px){.rbody{grid-template-columns:1fr}.rpan.side{order:2}}
+
+/* ---------- AI moderation: the text chat (participant) and the AI panel (team) ---------- */
+.chat{display:flex;flex-direction:column;gap:8px}
+.chat .log{display:flex;flex-direction:column;gap:8px;max-height:340px;min-height:96px;overflow:auto;padding:2px}
+.chat .m{max-width:90%;padding:8px 12px;border-radius:12px;font-size:14.5px;line-height:1.5;background:var(--r-tile);color:var(--r-ink);overflow-wrap:anywhere;align-self:flex-start}
+.chat .m .who{display:block;font-size:12.5px;color:var(--r-mut);margin-bottom:2px}
+.chat .m.me{align-self:flex-end;background:var(--r-btn);border:1px solid var(--orange)}
+.chat .m.whisper{background:transparent;border:1px dashed var(--r-btnline);align-self:stretch;max-width:100%}
+.chat .m.human{border:1px solid var(--r-btnline)}
+.chat .m details{margin-top:4px;font-size:13px;color:var(--r-mut)}
+.chat .m details summary{cursor:pointer;min-height:24px}
+.chat form{display:flex;gap:8px;align-items:flex-end}
+.chat form textarea,.rpan textarea{flex:1;min-width:0;min-height:44px;resize:vertical;font:inherit;font-size:15px;padding:8px 10px;border-radius:10px;border:1px solid var(--r-btnline);background:var(--r-btn);color:var(--r-btnink)}
+.chat form button,.rpan form button{flex:none;min-height:40px;background:var(--r-btn);border-color:var(--r-btnline);color:var(--r-btnink)}
+.chat form button.p,.rpan form button.p{background:var(--orange);border-color:var(--orange);color:var(--on-orange)}
+.chat form button:disabled,.rpan form button:disabled{background:var(--r-dis);border:1px dashed var(--r-btnline);color:var(--r-disink)}
+.chat .closed{font-size:14px;color:var(--r-mut);margin:0}
+.rpan form{display:flex;flex-direction:column;gap:6px}
+.rpan form label{font-size:13px;color:var(--r-mut)}
+.alertbox{padding:10px 12px;border-radius:10px;border:1px solid var(--r-badline);background:var(--r-bad);color:var(--r-badink);font-size:14px;font-weight:600;display:flex;flex-direction:column;gap:8px}
+.alertbox.yellow{border-color:var(--r-h);color:var(--r-ink);background:var(--r-pan)}
+.alertbox button{align-self:flex-start;min-height:36px;background:var(--r-btn);border-color:var(--r-btnline);color:var(--r-btnink)}
+.stage.solo .rpan.chat{margin-top:12px;align-self:auto}
 /* the participant sees one simple column, never the internal side panels */
 .stage.solo .rbody{display:block;max-width:960px;margin:0 auto}
 /* ---------- list tables become cards on phones (labels come from the header row) ---------- */

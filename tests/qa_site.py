@@ -184,7 +184,8 @@ def seed():
     itv["en2"] = call(f"/projects/{pid}/interviews", {"participant_id": p2["id"], "title": "深访 en2", "language": "en"}, adm)  # untouched: used for the consent journey
     for lang in ("en", "zh", "ms", "ta"):  # AI-moderated sessions: their consent page must disclose the AI (task doc part 3)
         pa = mk(f"AI {lang}", lang=lang)
-        itv[f"ai_{lang}"] = call(f"/projects/{pid}/interviews", {"participant_id": pa["id"], "title": f"AI 深访 {lang}", "language": lang, "moderation": "ai"}, adm)
+        itv[f"ai_{lang}"] = call(f"/projects/{pid}/interviews", {"participant_id": pa["id"], "title": f"AI 深访 {lang}", "language": lang, "moderation": "ai",
+                                                            "moderator_id": ids["moderator"], "observer_ids": [ids["observer"]]}, adm)
     main_i = itv["en"]
     # drive the main interview through the whole pipeline
     call(f"/public/join/{main_i['invite_token']}/consent", {"country": "SG", "recording": True, "observers": True, "cross_border": True})
@@ -203,6 +204,88 @@ def seed():
     call(f"/projects/{dpid}/interviews", {"participant_id": dpart["id"], "title": "演示访谈"}, dadm)
     tok["demo_admin"] = dadm
     return dict(tok=tok, pid=pid, itv=itv, main=main_i, share=share, ids=ids, people=people, demo_pid=dpid)
+
+
+def ai_room_section(br, D):
+    """An AI-moderated interview in the room, seen by the participant, the moderator and a hidden observer."""
+    it, mod, obs, adm = D["itv"]["ai_zh"], D["tok"]["moderator"], D["tok"]["observer"], D["tok"]["admin"]
+    tk = it["invite_token"]
+    call(f"/public/join/{tk}/device", {"camera": True, "microphone": True, "speaker": True})
+    call(f"/public/join/{tk}/consent", {"country": "SG", "recording": True, "observers": True, "cross_border": True, "ai": True})
+    call(f"/interviews/{it['id']}/start", {}, mod)
+    call(f"/interviews/{it['id']}/admit", {"admit": True}, mod)
+    call(f"/public/join/{tk}/enter", {})
+    log_texts = lambda pg: pg.locator("#clog .m").all_inner_texts()
+    for theme in (None, "dark"):
+        for w, vp in ((1280, "desktop"), (390, "phone")):
+            tag = f"{theme or 'light'}/{vp}"
+            if theme is None and vp == "desktop":
+                # the moderator before the AI starts: the panel, the start button, no reply box
+                ctx, pg, errs = new_page(br, w, token=mod, room_theme=theme)
+                pg.goto(B + f"/room.html?i={it['id']}&as=moderator"); pg.wait_for_selector("#aist")
+                ok("还没有启动" in pg.inner_text("#aist") and pg.is_enabled("#a-start") and pg.is_disabled("#a-take"), f"[ai room moderator {tag}] before starting: start is on, take over is off")
+                ok(pg.locator("#hform:visible").count() == 0, f"[ai room moderator {tag}] the human reply box is hidden while the AI is in control")
+                audit_page(pg, f"ai room moderator before start/{tag}", errs)
+                ctx.close()
+                call(f"/interviews/{it['id']}/ai/start", {}, mod)
+            ctx, pg, errs = new_page(br, w, token=mod, room_theme=theme)
+            pg.goto(B + f"/room.html?i={it['id']}&as=moderator"); pg.wait_for_selector("#clog .m")
+            ok("AI 正在主持" in pg.inner_text("#aist"), f"[ai room moderator {tag}] status line shows who is moderating")
+            ok(any("AI" in x and "不是真人" in x for x in log_texts(pg)), f"[ai room moderator {tag}] the AI's opening says it is an AI")
+            ok(pg.locator("#clog .m details").count() >= 1, f"[ai room moderator {tag}] the AI's reasoning is available to the team")
+            ok(pg.is_visible("#wform") and pg.is_visible("#win"), f"[ai room moderator {tag}] whisper box present")
+            audit_page(pg, f"ai room moderator running/{tag}", errs)
+            ctx.close()
+            # the participant: a chat in the interview's language, nothing internal
+            ctx, pg, errs = new_page(br, w, room_theme=theme)
+            pg.goto(B + f"/room.html?t={tk}"); pg.wait_for_selector("#cin")
+            ok(pg.locator("#lpan:visible, #rpan:visible").count() == 0, f"[ai room participant {tag}] no internal panels")
+            ok(wait_until(lambda: any("AI 主持人" in x for x in log_texts(pg)), 8), f"[ai room participant {tag}] sees the AI's opening, labelled")
+            ok(pg.locator("#clog .m details").count() == 0 and "悄悄话" not in pg.inner_text("body"), f"[ai room participant {tag}] sees no notes or whispers")
+            audit_page(pg, f"ai room participant/{tag}", errs)
+            if theme is None and vp == "phone":
+                pg.screenshot(path=os.path.join(ROOT, "qa_shots", "ai_room_participant_390.png"), full_page=True)
+            ctx.close()
+            # the hidden observer: reads, cannot act
+            ctx, pg, errs = new_page(br, w, token=obs, room_theme=theme)
+            pg.goto(B + f"/room.html?i={it['id']}&as=observer"); pg.wait_for_selector("#clog .m")
+            ok(pg.locator("#a-start, #a-take, #a-back, #wform, #hform, #a-ack").count() == 0, f"[ai room observer {tag}] no controls")
+            ok(pg.locator("#clog .m details").count() == 0 and "悄悄话" not in pg.inner_text("#clog"), f"[ai room observer {tag}] sees the conversation only")
+            audit_page(pg, f"ai room observer/{tag}", errs)
+            ctx.close()
+    # a live conversation, once: the participant types, the AI answers; whisper, take over, hand back; a crisis shows a red alert to the team only
+    ctx, pg, errs = new_page(br, 1280, token=mod)
+    pgp_ctx, pgp, perrs = new_page(br, 390)
+    pg.goto(B + f"/room.html?i={it['id']}&as=moderator"); pg.wait_for_selector("#clog .m")
+    pgp.goto(B + f"/room.html?t={tk}"); pgp.wait_for_selector("#cin")
+    ok(wait_until(lambda: pgp.is_enabled("#cin"), 8), "[ai room] the participant can type once the AI has started")
+    pgp.fill("#cin", "我平时在网上买护肤品，因为方便。"); pgp.click("#csend")
+    ok(wait_until(lambda: len(log_texts(pgp)) >= 3, 12) and "我平时在网上买护肤品" in pgp.inner_text("#clog"), "[ai room] the participant's line and the AI's reply appear")
+    pg.fill("#win", "多问问退货的体验"); pg.click("#wsend")
+    ok(wait_until(lambda: any("多问问退货" in x for x in log_texts(pg)), 8), "[ai room] the whisper shows in the team's log")
+    ok("多问问退货" not in pgp.inner_text("body"), "[ai room] the participant never sees a whisper")
+    pg.click("#a-take"); ok(wait_until(lambda: pg.is_visible("#hform"), 8) and "已由你接管" in pg.inner_text("#aist"), "[ai room] taking over shows the reply box")
+    n = len(log_texts(pgp)); pgp.fill("#cin", "我想想怎么说。"); pgp.click("#csend")
+    ok(wait_until(lambda: "我想想怎么说" in pgp.inner_text("#clog"), 8), "[ai room] the participant's line arrives while a human has control")
+    pgp.wait_for_timeout(2500); ok(len(log_texts(pgp)) == n + 1, "[ai room] the AI stays silent while a human has control")
+    pg.fill("#hin", "不着急，慢慢说。"); pg.click("#hsend")
+    ok(wait_until(lambda: "不着急，慢慢说" in pgp.inner_text("#clog"), 8), "[ai room] the human's line reaches the participant")
+    audit_page(pg, "ai room moderator in control/desktop", errs)
+    pg.click("#a-back"); ok(wait_until(lambda: "AI 正在主持" in pg.inner_text("#aist"), 8), "[ai room] handing back returns the AI")
+    pgp.fill("#cin", "我不想活了。"); pgp.click("#csend")
+    ok(wait_until(lambda: pg.is_visible("#aalert") and "红色" in pg.inner_text("#aalert"), 10), "[ai room] a crisis shows the team a red alert")
+    ok("红色" not in pgp.inner_text("body") and pgp.locator("#aalert").count() == 0, "[ai room] the participant sees no alert")
+    audit_page(pg, "ai room moderator red alert/desktop", errs)
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "ai_room_moderator_1280.png"), full_page=True)
+    pg.click("#a-ack"); ok(wait_until(lambda: not pg.is_visible("#aalert"), 8), "[ai room] acknowledging clears the alert")
+    ctx.close(); pgp_ctx.close()
+    # ending turns the chat into a transcript with the AI labelled
+    call(f"/interviews/{it['id']}/end", {}, mod)
+    ctx, pg, errs = new_page(br, 1280, token=adm)
+    pg.goto(B + f"/#/i/{it['id']}/transcript"); pg.wait_for_selector(".seg")
+    ok(pg.locator(".seg .s:has-text('AI 主持人')").count() >= 1 and pg.locator(".seg .s:has-text('受访者')").count() >= 1, "[ai room] the transcript labels the AI moderator")
+    audit_page(pg, "ai interview transcript/desktop", errs)
+    ctx.close()
 
 
 def run():
@@ -473,6 +556,10 @@ def run():
         pg.click("#b-leave"); pg.wait_for_timeout(500)
         ok("邀请链接" in pg.inner_text("#msg") and not call(f"/interviews/{it['id']}/live", token=mod)["participant"]["admitted"], "after leaving, coming back needs the moderator to let them in again")
         ctx.close(); fake.close()
+
+
+        # ---------- C3. AI moderation in the room (Sprint 5): participant chat, the team's AI panel, observer, alerts; both colour themes, desktop + phone ----------
+        ai_room_section(br, D)
 
         # ---------- C2. dialogs and expandable panels on the staff pages (both screen sizes) ----------
         for w, vp in ((1280, "desktop"), (390, "phone")):

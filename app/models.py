@@ -1,5 +1,6 @@
+import threading
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -7,8 +8,22 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .db import Base
 
 
+_last_now = datetime.min
+_now_lock = threading.Lock()
+
+
 def utcnow() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+    """The current UTC time, strictly increasing within this process.
+
+    The Windows clock ticks every ~15 ms, so two events in the same tick got the same timestamp and lists sorted by time showed them
+    in a random order (the activity feed, the chat). Two calls never return the same value now: the later one is at least 1 µs later."""
+    global _last_now
+    with _now_lock:
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        if now <= _last_now:
+            now = _last_now + timedelta(microseconds=1)
+        _last_now = now
+        return now
 
 
 def uid() -> str:
@@ -222,3 +237,32 @@ class AuditLog(Base):
     ip: Mapped[str] = mapped_column(String(64), default="")
     meta: Mapped[dict] = mapped_column(JSON, default=dict)
     at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+
+
+class AiSession(Base):
+    """One AI-moderated interview's live state (the engine itself lives in memory, see app/ai_room.py)."""
+    __tablename__ = "ai_sessions"
+    interview_id: Mapped[str] = mapped_column(ForeignKey("interviews.id"), primary_key=True)
+    org_id: Mapped[str] = mapped_column(String(32), index=True)
+    guide_json: Mapped[str] = mapped_column(Text)  # the discussion guide the AI follows (JSON); a demo guide when staff did not supply one
+    control: Mapped[str] = mapped_column(String(10), default="ai")  # ai | human (a staff member took over; the AI stays silent)
+    alert: Mapped[str] = mapped_column(String(10), default="none")  # none | yellow | red, shown to staff only
+    alert_reason: Mapped[str] = mapped_column(String(300), default="")
+    finished: Mapped[bool] = mapped_column(Boolean, default=False)  # the AI said its closing statement: the participant can no longer type
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class ChatMessage(Base):
+    """One line of the AI-mode text chat. `whisper` lines are staff-only notes to the AI and never reach the participant."""
+    __tablename__ = "chat_messages"
+    __table_args__ = (UniqueConstraint("interview_id", "seq"),)
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
+    org_id: Mapped[str] = mapped_column(String(32), index=True)
+    interview_id: Mapped[str] = mapped_column(ForeignKey("interviews.id"), index=True)
+    seq: Mapped[int] = mapped_column(Integer)
+    sender: Mapped[str] = mapped_column(String(12))  # ai | participant | moderator | whisper
+    text: Mapped[str] = mapped_column(Text)
+    note: Mapped[str] = mapped_column(Text, default="")  # the AI's internal note (JSON), staff only
+    operator: Mapped[str] = mapped_column(String(20), default="")
+    phase: Mapped[str] = mapped_column(String(12), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

@@ -62,5 +62,5 @@
 ## 代码地图
 app/livekit.py 角色→权限/清场 · app/recording.py 录制合成 · app/pipeline.py 录像→转写 · app/media.py 片段水印 · app/evidence.py 引文校验 · app/retention.py 清理 · app/providers.py ASR/LLM 接口 · app/consent.py 同意文本 ·
 app/moderator/ AI 主持人（providers 模型接口、compliance 能否启用、constants 常量与枚举、knowledge 提纲、pacing 时间预算、fsm 阶段状态机、memory 上下文、engine 每轮流水线、guardrails 红线 H1–H12、detectors 停止/危机/问是否 AI 的规则识别、operators 追问算子、templates 固定话术（开场披露、危机热线 995/1767、兜底句）、model_calls 结构化输出、prompts/v00N.json 版本化提示词）· eval/guides 示例提纲（提纲里准备的问题本身也必须过红线，引擎启动时检查）· eval/ 评估：`python -m eval.runner`（--brain mock --participant rule 离线跑通；真评估用 .env 里的模型；--split holdout 只验收，不许据此改规则）；scenarios/generate.py 生成版本化场景集 s001（300 个，20% 保留集）；checkers 规则检查；judges 评分模型（未用 30 段人工分校准前不作依据）；报告在 eval_reports/· eval/ 评估 · eval_reports/ 评估报告 ·
-app/routers/ 接口 · app/static/ 前端（index 研究员端：左侧深绿导航 + 受访者招募/场次与邀请/直播间/洞察与片段；join 受访者流程：邀请→设备检测→同意→候场室；room 房间：研究员深色三栏、受访者明亮单栏；share 分享、logo.js 凤凰动效）
+app/ai_room.py + app/routers/ai_room.py AI 主持接入直播间（文字聊天：启动/接管/交还/悄悄话/告警，结束后聊天变成转写，AI 的话标“AI 主持人”；引擎在内存里，服务重启后自动交给真人并红色告警）· app/routers/ 接口 · app/static/ 前端（index 研究员端：左侧深绿导航 + 受访者招募/场次与邀请/直播间/洞察与片段；join 受访者流程：邀请→设备检测→同意→候场室；room 房间：研究员深色三栏、受访者明亮单栏；share 分享、logo.js 凤凰动效）
 界面和受访者流程以 docs/星桐TOTAL一体化平台v3_设计规范与受访者端交互说明.md 为准（颜色令牌、字号、组件、受访者 9 步旅程）。

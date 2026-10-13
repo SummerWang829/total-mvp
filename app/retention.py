@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from .audit import audit
 from .config import settings
 from .media import purge_cache
+from . import ai_room
 from .models import Clip, Evidence, Insight, Interview, Participant, Project, Recording, RecordingTrack, ShareLink, TranscriptSegment, utcnow
 
 PURGED = "[已按保留期删除]"
@@ -34,6 +35,7 @@ def purge_interview(db: Session, itv: Interview, reason: str, actor: str = "syst
     if ins_ids:
         db.execute(update(Evidence).where(Evidence.insight_id.in_(ins_ids)).values(quote=PURGED, segment_id=None))
     db.execute(delete(TranscriptSegment).where(TranscriptSegment.interview_id == itv.id))
+    ai_room.purge(db, itv.id)  # the AI-mode chat is personal data too
     clip_ids = [c.id for c in db.scalars(select(Clip).where(Clip.interview_id == itv.id))]
     if clip_ids:
         db.execute(update(ShareLink).where(ShareLink.clip_id.in_(clip_ids)).values(revoked_at=utcnow()))
