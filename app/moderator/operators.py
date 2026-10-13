@@ -65,6 +65,8 @@ def choose_operator(analysis: RespondentInputAnalysis, decision: PacingDecision,
         return OperatorChoice(operator=Operator.TRANSITION, deep_dive_score=score, deep_dive=False)
     if operator := BY_CATEGORY.get(analysis.category):
         return OperatorChoice(operator=operator, deep_dive_score=score, deep_dive=False)
+    if decision.action is PacingAction.LAST_TRY:  # nothing new for a while: one easier question from a new angle
+        return OperatorChoice(operator=Operator.FRESH_ANGLE, deep_dive_score=score, deep_dive=False)
     if analysis.category is ResponseCategory.TOO_SHORT:
         short = len(participant_text.strip()) < NUDGE_MAX_CHARS
         return OperatorChoice(operator=Operator.NUDGE if short else Operator.SCALE, deep_dive_score=score, deep_dive=False)

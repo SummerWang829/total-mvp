@@ -48,6 +48,12 @@ class PersonaType(str, Enum):
     MULTI_TOPIC = "multi_topic"      # several topics in one answer
 
 
+# Participants who by design have (almost) nothing to say: the moderator must not pad the time with questions that get nothing
+# (user decision 2026-10-13: ask once more from a fresh angle, then move on or thank and finish), so finishing early is right for them.
+# They still must not run over time. Every other persona must finish within the time gate on both sides.
+NOTHING_TO_SAY_PERSONAS = frozenset({PersonaType.SILENT, PersonaType.RESISTANT})
+
+
 class Intensity(str, Enum):
     """How strongly a persona shows its trait."""
 

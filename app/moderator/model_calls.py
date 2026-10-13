@@ -74,7 +74,7 @@ class ModelCaller:
             The validated draft, or None when the model gave nothing usable twice.
         """
         user = {**_context_json(ctx), "PLAN": {"operator": plan.operator.value, "decision": plan.decision.model_dump(mode="json")},
-                "OPERATOR_GUIDANCE": self.prompts.operators[plan.operator], "ASKS_IF_AI": asks_if_ai,
+                "OPERATOR_GUIDANCE": self.prompts.operators.get(plan.operator, ""), "ASKS_IF_AI": asks_if_ai,
                 "REJECTED_BECAUSE": [[f"{v.red_line.value}: {v.detail}. FIX: {REJECTION_FIX_HINTS.get(v.red_line.value, 'rewrite it')}" for v in vs]
                                      for vs in rejected],
                 "REJECTED_DRAFTS": rejected_drafts or []}

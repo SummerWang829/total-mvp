@@ -1,7 +1,7 @@
 """Pacing settings and the time budget of each phase and topic (task doc 4.3: 60-minute example, scaled to the planned length)."""
 from pydantic import BaseModel, ConfigDict, Field
 
-from .constants import (DEFAULT_EXPLORE_MIN_INFO_GAIN, DEFAULT_EXPLORE_UNTIL_SHARE, DEFAULT_HURRY_AFTER_SHARE, DEFAULT_MAX_EXPLORE_PER_TOPIC,
+from .constants import (DEFAULT_DRY_ANSWER_GAIN, DEFAULT_DRY_STREAK_LIMIT, DEFAULT_EXPLORE_MIN_INFO_GAIN, DEFAULT_EXPLORE_UNTIL_SHARE, DEFAULT_HURRY_AFTER_SHARE, DEFAULT_MAX_EXPLORE_PER_TOPIC,
                         DEFAULT_MAX_FOLLOWUPS_PER_QUESTION, DEFAULT_MAX_TURNS_PER_TOPIC, DEFAULT_OVERTIME_FORCE_RATIO,
                         DEFAULT_SATURATION_THRESHOLD, PHASE_MINUTES_AT_60, REFERENCE_DURATION_MIN, Phase)
 from .knowledge import InterviewGuide
@@ -22,6 +22,8 @@ class PacingConfig(BaseModel):
     explore_until_share: float = Field(default=DEFAULT_EXPLORE_UNTIL_SHARE, gt=0, le=1)
     max_explore_per_topic: int = Field(default=DEFAULT_MAX_EXPLORE_PER_TOPIC, ge=0, le=20)  # 0 switches exploring off
     explore_min_info_gain: float = Field(default=DEFAULT_EXPLORE_MIN_INFO_GAIN, ge=0, le=1)
+    dry_answer_gain: float = Field(default=DEFAULT_DRY_ANSWER_GAIN, ge=0, le=1)
+    dry_streak_limit: int = Field(default=DEFAULT_DRY_STREAK_LIMIT, ge=1, le=10)  # empty answers in a row before the last try
 
 
 class TimeBudget(BaseModel):

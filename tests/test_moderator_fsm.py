@@ -582,7 +582,8 @@ def test_every_mixture_of_probes_explores_and_questions_stays_inside_the_guide()
             clock.advance(rng.choice([5, 20, 60, 150]))
             d = fsm.record_turn(TurnUpdate(
                 was_followup=rng.random() < 0.3, saturation=rng.choice([0.1, 0.5, 0.9]), information_gain=rng.choice([0.0, 0.2, 0.7]),
-                question_answered=rng.random() < 0.6, covered_item_ids=rng.sample(["d_channels", "d_trust", "b_cert", "b_return", "nope"], rng.randint(0, 2))))
+                question_answered=rng.random() < 0.6, dry=rng.random() < 0.3,
+                covered_item_ids=rng.sample(["d_channels", "d_trust", "b_cert", "b_return", "nope"], rng.randint(0, 2))))
             assert d.question is None or d.question in {*guide().warmup_questions, *(q for t in guide().topics for q in t.questions)}
         assert fsm.phase is Phase.ENDED or fsm.snapshot().elapsed_s > 0
 

@@ -6,7 +6,7 @@ import pathlib
 import pytest
 
 from app.moderator.clock import ManualClock
-from app.moderator.constants import AlertLevel, EndReason, Operator, Phase, RedLine, Speaker
+from app.moderator.constants import OPERATORS_ADDED_IN, AlertLevel, EndReason, Operator, Phase, RedLine, Speaker
 from app.moderator.engine import EngineStateError, ModeratorEngine
 from app.moderator.fsm import TurnUpdate
 from app.moderator.knowledge import InterviewGuide
@@ -18,8 +18,8 @@ GUIDE = InterviewGuide.model_validate(json.loads(pathlib.Path("eval/guides/sg_sk
 PROMPTS = load_prompts()
 ZH = TEMPLATES["zh"]
 READY = {"category": "answered", "ready_to_start": True}
-ANSWER = {"category": "answered", "ladder_level": "reason", "saturation": 0.2}  # a full answer: the reason is given, nothing left to dig for
-SHALLOW = {"category": "answered", "ladder_level": "fact", "saturation": 0.2, "question_answered": True}  # a bare fact: the ladder says ask for more
+ANSWER = {"category": "answered", "ladder_level": "reason", "saturation": 0.2, "signals": {"information_gain": 0.25}}  # a full answer: the reason is given, nothing left to dig for
+SHALLOW = {"category": "answered", "ladder_level": "fact", "saturation": 0.2, "question_answered": True, "signals": {"information_gain": 0.25}}  # a bare fact: the ladder says ask for more
 DEEP = {"category": "answered", "ladder_level": "reason", "saturation": 0.3,
         "signals": {"information_gain": 0.9, "emotion": 0.8, "pain_point": 0.9, "contradiction": 0.2, "business_value": 0.8}}
 
@@ -373,10 +373,10 @@ def test_a_high_deep_dive_score_digs_even_when_the_reason_is_given():
 
 
 # ---- prompt versions ----
-@pytest.mark.parametrize("version", ["v001", "v002", "v003"])
+@pytest.mark.parametrize("version", ["v001", "v002", "v003", "v004"])
 def test_every_prompt_version_loads_and_names_all_hard_rules(version):
     p = load_prompts(version)
-    assert p.version == version and set(p.operators) == set(Operator)
+    assert p.version == version and set(p.operators) == {op for op in Operator if OPERATORS_ADDED_IN.get(op, "v001") <= version}
     assert "ONE" in p.speak and "FORBIDDEN_TOPICS" in p.speak and "PRODUCT_FACTS" in p.speak  # the red-line rules every version must keep
 
 

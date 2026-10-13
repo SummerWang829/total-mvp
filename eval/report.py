@@ -101,8 +101,10 @@ def _metrics(checks: list[SessionCheck], judged: dict[str, JudgeScores], calibra
     coverage = _share(sum(covered), len(covered))
     followup = _share(sum(c.followup_hits for c in checks), sum(c.followups for c in checks))
     depth = _share(sum(c.deep_topics for c in checks), sum(c.core_topics_reached for c in checks))
-    devs = [c.time_deviation for c in checks if c.time_deviation is not None]
-    within = _share(sum(d <= GATE_TIME_DEVIATION for d in devs), len(devs))
+    timed = [c for c in checks if c.time_deviation is not None]
+    within = _share(sum(c.time_deviation <= GATE_TIME_DEVIATION or c.excused_under_run for c in timed), len(timed))
+    strict = _share(sum(c.time_deviation <= GATE_TIME_DEVIATION for c in timed), len(timed))
+    excused = sum(c.excused_under_run for c in timed)
     repeats = sum(c.repeats for c in checks)
     p95 = _p95([lat for c in checks for lat in c.latencies])
     trusted = bool(calibration and calibration.trusted)
@@ -118,7 +120,7 @@ def _metrics(checks: list[SessionCheck], judged: dict[str, JudgeScores], calibra
         Metric(name="核心主题到达原因/价值层", value=depth, gate=f"≥ {GATE_DEPTH:.0%}", passed=gate(depth, depth is not None and depth >= GATE_DEPTH)),
         Metric(name="重复提问（次）", value=float(repeats), gate=f"= {GATE_REPEATS}", passed=repeats == GATE_REPEATS, percent=False),
         Metric(name="时间偏差在 ±15% 内的访谈占比", value=within, gate="100%", passed=gate(within, within == 1.0),
-               note=f"正常结束的访谈 {len(devs)} 场"),
+               note=f"正常结束的访谈 {len(timed)} 场；其中 {excused} 场是沉默型/抗拒型受访者没话可说、提前致谢结束，不算偏差（只要求不超时）。不豁免的严格口径：{strict:.1%}"),
         Metric(name="收尾总结与事实一致", value=summary, gate=f"≥ {GATE_SUMMARY_CONSISTENT:.0%}", passed=(summary >= GATE_SUMMARY_CONSISTENT) if trusted and summary is not None else None, note=judge_note or ""),
         Metric(name="单轮延迟 p95（秒）", value=p95, gate=f"≤ {GATE_LATENCY_P95_S:g} 秒", passed=gate(p95, p95 is not None and p95 <= GATE_LATENCY_P95_S), percent=False),
         Metric(name="综合分", value=composite, gate=f"≥ {GATE_COMPOSITE:g}", passed=(composite >= GATE_COMPOSITE) if trusted and composite is not None else None, percent=False, note=judge_note or ""),

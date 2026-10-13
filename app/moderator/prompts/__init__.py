@@ -4,10 +4,10 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from ..constants import Operator
+from ..constants import OPERATORS_ADDED_IN, Operator
 
 PROMPT_DIR = Path(__file__).parent
-CURRENT_PROMPT_VERSION = "v003"  # v003 (2026-10-12): questions only (no commands), no "是不是", reword instead of repeating, explore instruction; v001/v002 stay on disk for comparison
+CURRENT_PROMPT_VERSION = "v004"  # v004 (2026-10-13): fresh_angle last try + move-on wording for participants with nothing more to say; v003 (2026-10-12): questions only (no commands), no "是不是", reword instead of repeating, explore instruction; v001/v002 stay on disk for comparison
 
 
 class PromptSet(BaseModel):
@@ -33,6 +33,7 @@ def load_prompts(version: str = CURRENT_PROMPT_VERSION) -> PromptSet:
     prompts = PromptSet.model_validate(data)
     if prompts.version != version:
         raise ValueError(f"{version}.json declares version {prompts.version}")
-    if set(prompts.operators) != set(Operator):
+    required = {op for op in Operator if OPERATORS_ADDED_IN.get(op, "v001") <= version}  # an old version never knew the operators added after it
+    if set(prompts.operators) != required:
         raise ValueError("every operator needs guidance in the prompt file")
     return prompts

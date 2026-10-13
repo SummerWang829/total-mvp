@@ -14,6 +14,7 @@ from app.moderator.clock import ManualClock
 from app.moderator.constants import ALERT_SERVICE_UNAVAILABLE, FATAL_HTTP_REASONS, AlertLevel
 from app.moderator.engine import ModeratorEngine
 from app.moderator.knowledge import InterviewGuide
+from tests.test_moderator_setup import patch_http
 from app.moderator.providers import ChatError, ChatFatalError, MockModeratorChat, OpenAICompatModeratorChat
 from eval import runner
 from eval.constants import Intensity, PersonaType
@@ -34,7 +35,7 @@ def _server(monkeypatch, statuses: list[int]) -> list[int]:
         body = {"choices": [{"message": {"content": '{"ok": true}'}}]} if status == 200 else {"error": "x"}
         return httpx.Response(status, json=body, request=httpx.Request("POST", url))
 
-    monkeypatch.setattr(providers.httpx, "post", post)
+    patch_http(monkeypatch, post)
     return calls
 
 

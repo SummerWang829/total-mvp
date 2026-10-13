@@ -11,6 +11,21 @@ from app.moderator.compliance import ai_moderation_blocker, moderator_runs_local
 from app.moderator.constants import CHAT_RETRY_ATTEMPTS
 from app.moderator.providers import ChatError, MockModeratorChat, OpenAICompatModeratorChat, get_moderator_chat
 
+
+def patch_http(monkeypatch, post) -> list[dict]:
+    """Replace the provider's HTTP client: `post(url, **kw)` answers every request. Returns what the client was built with (timeout, trust_env, ...)."""
+    made: list[dict] = []
+
+    class FakeClient:
+        def __init__(self, **kw):
+            made.append(kw)
+
+        def post(self, url, **kw):
+            return post(url, **kw)
+
+    monkeypatch.setattr(providers.httpx, "Client", FakeClient)
+    return made
+
 LANGS = ("en", "zh", "ms", "ta")
 AI_WORD = {"en": "AI interviewer", "zh": "AI 主持人", "ms": "pewawancara AI", "ta": "AI நேர்காணலாளர்"}
 
@@ -119,18 +134,18 @@ def test_openai_compatible_chat_is_chosen_by_settings(monkeypatch):
     monkeypatch.setattr(settings, "moderator_model", "qwen2.5:7b")
     sent = {}
 
-    def fake_post(url, headers, json, timeout, trust_env):
-        sent.update(url=url, body=json, timeout=timeout, trust_env=trust_env)
+    def fake_post(url, headers, json):
+        sent.update(url=url, body=json)
         return httpx.Response(200, json={"choices": [{"message": {"content": '{"spoken_response": "What happened next?"}'}}]}, request=httpx.Request("POST", url))
 
-    monkeypatch.setattr(providers.httpx, "post", fake_post)
+    made = patch_http(monkeypatch, fake_post)
     chat = get_moderator_chat()
     assert isinstance(chat, OpenAICompatModeratorChat) and chat.name == "qwen2.5:7b@local"
     assert chat.complete([{"role": "user", "content": "hi"}], seed=7) == {"spoken_response": "What happened next?"}
     assert sent["url"] == "http://127.0.0.1:11434/v1/chat/completions"
     assert sent["body"]["model"] == "qwen2.5:7b" and sent["body"]["seed"] == 7 and sent["body"]["response_format"] == {"type": "json_object"}
-    assert sent["timeout"] == settings.moderator_timeout_s
-    assert sent["trust_env"] is False  # the model host is a fixed vendor: never through the computer's system proxy (5-30x slower)
+    assert made[0]["timeout"] == settings.moderator_timeout_s and len(made) == 1  # one client for the whole interview, not one per call
+    assert made[0]["trust_env"] is False  # the model host is a fixed vendor: never through the computer's system proxy (5-30x slower)
     assert "thinking" not in sent["body"]  # only vendors that need it get extra fields
 
 
@@ -138,14 +153,14 @@ def test_openai_compatible_chat_is_chosen_by_settings(monkeypatch):
 def test_bad_model_output_is_a_chat_error_without_the_text(monkeypatch, content):
     monkeypatch.setattr(settings, "moderator_provider", "openai")
     resp = {"choices": [{"message": {"content": content}}]}
-    monkeypatch.setattr(providers.httpx, "post", lambda *a, **k: httpx.Response(200, json=resp, request=httpx.Request("POST", "http://x")))
+    patch_http(monkeypatch, lambda *a, **k: httpx.Response(200, json=resp, request=httpx.Request("POST", "http://x")))
     with pytest.raises(ChatError) as e:
         get_moderator_chat().complete([{"role": "user", "content": "my phone is 9123 4567"}])
     assert "9123" not in str(e.value) and (content or "x") not in str(e.value)
 
 
 def _fake_server(monkeypatch, answers):
-    """Each call to httpx.post takes the next answer: an Exception (raised) or an HTTP status (200 carries a valid reply)."""
+    """Each request takes the next answer: an Exception (raised) or an HTTP status (200 carries a valid reply)."""
     calls = []
 
     def post(url, **kw):
@@ -157,7 +172,7 @@ def _fake_server(monkeypatch, answers):
         return httpx.Response(a, json=body, request=httpx.Request("POST", url))
 
     monkeypatch.setattr(settings, "moderator_provider", "openai")
-    monkeypatch.setattr(providers.httpx, "post", post)
+    patch_http(monkeypatch, post)
     return calls
 
 
@@ -291,11 +306,11 @@ def test_extra_body_setting_overrides_the_vendor_default_and_is_validated():
 def test_extra_fields_reach_the_request_and_the_proxy_switch_is_honoured(monkeypatch):
     sent = {}
 
-    def fake_post(url, headers, json, timeout, trust_env):
-        sent.update(body=json, trust_env=trust_env)
+    def fake_post(url, headers, json):
+        sent.update(body=json)
         return httpx.Response(200, json={"choices": [{"message": {"content": "{}"}}]}, request=httpx.Request("POST", url))
 
-    monkeypatch.setattr(providers.httpx, "post", fake_post)
+    made = patch_http(monkeypatch, fake_post)
     cfg = _config(moderator_provider="openai", moderator_base_url="https://api.deepseek.com", moderator_extra_body="", moderator_use_system_proxy=True)
     OpenAICompatModeratorChat(cfg).complete([])
-    assert sent["body"]["thinking"] == {"type": "disabled"} and sent["trust_env"] is True
+    assert sent["body"]["thinking"] == {"type": "disabled"} and made[0]["trust_env"] is True

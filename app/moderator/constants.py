@@ -49,6 +49,7 @@ class PacingAction(str, Enum):
     PROBE_ITEM = "probe_item"        # prepared questions used up: explore this uncovered must-cover item of the topic
     EXPLORE = "explore"              # prepared questions and items are used up but the topic still has time: dig deeper into what was said
     ASK_MISSED_ITEM = "ask_missed"   # recovery: ask this never-asked must-cover item, once
+    LAST_TRY = "last_try"            # the participant keeps answering with nothing new: ONE more question from a fresh, easier angle, then move on
     END = "end"
 
 
@@ -75,6 +76,8 @@ class TransitionReason(str, Enum):
     ITEM_COVERED = "item_covered"          # the item being explored is now covered
     BEHIND_SCHEDULE = "behind_schedule"    # time is running out in the topic and must-cover items are still unasked: go straight to them
     EXPLORING = "exploring"              # time is left in the topic and the answers still add information: dig deeper
+    LAST_TRY = "last_try"                # several short, empty answers in a row: one more question from a fresh angle
+    NO_NEW_INFO = "no_new_info"          # that last try brought nothing new either: move on (next topic) or, near the end, wrap up
     SATURATED = "saturated"                # topic saturation >= threshold
     TOPIC_TURN_LIMIT = "topic_turn_limit"
     TOPIC_TIME_UP = "topic_time_up"
@@ -96,6 +99,10 @@ DEFAULT_HURRY_AFTER_SHARE = 0.5       # past this share of a topic's time, with 
 DEFAULT_EXPLORE_UNTIL_SHARE = 0.85   # keep exploring a topic while less than this share of its time budget is used
 DEFAULT_MAX_EXPLORE_PER_TOPIC = 6     # at most this many extra deeper questions per topic
 DEFAULT_EXPLORE_MIN_INFO_GAIN = 0.3   # stop exploring when the latest answer added less new information than this (diminishing returns)
+DEFAULT_DRY_ANSWER_GAIN = 0.2          # an answer adding less new information than this, and short, counts as "nothing more to say"
+DEFAULT_DRY_STREAK_LIMIT = 2          # this many such answers in a row: one last try from a fresh angle; the next empty answer: move on
+DRY_ANSWER_MAX_CHARS = 18             # "short" in Chinese: fewer characters than this
+DRY_ANSWER_MAX_WORDS = 8              # "short" in other languages: fewer words than this
 DEFAULT_OVERTIME_FORCE_RATIO = 1.15  # 15 % over the total budget: wrap up now
 DEFAULT_MAX_TURNS_PER_TOPIC = 14
 DEFAULT_RECENT_TURNS_VERBATIM = 12    # older turns are condensed for the model
@@ -143,6 +150,7 @@ class Operator(str, Enum):
     REFLECT = "reflect"            # paraphrase and confirm
     REDIRECT = "redirect"          # back to the topic
     TRANSITION = "transition"      # move to the next prepared question / topic / item
+    FRESH_ANGLE = "fresh_angle"    # last try with a silent participant: one easier, concrete question from a new angle
     REPHRASE = "rephrase"          # the participant did not understand
     REASSURE = "reassure"          # emotional: acknowledge, no pressure
     WAIT = "wait"                  # voice version only (silence)
@@ -237,6 +245,7 @@ TRANSIENT_HTTP_STATUS = frozenset({408, 409, 425, 429})  # timeouts and rate lim
 MSG_SERVICE_UNAVAILABLE = "AI 模型服务拒绝了请求（HTTP {status}：{reason}）。请检查 .env 里的 MODERATOR_API_KEY、MODERATOR_MODEL 和账号余额。"
 ALERT_SERVICE_UNAVAILABLE = "AI 模型服务不可用（{reason}），已改说安全句，请立即接管并联系管理员"
 CHAT_COMPLETIONS_PATH = "/chat/completions"
+HTTP_KEEPALIVE_EXPIRY_S = 30.0  # keep the connection to the model open between turns: a new TLS handshake costs ~0.25 s per call
 JSON_RESPONSE_FORMAT: dict[str, str] = {"type": "json_object"}
 MOCK_DEFAULT_REPLY: dict[str, str] = {"spoken_response": "Could you tell me a bit more about that?"}
 
@@ -245,3 +254,6 @@ MSG_CLOUD_VENDOR_MISSING = "AI 主持用的是云端模型，但没有填写供�
 MSG_AI_INTERVIEW_NOT_READY = "This interview cannot start yet, please contact the research team / 这场访谈暂时不能开始，请联系研究团队"
 MSG_EVERY_CONSENT_NEEDED = "Every item needs your agreement to take part / 每一项都需要你明确同意才能参加"
 MSG_UNKNOWN_PROVIDER = "MODERATOR_PROVIDER={value!r}：只支持 mock 或 openai（兼容 OpenAI 接口的服务，含本机 Ollama）"
+
+# Operators that older prompt versions do not know (so v001-v003 stay loadable for comparison): operator -> first version that has it.
+OPERATORS_ADDED_IN: dict[Operator, str] = {Operator.FRESH_ANGLE: "v004"}

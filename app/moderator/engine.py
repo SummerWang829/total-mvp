@@ -9,7 +9,7 @@ import logging
 import time
 
 from .clock import Clock, SystemClock
-from .constants import (ALERT_SERVICE_UNAVAILABLE, MAX_REGENERATIONS, RED_ALERT_AFTER_FAILED_TURNS, AlertLevel, ControlMode, EndReason, PacingAction, Phase,
+from .constants import (ALERT_SERVICE_UNAVAILABLE, DRY_ANSWER_MAX_CHARS, DRY_ANSWER_MAX_WORDS, MAX_REGENERATIONS, RED_ALERT_AFTER_FAILED_TURNS, AlertLevel, ControlMode, EndReason, PacingAction, Phase,
                         QualityRule, ResponseCategory, Speaker, TransitionReason)
 from .detectors import detect_asks_if_ai, detect_crisis, detect_mentions_ai, detect_ready, detect_stop
 from .fsm import FOLLOWUP_PHASES, InterviewStateMachine, PacingDecision, TurnUpdate
@@ -197,8 +197,17 @@ class ModeratorEngine:
         answered = analysis.question_answered and analysis.category is ResponseCategory.ANSWERED and not self._dig_deeper(analysis)
         update = TurnUpdate(was_followup=self._last_was_followup, saturation=analysis.saturation,
                             covered_item_ids=analysis.covered_item_ids, question_answered=answered,
-                            information_gain=analysis.signals.information_gain)
+                            information_gain=analysis.signals.information_gain, dry=self._is_dry(analysis, text))
         return self.fsm.record_turn(update)
+
+    def _is_dry(self, analysis: RespondentInputAnalysis, text: str) -> bool:
+        """Whether the answer is short, adds almost nothing and covers no item: the participant has nothing more to say here.
+
+        Length is part of the test on purpose: a long answer that adds nothing (dodging, counter-questions) is a different
+        problem with its own operator (redirect), and the model's information score alone is too noisy to end a topic on."""
+        zh = self.guide.language == "zh"
+        short = len(text.strip()) < DRY_ANSWER_MAX_CHARS if zh else len(text.split()) < DRY_ANSWER_MAX_WORDS
+        return short and analysis.signals.information_gain < self.fsm.config.dry_answer_gain and not analysis.covered_item_ids
 
     def _dig_deeper(self, analysis: RespondentInputAnalysis) -> bool:
         """Stay on this question for another follow-up instead of moving on (the ladder, task doc 4.3).

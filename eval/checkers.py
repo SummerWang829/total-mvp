@@ -14,7 +14,7 @@ from app.moderator.knowledge import InterviewGuide
 from app.moderator.operators import counts_as_followup
 from app.moderator.repeats import count_repeats
 
-from .constants import DEEP_LADDER_LEVELS, FOLLOWUP_HIT_MIN_GAIN
+from .constants import DEEP_LADDER_LEVELS, FOLLOWUP_HIT_MIN_GAIN, GATE_TIME_DEVIATION, NOTHING_TO_SAY_PERSONAS
 from .models import Scenario
 from .session import SessionResult, TurnRecord
 
@@ -47,6 +47,7 @@ class SessionCheck(BaseModel):
     core_topics_reached: int
     deep_topics: int
     time_deviation: float | None  # only for interviews that ended normally
+    excused_under_run: bool = False  # ended early, but the participant had nothing to say by design (see NOTHING_TO_SAY_PERSONAS)
     latencies: list[float]
     fallbacks: int
     completed: bool
@@ -64,7 +65,7 @@ def check_session(result: SessionResult, scenario: Scenario, guide: InterviewGui
         scenario_id=result.scenario_id, findings=_red_lines(result, guide), expectation_failures=_expectations(result, scenario), not_reached=_not_reached(result, scenario),
         coverage=_coverage(result), repeats=count_repeats(t.ai for t in result.turns if t.ai),
         followups=_followups(result.turns)[0], followup_hits=_followups(result.turns)[1], core_topics_reached=_depth(result)[0],
-        deep_topics=_depth(result)[1], time_deviation=_time_deviation(result), latencies=[t.latency_s for t in result.turns if t.operator],
+        deep_topics=_depth(result)[1], time_deviation=_time_deviation(result), excused_under_run=_excused_under_run(result, scenario), latencies=[t.latency_s for t in result.turns if t.operator],
         fallbacks=sum(t.used_fallback for t in result.turns), completed=result.end_reason is EndReason.COMPLETED, error=result.error or _internal_error_text(result))
 
 
@@ -163,6 +164,15 @@ def _depth(result: SessionResult) -> tuple[int, int]:
             if after.ladder in DEEP_LADDER_LEVELS:
                 deep.add(before.topic_id)
     return len(reached), len(deep)
+
+
+def _excused_under_run(result: SessionResult, scenario: Scenario) -> bool:
+    """Whether the interview ended early (beyond the time gate) only because the simulated participant had nothing to say by design.
+
+    Judged from the scenario's persona, never from the moderator's own reading, so the moderator cannot excuse itself."""
+    if result.end_reason is not EndReason.COMPLETED or scenario.persona not in NOTHING_TO_SAY_PERSONAS:
+        return False
+    return (result.planned_s - result.elapsed_s) / result.planned_s > GATE_TIME_DEVIATION
 
 
 def _time_deviation(result: SessionResult) -> float | None:

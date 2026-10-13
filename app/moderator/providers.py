@@ -17,7 +17,7 @@ from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_ex
 
 from ..config import Settings, settings
 from .compliance import moderator_runs_locally
-from .constants import (CHAT_COMPLETIONS_PATH, CHAT_DEFAULT_TEMPERATURE, CHAT_RETRY_ATTEMPTS, CHAT_RETRY_FIRST_WAIT_S,
+from .constants import (CHAT_COMPLETIONS_PATH, HTTP_KEEPALIVE_EXPIRY_S, CHAT_DEFAULT_TEMPERATURE, CHAT_RETRY_ATTEMPTS, CHAT_RETRY_FIRST_WAIT_S,
                         CHAT_RETRY_MAX_WAIT_S, FATAL_HTTP_REASONS, HTTP_SERVER_ERROR_MIN, JSON_RESPONSE_FORMAT,
                         MOCK_DEFAULT_REPLY, MSG_UNKNOWN_PROVIDER, TRANSIENT_HTTP_STATUS, VENDOR_REQUEST_DEFAULTS, ModeratorProviderName)
 
@@ -114,6 +114,9 @@ class OpenAICompatModeratorChat:
         self.name = f"{config.moderator_model}@{where}"
         self.last_latency_s = 0.0  # of the last attempt; the eval runner reports p95 latency from it
         self.extra_body = request_extras(config)
+        # One client for the whole interview: calls reuse the open connection instead of shaking hands every time (thread-safe).
+        self._client = httpx.Client(timeout=config.moderator_timeout_s, trust_env=config.moderator_use_system_proxy,
+                                    limits=httpx.Limits(keepalive_expiry=HTTP_KEEPALIVE_EXPIRY_S))
 
     def complete(self, messages: list[ChatMessage], temperature: float = CHAT_DEFAULT_TEMPERATURE, seed: int | None = None) -> dict:
         """See ModeratorChatProvider.complete. Transient failures are retried with exponential backoff.
@@ -142,8 +145,7 @@ class OpenAICompatModeratorChat:
         url = self.config.moderator_base_url.rstrip("/") + CHAT_COMPLETIONS_PATH
         started = time.monotonic()
         try:
-            response = httpx.post(url, headers={"Authorization": f"Bearer {self.config.moderator_api_key or 'none'}"}, json=body,
-                                  timeout=self.config.moderator_timeout_s, trust_env=self.config.moderator_use_system_proxy)
+            response = self._client.post(url, headers={"Authorization": f"Bearer {self.config.moderator_api_key or 'none'}"}, json=body)
         except httpx.HTTPError as e:
             log.warning("moderator model unreachable at %s (%s)", url, type(e).__name__, exc_info=True)
             raise _TransientChatError(type(e).__name__) from e

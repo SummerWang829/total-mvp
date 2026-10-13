@@ -60,6 +60,7 @@ class TurnUpdate(BaseModel):
     covered_item_ids: list[str] = Field(default_factory=list)
     question_answered: bool = False
     information_gain: float = Field(default=0.0, ge=0, le=1)  # how much new information the answer added (decides whether exploring goes on)
+    dry: bool = False  # short, nothing new, nothing covered: the participant has nothing more to say here (set by the engine)
 
 
 class PacingDecision(BaseModel):
@@ -159,6 +160,8 @@ class InterviewStateMachine:
         self._stimulus_questions = [q for s in guide.stimuli for q in s.questions]
         self._recovery_queue: list[MustCoverItem] = []
         self._core_used_s = 0.0  # time the finished core topics actually used (the rest is shared out, see _topic_budget_now)
+        self._dry_streak = 0         # empty answers in a row since the phase / topic began
+        self._last_try_used = False  # the one fresh-angle question of this phase / topic has been asked
 
     # ---------- the transition gate ----------
     @staticmethod
@@ -182,6 +185,8 @@ class InterviewStateMachine:
         self._phase_started_at = self.clock.now()
         self._question_index = 0
         self._followups = 0
+        self._dry_streak = 0
+        self._last_try_used = False
 
     # ---------- public state ----------
     @property
@@ -311,6 +316,10 @@ class InterviewStateMachine:
         questions = self._phase_questions()
         if self._phase_elapsed() >= self.budget.phase_s[self._phase]:
             return self._leave_question_list(TransitionReason.PHASE_TIME_UP)
+        if self._dry_out():
+            return self._leave_question_list(TransitionReason.NO_NEW_INFO)
+        if self._last_try_due():
+            return self._last_try()
         done = self._question_done(update)
         if done is None:
             return self._decision(PacingAction.CONTINUE, TransitionReason.IN_PROGRESS)
@@ -330,6 +339,11 @@ class InterviewStateMachine:
             return self._next_topic(TransitionReason.TOPIC_TIME_UP)
         if progress.saturation >= self.config.saturation_threshold:
             return self._explore_or_leave(progress, TransitionReason.SATURATED)
+        if self._dry_out():
+            return self._next_topic(TransitionReason.NO_NEW_INFO)
+        if self._last_try_due():
+            progress.probing_item_id = None
+            return self._last_try()
         done = self._question_done(update)
         if progress.probing_item_id in self._covered:
             done = TransitionReason.ITEM_COVERED
@@ -342,6 +356,20 @@ class InterviewStateMachine:
             progress.question_index += 1  # (not self._question_index: probes and explore questions also advance that one, which ran past the list)
             return self._decision(PacingAction.NEXT_QUESTION, done, question=self.current_topic.questions[progress.question_index])
         return self._probe_next_item(progress, done)
+
+    def _last_try_due(self) -> bool:
+        """Whether the last several answers were all empty and the one fresh-angle question has not been asked yet."""
+        return self._dry_streak >= self.config.dry_streak_limit and not self._last_try_used
+
+    def _dry_out(self) -> bool:
+        """Whether even the fresh-angle question brought nothing: time to move on (the caller leaves the topic or list)."""
+        return self._dry_streak >= self.config.dry_streak_limit and self._last_try_used
+
+    def _last_try(self) -> PacingDecision:
+        """Ask one more question from a fresh angle (a new question: its follow-up count starts again), once per topic / list phase."""
+        self._last_try_used = True
+        self._next_question()
+        return self._decision(PacingAction.LAST_TRY, TransitionReason.LAST_TRY)
 
     def _probe_next_item(self, progress: TopicProgress, reason: TransitionReason) -> PacingDecision:
         """Explore the topic's next uncovered, never-asked item; when none is left the topic is done.
@@ -383,6 +411,8 @@ class InterviewStateMachine:
         """RECOVERY: each never-asked missed item is asked once (no follow-ups), while time before the planned end
         still leaves room for the wrap-up; then wrap up."""
         self._recovery_queue = [i for i in self._recovery_queue if i.id not in self._covered]
+        if self._dry_streak >= self.config.dry_streak_limit:
+            return self._enter_wrapup(TransitionReason.NO_NEW_INFO)  # near the end and nothing more to get: thank and finish
         if not self._recovery_queue:
             return self._enter_wrapup(TransitionReason.MISSED_ITEMS)
         if self._elapsed() + self.budget.phase_s[Phase.WRAPUP] >= self.budget.total_s:
@@ -462,6 +492,7 @@ class InterviewStateMachine:
         if unknown:
             log.warning("moderator model reported %d unknown must-cover id(s); ignored", len(unknown))
         self._covered |= {i for i in update.covered_item_ids if i in self._known_items}
+        self._dry_streak = self._dry_streak + 1 if update.dry else 0
         if self._phase is Phase.CORE:
             progress = self._progress[self.current_topic.id]
             progress.turns += 1
