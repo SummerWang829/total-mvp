@@ -11,6 +11,7 @@ from app.moderator.engine import EngineStateError, ModeratorEngine
 from app.moderator.fsm import TurnUpdate
 from app.moderator.knowledge import InterviewGuide
 from app.moderator.prompts import CURRENT_PROMPT_VERSION, load_prompts
+from app.moderator.pacing import PacingConfig
 from app.moderator.providers import ChatError, MockModeratorChat
 from app.moderator.templates import TEMPLATES
 
@@ -53,7 +54,8 @@ def say(text: str) -> dict:
 
 def engine(analyses: list, drafts: list, guide: InterviewGuide = GUIDE) -> tuple[ModeratorEngine, Model]:
     model = Model(analyses, drafts)
-    e = ModeratorEngine(guide, model.chat, prompts=PROMPTS, clock=ManualClock())
+    # these tests are about other things: their plain fixture answers (information 0.25) must not count as empty; test_moderator_dry.py uses the real default
+    e = ModeratorEngine(guide, model.chat, prompts=PROMPTS, config=PacingConfig(dry_answer_gain=0.2), clock=ManualClock())
     return e, model
 
 

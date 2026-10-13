@@ -7,7 +7,7 @@ import re
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.moderator.constants import ControlMode, EndReason, RedLine
+from app.moderator.constants import ControlMode, EndReason, Phase, RedLine
 from app.moderator.detectors import detect_asks_if_ai, detect_crisis, detect_mentions_ai, detect_stop
 from app.moderator.guardrails import GuardrailContext, check_utterance
 from app.moderator.knowledge import InterviewGuide
@@ -149,7 +149,7 @@ def _followups(turns: list[TurnRecord]) -> tuple[int, int]:
     """(follow-ups asked, follow-ups whose answer brought new information or covered an item)."""
     asked = hits = 0
     for before, after in zip(turns, turns[1:]):
-        if before.operator and counts_as_followup(before.operator) and before.ai:
+        if before.operator and counts_as_followup(before.operator) and before.ai and before.phase is not Phase.INTRO:  # the opening is consent talk, not probing
             asked += 1
             hits += after.information_gain >= FOLLOWUP_HIT_MIN_GAIN or bool(after.covered)
     return asked, hits
