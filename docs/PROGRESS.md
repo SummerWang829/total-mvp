@@ -28,6 +28,9 @@
 **还差什么 / 注意**：① SW 上 `.env` 的 DeepSeek / 混元密钥待用户填；② 本地转写（`bin/whisper`）和 Ollama 在 SW 上没装，转写/洞察暂为演示模式；③ `start-dev.ps1` / `scripts/dev.sh` 在 SW 上还没实际跑过（`scripts/get_livekit.sh` 不支持 Windows，已手动放好 exe）；④ Windows 上 PowerShell 的 Invoke-WebRequest 会走系统代理，访问本机请用 127.0.0.1 并绕过代理；⑤ 新规则：每个任务结束都要推送 GitHub（见 CLAUDE.md）。
 **风险**：无新增。
 
+**2026-10-14 补充（SW 上跑通真实模式，代码未改）**：① `start-dev.ps1` 在 SW 上实测可用，`python -m app.doctor` 全部 ✓（仅 SECRET_KEY 仍是开发默认值）；② 本地转写：`bin\whisper\Release\whisper-server.exe`（whisper.cpp v1.9.2 CPU 版）+ `ggml-large-v3-turbo-q5_0.bin`（547MB，Hugging Face ggerganov/whisper.cpp），端口 8178，由 `start-dev.ps1` 自动启动；③ `.env` 在 SW 上：ASR 走本地 whisper（`ASR_BASE_URL=http://127.0.0.1:8178/v1`），洞察/翻译与 AI 主持人走 DeepSeek（`deepseek-flash`），评分用混元；密钥由用户自己填，不进仓库，LW 需自己填一份；④ 注意：Windows 上 `python3` 默认是应用商店占位程序，SW 上在 Python311 目录放了一份 `python3.exe` 副本才让 `scripts/dev.sh` 通；⑤ 系统 Python 也装了一份 `requirements.txt`（dev.sh 用系统 python3，不用 `.venv`）。
+**还差**：真实转写 + 洞察端到端实测（走一遍 README 的真人测试清单）；`scripts/qa.sh` 在 SW 上还没跑；马来语/泰米尔语转写未实测。
+
 ---
 
 ## 2026-10-13 · Sprint 5：AI 主持接入直播间（文字版）（`qa.sh`：698 / 1582 / 180 / 一键启动正常）
