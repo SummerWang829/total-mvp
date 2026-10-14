@@ -113,9 +113,29 @@ AUDIT_JS = r"""
 """
 
 
+SETTLE_JS = """async () => {
+  for (let i = 0; i < 3; i++) {   // finite entrance animations only (the recording dot / logo loop forever on purpose)
+    const running = document.getAnimations().filter((a) => a.effect && a.effect.getComputedTiming().iterations !== Infinity);
+    if (!running.length) break;
+    await Promise.all(running.map((a) => a.finished.catch(() => null)));
+  }
+}"""
+
+
+def settle(pg):
+    """Wait until the SPA has finished loading data and playing its entrance fade, so the audit never measures a page mid-transition
+    (on a slow machine the old route's <main> is still on screen while the new view is being fetched and faded in)."""
+    try:
+        pg.wait_for_load_state("networkidle", timeout=8000)
+    except Exception:  # noqa: BLE001 - a page that never goes idle (polling) is audited after the animation wait below
+        pass
+    pg.evaluate(SETTLE_JS)
+
+
 def audit_page(pg, label, errs, strict_contrast=True):
     pg.mouse.move(1, 1)  # a hovered button shows its orange sweep (a pseudo-element the audit cannot see), so park the pointer
     pg.wait_for_timeout(350)
+    settle(pg)
     a = pg.evaluate(AUDIT_JS)
     ok(a["overflow"] <= 0, f"[{label}] horizontal overflow {a['overflow']}px")
     ok(not a["small"], f"[{label}] text too small: {a['small'][:4]}")
@@ -267,7 +287,7 @@ def ai_room_section(br, D):
     pg.click("#a-take"); ok(wait_until(lambda: pg.is_visible("#hform"), 8) and "已由你接管" in pg.inner_text("#aist"), "[ai room] taking over shows the reply box")
     n = len(log_texts(pgp)); pgp.fill("#cin", "我想想怎么说。"); pgp.click("#csend")
     ok(wait_until(lambda: "我想想怎么说" in pgp.inner_text("#clog"), 8), "[ai room] the participant's line arrives while a human has control")
-    pgp.wait_for_timeout(2500); ok(len(log_texts(pgp)) == n + 1, "[ai room] the AI stays silent while a human has control")
+    pgp.wait_for_timeout(2500); after = log_texts(pgp); ok(len(after) == n + 1, f"[ai room] the AI stays silent while a human has control (lines before {n}, after {len(after)}: {[x[:30] for x in after[n:]]})")
     pg.fill("#hin", "不着急，慢慢说。"); pg.click("#hsend")
     ok(wait_until(lambda: "不着急，慢慢说" in pgp.inner_text("#clog"), 8), "[ai room] the human's line reaches the participant")
     audit_page(pg, "ai room moderator in control/desktop", errs)
@@ -374,7 +394,11 @@ def run():
         ok(pg.locator("nav.side .brandsvg").count() == 1, "logo missing in the side nav")
         ok("projects" in pg.url, "after login should land on projects")
         # logo plays on login, then settles; hover replays; reduced motion respected
-        pg.wait_for_timeout(2700); ok(not pg.evaluate("document.querySelector('.brandsvg').classList.contains('play')"), "logo animation never settles")
+        try:  # the page's own timer ends the animation 3.2 s after it starts; wait for that (up to 8 s) instead of guessing a fixed delay
+            pg.wait_for_function("!document.querySelector('.brandsvg').classList.contains('play')", timeout=8000); settled = True
+        except Exception:  # noqa: BLE001 - a timeout here IS the failure being tested
+            settled = False
+        ok(settled, "logo animation never settles")
         pg.hover("nav.side .brandsvg"); pg.wait_for_timeout(120); ok(pg.evaluate("document.querySelector('.brandsvg').classList.contains('play')"), "hovering the logo should replay the wings")
         # the side nav marks exactly one current page, and it is the one shown
         pg.goto(B + f"/#/p/{pid}/sessions"); pg.wait_for_selector("h1:has-text('场次与邀请')")
@@ -605,6 +629,17 @@ def run():
         ctx, pg, errs = new_page(br, 1280, token=D["tok"]["admin"], reduced_motion="reduce")
         pg.goto(B + "/#/projects"); pg.wait_for_selector("main"); pg.wait_for_timeout(300)
         ok(not pg.evaluate("document.querySelector('.brandsvg').classList.contains('play')"), "reduced motion: logo must stay still")
+        ctx.close()
+
+        # ---------- E2. rapid navigation: a slow page finishing after the user moved on must neither error nor paint over the new page ----------
+        ctx, pg, errs = new_page(br, 1280, token=D["tok"]["admin"])
+        pg.goto(B + f"/#/i/{mi}/insights"); pg.wait_for_selector("main")
+        for r in (f"#/p/{pid}/insights", f"#/i/{mi}/transcript", f"#/i/{mi}/clips", f"#/i/{mi}/insights", f"#/p/{pid}/rooms", f"#/i/{mi}/insights", f"#/p/{pid}/home"):
+            pg.evaluate("h => { location.hash = h }", r); pg.wait_for_timeout(25)
+        pg.wait_for_timeout(300); settle(pg); pg.wait_for_timeout(600)
+        body = pg.inner_text("main")
+        ok("打不开这个页面" not in pg.inner_text("body") and "Cannot set properties" not in body, "rapid navigation never shows an error page")
+        ok(pg.url.endswith(f"/p/{pid}/home") and pg.locator("main .tabs").count() == 0, "rapid navigation: the last page clicked is the one left on screen (no stale interview page painted over it)")
         ctx.close()
 
         # ---------- F. screenshots for a human glance ----------

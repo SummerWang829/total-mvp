@@ -227,7 +227,7 @@ def run(tmp):
         ok(pm.is_disabled("#b-start"), "start button disabled once live")
         pm.click("#b-rec")
         ok(wait_for(lambda: pp.is_visible("#recdot") and "Recording" in pp.inner_text("#recdot"), 10), "participant sees the recording indicator")
-        ok(po.is_visible("#recdot"), "observer also sees it is being recorded")
+        ok(wait_for(lambda: po.is_visible("#recdot"), 10), "observer also sees it is being recorded")  # the observer page polls every 2 s
         ok(wait_for(lambda: pm.is_disabled("#b-rec") and not pm.is_disabled("#b-stop"), 10), "buttons switch to stop state")
         time.sleep(5)
         pp.click("#b-cam")  # participant turns the camera off for a while, then on
@@ -416,8 +416,9 @@ def run(tmp):
         pam.click("#a-take")
         ok(wait_for(lambda: pam.is_visible("#hform"), 10), "AI interview: after taking over the moderator can reply")
         n = pap.locator("#clog .m").count(); pap.fill("#cin", "Let me think about it."); pap.click("#csend")
-        ok(wait_for(lambda: pap.locator("#clog .m").count() == n + 1, 10), "AI interview: the participant's line is stored while a human has control")
-        time.sleep(3); ok(pap.locator("#clog .m").count() == n + 1, "AI interview: the AI stays silent while a human has control")
+        lines = lambda: [x[:40] for x in pap.locator("#clog .m").all_inner_texts()]
+        ok(wait_for(lambda: pap.locator("#clog .m").count() == n + 1, 10), f"AI interview: the participant's line is stored while a human has control (before {n}, now {lines()[n - 1:]})")
+        time.sleep(3); ok(pap.locator("#clog .m").count() == n + 1, f"AI interview: the AI stays silent while a human has control (before {n}, now {lines()[n - 1:]})")
         pam.fill("#hin", "Take your time, there is no rush."); pam.click("#hsend")
         ok(wait_for(lambda: "Take your time" in pap.inner_text("#clog"), 10), "AI interview: the moderator's own line reaches the participant")
         pam.click("#a-back")

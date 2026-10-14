@@ -63,7 +63,13 @@ document.addEventListener("keydown", (e) => { if (e.key === "Escape") document.q
 
 const head = (title, lead, actions = "") => `<div class="head"><div><h1>${title}</h1>${lead ? `<p class="lead" style="margin:6px 0 0">${lead}</p>` : ""}</div><span class="sp"></span>${actions}</div>`;
 
+// Every render gets a number. A slow page that finishes after the user has already moved on must neither paint over the new page nor
+// show its (meaningless) error there: views call `stale(my)` after each await, where `my = renderSeq` was read at their start.
+let renderSeq = 0;
+const stale = (my) => my !== renderSeq;
+
 async function render() {
+  const seq = ++renderSeq;
   const r = route();
   if (r.startsWith("/login")) return loginView();
   if (!store.get("tt_token")) { location.hash = "#/login"; return; }
@@ -72,11 +78,13 @@ async function render() {
     if (ME.role === "admin") { try { const us = await api("/users"); DEMO_ORG = us.length > 0 && us.every((u) => /@demo\.test$/i.test(u.email)); } catch {} }
   }
   await loadConfig();
+  if (stale(seq)) return;
   const seg = r.split("/");
   try {
     if (r === "/projects") return await projectsView();
     if (seg[1] === "p") {
       const p = (await projects()).find((x) => x.id === seg[2]);
+      if (stale(seq)) return;
       if (!p) throw new Error("找不到这个项目：可能链接已失效，或这个项目没有分配给你。回到“全部项目”重新选择。");
       const page = seg[3] || (STAFF() ? "home" : "rooms");
       if (page === "home" && STAFF()) return await homeView(p);
@@ -91,7 +99,7 @@ async function render() {
     if (r === "/audit") return await auditView();
     if (r === "/demo") return await demoView();
     location.hash = "#/projects";
-  } catch (e) { shell(`<div class="card empty"><b>${esc(e.message)}</b><span>如果刚才网络断开，刷新页面再试一次；问题一直存在，请把这句话发给管理员。</span><a class="btn p" href="#/projects">回到全部项目</a></div>`, { title: "打不开这个页面" }); }
+  } catch (e) { if (stale(seq)) return; shell(`<div class="card empty"><b>${esc(e.message)}</b><span>如果刚才网络断开，刷新页面再试一次；问题一直存在，请把这句话发给管理员。</span><a class="btn p" href="#/projects">回到全部项目</a></div>`, { title: "打不开这个页面" }); }
 }
 
 // ---------------- login ----------------
@@ -277,11 +285,13 @@ async function roomsView(p) {
 
 // ---------------- 洞察与片段 ----------------
 async function insightsListView(p) {
+  const my = renderSeq;
   const its = await api(`/projects/${p.id}/interviews`);
   const counts = await Promise.all(its.map(async (i) => {
     const [ins, clips] = await Promise.all([api(`/interviews/${i.id}/insights`).catch(() => []), api(`/interviews/${i.id}/clips`).catch(() => [])]);
     return { ins: ins.length, ok: ins.filter((x) => x.status === "approved").length, review: ins.filter((x) => x.status === "needs_review").length, clips: clips.length };
   }));
+  if (stale(my)) return;
   shell(`${head("洞察与片段", ME.role === "observer" ? "研究员审核通过的洞察，每条都附受访者的原话。" : "每条洞察的原话都和转写逐字核对过；点“查看详情”看转写、洞察和片段。")}
     ${its.length ? `<div class="card scroll" style="padding:6px 10px"><table class="tbl rc"><thead><tr><th>受访者</th><th>场次</th><th>状态</th><th class="num">洞察</th><th class="num">已通过</th><th class="num">片段</th><th></th></tr></thead><tbody>
       ${its.map((i, n) => { const [t, c] = STATUS[i.status] || [i.status, ""]; const k = counts[n]; return `<tr><td><b>${esc(i.participant.name)}</b></td><td>${esc(i.title)}</td><td><span class="tag ${c}">${t}</span></td>
@@ -291,9 +301,11 @@ async function insightsListView(p) {
 
 // ---------------- 单场：转写 / 洞察 / 片段 ----------------
 async function interviewView(iid, tab) {
+  const my = renderSeq;
   const staff = STAFF();
   const it = await api(`/interviews/${iid}`);
   const p = (await projects()).find((x) => x.id === it.project_id);
+  if (stale(my)) return;
   const [t, c] = STATUS[it.status];
   const invite = sessionStorage.getItem("invite_" + iid);
   const room = (as, cls) => `<a class="btn ${cls}" href="/room.html?i=${iid}&as=${as}" target="_blank" rel="noopener">${as === "observer" ? "隐身观察" : "进入房间（主持）"}</a>`;
@@ -306,15 +318,16 @@ async function interviewView(iid, tab) {
     ${staff && canRoom && !invite ? `<div class="note row">邀请链接已隐藏。<span class="sp"></span><button class="s" id="rot">重新生成</button></div>` : ""}
     <div class="tabs">${tabs.map(([k, n]) => `<a href="#/i/${iid}/${k}" class="${tab === k ? "on" : ""}">${n}</a>`).join("")}</div><div id="tab"></div>`, { active: "insights", p });
   const rot = $("#rot"); if (rot) rot.onclick = guard(async () => { const r = await api(`/interviews/${iid}/invite/rotate`, { method: "POST" }); sessionStorage.setItem("invite_" + iid, location.origin + r.invite_path); render(); });
-  if (tab === "transcript") return transcriptTab(iid, it, staff);
-  if (tab === "clips") return clipsTab(iid, staff);
-  return insightsTab(iid, staff);
+  if (tab === "transcript") return transcriptTab(iid, it, staff, my);
+  if (tab === "clips") return clipsTab(iid, staff, my);
+  return insightsTab(iid, staff, my);
 }
 
 const SPEAKER = { moderator: "主持人", ai_moderator: "AI 主持人", participant: "受访者" };
 const REC_ST = { recording: ["录制中", "live"], processing: ["合成中", "o"], ready: ["已就绪", "ok"], failed: ["失败", "bad"], deleted: ["已清除", ""] };
-async function transcriptTab(iid, it, staff) {
+async function transcriptTab(iid, it, staff, my) {
   const [segs, recs, cfg] = await Promise.all([api(`/interviews/${iid}/transcript`), staff ? api(`/interviews/${iid}/recordings`) : [], loadConfig()]);
+  if (stale(my) || !$("#tab")) return;
   const ready = recs.find((r) => r.status === "ready"), play = recs.find((r) => r.playable), busy = recs.some((r) => ["recording", "processing"].includes(r.status));
   const mock = cfg.asr === "mock";
   $("#tab").innerHTML = `${staff ? `<div class="card" id="recs"><div class="row"><h3 style="margin:0">录制</h3><span class="sp"></span><button class="p" id="tr" ${ready ? "" : "disabled"} title="${ready ? "" : "有录制并合成完成后才能转写"}">${segs.length ? "重新转写" : "转写录制"}</button></div>
@@ -365,8 +378,9 @@ async function transcriptTab(iid, it, staff) {
   if (busy) { clearTimeout(window._recT); window._recT = setTimeout(() => { if (location.hash.startsWith("#/i/" + iid)) render(); }, 3000); }
 }
 
-async function insightsTab(iid, staff) {
+async function insightsTab(iid, staff, my) {
   const list = await api(`/interviews/${iid}/insights`);
+  if (stale(my) || !$("#tab")) return;
   $("#tab").innerHTML = `${staff ? `<div class="row"><button class="p" id="gen">AI 生成洞察</button><span class="sm mut">AI 只指出依据是哪几句，原话由系统整句填入，并和转写逐字核对。</span></div>` : ""}
     ${list.length ? list.map((i) => `<div class="card"><div class="row"><h3 style="margin:0">${esc(i.theme)}</h3><span class="tag ${i.status === "approved" ? "ok" : i.status === "needs_review" ? "bad" : "o"}">${{ draft: "待审核", approved: "已通过", needs_review: "转写改动后需复核" }[i.status]}</span><span class="tag">${i.kind === "ai" ? "AI" : "人工"}</span><span class="sp"></span>
       ${staff ? `<div class="row">${i.status !== "approved" ? `<button class="s p" data-ap="${i.id}">通过</button>` : ""}<button class="s warn" data-del="${i.id}">删除</button></div>` : ""}</div>
@@ -378,8 +392,9 @@ async function insightsTab(iid, staff) {
   app.querySelectorAll("[data-clip]").forEach((a) => a.onclick = guard(async (e) => { e.preventDefault(); await api(`/interviews/${iid}/clips`, { method: "POST", body: { evidence_id: a.dataset.clip } }); toast("已生成片段"); location.hash = `#/i/${iid}/clips`; }));
 }
 
-async function clipsTab(iid, staff) {
+async function clipsTab(iid, staff, my) {
   const [clips, recs] = await Promise.all([api(`/interviews/${iid}/clips`), staff ? api(`/interviews/${iid}/recordings`) : []]);
+  if (stale(my) || !$("#tab")) return;
   const play = recs.some((r) => r.playable);
   $("#tab").innerHTML = clips.length ? clips.map((c) => `<div class="card"><div class="row"><div><b>${esc(c.title)}</b><div class="sm mut">${fmt(c.start_ms)} – ${fmt(c.end_ms)}</div></div><span class="sp"></span>${staff ? `${play ? `<button class="s" data-pv="${c.id}">预览</button>` : ""}<button class="s" data-sl="${c.id}">分享记录</button><button class="s p" data-sh="${c.id}">创建分享链接</button>` : ""}</div><div id="sl_${c.id}" hidden></div></div>`).join("")
     : `<div class="card empty">还没有片段。在“洞察”里点证据下的“生成片段”。</div>`;
