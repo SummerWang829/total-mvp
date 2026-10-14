@@ -22,6 +22,14 @@
 | Sprint 6 真人试点准备 | 未开始 |
 | 实时字幕（腾讯云）/ AI 语音 / 编码分析 / 部署 | 未开始 |
 
+## 2026-10-14 · SW 笔记本接手（环境搭建，代码未改）
+**做了什么**：在 SW 电脑（Windows）上 `D:\work\total-mvp` 克隆仓库；winget 装 Git、Python 3.11、Node LTS、ffmpeg；项目内 `.venv` 装好 `requirements.txt`；LiveKit 1.8.4 Windows 版放进 `bin\livekit-server.exe`（官方发布页 zip）；Playwright Chromium 已装；`.env` 由 `.env.example` 复制（密钥由用户自己填）；`python -m app.doctor` 无必须解决的问题；`python -m app.seed --url http://127.0.0.1:8000` 已造演示数据。
+**qa.sh**：本次没跑（只搭环境，没改代码）。
+**还差什么 / 注意**：① SW 上 `.env` 的 DeepSeek / 混元密钥待用户填；② 本地转写（`bin/whisper`）和 Ollama 在 SW 上没装，转写/洞察暂为演示模式；③ `start-dev.ps1` / `scripts/dev.sh` 在 SW 上还没实际跑过（`scripts/get_livekit.sh` 不支持 Windows，已手动放好 exe）；④ Windows 上 PowerShell 的 Invoke-WebRequest 会走系统代理，访问本机请用 127.0.0.1 并绕过代理；⑤ 新规则：每个任务结束都要推送 GitHub（见 CLAUDE.md）。
+**风险**：无新增。
+
+---
+
 ## 2026-10-13 · Sprint 5：AI 主持接入直播间（文字版）（`qa.sh`：698 / 1582 / 180 / 一键启动正常）
 **做了什么**
 - 建场次时可选“真人主持人 / AI 主持人”（研究员/PM 选）；AI 场次在邀请、同意书里披露 AI（Sprint 0 已做），场次列表和详情有“AI 主持”标签。
