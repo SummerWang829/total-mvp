@@ -29,7 +29,16 @@
 **风险**：无新增。
 
 **2026-10-14 补充（SW 上跑通真实模式，代码未改）**：① `start-dev.ps1` 在 SW 上实测可用，`python -m app.doctor` 全部 ✓（仅 SECRET_KEY 仍是开发默认值）；② 本地转写：`bin\whisper\Release\whisper-server.exe`（whisper.cpp v1.9.2 CPU 版）+ `ggml-large-v3-turbo-q5_0.bin`（547MB，Hugging Face ggerganov/whisper.cpp），端口 8178，由 `start-dev.ps1` 自动启动；③ `.env` 在 SW 上：ASR 走本地 whisper（`ASR_BASE_URL=http://127.0.0.1:8178/v1`），洞察/翻译与 AI 主持人走 DeepSeek（`deepseek-flash`），评分用混元；密钥由用户自己填，不进仓库，LW 需自己填一份；④ 注意：Windows 上 `python3` 默认是应用商店占位程序，SW 上在 Python311 目录放了一份 `python3.exe` 副本才让 `scripts/dev.sh` 通；⑤ 系统 Python 也装了一份 `requirements.txt`（dev.sh 用系统 python3，不用 `.venv`）。
-**还差**：真实转写 + 洞察端到端实测（走一遍 README 的真人测试清单）；`scripts/qa.sh` 在 SW 上还没跑；马来语/泰米尔语转写未实测。
+**还差**：真实转写 + 洞察端到端实测（走一遍 README 的真人测试清单）；马来语/泰米尔语转写未实测。
+
+**2026-10-14 SW 首次跑 `qa.sh`：不是全绿（698 / 1579 / 179 / 一键启动通过）**
+- 逻辑测试 698 项全过（与 LW 一致）。
+- 全站浏览器检查：第一次 1579 过、3 失败，第二次 1578 过、4 失败；失败项每次不同，但全部是“洞察”页面的低对比度，读数出现 1.00/1.48（文字几乎透明），判断是检查时页面正处在淡入动画中（`main.enter` 的 0.34s 淡入，页面内容重新渲染时被撞上），SW 机器较慢更容易撞上。**没有放宽任何阈值**；根因（为什么洞察页在检查时还在重绘）还没查，待办。
+- 真实视频访谈（3 个真实浏览器）：180 项里 179 过、1 失败：观察员浏览器控制台出现 LiveKit 提示 “cannot send signal request before connected, type: trackSetting”，被“无控制台错误”检查抓到；疑似连接时序问题，待查是否可复现。
+- 一键启动（smoke_dev）通过。
+- 代码改动：`tests/e2e_room.py` 在 Windows 上认 `bin/livekit-server.exe`（原来只认无扩展名，直接退出码 2）。检查本身没有变。
+- 注意：`scripts/qa.sh` 在 SW 上跑一遍要约 25 分钟（pytest 约 6–8 分钟）。跑 QA 前要先停掉 `start-dev.ps1`，否则 7880 端口冲突。
+**下一步**：查洞察页低对比度的根因（是真的重绘闪烁还是检查等待不够）；查观察员控制台提示是否可复现；修完再跑 `qa.sh` 到全绿。
 
 ---
 

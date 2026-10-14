@@ -82,6 +82,8 @@ def main():
     os.makedirs(SHOTS, exist_ok=True)
     tmp = tempfile.mkdtemp()
     lk_bin = os.path.join(ROOT, "bin", "livekit-server")
+    if not os.path.isfile(lk_bin) and os.path.isfile(lk_bin + ".exe"):  # Windows build
+        lk_bin += ".exe"
     if not os.path.isfile(lk_bin):
         print("bin/livekit-server missing: run scripts/get_livekit.sh"); sys.exit(2)
     rtc0 = 53000 + (PORT % 1000) * 2
