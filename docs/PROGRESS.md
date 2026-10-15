@@ -55,6 +55,12 @@
 **验证**：公网 `https://deepresearch.morningstarsystem.tech/api/health` = 200，首页 200；`https://lk-deepresearch.morningstarsystem.tech/` = 200；容器内 `python -m app.doctor`：视频服务器在线 ✓、洞察/翻译 ✓、AI 主持人 ✓（DeepSeek）、水印字体 ✓（Noto CJK）、转写为演示模式（服务器没有 whisper）。**还没有用真人浏览器走过摄像头/麦克风视频**（LiveKit 日志里有 “could not validate external IP: context canceled” 警告，不确定是否影响 WebRTC，等真人测试确认）。
 **踩坑记录**：① Windows 上写的文件是 CRLF，在 Linux 上 shell 脚本报错、`.env` 值会带回车 → 已加 `.gitattributes`（`*.sh`、`deploy/**`、Dockerfile 强制 LF）；② LiveKit 的 `bind_addresses: 127.0.0.1` 会让 Caddy 容器连不上（502）→ 已去掉，7880 靠腾讯云防火墙不对外开放；③ 腾讯云控制台的“确认”类按钮有时第一次点击不生效，要看结果再点。
 **待办（按顺序）**：a. 用户在网站注册第一个管理员 → 我把 `ALLOW_SIGNUP` 改成 `false` 重启；b. 用户用两个浏览器（电脑 + 手机/另一台电脑）真人测试视频；c. 转写：选云端 ASR 或在服务器装 whisper；d. 上线给真实受访者之前：Postgres、备份、限流、同意书审、录像合成隔离、应急预案；e. 部署完成后删掉服务器上本机的 SSH 公钥（如不再需要）；f. 服务器 2026-11-15 到期，要续费或升配。
+**2026-10-15 同事首轮线上测试后的三项反馈与修复（`qa.sh`：698 / 1584 / 180 / 一键启动通过）**
+- 反馈：① 画面很卡；② 部分人摄像头开了进不来、进来后看不到他人；③ AI 主持打不开。
+- ③ 根因：我的镜像没带 `eval/`，AI 主持读不到 `eval/guides/*.json`（日志 `FileNotFoundError`）。已修：Dockerfile 复制 `eval/`，`.dockerignore` 不再排除它。
+- ① 一部分根因：应用数据库连接池被占满（日志 17 次 `QueuePool limit of size 5 overflow 10 reached`，请求卡 30 秒）。录像分片上传接口先拿数据库连接、再 `await request.body()` 等慢速（跨国）上传，一直占着连接。已修：两个上传接口在等 body 前先 `db.commit()` 释放连接；`app/db.py` SQLite 开 WAL、30 秒忙等待、连接池 20+40。**服务器 CPU/内存很空闲，卡顿的另一部分更可能是网络路径（国内到新加坡）丢包：LiveKit 日志有 9 次 `large sequence number gap`**，这部分没有证实也没有解决。
+- ② 没有查清：视频服务器日志里只有丢包告警和一次 `could not restart participant`（同一账号重复进房）。已把 LiveKit 改成显式声明公网 IP（`node_ip`），日志级别调到 info；TCP 7881/443/80 从外面能连上，UDP 无法从本机验证。下一步需要同事复测并告知时间、网络环境，再看日志。若仍有人进不来，考虑启用 LiveKit 自带 TURN（443/TCP）。
+- 测试：这一轮 pytest 698（1 分 47 秒，之前 6–12 分钟是因为本机有个空转的 `dev.sh` 进程）、全站检查 1584/0 失败、真实视频访谈第一次 178/180（AI 面板的“观察员隐身”“AI 启动前不能说话/输入”两项失败，当时我在同时用浏览器面板，疑似抢资源）、**重跑 180/180**、一键启动通过。
 **旧记录（部署前）**：
 **做了什么**
 - 服务器：用户的腾讯云账号里原有一台硅谷服务器（2 核 2GB，上面跑着用户的其他业务：nginx、node、apiAgent、apiproxy、govpn-server 等，**不要动**，我只做了只读检查）。新买了一台**新加坡**轻量应用服务器给本项目专用：Ubuntu 26.04、2 核 4GB、60GB、200Mbps，公网 IP `43.160.208.195`，实例 `lhins-7h9fxm7j`，名称 Ubuntu-aDDV，¥60/月（用户已付款），2026-11-15 到期。基线检查：干净，只开了 SSH，有 sudo，没有 Docker。
