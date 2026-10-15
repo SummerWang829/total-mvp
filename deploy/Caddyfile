@@ -1,0 +1,10 @@
+# Caddy gets and renews https certificates by itself (Let's Encrypt). Both host names must already point at this server.
+{$APP_HOST} {
+	encode zstd gzip
+	reverse_proxy app:8000
+}
+
+# LiveKit signalling (wss). Media itself flows directly over UDP 50000-50200 / TCP 7881, not through Caddy.
+{$LK_HOST} {
+	reverse_proxy host.docker.internal:7880
+}

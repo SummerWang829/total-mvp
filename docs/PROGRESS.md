@@ -50,6 +50,17 @@
 
 ---
 
+## 2026-10-15 · 线上测试环境：服务器已买、部署文件已写，待授权后上线（进行中）
+**做了什么**
+- 服务器：用户的腾讯云账号里原有一台硅谷服务器（2 核 2GB，上面跑着用户的其他业务：nginx、node、apiAgent、apiproxy、govpn-server 等，**不要动**，我只做了只读检查）。新买了一台**新加坡**轻量应用服务器给本项目专用：Ubuntu 26.04、2 核 4GB、60GB、200Mbps，公网 IP `43.160.208.195`，实例 `lhins-7h9fxm7j`，名称 Ubuntu-aDDV，¥60/月（用户已付款），2026-11-15 到期。基线检查：干净，只开了 SSH，有 sudo，没有 Docker。
+- 域名：`morningstarsystem.tech` 在用户的腾讯云 DNSPod，已有 34 条记录（其他业务在用），没有 deepresearch 相关记录。计划新增两条 A 记录（`deepresearch`、`lk-deepresearch` → 新服务器 IP）。
+- 部署文件（`deploy/`，无任何密钥）：`Dockerfile`（网站 + ffmpeg + 中文字体）、`docker-compose.yml`（app + 自建 LiveKit + Caddy 自动 https）、`Caddyfile`、`livekit.yaml`、`.env.example`、`README.md`；根目录加了 `.dockerignore`。**还没在服务器上跑过**，compose 语法等要上服务器才能验证。
+**qa.sh**：未改应用代码，沿用上一条结果。
+**还差什么（等用户确认）**：① 腾讯云 DNS 加两条 A 记录；② 新服务器防火墙放行 TCP 80/443/7881、UDP 443、UDP 50000-50200；③ 给本机一把 SSH 公钥以便传代码；④ 把本机 `.env` 里的模型密钥行传到服务器（不读取内容）；⑤ 装 Docker（apt）、部署、注册第一个管理员后关闭注册。
+**风险/注意**：测试环境用 SQLite、转写为演示模式（服务器没有 whisper，需选云端转写或另部署）；数据在新加坡区，与拍板一致；同意书、律师审、Postgres、限流、备份仍未做，不能给真实受访者用。
+
+---
+
 ## 2026-10-13 · Sprint 5：AI 主持接入直播间（文字版）（`qa.sh`：698 / 1582 / 180 / 一键启动正常）
 **做了什么**
 - 建场次时可选“真人主持人 / AI 主持人”（研究员/PM 选）；AI 场次在邀请、同意书里披露 AI（Sprint 0 已做），场次列表和详情有“AI 主持”标签。

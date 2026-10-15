@@ -1,0 +1,50 @@
+# Test/staging deployment on one server:  web app + LiveKit video server + Caddy (automatic https).
+#   cd deploy && cp .env.example .env   (then fill it - see deploy/README.md)   &&   docker compose up -d --build
+# Secrets live only in deploy/.env on the server (git-ignored). Nothing here contains a secret.
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:  # these win over the same names inside .env
+      DATABASE_URL: sqlite:////data/total.db   # test environment; use Postgres (DATABASE_URL) before real participants
+      MEDIA_DIR: /data/media
+      LIVEKIT_URL: wss://${LK_HOST}
+    volumes:
+      - appdata:/data
+    ports:
+      - "127.0.0.1:8000:8000"   # only Caddy (and LiveKit's webhook, via host network) reach the app
+
+  livekit:
+    image: livekit/livekit-server:v1.8.4
+    restart: unless-stopped
+    network_mode: host           # WebRTC wants the real host network (UDP 50000-50200, TCP 7881, signalling on 127.0.0.1:7880)
+    command: --config /etc/livekit.yaml
+    environment:
+      LIVEKIT_KEYS: "${LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET}"
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml:ro
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      APP_HOST: ${APP_HOST}
+      LK_HOST: ${LK_HOST}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # to reach LiveKit, which runs on the host network
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  appdata:
+  caddy_data:
+  caddy_config:
