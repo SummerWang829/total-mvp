@@ -278,6 +278,7 @@ body.participant .tag.o,body.participant .tag.live,.stage.t-light .tag.o,.stage.
 .stage.solo .rpan.chat{margin-top:12px;align-self:auto}
 /* ---------- concept test: the material on screen, live captions, the script, quotes and follow-ups ---------- */
 .stim{margin-bottom:10px;border-radius:12px;overflow:hidden;background:#0B1A15;border:1px solid var(--r-line)}
+.stimhint{margin:0;padding:8px 12px;font-size:14px;color:var(--r-ink);background:var(--r-pan)}
 .stim iframe,.stim img{display:block;width:100%;aspect-ratio:16/9;border:0;background:#0B1A15;object-fit:contain}
 .caps{display:flex;flex-direction:column;gap:6px;max-height:360px;min-height:96px;overflow:auto;padding:2px}
 .cap{padding:6px 10px;border-radius:10px;background:var(--r-tile);color:var(--r-ink);font-size:14.5px;line-height:1.5;overflow-wrap:anywhere}
@@ -285,6 +286,11 @@ body.participant .tag.o,body.participant .tag.live,.stage.t-light .tag.o,.stage.
 .cap .hd b{color:var(--r-ink)}.cap.pt{border-left:3px solid var(--orange)}
 .cap .hd .sp{flex:1}
 .cap .hd button,.probes button,.plan button.mini{height:auto;min-height:36px;padding:2px 12px;font-size:13px;background:var(--r-btn);border-color:var(--r-btnline);color:var(--r-btnink)}
+/* in the dark-green room header: light text; wraps onto its own line on a phone */
+.rnet{font-size:14px;color:#E8EFEA;padding:2px 12px;border:1px solid #4E7466;border-radius:999px}
+.rnet.bad{color:#FFE2CF;border-color:#FF9A55;background:#5A2A0A}
+@media (max-width:640px){.rnet{flex:1 1 100%;order:9;border-radius:12px;overflow-wrap:anywhere}}
+.cap .zh{margin-top:2px;font-size:14px;color:var(--r-mut)}
 .cap.live{background:transparent;border:1px dashed var(--r-btnline);color:var(--r-mut)}
 .probes{display:flex;flex-direction:column;gap:6px}
 .probes .pr{display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--r-line);border-radius:10px;font-size:14px;overflow-wrap:anywhere}
@@ -378,3 +384,15 @@ main.enter .pbar6 i{animation:grow 1s var(--ease) .15s both}@keyframes grow{from
   .brandsvg.play *{animation:none!important}
   .recdot:not([hidden])::before{animation:none}
 }
+
+.gbox{margin:0 0 10px;padding:8px 10px;border:1px solid var(--r-line);border-radius:10px;font-size:14px}.gbox summary{cursor:pointer;min-height:36px;display:flex;align-items:center}
+.gbox textarea{width:100%;margin:6px 0}.gbox input[type=file]{display:block;margin:4px 0;font-size:14px;max-width:100%}.gbox label{display:block;font-size:14px}
+#gnote{margin:4px 0 0;font-size:14px;color:var(--r-mut)}#gnote.bad{color:var(--r-badink)}
+
+.chips{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.chip{display:inline-flex;align-items:center;gap:2px;border:1px solid var(--line);border-radius:999px;background:var(--wash);color:var(--ink);font-size:14px;padding:0 4px 0 12px;min-height:36px}
+.chip button{min-height:36px;min-width:36px;border:0;background:transparent;color:var(--ink2);padding:0 8px;cursor:pointer;font-size:14px;border-radius:999px}
+.chip button.pick{padding:0 6px 0 0;font-weight:500;min-width:0}
+.chip.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}.chip.on button{color:var(--bg)}
+.chip.sug{border-style:dashed;background:var(--surface)}
+.chips select{min-height:36px;font-size:14px}

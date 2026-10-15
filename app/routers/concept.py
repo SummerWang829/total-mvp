@@ -4,8 +4,10 @@ Who may do what: the moderator and the research team run the room (show a materi
 a hidden observer may read captions and mark quotes / suggest follow-ups; the participant only posts captions of their own microphone
 and sees the current material. Quote text is always copied from the caption line by the server, never taken from the browser.
 """
+import logging
 import threading
 import time
+from concurrent.futures import Future, ThreadPoolExecutor, wait
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -17,10 +19,14 @@ from sqlalchemy.orm import Session
 from .. import concept
 from ..asr_live import token_out
 from ..audit import audit
-from ..db import get_db
+from ..db import SessionLocal, get_db
 from ..deps import STAFF, Ctx, current_ctx, require_roles, visible_interview
-from ..models import CaptionLine, Highlight, Interview, RoomState, Stimulus, utcnow
+from ..models import BackroomMessage, CaptionLine, Highlight, Interview, RoomState, Stimulus, utcnow
+from ..providers import get_llm
+from .interviews import _ingest
 from .public import _by_invite, _consented
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["concept"])
 
@@ -30,6 +36,27 @@ MAX_LINES_PER_INTERVIEW = 5000
 PARTIAL_TTL_S = 8.0
 _PARTIAL: dict[tuple[str, str], tuple[str, float]] = {}  # the sentence being spoken right now, per (interview, speaker); memory only, never stored
 _LINE_LOCK = threading.Lock()
+_TRANSLATOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="caption-translate")
+_translations: set[Future] = set()
+
+
+def _translate_line(line_id: str) -> None:
+    """Chinese translation of one caption line, in the background: the sentence is already on screen, the Chinese follows a moment later."""
+    try:
+        with SessionLocal() as db:
+            row = db.get(CaptionLine, line_id)
+            if row and not row.text_zh:
+                out = get_llm().translate([row.text])
+                if out and out[0]:
+                    row.text_zh = out[0]
+                    db.commit()
+    except Exception:  # noqa: BLE001 - a translation hiccup must never affect the interview; the line simply stays untranslated
+        log.warning("caption translation failed", exc_info=True)  # no caption text in the log
+
+
+def wait_translations(timeout: float = 10.0) -> None:
+    """Tests: wait until the background translations have finished."""
+    wait(list(_translations), timeout=timeout)
 
 
 at_ms = concept.at_ms
@@ -92,6 +119,7 @@ def show_stimulus(iid: str, body: ShowBody, ctx: Ctx = Depends(require_roles(*OP
 class CaptionIn(BaseModel):
     text: str = Field(max_length=MAX_TEXT)
     final: bool = True  # false: the sentence is still being spoken (shown greyed, not stored)
+    dur_ms: int = Field(default=0, ge=0, le=120_000)  # how long the sentence took, from the recogniser (used to place it on the transcript timeline)
 
 
 def _store_caption(db: Session, itv: Interview, speaker: str, body: CaptionIn) -> None:
@@ -107,9 +135,14 @@ def _store_caption(db: Session, itv: Interview, speaker: str, body: CaptionIn) -
             seq = (db.scalar(select(func.max(CaptionLine.seq)).where(CaptionLine.interview_id == itv.id)) or 0) + 1
             if seq > MAX_LINES_PER_INTERVIEW:
                 raise HTTPException(429, "字幕条数已达上限")
-            db.add(CaptionLine(org_id=itv.org_id, interview_id=itv.id, seq=seq, speaker=speaker, text=text, at_ms=at_ms(itv)))
+            line = CaptionLine(org_id=itv.org_id, interview_id=itv.id, seq=seq, speaker=speaker, text=text, at_ms=at_ms(itv), dur_ms=body.dur_ms)
+            db.add(line)
             try:
                 db.commit()
+                if itv.language != "zh":  # English interviews: the team reads the Chinese next to the original
+                    fut = _TRANSLATOR.submit(_translate_line, line.id)
+                    _translations.add(fut)
+                    fut.add_done_callback(_translations.discard)
                 return
             except IntegrityError:
                 db.rollback()
@@ -144,7 +177,33 @@ def get_captions(iid: str, after: int = 0, ctx: Ctx = Depends(current_ctx), db: 
     rows = db.scalars(select(CaptionLine).where(CaptionLine.interview_id == itv.id, CaptionLine.seq > after).order_by(CaptionLine.seq).limit(500)).all()
     now = time.time()
     partial = {sp: txt for (i, sp), (txt, ts) in list(_PARTIAL.items()) if i == itv.id and now - ts < PARTIAL_TTL_S}
-    return {"lines": [{"id": c.id, "seq": c.seq, "speaker": c.speaker, "text": c.text, "at_ms": c.at_ms} for c in rows], "partial": partial}
+    fills = []  # the Chinese of sentences the browser already shows: translations arrive a moment after the sentence
+    if after > 0:
+        fills = [{"id": c.id, "text_zh": c.text_zh} for c in db.scalars(select(CaptionLine).where(
+            CaptionLine.interview_id == itv.id, CaptionLine.seq <= after, CaptionLine.seq > after - 15, CaptionLine.text_zh != "")).all()]
+    return {"lines": [{"id": c.id, "seq": c.seq, "speaker": c.speaker, "text": c.text, "text_zh": c.text_zh, "at_ms": c.at_ms, "dur_ms": c.dur_ms} for c in rows],
+            "partial": partial, "fills": fills}
+
+
+@router.post("/interviews/{iid}/transcript/from-captions")
+def transcript_from_captions(iid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    """Make the transcript out of the live captions (they may contain recognition errors; a recording-based transcript replaces them later).
+
+    Refused when insights already quote the old transcript (the same rule as any whole-transcript replacement)."""
+    itv = visible_interview(db, ctx, iid)
+    if itv.purged_at:
+        raise HTTPException(404, "访谈不存在")
+    lines = db.scalars(select(CaptionLine).where(CaptionLine.interview_id == itv.id).order_by(CaptionLine.seq)).all()
+    if not lines:
+        raise HTTPException(409, "这场访谈没有实时字幕")
+    segs = []
+    for i, c in enumerate(lines):
+        dur = c.dur_ms or min(8000, 250 * len(c.text) + 800)  # unknown duration: a plausible one from the length
+        segs.append(dict(idx=i, speaker=c.speaker, start_ms=max(0, c.at_ms - dur), end_ms=c.at_ms, text_orig=c.text, text_zh=c.text_zh, lang=itv.language))
+    _ingest(db, itv, segs)
+    audit(db, ctx.org_id, ctx.actor, "transcript.from_captions", itv.id, n=len(segs), ip=ctx.ip)
+    db.commit()
+    return {"segments": len(segs)}
 
 
 @router.get("/interviews/{iid}/asr")
@@ -159,6 +218,95 @@ def participant_asr(token: str, db: Session = Depends(get_db)):
     if itv.status != "live" or itv.admitted_at is None or not _consented(db, itv):
         return {"enabled": False, "retry": True, "reason": "访谈开始、你同意录制并被放行后才会开启字幕"}  # temporary: the browser asks again
     return token_out(itv.language)
+
+
+# ---------- the team's private chat (observers <-> moderator <-> researchers) ----------
+MAX_BACKROOM = 2000
+
+
+class BackroomIn(BaseModel):
+    text: str = Field(min_length=1, max_length=500)
+
+
+def backroom_out(m: BackroomMessage, ctx: Ctx) -> dict:
+    return {"id": m.id, "seq": m.seq, "sender": m.sender, "role": m.role, "text": m.text, "mine": m.user_id == ctx.user.id, "at": m.created_at.isoformat()}
+
+
+@router.get("/interviews/{iid}/backroom")
+def get_backroom(iid: str, after: int = 0, ctx: Ctx = Depends(current_ctx), db: Session = Depends(get_db)):
+    itv = visible_interview(db, ctx, iid)
+    rows = db.scalars(select(BackroomMessage).where(BackroomMessage.interview_id == itv.id, BackroomMessage.seq > after).order_by(BackroomMessage.seq).limit(200)).all()
+    return {"messages": [backroom_out(m, ctx) for m in rows]}
+
+
+@router.post("/interviews/{iid}/backroom", status_code=201)
+def post_backroom(iid: str, body: BackroomIn, ctx: Ctx = Depends(current_ctx), db: Session = Depends(get_db)):
+    itv = visible_interview(db, ctx, iid)
+    if itv.purged_at:
+        raise HTTPException(404, "访谈不存在")
+    text = body.text.strip()
+    if not text:
+        raise HTTPException(422, "消息不能为空")
+    with _LINE_LOCK:
+        for _ in range(3):
+            seq = (db.scalar(select(func.max(BackroomMessage.seq)).where(BackroomMessage.interview_id == itv.id)) or 0) + 1
+            if seq > MAX_BACKROOM:
+                raise HTTPException(429, "消息条数已达上限")
+            m = BackroomMessage(org_id=ctx.org_id, interview_id=itv.id, seq=seq, user_id=ctx.user.id, sender=ctx.user.name, role=ctx.user.role, text=text)
+            db.add(m)
+            try:
+                db.commit()
+                return backroom_out(m, ctx)
+            except IntegrityError:
+                db.rollback()
+    raise HTTPException(503, "消息保存冲突，请稍后重试")
+
+
+# ---------- connection diagnostics: how each browser is connected to the video server ----------
+class NetStat(BaseModel):
+    transport: Literal["udp", "tcp", "unknown"] = "unknown"
+    kind: Literal["host", "srflx", "prflx", "relay", "unknown"] = "unknown"  # relay = through a TURN server
+    rtt_ms: int = Field(default=0, ge=0, le=60_000)
+    loss_pct: float = Field(default=0.0, ge=0, le=100)
+    jitter_ms: int = Field(default=0, ge=0, le=60_000)
+
+
+_NETSTAT: dict[tuple[str, str], dict] = {}  # latest report per (interview, role); memory only, expires after a minute
+_NETSTAT_TTL_S = 60.0
+
+
+def _store_netstat(itv: Interview, role: str, body: NetStat) -> None:
+    rec = {**body.model_dump(), "at": time.time()}
+    first = (itv.id, role) not in _NETSTAT
+    _NETSTAT[(itv.id, role)] = rec
+    if first or body.loss_pct >= 5 or body.rtt_ms >= 300 or body.transport == "tcp":  # a baseline per session, then only what looks wrong
+        log.warning("netstat interview=%s role=%s transport=%s/%s rtt=%dms loss=%.1f%% jitter=%dms", itv.id[:8], role, body.transport, body.kind, body.rtt_ms, body.loss_pct, body.jitter_ms)
+
+
+@router.post("/interviews/{iid}/netstat", status_code=204)
+def post_staff_netstat(iid: str, body: NetStat, ctx: Ctx = Depends(current_ctx), db: Session = Depends(get_db)):
+    itv = visible_interview(db, ctx, iid)
+    _store_netstat(itv, "observer" if ctx.user.role == "observer" else "moderator", body)
+
+
+@router.post("/public/join/{token}/netstat", status_code=204)
+def post_participant_netstat(token: str, body: NetStat, db: Session = Depends(get_db)):
+    itv = _by_invite(db, token)
+    if itv.status == "live" and itv.admitted_at is not None:
+        _store_netstat(itv, "participant", body)
+
+
+@router.get("/interviews/{iid}/netstat")
+def get_netstat(iid: str, ctx: Ctx = Depends(current_ctx), db: Session = Depends(get_db)):
+    """The latest connection report of the moderator and of the participant (what the room header shows to the team)."""
+    itv = visible_interview(db, ctx, iid)
+    now = time.time()
+    out = {}
+    for role in ("moderator", "participant"):
+        rec = _NETSTAT.get((itv.id, role))
+        if rec and now - rec["at"] < _NETSTAT_TTL_S:
+            out[role] = {k: v for k, v in rec.items() if k != "at"}
+    return out
 
 
 # ---------- quotes and follow-up questions ----------

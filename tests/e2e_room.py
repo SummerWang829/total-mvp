@@ -557,13 +557,17 @@ def concept_phase(pw, tok, ids, pid, errs):
 
     # ---- live captions: both speakers, each sentence labelled ----
     want = [("主持人", s) for s in ASR_SCRIPTS[0]] + [("受访者", s) for s in ASR_SCRIPTS[1]]
-    got = lambda pg: [tuple(x) for x in pg.evaluate("() => [...document.querySelectorAll('#caps .cap')].map((c) => [c.querySelector('b').textContent, c.lastChild.textContent])")]
+    got = lambda pg: [tuple(x) for x in pg.evaluate("() => [...document.querySelectorAll('#caps .cap')].map((c) => [c.querySelector('b').textContent, c.children[1].textContent])")]
     partial_now = lambda: any(call(f"/interviews/{iid}/captions?after=0", token=tok["observer"])["partial"].values())
     seen_partial = wait_for(partial_now, 30, 0.3)  # while the participant's first sentence is still being recognised
     ok(wait_for(lambda: len(got(pm)) >= 4, 60), f"concept test: four finished sentences reach the moderator's panel ({got(pm)})")
     ok(sorted(got(pm)) == sorted(want), f"concept test: each sentence is attributed to the right speaker ({got(pm)})")
     ok(wait_for(lambda: sorted(got(po)) == sorted(want), 15), "concept test: the hidden observer follows the same captions")
     ok([t for s, t in got(pm) if s == "受访者"] == ASR_SCRIPTS[1], "concept test: sentences keep their order")
+    netq = lambda pg: pg.evaluate("() => document.getElementById('netq').textContent")
+    ok(wait_for(lambda: all(w in netq(pm) for w in ("主持人：", "受访者：")) and all(w in netq(po) for w in ("主持人：", "受访者：")), 45),
+       f"concept test: the header shows how the moderator and the participant are connected (UDP/TCP, round trip, loss): {netq(pm)!r} / {netq(po)!r}")
+    ok(any(x in netq(pm) for x in ("UDP", "TCP")) and "ms 丢包" in netq(pm) and pp.evaluate("() => document.getElementById('netq').hidden"), "concept test: it reads like 'UDP 3 ms 丢包 0%' and the participant never sees it")
     ok(seen_partial, "concept test: the sentence still being spoken is shown while it is recognised")
     lines = call(f"/interviews/{iid}/captions?after=0", token=tok["observer"])["lines"]
     ok(all(a["at_ms"] <= b["at_ms"] for a, b in zip(lines, lines[1:])) and lines and lines[0]["at_ms"] > 0, "concept test: caption times come from the server clock and never go backwards")
@@ -584,6 +588,12 @@ def concept_phase(pw, tok, ids, pid, errs):
     ok(pm.locator("#probes .pr", has_text="价格多少算贵").locator("button", has_text="删除").count() == 1 and po.locator("#probes .pr", has_text="成分").locator("button", has_text="删除").count() == 0,
        "concept test: an observer can delete only their own follow-up")
 
+    # ---- the team's private chat ----
+    po.fill("#brin", "能追问一下价格吗？"); po.click("#brsend")
+    ok(wait_for(lambda: "能追问一下价格吗" in pm.inner_text("#brlog"), 10), "concept test: the observer's private message reaches the moderator")
+    pm.fill("#brin", "好的，下一题问。"); pm.click("#brsend")
+    ok(wait_for(lambda: "好的，下一题问" in po.inner_text("#brlog"), 10), "concept test: the moderator's reply reaches the observer")
+    ok("能追问一下价格吗" not in pp.inner_text("body") and pp.locator("#brlog").count() == 0, "concept test: the participant never sees the private chat")
     # ---- the material on the participant's screen ----
     pm.evaluate("document.querySelectorAll('#plan details').forEach((d) => (d.open = true))")
     ok(pp.locator("#stim").is_hidden(), "concept test: nothing is on the participant's screen before the moderator shows it")

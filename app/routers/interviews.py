@@ -2,12 +2,13 @@ import os
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import Response
 from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from .. import ai_room, concept
+from .. import ai_room, concept, export
 from ..audit import audit
 from ..config import settings
 from ..db import get_db
@@ -16,7 +17,7 @@ from ..moderator.constants import ModerationMode
 from ..deps import STAFF, Ctx, current_ctx, require_roles, visible_interview
 from ..evidence import check_evidence, quote_matches
 from ..livekit import build_room_token, delete_room, url_for_client
-from ..models import (AuditLog, Clip, Consent, Evidence, Insight, Interview, InterviewObserver, Participant, Project,
+from ..models import (AuditLog, Clip, InsightCode, Consent, Evidence, Insight, Interview, InterviewObserver, Participant, Project,
                       Recording, ShareLink, TranscriptSegment, User, uid, utcnow)
 from ..pipeline import build_segments
 from ..providers import get_llm
@@ -520,6 +521,28 @@ def _insight(db: Session, ctx: Ctx, insight_id: str) -> Insight:
     return ins
 
 
+@router.get("/projects/{pid}/insights/export")
+def export_insights(pid: str, format: str = "docx", approved_only: bool = False, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    """Download the project's insights with their verbatim quotes as Word or CSV (staff only; participants appear as P-001 codes)."""
+    if format not in ("docx", "csv"):
+        raise HTTPException(422, "格式只能是 docx 或 csv")
+    proj = get_project(db, ctx, pid)
+    code = {p.id: f"P-{n + 1:03d}" for n, p in enumerate(db.scalars(select(Participant).where(Participant.project_id == proj.id).order_by(Participant.created_at)))}
+    rows = []
+    for itv in db.scalars(select(Interview).where(Interview.project_id == proj.id, Interview.org_id == ctx.org_id).order_by(Interview.created_at)):
+        q = select(Insight).where(Insight.interview_id == itv.id).order_by(Insight.created_at)
+        if approved_only:
+            q = q.where(Insight.status == "approved")
+        for ins in db.scalars(q):
+            rows.append({**insight_out(db, ins), "pcode": code.get(itv.participant_id, "?"), "interview": itv.title})
+    audit(db, ctx.org_id, ctx.actor, "insight.export", proj.id, format=format, count=len(rows))
+    db.commit()
+    if format == "csv":
+        return Response(export.to_csv(rows), media_type="text/csv; charset=utf-8", headers={"Content-Disposition": 'attachment; filename="insights.csv"'})
+    data = export.to_docx(proj.name, rows, utcnow().strftime("%Y-%m-%d"))
+    return Response(data, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document", headers={"Content-Disposition": 'attachment; filename="insights.docx"'})
+
+
 @router.post("/insights/{insight_id}/approve")
 def approve_insight(insight_id: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
     ins = _insight(db, ctx, insight_id)
@@ -534,6 +557,7 @@ def approve_insight(insight_id: str, ctx: Ctx = Depends(require_roles(*STAFF)), 
 @router.delete("/insights/{insight_id}")
 def delete_insight(insight_id: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
     ins = _insight(db, ctx, insight_id)
+    db.execute(delete(InsightCode).where(InsightCode.insight_id == ins.id))
     db.delete(ins)
     audit(db, ctx.org_id, ctx.actor, "insight.delete", ins.id)
     db.commit()

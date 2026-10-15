@@ -15,7 +15,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 def main():
     tmp = tempfile.mkdtemp()
     port = 8000 + int(time.time()) % 900 + 50
-    env = {**os.environ, "PORT": str(port), "SKIP_PIP": "1", "DATABASE_URL": f"sqlite:///{tmp}/d.db", "MEDIA_DIR": f"{tmp}/media", "LIVEKIT_URL": "ws://localhost:7880",
+    env = {**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8", "PORT": str(port), "SKIP_PIP": "1", "DATABASE_URL": f"sqlite:///{tmp}/d.db", "MEDIA_DIR": f"{tmp}/media", "LIVEKIT_URL": "ws://localhost:7880",
            "ASR_PROVIDER": "mock", "LLM_PROVIDER": "mock", "ASR_API_KEY": "", "LLM_API_KEY": "",
            "MODERATOR_PROVIDER": "mock", "MODERATOR_API_KEY": "", "MODERATOR_VENDOR": ""}  # never the user's real AI services
     out = open(os.path.join(tmp, "out.txt"), "w")
@@ -25,7 +25,7 @@ def main():
         text = ""
         for _ in range(120):
             time.sleep(0.5)
-            text = open(os.path.join(tmp, "out.txt"), encoding="utf-8").read()
+            text = open(os.path.join(tmp, "out.txt"), encoding="utf-8", errors="replace").read()  # the file is read while it is still being written: a half-written character must not crash the check
             if "已启动" in text or p.poll() is not None:
                 break
         if "已启动" not in text:

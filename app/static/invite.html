@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>加入团队 · 星桐</title><link rel="stylesheet" href="/app.css"></head>
+<body class="participant"><div class="pbar" id="logobar"></div><div class="pwrap" id="box"><p class="mut">…</p></div>
+<script src="/app.js"></script>
+<script src="/logo.js"></script>
+<script>$("#logobar").innerHTML = LOGO_SVG; brandPlay();</script>
+<script>
+// A one-time link from a company admin: a new member sets their own name + password (join), or a member sets a new password (reset).
+const t = new URLSearchParams(location.search).get("t") || "";
+const box = $("#box"), ROLE_ZH = { admin: "管理员", researcher: "研究员", moderator: "主持人", observer: "观察员" };
+async function call(path, opt) {
+  const r = await fetch("/api/public/invite/" + encodeURIComponent(t) + path, opt);
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.detail || "出错了，请稍后再试");
+  return j;
+}
+function bad() { box.innerHTML = `<h1>链接无效</h1><p>这个链接不存在、已用过或已过期。请向公司管理员要一个新的。</p>`; }
+(async () => {
+  let info; try { info = await call("", {}); } catch { return bad(); }
+  const join = info.kind === "join";
+  box.innerHTML = `<h1>${join ? "加入" : "重设密码 ·"} ${esc(info.org_name)}</h1>
+    <p>${join ? `你将以 <b>${esc(ROLE_ZH[info.role] || info.role)}</b> 的身份加入。` : "为这个账号设一个新密码。"} 账号邮箱：<b>${esc(info.email)}</b></p>
+    <form id="f">${join ? `<label class="f"><span>你的姓名</span><input name="name" required maxlength="100" autocomplete="name"></label>` : ""}
+      <label class="f"><span>设置密码（至少 8 位）</span><input name="password" type="password" minlength="8" required autocomplete="new-password"></label>
+      <p class="sm mut" id="err" role="alert" hidden></p>
+      <button class="p" id="go">${join ? "加入并进入" : "保存新密码并进入"}</button></form>`;
+  $("#f").onsubmit = async (e) => {
+    e.preventDefault(); const b = $("#go"); b.disabled = true; $("#err").hidden = true;
+    try {
+      const r = await call("/accept", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(Object.fromEntries(new FormData(e.target))) });
+      store.set("tt_token", r.token); location.href = "/#/projects";
+    } catch (x) { $("#err").textContent = x.message; $("#err").hidden = false; b.disabled = false; }
+  };
+})();
+</script></body></html>

@@ -299,3 +299,193 @@ def test_captions_and_quotes_are_deleted_with_the_interview(org):
         db.commit()
         assert db.query(CaptionLine).count() == 0 and db.query(Highlight).count() == 0
     assert _caption(org, itv, "删除后").status_code == 404
+
+
+# ---------- Chinese translation of captions, and making the transcript from the captions ----------
+@pytest.fixture
+def translator(monkeypatch):
+    from app.routers import concept as router
+
+    class Fake:
+        def translate(self, texts):
+            return ["中文：" + t for t in texts]
+
+    monkeypatch.setattr(router, "get_llm", lambda: Fake())
+    return router
+
+
+def test_english_captions_get_a_chinese_translation_a_moment_later_and_chinese_ones_do_not(org, translator):
+    en = _live_room(org)  # interview language: en
+    _caption(org, en, "I worry it might be fake.", who="participant")
+    translator.wait_translations()
+    assert _lines(org, en)["lines"][0]["text_zh"] == "中文：I worry it might be fake."
+    zh = _live_room(org, language="zh")
+    _caption(org, zh, "我担心是假货。", who="participant")
+    translator.wait_translations()
+    assert _lines(org, zh)["lines"][0]["text_zh"] == ""  # nothing to translate
+
+
+def test_a_late_translation_reaches_a_browser_that_already_shows_the_sentence(org, monkeypatch):
+    import threading
+
+    from app.routers import concept as router
+
+    release = threading.Event()
+
+    class Gated:
+        def translate(self, texts):
+            release.wait(5)  # the translation is slower than the first poll
+            return ["中文：" + t for t in texts]
+
+    monkeypatch.setattr(router, "get_llm", lambda: Gated())
+    itv = _live_room(org)
+    _caption(org, itv, "First sentence.")
+    first = _lines(org, itv)["lines"][0]
+    assert first["text_zh"] == ""  # the browser shows the original now
+    release.set()
+    router.wait_translations()
+    later = _lines(org, itv, after=first["seq"])  # its next poll: no new sentence, but the Chinese for the one it already shows
+    assert later["lines"] == [] and later["fills"] == [{"id": first["id"], "text_zh": "中文：First sentence."}]
+
+
+def test_a_failing_translation_never_breaks_the_interview(org, monkeypatch):
+    from app.routers import concept as router
+
+    class Broken:
+        def translate(self, texts):
+            raise RuntimeError("service down")
+
+    monkeypatch.setattr(router, "get_llm", lambda: Broken())
+    itv = _live_room(org)
+    assert _caption(org, itv, "Still captured.").status_code == 204
+    router.wait_translations()
+    line = _lines(org, itv)["lines"][0]
+    assert line["text"] == "Still captured." and line["text_zh"] == ""
+
+
+def _from_captions(org: Org, itv: dict, role: str = "researcher"):
+    return org.c.post(f"/api/interviews/{itv['id']}/transcript/from-captions", headers=org.h(role))
+
+
+def test_the_transcript_can_be_made_from_the_captions_with_speakers_times_and_translation(org, translator):
+    itv = _live_room(org)
+    assert _from_captions(org, itv).status_code == 409  # no captions yet
+    org.c.post(f"/api/interviews/{itv['id']}/captions", headers=org.h("moderator"), json={"text": "How do you choose?", "final": True, "dur_ms": 2500})
+    org.c.post(f"/api/public/join/{itv['invite_token']}/captions", json={"text": "I check the ingredients.", "final": True, "dur_ms": 3000})
+    translator.wait_translations()
+    r = _from_captions(org, itv)
+    assert r.status_code == 200 and r.json() == {"segments": 2}
+    segs = org.c.get(f"/api/interviews/{itv['id']}/transcript", headers=org.h()).json()
+    assert [(s["speaker"], s["text_orig"], s["text_zh"]) for s in segs] == [("moderator", "How do you choose?", "中文：How do you choose?"), ("participant", "I check the ingredients.", "中文：I check the ingredients.")]
+    assert all(0 <= s["start_ms"] <= s["end_ms"] for s in segs) and segs[0]["end_ms"] <= segs[1]["end_ms"]
+    assert _from_captions(org, itv).json() == {"segments": 2}  # again: replaced, not doubled
+    assert len(org.c.get(f"/api/interviews/{itv['id']}/transcript", headers=org.h()).json()) == 2
+
+
+def test_only_staff_make_a_transcript_from_captions_and_not_across_companies(org, client):
+    itv = _live_room(org)
+    _caption(org, itv, "Hello there.")
+    assert _from_captions(org, itv, "moderator").status_code == 403 and _from_captions(org, itv, "observer").status_code == 403
+    other = Org(client, "Other", "o@other.com")
+    assert other.c.post(f"/api/interviews/{itv['id']}/transcript/from-captions", headers=other.h()).status_code == 404
+
+
+def test_a_caption_transcript_cannot_replace_one_that_insights_already_quote(org):
+    itv = _live_room(org)
+    _caption(org, itv, "I worry it might be fake.", who="participant")
+    assert _from_captions(org, itv).status_code == 200
+    seg = org.c.get(f"/api/interviews/{itv['id']}/transcript", headers=org.h()).json()[0]
+    r = org.c.post(f"/api/interviews/{itv['id']}/insights", headers=org.h(), json={"theme": "担心", "statement": "担心假货", "evidence": [{"segment_id": seg["id"], "quote": "I worry it might be fake."}]})
+    assert r.status_code == 201, r.text
+    assert _from_captions(org, itv).status_code == 409
+
+
+# ---------- connection diagnostics ----------
+def _net(org: Org, itv: dict, who: str, **body):
+    body = {"transport": "udp", "kind": "host", "rtt_ms": 40, "loss_pct": 0.5, "jitter_ms": 3, **body}
+    if who == "participant":
+        return org.c.post(f"/api/public/join/{itv['invite_token']}/netstat", json=body)
+    return org.c.post(f"/api/interviews/{itv['id']}/netstat", headers=org.h(who), json=body)
+
+
+def test_the_team_sees_how_the_moderator_and_the_participant_are_connected(org):
+    itv = _live_room(org)
+    assert _net(org, itv, "moderator").status_code == 204
+    assert _net(org, itv, "participant", transport="tcp", kind="host", rtt_ms=210, loss_pct=6.5).status_code == 204
+    _net(org, itv, "observer", rtt_ms=999)  # an observer's own connection is not shown as the moderator's
+    for who in ("moderator", "observer", "researcher"):
+        got = org.c.get(f"/api/interviews/{itv['id']}/netstat", headers=org.h(who)).json()
+        assert got["moderator"] == {"transport": "udp", "kind": "host", "rtt_ms": 40, "loss_pct": 0.5, "jitter_ms": 3}, who
+        assert got["participant"]["transport"] == "tcp" and got["participant"]["loss_pct"] == 6.5
+
+
+def test_a_bad_connection_is_written_to_the_server_log_once_it_looks_wrong(org, caplog):
+    import logging
+
+    itv = _live_room(org)
+    with caplog.at_level(logging.WARNING, logger="app.routers.concept"):
+        _net(org, itv, "participant")  # the first report of a session is logged as a baseline
+        _net(org, itv, "participant", rtt_ms=60)  # fine: silent
+        _net(org, itv, "participant", transport="tcp", rtt_ms=350, loss_pct=8)
+    lines = [r.getMessage() for r in caplog.records if "netstat" in r.getMessage()]
+    assert len(lines) == 2 and "role=participant" in lines[0] and "transport=tcp/host" in lines[1] and "loss=8.0%" in lines[1]
+    assert itv["invite_token"] not in " ".join(lines)  # no tokens in the log
+
+
+def test_nonsense_reports_are_refused_and_a_participant_who_is_not_in_the_room_is_ignored(org, client):
+    itv = _live_room(org)
+    assert _net(org, itv, "moderator", loss_pct=150).status_code == 422 and _net(org, itv, "moderator", transport="quic").status_code == 422
+    org.c.post(f"/api/public/join/{itv['invite_token']}/leave")
+    assert _net(org, itv, "participant").status_code == 204
+    assert "participant" not in org.c.get(f"/api/interviews/{itv['id']}/netstat", headers=org.h("moderator")).json()
+    other = Org(client, "Other", "o@other.com")
+    assert other.c.get(f"/api/interviews/{itv['id']}/netstat", headers=other.h()).status_code == 404
+    assert other.c.post(f"/api/interviews/{itv['id']}/netstat", headers=other.h(), json={}).status_code == 404
+
+
+# ---------- the team's private chat ----------
+def _say(org: Org, itv: dict, role: str, text: str):
+    return org.c.post(f"/api/interviews/{itv['id']}/backroom", headers=org.h(role), json={"text": text})
+
+
+def test_observers_and_the_moderator_chat_privately_in_order_and_each_sees_which_are_theirs(org):
+    itv = _live_room(org)
+    assert _say(org, itv, "observer", "能追问一下价格吗？").status_code == 201
+    assert _say(org, itv, "moderator", "好的，下一题问。").status_code == 201
+    assert _say(org, itv, "researcher", "收到").json()["seq"] == 3
+    got = org.c.get(f"/api/interviews/{itv['id']}/backroom", headers=org.h("observer")).json()["messages"]
+    assert [(m["seq"], m["role"], m["text"], m["mine"]) for m in got] == [(1, "observer", "能追问一下价格吗？", True), (2, "moderator", "好的，下一题问。", False), (3, "researcher", "收到", False)]
+    assert [m["seq"] for m in org.c.get(f"/api/interviews/{itv['id']}/backroom?after=2", headers=org.h("moderator")).json()["messages"]] == [3]  # only what is new
+
+
+def test_the_participant_has_no_way_into_the_private_chat_and_other_companies_cannot_read_it(org, client):
+    itv = _live_room(org)
+    _say(org, itv, "observer", "不要让受访者看到")
+    assert org.c.get(f"/api/interviews/{itv['id']}/backroom").status_code == 401  # no invitation token opens it
+    assert org.c.get(f"/api/public/join/{itv['invite_token']}/backroom").status_code in (404, 405)
+    live = org.c.get(f"/api/public/join/{itv['invite_token']}/live").text
+    assert "不要让受访者看到" not in live
+    other = Org(client, "Other", "o@other.com")
+    assert other.c.get(f"/api/interviews/{itv['id']}/backroom", headers=other.h()).status_code == 404
+    assert other.c.post(f"/api/interviews/{itv['id']}/backroom", headers=other.h(), json={"text": "x"}).status_code == 404
+
+
+def test_empty_and_overlong_messages_are_refused_and_the_chat_is_capped(org, monkeypatch):
+    from app.routers import concept as router
+
+    itv = _live_room(org)
+    assert _say(org, itv, "observer", "").status_code == 422 and _say(org, itv, "observer", "   ").status_code == 422 and _say(org, itv, "observer", "字" * 501).status_code == 422
+    monkeypatch.setattr(router, "MAX_BACKROOM", 1)
+    assert _say(org, itv, "observer", "one").status_code == 201 and _say(org, itv, "observer", "two").status_code == 429
+
+
+def test_the_private_chat_is_deleted_with_the_interview(org):
+    from app.models import BackroomMessage
+
+    itv = _live_room(org)
+    _say(org, itv, "observer", "团队内部的话")
+    with SessionLocal() as db:
+        assert db.query(BackroomMessage).count() == 1
+        purge_interview(db, db.get(Interview, itv["id"]), "test")
+        db.commit()
+        assert db.query(BackroomMessage).count() == 0

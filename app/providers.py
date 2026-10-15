@@ -97,10 +97,14 @@ def get_asr() -> ASR:
 class LLM(Protocol):
     def insights(self, segments: list[dict]) -> list[dict]: ...
     def translate(self, texts: list[str]) -> list[str]: ...  # into Chinese; same length and order; "" where it cannot
+    def suggest_codes(self, statements: list[str], codebook: list[str]) -> list[list[str]]: ...  # per statement: 1-3 short code names (reuse the codebook where it fits)
 
 
 class MockLLM:
     """Extractive stub: picks the longest participant statements. Real quotes, no real analysis."""
+
+    def suggest_codes(self, statements: list[str], codebook: list[str]) -> list[list[str]]:
+        return [[codebook[0]] if codebook else ["待命名"] for _ in statements]
 
     def translate(self, texts: list[str]) -> list[str]:
         return ["" for _ in texts]
@@ -144,6 +148,18 @@ class OpenAICompatLLM:
             if got is None:  # length mismatch (small local models merge half-sentences): retry line by line so nothing misaligns
                 got = [(self._translate_batch([t]) or [""])[0] for t in batch]
             out += got
+        return out
+
+    def suggest_codes(self, statements: list[str], codebook: list[str]) -> list[list[str]]:
+        """Ask the model for 1-3 short code names per insight; the answer is untrusted, so it is trimmed and padded to the right length."""
+        prompt = ("你是定性研究的编码员。为下面每条洞察各给 1-3 个简短的主题编码（每个不超过 8 个字）。已有编码本里合适的优先沿用，不合适再新建。"
+                  '只输出 JSON：{"codes":[[str,...],...]}，外层数组长度必须恰好等于 %d，顺序一致。\n已有编码本：%s\n\n' % (len(statements), json.dumps(codebook, ensure_ascii=False))
+                  + json.dumps(statements, ensure_ascii=False))
+        got = self._chat(prompt).get("codes", [])
+        out: list[list[str]] = []
+        for i in range(len(statements)):
+            row = got[i] if isinstance(got, list) and i < len(got) and isinstance(got[i], list) else []
+            out.append([str(c).strip()[:60] for c in row if str(c).strip()][:3])
         return out
 
     def insights(self, segments: list[dict]) -> list[dict]:

@@ -16,7 +16,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from .audit import audit
-from .models import AiSession, ChatMessage, Interview, TranscriptSegment
+from .models import AiSession, ChatMessage, Interview, RoomState, Stimulus, TranscriptSegment, utcnow
 from .moderator.compliance import ai_moderation_blocker
 from .moderator.constants import AlertLevel, ModerationMode, Phase
 from .moderator.engine import EngineStateError, ModeratorEngine
@@ -112,6 +112,31 @@ def _apply_payload(db: Session, itv: Interview, sess: AiSession, engine: Moderat
         audit(db, itv.org_id, "ai_moderator", "ai.alert", itv.id, level=payload.alert.value)
     if engine.fsm.phase is Phase.ENDED:
         sess.finished = True
+    _sync_stimulus(db, itv, engine)
+
+
+def _sync_stimulus(db: Session, itv: Interview, engine: ModeratorEngine) -> None:
+    """Put the material the AI is asking about on the participant's screen (only materials staff installed for this interview; none otherwise).
+
+    Leaving the stimuli phase takes the material off the screen again.
+    """
+    want = engine.fsm.current_stimulus_id
+    row = db.scalar(select(Stimulus).where(Stimulus.interview_id == itv.id, Stimulus.key == want)) if want else None
+    state = db.get(RoomState, itv.id)
+    have = state.stimulus_id if state else None
+    if row is None and have is None:
+        return
+    new_id = row.id if row else None
+    if new_id == have or (row is None and not _shown_by_ai(state)):
+        return  # nothing changes, or staff put up something by hand: do not take it away
+    state = state or RoomState(interview_id=itv.id, org_id=itv.org_id)
+    state.stimulus_id, state.shown_at, state.shown_by = new_id, utcnow(), "ai_moderator"
+    db.add(state)
+    audit(db, itv.org_id, "ai_moderator", "stimulus.show" if new_id else "stimulus.hide", new_id or itv.id)
+
+
+def _shown_by_ai(state: RoomState | None) -> bool:
+    return bool(state and state.shown_by == "ai_moderator")
 
 
 def start(db: Session, itv: Interview, guide: dict | None, actor: str) -> AiSession:

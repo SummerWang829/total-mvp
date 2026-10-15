@@ -316,7 +316,9 @@ class CaptionLine(Base):
     seq: Mapped[int] = mapped_column(Integer)
     speaker: Mapped[str] = mapped_column(String(20))  # moderator | participant (each browser captions its own microphone)
     text: Mapped[str] = mapped_column(Text)
-    at_ms: Mapped[int] = mapped_column(Integer, default=0)  # milliseconds since the interview started, taken from OUR clock
+    at_ms: Mapped[int] = mapped_column(Integer, default=0)  # milliseconds since the interview started (when the sentence ENDED), taken from OUR clock
+    dur_ms: Mapped[int] = mapped_column(Integer, default=0)  # how long the sentence took to say, as measured by the recogniser (0 = unknown)
+    text_zh: Mapped[str] = mapped_column(Text, default="")  # Chinese translation for non-Chinese interviews, filled in a moment after the sentence arrives
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
@@ -335,3 +337,55 @@ class Highlight(Base):
     status: Mapped[str] = mapped_column(String(10), default="open")  # open | done (a probe that was asked)
     created_by: Mapped[str] = mapped_column(String(32), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class BackroomMessage(Base):
+    """The team's private chat during an interview (observers <-> moderator <-> researchers). The participant never sees it."""
+    __tablename__ = "backroom_messages"
+    __table_args__ = (UniqueConstraint("interview_id", "seq"),)
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
+    org_id: Mapped[str] = mapped_column(String(32), index=True)
+    interview_id: Mapped[str] = mapped_column(ForeignKey("interviews.id"), index=True)
+    seq: Mapped[int] = mapped_column(Integer)
+    user_id: Mapped[str] = mapped_column(String(32))
+    sender: Mapped[str] = mapped_column(String(100))  # the sender's name at the time
+    role: Mapped[str] = mapped_column(String(20))  # admin | researcher | moderator | observer
+    text: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class UserInvite(Base):
+    """A one-time link: a new team member sets their own name and password (join), or an existing member sets a new password (reset)."""
+    __tablename__ = "user_invites"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
+    org_id: Mapped[str] = mapped_column(String(32), index=True)
+    kind: Mapped[str] = mapped_column(String(10))  # join | reset
+    email: Mapped[str] = mapped_column(String(200))
+    role: Mapped[str] = mapped_column(String(20))
+    user_id: Mapped[str | None] = mapped_column(String(32), nullable=True)  # reset: whose password
+    token_hash: Mapped[str] = mapped_column(String(64), index=True)
+    created_by: Mapped[str] = mapped_column(String(32))
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class Code(Base):
+    """A coding label (a theme tag) in a project's codebook. Applied to insights; kept after the retention period together with the insights."""
+    __tablename__ = "codes"
+    __table_args__ = (UniqueConstraint("project_id", "name"),)
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
+    org_id: Mapped[str] = mapped_column(String(32), index=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
+    name: Mapped[str] = mapped_column(String(60))
+    created_by: Mapped[str] = mapped_column(String(32), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class InsightCode(Base):
+    """A code on an insight. suggested=True is an AI proposal that a researcher has not accepted yet (it does not count in the analysis)."""
+    __tablename__ = "insight_codes"
+    insight_id: Mapped[str] = mapped_column(ForeignKey("insights.id"), primary_key=True)
+    code_id: Mapped[str] = mapped_column(ForeignKey("codes.id"), primary_key=True)
+    org_id: Mapped[str] = mapped_column(String(32), index=True)
+    suggested: Mapped[bool] = mapped_column(Boolean, default=False)

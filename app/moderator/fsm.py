@@ -197,6 +197,18 @@ class InterviewStateMachine:
         return self._phase
 
     @property
+    def current_stimulus_id(self) -> str | None:
+        """The id of the material the current question is about; None outside the STIMULI phase."""
+        if self._phase is not Phase.STIMULI:
+            return None
+        left = self._question_index
+        for s in self.guide.stimuli:
+            if left < len(s.questions):
+                return s.id
+            left -= len(s.questions)
+        return None
+
+    @property
     def started(self) -> bool:
         """Whether start() has been called."""
         return self._started_at is not None

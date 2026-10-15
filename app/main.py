@@ -8,13 +8,14 @@ from starlette.responses import Response
 
 from . import loopwatch
 from .config import settings
-from .db import Base, engine
+from .db import Base, engine, ensure_columns
 from .recording import start_worker
-from .routers import ai_room, auth, concept, interviews, overview, projects, public
+from .routers import ai_room, analysis, auth, concept, interviews, overview, projects, public
 
 @asynccontextmanager
 async def lifespan(_app):
     Base.metadata.create_all(engine)  # dev convenience; use Alembic migrations in production
+    ensure_columns()  # a model that gained a column keeps an existing database working
     if settings.loop_watch_s > 0:
         loopwatch.start(settings.loop_watch_s)  # names whatever blocks the event loop in the log
     if settings.run_worker:
@@ -23,7 +24,7 @@ async def lifespan(_app):
 
 
 app = FastAPI(title="星桐 TOTAL MVP", version="0.1.0", lifespan=lifespan)
-for r in (auth.router, projects.router, interviews.router, overview.router, public.router, ai_room.router, concept.router):
+for r in (auth.router, projects.router, interviews.router, overview.router, public.router, ai_room.router, concept.router, analysis.router):
     app.include_router(r)
 if settings.loop_watch_s > 0:
     app.middleware("http")(loopwatch.slow_request_logger)  # diagnostics only: LOOP_WATCH_S=2 logs requests slower than 2 s

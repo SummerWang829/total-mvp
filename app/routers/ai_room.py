@@ -5,12 +5,13 @@ and never see whispers, the AI's internal notes or alerts. Participants only eve
 """
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import ai_room
+from .. import ai_room, guide_text
 from ..db import get_db
 from ..deps import Ctx, current_ctx, require_roles, visible_interview
-from ..models import Interview
+from ..models import Interview, Stimulus
 from .public import _by_invite  # noqa: PLC2701 — the same invite-token lookup as the rest of the participant flow
 
 router = APIRouter(prefix="/api", tags=["ai-room"])
@@ -37,6 +38,23 @@ class TextBody(BaseModel):
 
 def _view(ctx: Ctx) -> str:
     return "observer" if ctx.user.role == "observer" else "staff"
+
+
+class GuideText(BaseModel):
+    text: str = Field(max_length=guide_text.MAX_CHARS + 1000)
+
+
+@router.post("/interviews/{iid}/ai/guide/check")
+def ai_guide_check(iid: str, body: GuideText, ctx: Ctx = Depends(require_roles(*STAFF_AND_MODERATOR)), db: Session = Depends(get_db)):
+    """Turn a typed / uploaded text outline into a guide and say what is wrong with it (nothing is stored; the guide is sent with 'start')."""
+    itv = visible_interview(db, ctx, iid)
+    try:
+        guide = guide_text.parse_guide_text(body.text)
+    except guide_text.GuideTextError as e:
+        raise HTTPException(422, str(e)) from e
+    installed = {s.key for s in db.scalars(select(Stimulus).where(Stimulus.interview_id == itv.id))}
+    return {"guide": guide, "missing_stimuli": [s["id"] for s in guide["stimuli"] if s["id"] not in installed],
+            "summary": {"topics": len(guide["topics"]), "questions": sum(len(t["questions"]) for t in guide["topics"]), "stimuli": len(guide["stimuli"])}}
 
 
 @router.post("/interviews/{iid}/ai/start")

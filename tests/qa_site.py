@@ -223,7 +223,11 @@ def seed():
     dpart = call(f"/projects/{dpid}/participants", {"name": "测试受访者", "country": "SG", "language": "en"}, dadm)
     call(f"/projects/{dpid}/interviews", {"participant_id": dpart["id"], "title": "演示访谈"}, dadm)
     tok["demo_admin"] = dadm
-    return dict(tok=tok, pid=pid, itv=itv, main=main_i, share=share, ids=ids, people=people, demo_pid=dpid)
+    ccode = call(f"/projects/{pid}/codes", {"name": "信任与认证"}, adm)
+    call(f"/projects/{pid}/codes/suggest", {}, adm)  # one accepted code below, the rest stay suggestions
+    inv = call("/users/invites", {"email": "newbie@acme.com", "role": "researcher"}, adm)
+    rst = call(f"/users/{ids['moderator']}/reset-link", {}, adm)
+    return dict(inv=inv["invite_path"], rst=rst["invite_path"], tok=tok, pid=pid, itv=itv, main=main_i, share=share, ids=ids, people=people, demo_pid=dpid)
 
 
 def concept_room_section(br, D):
@@ -248,6 +252,8 @@ def concept_room_section(br, D):
     call(f"/interviews/{iid}/highlights", {"kind": "quote", "caption_id": lines[1]["id"]}, obs)
     call(f"/interviews/{iid}/highlights", {"kind": "probe", "caption_id": lines[1]["id"]}, mod)
     call(f"/interviews/{iid}/highlights", {"kind": "probe", "text": "价格多少算贵？"}, obs)
+    call(f"/interviews/{iid}/backroom", {"text": "能追问一下价格吗？"}, obs)
+    call(f"/interviews/{iid}/backroom", {"text": "好的，我下一题问。"}, mod)
     shown = next(s for s in call(f"/interviews/{iid}/concept", token=mod)["stimuli"] if s["key"] == "concept_a")
     call(f"/interviews/{iid}/stimulus/show", {"stimulus_id": shown["id"]}, mod)
     for w, vp in ((1280, "desktop"), (390, "phone")):
@@ -257,6 +263,7 @@ def concept_room_section(br, D):
                 ctx, pg, errs = new_page(br, w, token=D["tok"][role], room_theme=theme)
                 pg.goto(B + f"/room.html?i={iid}&as={asr}"); pg.wait_for_selector("#claims", timeout=8000)
                 ok(wait_until(lambda: pg.locator("#caps .cap").count() == 4 and pg.locator("#probes .pr").count() == 2, 10), f"[{tag} {role}] four sentences and two follow-ups are on screen")
+                ok(wait_until(lambda: pg.locator("#brlog .m").count() == 2, 8) and pg.locator("#brform").count() == 1, f"[{tag} {role}] the private chat shows both messages and has an input")
                 ok(pg.locator("#caps .cap .hd button", has_text="引用").count() == 4 and pg.locator("#caps .cap .hd button", has_text="追问").count() == 4, f"[{tag} {role}] every sentence has quote / follow-up buttons")
                 ok(wait_until(lambda: pg.locator("#stim img").is_visible(), 8), f"[{tag} {role}] the material on screen is visible")
                 if role == "moderator":
@@ -270,7 +277,7 @@ def concept_room_section(br, D):
             ctx, pg, errs = new_page(br, w, room_theme=theme)  # the participant: the picture only, nothing internal
             pg.goto(B + f"/room.html?t={T}"); pg.wait_for_selector("#claims", timeout=8000)
             ok(wait_until(lambda: pg.locator("#stim img").is_visible(), 8), f"[{tag} participant] the participant sees the material the moderator shows")
-            ok(pg.locator("#caps, #probes").count() == 0 and pg.locator("#lpan").is_hidden() and pg.locator("#rpan").is_hidden(), f"[{tag} participant] no script, captions or follow-ups")
+            ok(pg.locator("#caps, #probes, #brlog, #brform").count() == 0 and pg.locator("#lpan").is_hidden() and pg.locator("#rpan").is_hidden(), f"[{tag} participant] no script, captions, follow-ups or private chat")
             audit_page(pg, f"{tag} participant", errs)
             ctx.close()
     ctx, pg, errs = new_page(br, 1280, token=adm)  # after the interview: quotes, follow-ups and the caption record on the interview page (team only)
@@ -372,7 +379,7 @@ def run():
     D = seed()
     mi, pid = D["main"]["id"], D["pid"]
     proj = [f"#/p/{pid}/rooms", f"#/p/{pid}/insights"]
-    staff_routes = [f"#/projects", f"#/p/{pid}/home", f"#/p/{pid}/people", f"#/p/{pid}/sessions"] + proj + [f"#/i/{mi}", f"#/i/{mi}/insights", f"#/i/{mi}/clips"]
+    staff_routes = [f"#/projects", f"#/p/{pid}/home", f"#/p/{pid}/people", f"#/p/{pid}/sessions", f"#/p/{pid}/analysis"] + proj + [f"#/i/{mi}", f"#/i/{mi}/insights", f"#/i/{mi}/clips"]
     role_routes = {
         "demo_admin": ["#/projects", f"#/p/{D['demo_pid']}/home", "#/demo"],
         "admin": staff_routes + ["#/team", "#/audit"],
@@ -383,7 +390,7 @@ def run():
     public_pages = {
         "join-en": f"/join.html?t={D['itv']['en']['invite_token']}", "join-zh": f"/join.html?t={D['itv']['zh']['invite_token']}",
         "join-ms": f"/join.html?t={D['itv']['ms']['invite_token']}", "join-ta": f"/join.html?t={D['itv']['ta']['invite_token']}",
-        "join-invalid": "/join.html?t=nope", "share": D["share"]["path"], "share-invalid": "/share.html?t=nope",
+        "invite-join": D["inv"], "invite-reset": D["rst"], "invite-invalid": "/invite.html?t=nope", "join-invalid": "/join.html?t=nope", "share": D["share"]["path"], "share-invalid": "/share.html?t=nope",
     }
     with sync_playwright() as p:
         br = p.chromium.launch()
@@ -410,7 +417,7 @@ def run():
                 ctx, pg, errs = new_page(br, w)
                 pg.goto(B + path); pg.wait_for_timeout(500)
                 EXPECTED.clear()
-                # the invalid pages and the share page's missing media file legitimately produce 4xx console lines
+                # the invalid pages (join, invite) and the share page's missing media file legitimately produce 4xx console lines
                 errs[:] = [e for e in errs if "Failed to load resource" not in e]
                 audit_page(pg, f"public/{vp} {name}", errs)
                 ctx.close()

@@ -1,4 +1,6 @@
-from sqlalchemy import create_engine, event
+import logging
+
+from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from .config import settings
@@ -34,3 +36,34 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+log = logging.getLogger(__name__)
+
+
+def ensure_columns(eng=None) -> list[str]:
+    """Add the columns a model defines but an existing table lacks, so a deployed database keeps its data when a model gains a column.
+
+    Only additive and only when it is safe: the column must be nullable or have a plain Python default (written as the SQL default).
+    Anything else is logged and left alone (needs a real migration). Returns what was added, e.g. ["caption_lines.text_zh"].
+    """
+    eng = eng or engine
+    insp = inspect(eng)
+    added: list[str] = []
+    for table in Base.metadata.sorted_tables:
+        if not insp.has_table(table.name):
+            continue
+        have = {c["name"] for c in insp.get_columns(table.name)}
+        for col in table.columns:
+            if col.name in have:
+                continue
+            default = col.default.arg if col.default is not None and getattr(col.default, "is_scalar", False) else None
+            if default is None and not col.nullable:
+                log.error("cannot add %s.%s automatically: NOT NULL without a plain default; migrate it by hand", table.name, col.name)
+                continue
+            lit = "NULL" if default is None else ("'" + str(default).replace("'", "''") + "'" if isinstance(default, str) else str(int(default) if isinstance(default, bool) else default))
+            with eng.begin() as c:
+                c.execute(text(f'ALTER TABLE "{table.name}" ADD COLUMN "{col.name}" {col.type.compile(eng.dialect)} DEFAULT {lit}'))
+            added.append(f"{table.name}.{col.name}")
+            log.warning("database: added column %s.%s", table.name, col.name)
+    return added
