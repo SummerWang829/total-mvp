@@ -3,6 +3,7 @@ shared timeline, merged, and translated to Chinese where the ASR did not already
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
+from .asr_file import ASRError, ASRUnsupported
 from .config import settings
 from .models import Interview, Recording
 from .providers import get_asr, get_llm
@@ -31,6 +32,10 @@ def build_segments(db: Session, itv: Interview, rec: Recording) -> list[dict]:
         for part in parts:
             try:
                 got = asr.transcribe_audio(part["path"], itv.language, part["role"])
+            except ASRUnsupported as e:
+                raise HTTPException(422, str(e))
+            except ASRError as e:  # the message names the service's error code, never a secret
+                raise HTTPException(502, str(e))
             except Exception as e:  # provider failure must not look like "nothing was said"
                 raise HTTPException(502, f"转写服务调用失败：{type(e).__name__}")
             for s in got:

@@ -85,6 +85,12 @@ def get_asr() -> ASR:
         if not settings.asr_api_key:
             raise NotImplementedError("ASR_PROVIDER=openai 但没有设置 ASR_API_KEY（或 LLM_API_KEY）")
         return OpenAICompatASR()
+    if settings.asr_provider == "tencent":
+        from .asr_file import TencentFileASR, file_asr_configured
+
+        if not file_asr_configured():
+            raise NotImplementedError("ASR_PROVIDER=tencent 但没有设置 TENCENT_ASR_SECRET_ID / TENCENT_ASR_SECRET_KEY")
+        return TencentFileASR()
     raise NotImplementedError(f"ASR provider {settings.asr_provider!r} not wired yet (week-1 spike)")
 
 

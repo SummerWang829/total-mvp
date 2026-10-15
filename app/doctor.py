@@ -38,6 +38,24 @@ def check_provider(name: str, provider: str, base: str, key: str | None, key_var
         line("bad", f"{name}：连不上 {base}（{type(e).__name__}）")
 
 
+def check_tencent_file_asr() -> None:
+    """Recorded-file recognition (ASR_PROVIDER=tencent): credentials present, and one harmless read-only call proves they are accepted."""
+    from .asr_file import ASRError, call, file_asr_configured
+
+    if not file_asr_configured():
+        line("bad", "转写：选了 tencent 但没有填 TENCENT_ASR_SECRET_ID / TENCENT_ASR_SECRET_KEY")
+        return
+    try:
+        call("DescribeTaskStatus", {"TaskId": 1})  # an unknown task id: the service answers "no such task", which still proves the keys work
+    except ASRError as e:
+        if "AuthFailure" in str(e) or "UnauthorizedOperation" in str(e):
+            line("bad", f"转写：腾讯云不认这对密钥或这个子用户没有语音识别权限（{str(e)[:90]}）")
+        else:
+            line("ok", "转写：腾讯云录音文件识别可用（只支持中文和英文）")
+        return
+    line("ok", "转写：腾讯云录音文件识别可用（只支持中文和英文）")
+
+
 def check_moderator() -> None:
     """AI moderator model (MODERATOR_* in .env, falls back to LLM_*). A cloud model must be named for the consent text.
 
@@ -83,7 +101,10 @@ def main() -> int:
             line("warn", "视频服务器还没启动（scripts/dev.sh 会自动启动它）")
     else:
         line("warn", "没配置 LIVEKIT_URL：没有视频，只能看权限演示（scripts/dev.sh 会自动配置）")
-    check_provider("转写", settings.asr_provider, settings.asr_base_url, settings.asr_api_key, "ASR_API_KEY")
+    if settings.asr_provider == "tencent":
+        check_tencent_file_asr()
+    else:
+        check_provider("转写", settings.asr_provider, settings.asr_base_url, settings.asr_api_key, "ASR_API_KEY")
     check_provider("洞察/翻译", settings.llm_provider, settings.llm_base_url, settings.llm_api_key)
     check_moderator()
     from .asr_live import live_captions_configured
