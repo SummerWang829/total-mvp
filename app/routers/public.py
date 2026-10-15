@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import concept
+from .. import concept, pretask
 from ..audit import audit
 from ..config import settings
 from ..consent import consent_for
@@ -54,7 +54,8 @@ def join_info(token: str, db: Session = Depends(get_db)):
     consent = db.scalar(select(Consent).where(Consent.interview_id == itv.id))
     return {"org": org.name, "scheduled_at": itv.scheduled_at.isoformat() if itv.scheduled_at else None,
             "status": itv.status, "can_enter_now": _window_ok(itv), "consented": consent is not None,
-            "device_ok": itv.device_ok_at is not None, "consent": consent_for(itv.language, org.name, ai=itv.moderation == ModerationMode.AI.value)}
+            "device_ok": itv.device_ok_at is not None, "consent": consent_for(itv.language, org.name, ai=itv.moderation == ModerationMode.AI.value),
+            "pretask": pretask.participant_view(db, itv.id, itv.participant_id)}
 
 
 @router.post("/join/{token}/opened", status_code=204)
@@ -121,6 +122,29 @@ def give_consent(token: str, body: ConsentBody, request: Request, db: Session = 
     return {"ok": True}
 
 
+class PreTaskBody(BaseModel):
+    answers: dict[str, str]
+
+
+@router.post("/join/{token}/pretask", status_code=201)
+def submit_pretask(token: str, body: PreTaskBody, request: Request, db: Session = Depends(get_db)):
+    """The participant's answers to the pre-interview questions (after consent, before the waiting room)."""
+    itv = _by_invite(db, token)
+    part: Participant = itv.participant
+    if not db.scalar(select(Consent).where(Consent.interview_id == itv.id, Consent.participant_id == part.id)):
+        raise HTTPException(403, "Please read and agree first / 请先阅读并同意")
+    pt = pretask.get(db, itv.id)
+    if not pt:
+        raise HTTPException(404, "No pre-interview task / 没有访谈前问题")
+    try:
+        pretask.save_answers(db, pt, part.id, body.answers)
+    except ValueError:
+        raise HTTPException(422, "Please answer every required question / 请回答所有必答问题")
+    audit(db, itv.org_id, f"participant:{part.id}", "pretask.submit", itv.id, ip=client_ip(request))
+    db.commit()
+    return {"ok": True}
+
+
 @router.post("/join/{token}/enter")
 def enter(token: str, request: Request, db: Session = Depends(get_db)):
     itv = _by_invite(db, token)
@@ -129,6 +153,8 @@ def enter(token: str, request: Request, db: Session = Depends(get_db)):
         raise HTTPException(403, "Not open in your region yet / 暂时不面向你所在的地区")
     if not db.scalar(select(Consent).where(Consent.interview_id == itv.id, Consent.participant_id == part.id)):
         raise HTTPException(403, "Please read and agree first / 请先阅读并同意")
+    if not pretask.answered(db, itv.id, part.id):
+        raise HTTPException(403, "Please answer the pre-interview questions first / 请先完成访谈前的问题")
     if not _window_ok(itv):
         raise HTTPException(409, "Not time yet, or the interview has ended / 还没到访谈时间，或访谈已结束")
     if not itv.device_ok_at:

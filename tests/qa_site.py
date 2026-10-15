@@ -374,6 +374,53 @@ def ai_room_section(br, D):
     ctx.close()
 
 
+def pretask_section(br, D):
+    """Pre-interview task (Sprint 1): opt-in questions the participant answers after consent, before the waiting room."""
+    adm, mod, pid = D["tok"]["admin"], D["tok"]["moderator"], D["pid"]
+    part = call(f"/projects/{pid}/participants", {"name": "预访问受访者", "country": "SG", "language": "zh"}, adm)
+    it = call(f"/projects/{pid}/interviews", {"participant_id": part["id"], "title": "预访问深访", "language": "zh",
+                                              "moderator_id": D["ids"]["moderator"], "observer_ids": [D["ids"]["observer"]]}, adm)
+    iid, T = it["id"], it["invite_token"]
+    # (a) staff config card on the session page: one required + one optional question
+    ctx, pg, errs = new_page(br, 1280, token=adm)
+    pg.goto(B + f"/#/i/{iid}"); pg.wait_for_selector("#pretaskcard #pted")
+    pg.click("#pted"); pg.wait_for_selector(".modal #ptrows .ptrow")
+    pg.locator(".modal .ptq").first.fill("你平时的护肤步骤是怎样的？")
+    pg.click(".modal #ptadd"); pg.wait_for_selector(".modal .ptrow:nth-child(2)")
+    pg.locator(".modal .ptq").nth(1).fill("最近一次买护肤品是什么情况？")
+    pg.locator(".modal .ptrow").nth(1).locator(".ptr").uncheck()  # the second question is optional
+    audit_page(pg, "pretask config dialog/desktop", errs)
+    pg.click(".modal form button.p"); pg.wait_for_selector("#pretaskcard .ptlist li")
+    ok(pg.locator("#pretaskcard .ptlist li").count() == 2, "[pretask] the configured questions show on the session page")
+    audit_page(pg, "pretask session card/desktop", errs)
+    ctx.close()
+    # (b) participant journey: device + consent via the API, then the browser resumes at the new pre-task step
+    call(f"/public/join/{T}/device", {"camera": True, "microphone": True, "speaker": True})
+    call(f"/public/join/{T}/consent", {"country": "SG", "recording": True, "observers": True, "cross_border": True})
+    ctx, pg, errs = new_page(br, 390)
+    pg.goto(B + f"/join.html?t={T}"); pg.wait_for_selector("#pf")
+    ok(pg.locator(".psteps i").count() == 6, "[pretask] the step bar gains a pre-task step (6 in all)")
+    ok("访谈前问题" in pg.inner_text(".pstep") and pg.locator("#pf textarea").count() == 2, "[pretask] the participant sees the configured questions")
+    ok("预访问深访" not in pg.inner_text("#box"), "[pretask] the internal session title never leaks to the participant")
+    audit_page(pg, "pretask participant step/phone", errs)
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "join_pretask_390.png"), full_page=True)
+    pg.locator("#pf textarea").first.fill("洁面、爽肤水、面霜")
+    pg.click("#pf button"); pg.wait_for_selector("#pw")
+    ok("候场室" in pg.inner_text("#box"), "[pretask] submitting the answers reaches the waiting room")
+    ctx.close()
+    # (c) the moderator sees the answers in the room; the client observer never does
+    ctx, pg, errs = new_page(br, 1280, token=mod)
+    pg.goto(B + f"/room.html?i={iid}&as=moderator"); pg.wait_for_selector("#claims")
+    ok(wait_until(lambda: pg.locator("#prebox:visible").count() == 1, 8), "[pretask] the moderator sees the pre-task answers in the room")
+    ok("洁面、爽肤水、面霜" in pg.inner_text("#prebox"), "[pretask] the participant's answer is shown to the moderator")
+    audit_page(pg, "pretask room moderator/desktop", errs)
+    ctx.close()
+    ctx, pg, errs = new_page(br, 1280, token=D["tok"]["observer"])
+    pg.goto(B + f"/room.html?i={iid}&as=observer"); pg.wait_for_selector("#claims")
+    ok(not pg.is_visible("#prebox"), "[pretask] the client observer never sees the pre-task answers")
+    ctx.close()
+
+
 def run():
     os.makedirs(os.path.join(ROOT, "qa_shots"), exist_ok=True)
     D = seed()
@@ -651,6 +698,7 @@ def run():
         # ---------- C3. AI moderation in the room (Sprint 5): participant chat, the team's AI panel, observer, alerts; both colour themes, desktop + phone ----------
         ai_room_section(br, D)
         concept_room_section(br, D)
+        pretask_section(br, D)
 
         # ---------- C2. dialogs and expandable panels on the staff pages (both screen sizes) ----------
         for w, vp in ((1280, "desktop"), (390, "phone")):

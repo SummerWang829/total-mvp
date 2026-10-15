@@ -280,6 +280,32 @@ class InterviewPlan(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
+class PreTask(Base):
+    """Pre-interview task for one interview: the questions the participant answers after consent, before the waiting room.
+
+    Opt-in per interview: no row = no pre-task step (the journey is unchanged). `questions_json` is a JSON list of
+    {"key", "prompt", "required"} in the interview's language. Participants never see other interviews' tasks.
+    """
+    __tablename__ = "pre_tasks"
+    interview_id: Mapped[str] = mapped_column(ForeignKey("interviews.id"), primary_key=True)
+    org_id: Mapped[str] = mapped_column(String(32), index=True)
+    questions_json: Mapped[str] = mapped_column(Text)  # JSON list of {key, prompt, required}
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class PreTaskAnswer(Base):
+    """One participant's answer to one pre-task question. Personal data: purged with the interview (app/retention.py)."""
+    __tablename__ = "pre_task_answers"
+    __table_args__ = (UniqueConstraint("interview_id", "participant_id", "question_key"),)
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
+    org_id: Mapped[str] = mapped_column(String(32), index=True)
+    interview_id: Mapped[str] = mapped_column(ForeignKey("interviews.id"), index=True)
+    participant_id: Mapped[str] = mapped_column(ForeignKey("participants.id"), index=True)
+    question_key: Mapped[str] = mapped_column(String(16))
+    text: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class Stimulus(Base):
     """A material (ad film, concept card, image) the moderator can put on the participant's screen."""
     __tablename__ = "stimuli"

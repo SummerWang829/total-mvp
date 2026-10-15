@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from .. import ai_room, concept, export
+from .. import ai_room, concept, export, pretask
 from ..audit import audit
 from ..config import settings
 from ..db import get_db
@@ -161,6 +161,36 @@ def list_interviews(pid: str, ctx: Ctx = Depends(current_ctx), db: Session = Dep
 @router.get("/interviews/{iid}")
 def get_interview(iid: str, ctx: Ctx = Depends(current_ctx), db: Session = Depends(get_db)):
     return interview_out(visible_interview(db, ctx, iid), ctx, db=db)
+
+
+# ---------- pre-interview task ----------
+class PreTaskQuestion(BaseModel):
+    prompt: str = Field(min_length=1, max_length=pretask.MAX_PROMPT)
+    required: bool = True
+
+
+class PreTaskConfig(BaseModel):
+    questions: list[PreTaskQuestion] = Field(default_factory=list, max_length=pretask.MAX_QUESTIONS)
+
+
+@router.put("/interviews/{iid}/pretask")
+def set_pretask(iid: str, body: PreTaskConfig, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    """Configure the questions the participant answers after consent, before the waiting room. Empty list = no pre-task."""
+    itv = visible_interview(db, ctx, iid)
+    try:
+        pretask.set_questions(db, ctx.org_id, itv.id, [q.model_dump() for q in body.questions])
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    audit(db, ctx.org_id, ctx.actor, "pretask.config", itv.id, n=len(body.questions))
+    db.commit()
+    return pretask.staff_view(db, itv.id, itv.participant_id)
+
+
+@router.get("/interviews/{iid}/pretask")
+def get_pretask(iid: str, ctx: Ctx = Depends(require_roles("admin", "researcher", "moderator")), db: Session = Depends(get_db)):
+    """The questions and this participant's answers. Moderators see it in the room; observers (clients) never do."""
+    itv = visible_interview(db, ctx, iid)
+    return pretask.staff_view(db, itv.id, itv.participant_id)
 
 
 @router.post("/interviews/{iid}/invite/rotate")

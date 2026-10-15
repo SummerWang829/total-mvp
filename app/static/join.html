@@ -6,13 +6,15 @@
 <script src="/logo.js"></script>
 <script>$("#logobar").innerHTML = LOGO_SVG; brandPlay();</script>
 <script>
-// Participant journey (design spec part 3): invitation -> device test -> privacy & consent -> waiting room -> interview room -> thanks.
-// No login, pre-task or time picking yet: the invitation link is the credential and the research team sets the time.
+// Participant journey (design spec part 3): invitation -> device test -> privacy & consent -> [pre-interview questions] -> waiting room -> interview room -> thanks.
+// No login or time picking yet: the invitation link is the credential and the research team sets the time. The pre-task step only appears when configured.
 // Everything follows the consent language; ms/ta are machine drafts and need native-speaker + counsel review before real use.
 const t = new URLSearchParams(location.search).get("t") || "";
 const box = $("#box");
 const L = {
   en: { steps: ["Invitation", "Device test", "Privacy & consent", "Waiting room", "Interview"], stepOf: "Step {n} of {N}",
+        pre: "Pre-interview questions", preTitle: "A few questions before we start", preGo: "Submit and continue",
+        preIntro: "Please answer these before the interview — they help the moderator prepare. Your answers go only to the research team.",
         invite: "Interview invitation", by: "Invited by {o}", time: "Time: {t}", timeTbd: "Time: the research team will confirm it with you",
         how: "You can take part with your camera on, or with voice only. The camera can be switched off at any time. Please find a quiet place; earphones help.",
         next: "Next: test your device, read the privacy notice, then wait in the waiting room. About 5 minutes.", accept: "Accept and start", decline: "Not a good time? Just close this page. Nothing happens.",
@@ -28,6 +30,8 @@ const L = {
         notTime: "It is not time yet, or the interview has ended. Refresh this page at the scheduled time.", ended: "The interview has ended. Thank you for taking part!",
         bad: "Invalid link", badp: "This invitation link does not exist or has expired. Please ask the person who invited you for a new one." },
   zh: { steps: ["邀请", "设备检测", "隐私与同意", "候场室", "访谈室"], stepOf: "第 {n} 步 / 共 {N} 步",
+        pre: "访谈前问题", preTitle: "开始前的几个问题", preGo: "提交并继续",
+        preIntro: "请在访谈开始前回答以下问题，这能帮助主持人更好地准备。你的回答只会给到研究团队。",
         invite: "访谈邀请", by: "由 {o} 邀请", time: "时间：{t}", timeTbd: "时间：研究团队会和你确认",
         how: "可以开摄像头视频参加，也可以只用语音参加，摄像头随时可以关闭。请找一个安静的地方，戴耳机效果更好。",
         next: "接下来：测试设备 → 阅读隐私说明 → 进入候场室，大约 5 分钟。", accept: "接受邀请，开始", decline: "暂时不方便？直接关闭本页即可，不会有任何影响。",
@@ -43,6 +47,8 @@ const L = {
         notTime: "还没到访谈时间，或访谈已结束。到时间后刷新本页。", ended: "访谈已结束，感谢你的参与！",
         bad: "链接无效", badp: "这个邀请链接不存在或已失效，请向邀请你的人要一个新的。" },
   ms: { steps: ["Jemputan", "Ujian peranti", "Privasi & persetujuan", "Bilik menunggu", "Temu bual"], stepOf: "Langkah {n} daripada {N}",
+        pre: "Soalan pra-temu bual", preTitle: "Beberapa soalan sebelum kita mula", preGo: "Hantar dan teruskan",
+        preIntro: "Sila jawab soalan ini sebelum temu bual — ia membantu moderator bersedia. Jawapan anda hanya untuk pasukan penyelidik.",
         invite: "Jemputan temu bual", by: "Dijemput oleh {o}", time: "Masa: {t}", timeTbd: "Masa: pasukan penyelidik akan mengesahkannya dengan anda",
         how: "Anda boleh menyertai dengan kamera dihidupkan, atau dengan suara sahaja. Kamera boleh dimatikan pada bila-bila masa. Sila cari tempat yang senyap; fon telinga membantu.",
         next: "Seterusnya: uji peranti anda, baca notis privasi, kemudian tunggu di bilik menunggu. Kira-kira 5 minit.", accept: "Terima dan mula", decline: "Bukan masa yang sesuai? Tutup sahaja halaman ini. Tiada apa-apa akan berlaku.",
@@ -58,6 +64,8 @@ const L = {
         notTime: "Belum tiba masanya, atau temu bual telah tamat. Muat semula halaman ini pada masa yang dijadualkan.", ended: "Temu bual telah tamat. Terima kasih kerana mengambil bahagian!",
         bad: "Pautan tidak sah", badp: "Pautan jemputan ini tidak wujud atau telah tamat tempoh. Sila minta pautan baharu daripada orang yang menjemput anda." },
   ta: { steps: ["அழைப்பு", "சாதனச் சோதனை", "தனியுரிமை & ஒப்புதல்", "காத்திருப்பு அறை", "நேர்காணல்"], stepOf: "படி {n} / {N}",
+        pre: "நேர்காணலுக்கு முந்தைய கேள்விகள்", preTitle: "தொடங்கும் முன் சில கேள்விகள்", preGo: "சமர்ப்பித்துத் தொடரவும்",
+        preIntro: "நேர்காணலுக்கு முன் இவற்றுக்குப் பதிலளியுங்கள் — இது நெறியாளர் தயாராக உதவும். உங்கள் பதில்கள் ஆய்வுக் குழுவுக்கு மட்டுமே.",
         invite: "நேர்காணல் அழைப்பு", by: "{o} அழைத்துள்ளது", time: "நேரம்: {t}", timeTbd: "நேரம்: ஆய்வுக் குழு உங்களுடன் உறுதிப்படுத்தும்",
         how: "கேமராவை இயக்கியோ, குரல் மட்டும் பயன்படுத்தியோ பங்கேற்கலாம். கேமராவை எப்போது வேண்டுமானாலும் அணைக்கலாம். அமைதியான இடத்தைத் தேர்ந்தெடுங்கள்; காதணி ஒலிபெருக்கி உதவும்.",
         next: "அடுத்து: உங்கள் சாதனத்தைச் சோதித்து, தனியுரிமை அறிவிப்பைப் படித்து, காத்திருப்பு அறையில் காத்திருங்கள். சுமார் 5 நிமிடங்கள்.", accept: "ஏற்றுக்கொண்டு தொடங்கு", decline: "இப்போது வசதியில்லையா? இந்தப் பக்கத்தை மூடிவிடுங்கள். எதுவும் நடக்காது.",
@@ -74,19 +82,30 @@ const L = {
         bad: "தவறான இணைப்பு", badp: "இந்த அழைப்பு இணைப்பு இல்லை அல்லது காலாவதியாகிவிட்டது. உங்களை அழைத்தவரிடம் புதிய இணைப்பைக் கேளுங்கள்." },
 };
 const pub = (path, opt = {}) => api(`/public/join/${encodeURIComponent(t)}${path}`, { auth: false, ...opt });
-let info, x;
+let info, x, STEPS = [], IX = {};
+
+function buildFlow() {  // the pre-task step only exists when the research team configured questions (opt-in per interview)
+  const hasPre = !!(info.pretask && info.pretask.questions.length);
+  STEPS = hasPre ? [x.steps[0], x.steps[1], x.steps[2], x.pre, x.steps[3], x.steps[4]] : x.steps.slice();
+  IX = hasPre ? { invite: 0, device: 1, consent: 2, pre: 3, wait: 4 } : { invite: 0, device: 1, consent: 2, wait: 3 };
+}
+
+function afterConsent() {  // consent done: fill in the pre-task if there is one, otherwise go straight to the waiting room
+  if (IX.pre !== undefined && !(info.pretask && info.pretask.done)) return preStep();
+  waitStep();
+}
 
 function frame(step, inner) {  // step bar: done = green, current = orange
-  const N = x.steps.length;
-  box.innerHTML = `<div class="psteps" aria-hidden="true">${x.steps.map((_, i) => `<i class="${i < step ? "done" : i === step ? "on" : ""}"></i>`).join("")}</div>
-    <p class="pstep">${esc(x.stepOf.replace("{n}", step + 1).replace("{N}", N))} · ${esc(x.steps[step])}</p>${inner}`;
+  const N = STEPS.length;
+  box.innerHTML = `<div class="psteps" aria-hidden="true">${STEPS.map((_, i) => `<i class="${i < step ? "done" : i === step ? "on" : ""}"></i>`).join("")}</div>
+    <p class="pstep">${esc(x.stepOf.replace("{n}", step + 1).replace("{N}", N))} · ${esc(STEPS[step])}</p>${inner}`;
   window.scrollTo(0, 0);
 }
 
 // ---------- 0. invitation ----------
 function inviteStep() {
   const when = info.scheduled_at ? new Date(info.scheduled_at + "Z").toLocaleString() : "";
-  frame(0, `<h1>${x.invite}</h1><p class="mut">${esc(x.by.replace("{o}", info.org))}</p>
+  frame(IX.invite, `<h1>${x.invite}</h1><p class="mut">${esc(x.by.replace("{o}", info.org))}</p>
     <div class="card"><p><b>${esc(when ? x.time.replace("{t}", when) : x.timeTbd)}</b></p><p>${esc(x.how)}</p><p class="mut" style="margin:0">${esc(x.next)}</p></div>
     <button class="p pbig" id="accept">${x.accept}</button><p class="sm mut" style="margin-top:12px">${x.decline}</p>`);
   $("#accept").onclick = () => deviceStep();
@@ -96,7 +115,7 @@ function inviteStep() {
 let devStream = null;
 function stopDev() { if (devStream) { devStream.getTracks().forEach((k) => k.stop()); devStream = null; } }
 function deviceStep() {
-  frame(1, `<h1>${x.dev}</h1><p class="mut">${esc(x.devIntro)}</p>
+  frame(IX.device, `<h1>${x.dev}</h1><p class="mut">${esc(x.devIntro)}</p>
     <video id="devv" muted playsinline autoplay style="width:100%;aspect-ratio:16/9;background:#0E1A16;border-radius:14px;margin:0 0 12px;object-fit:cover" hidden></video>
     ${["cam", "mic", "spk", "net"].map((k) => `<div class="pcheck" id="c_${k}"><span>${x[k]}</span>${k === "mic" ? `<span class="lvl" aria-hidden="true"><i id="lvl"></i></span>` : ""}<span class="st">${x.checking}</span></div><p class="perr sm" id="e_${k}" role="alert" hidden></p>`).join("")}
     <div class="row"><button id="play">${x.play}</button><button id="devretry">${x.retry}</button></div>
@@ -148,7 +167,7 @@ function deviceStep() {
 // ---------- 2. privacy & consent ----------
 function consentStep() {
   const c = info.consent;
-  frame(2, `<form class="card" id="f"><h1 style="margin-bottom:10px">${x.before}</h1><p>${esc(c.text)}</p>
+  frame(IX.consent, `<form class="card" id="f"><h1 style="margin-bottom:10px">${x.before}</h1><p>${esc(c.text)}</p>
     <label class="f"><span>${x.where}</span><select name="country" required><option value="">${x.pick}</option>${countryOpts("")}</select></label>
     ${Object.keys(c.labels).map((k) => `<label class="chk"><input type="checkbox" name="${k}"><span>${esc(c.labels[k])}</span></label>`).join("")}
     <button class="p pbig">${x.go}</button><p class="sm mut" style="margin:12px 0 0">${x.skip}</p></form>`);
@@ -159,18 +178,35 @@ function consentStep() {
     const agreed = Object.fromEntries(Object.keys(c.labels).map((k) => [k, !!fd.get(k)]));  // AI interviews add "ai": the interviewer is an AI
     try {
       await pub("/consent", { method: "POST", body: { country: fd.get("country"), ...agreed } });
-      info.consented = true; waitStep();
+      info.consented = true; afterConsent();
     } catch (err) {
-      if (err.status === 403) { frame(2, `<h1>${x.no}</h1><p class="mut">${esc(err.message)}</p>`); return; }
+      if (err.status === 403) { frame(IX.consent, `<h1>${x.no}</h1><p class="mut">${esc(err.message)}</p>`); return; }
       throw err;
     }
+  });
+}
+
+// ---------- 2b. pre-interview questions (only when the research team configured them) ----------
+function preStep() {
+  const qs = info.pretask.questions;
+  frame(IX.pre, `<form class="card" id="pf"><h1 style="margin-bottom:10px">${x.preTitle}</h1><p class="mut">${esc(x.preIntro)}</p>
+    ${qs.map((q) => `<label class="f"><span>${esc(q.prompt)}${q.required ? ' <b aria-hidden="true">*</b>' : ""}</span><textarea name="${q.key}" rows="3" ${q.required ? "required" : ""}></textarea></label>`).join("")}
+    <button class="p pbig">${x.preGo}</button></form>`);
+  const f = $("#pf");
+  f.onsubmit = guard(async (e) => {
+    e.preventDefault();
+    const fd = new FormData(f);
+    const answers = {};
+    qs.forEach((q) => { answers[q.key] = (fd.get(q.key) || "").toString().trim(); });  // the quote text is always re-derived server-side; here we just submit
+    await pub("/pretask", { method: "POST", body: { answers } });
+    info.pretask.done = true; waitStep();
   });
 }
 
 // ---------- 3. waiting room: the entry button unlocks when the moderator starts ----------
 let waitTimer = null;
 function waitStep() {
-  frame(3, `<h1>${x.wait}</h1><div class="pwait" id="pw" role="status"><span class="dot" aria-hidden="true"></span><span id="pwt">${x.waiting}</span></div>
+  frame(IX.wait, `<h1>${x.wait}</h1><div class="pwait" id="pw" role="status"><span class="dot" aria-hidden="true"></span><span id="pwt">${x.waiting}</span></div>
     <p class="mut">${esc(x.tips)}</p><a class="btn p pbig" id="enter" href="/room.html?t=${encodeURIComponent(t)}" aria-disabled="true">${x.enter}</a>`);
   const en = $("#enter");
   en.addEventListener("click", (e) => { if (en.getAttribute("aria-disabled") === "true") e.preventDefault(); });
@@ -190,11 +226,12 @@ function waitStep() {
   try { info = await pub(""); }
   catch { box.innerHTML = `<h1>${L.en.bad} · ${L.zh.bad}</h1><p class="mut">${L.en.badp}</p><p class="mut">${L.zh.badp}</p>`; return; }
   x = L[info.consent.lang] || L.en;
+  buildFlow();
   document.documentElement.lang = info.consent.lang === "zh" ? "zh-CN" : info.consent.lang;
   document.title = x.invite + " · 星桐";
   pub("/opened", { method: "POST" }).catch(() => {});
-  if (info.status === "ended") { frame(4, `<h1>${x.ended}</h1>`); return; }
-  if (info.consented) return waitStep();
+  if (info.status === "ended") { frame(STEPS.length - 1, `<h1>${x.ended}</h1>`); return; }
+  if (info.consented) return afterConsent();
   if (info.device_ok) return consentStep();
   inviteStep();
 })();

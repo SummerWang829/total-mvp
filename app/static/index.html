@@ -369,6 +369,39 @@ async function analysisView(p) {
 }
 
 // ---------------- 单场：转写 / 洞察 / 片段 ----------------
+// ---- pre-interview questions (staff config; shown on the session page) ----
+async function loadPretaskCard(iid, canEdit) {
+  const card = $("#pretaskcard"); if (!card) return;
+  const data = await api(`/interviews/${iid}/pretask`).catch(() => ({ questions: [] }));
+  if (!$("#pretaskcard")) return;
+  const qs = data.questions || [];
+  card.innerHTML = `<div class="row"><h3 style="margin:0">访谈前问题</h3><span class="sp"></span>${canEdit ? `<button class="s" id="pted">${qs.length ? "编辑" : "添加问题"}</button>` : ""}</div>
+    <p class="sm mut" style="margin:6px 0 0">受访者在同意隐私说明后、进入候场室前回答。答案只给研究团队，并随保留期删除。不设置就不会多出这一步。</p>
+    ${qs.length ? `<ol class="ptlist">${qs.map((q) => `<li><div><b>${esc(q.prompt)}</b> <span class="tag ${q.required ? "o" : ""}">${q.required ? "必填" : "选填"}</span></div>${q.answer ? `<div class="sm" style="margin-top:2px">${esc(q.answer)}</div>` : `<div class="sm mut" style="margin-top:2px">受访者还没有填写</div>`}</li>`).join("")}</ol>`
+      : `<p class="sm mut" style="margin:8px 0 0">还没有设置问题。</p>`}`;
+  const b = $("#pted", card); if (b) b.onclick = () => editPretask(iid, qs);
+}
+
+function editPretask(iid, qs) {
+  const row = (q = { prompt: "", required: true }) => `<div class="ptrow"><textarea rows="2" class="ptq" placeholder="问题，例如：你平时的护肤步骤是怎样的？" maxlength="500">${esc(q.prompt || "")}</textarea>
+    <label class="chk"><input type="checkbox" class="ptr" ${q.required ? "checked" : ""}><span>必填</span></label><button type="button" class="s warn ptdel">删除</button></div>`;
+  const m = modal(`<h2>访谈前问题</h2><p class="sm mut">每行一题，最多 10 题。留空的题目会被忽略；全部清空则取消这一步。</p>
+    <form id="f"><div id="ptrows">${(qs.length ? qs : [{ prompt: "", required: true }]).map(row).join("")}</div>
+    <button type="button" class="s" id="ptadd">+ 再加一题</button>
+    <div class="row" style="margin-top:14px"><button class="p">保存</button><button type="button" id="c">取消</button></div></form>`);
+  const rows = $("#ptrows", m);
+  const bind = () => rows.querySelectorAll(".ptdel").forEach((d) => d.onclick = () => { if (rows.children.length > 1) d.closest(".ptrow").remove(); else { $(".ptq", d.closest(".ptrow")).value = ""; } });
+  bind();
+  $("#ptadd", m).onclick = () => { if (rows.children.length >= 10) return toast("最多 10 题", true); rows.insertAdjacentHTML("beforeend", row()); bind(); };
+  $("#c", m).onclick = () => m.remove();
+  $("#f", m).onsubmit = guard(async (e) => {
+    e.preventDefault();
+    const questions = [...rows.querySelectorAll(".ptrow")].map((r) => ({ prompt: $(".ptq", r).value.trim(), required: $(".ptr", r).checked })).filter((q) => q.prompt);
+    await api(`/interviews/${iid}/pretask`, { method: "PUT", body: { questions } });
+    m.remove(); toast(questions.length ? "已保存访谈前问题" : "已取消访谈前问题"); render();
+  });
+}
+
 async function interviewView(iid, tab) {
   const my = renderSeq;
   const staff = STAFF();
@@ -385,8 +418,10 @@ async function interviewView(iid, tab) {
       <div class="row">${canRoom ? (ME.role === "observer" ? room("observer", "") : staff ? room("moderator", "p") + room("observer", "") : room("moderator", "p")) : ""}</div></div>
     ${staff && invite && canRoom ? `<div class="card"><h3>受访者邀请链接</h3><code class="copy" id="inv">${esc(invite)}</code><p class="sm mut" style="margin:8px 0 0">只显示这一次，发给受访者后请不要转发。丢了可以重新生成（旧链接会失效）。</p></div>` : ""}
     ${staff && canRoom && !invite ? `<div class="note row">邀请链接已隐藏。<span class="sp"></span><button class="s" id="rot">重新生成</button></div>` : ""}
+    ${staff ? `<div class="card" id="pretaskcard"><p class="sm mut" style="margin:0">访谈前问题加载中…</p></div>` : ""}
     <div class="tabs">${tabs.map(([k, n]) => `<a href="#/i/${iid}/${k}" class="${tab === k ? "on" : ""}">${n}</a>`).join("")}</div><div id="tab"></div>`, { active: "insights", p });
   const rot = $("#rot"); if (rot) rot.onclick = guard(async () => { const r = await api(`/interviews/${iid}/invite/rotate`, { method: "POST" }); sessionStorage.setItem("invite_" + iid, location.origin + r.invite_path); render(); });
+  if (staff) loadPretaskCard(iid, canRoom);
   if (tab === "transcript") return transcriptTab(iid, it, staff, my);
   if (tab === "clips") return clipsTab(iid, staff, my);
   if (tab === "highlights" && staff) return highlightsTab(iid, my);

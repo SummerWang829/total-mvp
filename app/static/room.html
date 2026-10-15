@@ -19,6 +19,7 @@
   <aside class="rpan side" id="lpan" hidden><h3>本场</h3><div id="kv"></div>
     <div id="wbox" hidden><h3 style="margin-top:6px">候场室</h3><div class="wst" id="wst" role="status"></div>
       <div class="row" style="margin-top:8px"><button class="p s" id="b-admit" type="button">放行</button><button class="s" id="b-hold" type="button">暂缓</button></div></div>
+    <div id="prebox" hidden><h3 style="margin-top:6px">访谈前问题</h3><div class="plan" id="pre"></div></div>
     <div id="planbox" hidden><h3 style="margin-top:6px">访谈提纲</h3><div class="plan" id="plan"></div></div></aside>
   <section><div class="stim" id="stim" hidden></div><div class="vgrid" id="grid"></div></section>
   <aside class="rpan side" id="rpan" hidden><h3>实时字幕</h3><p>录制结束后的逐字转写在访谈页。</p></aside>
@@ -591,6 +592,13 @@ async function loadPlan() {
   renderPlan();
 }
 
+async function loadPretask() {  // the participant's pre-interview answers, for the moderator only (clients never see them)
+  let d; try { d = await api(`/interviews/${iid}/pretask`); } catch (e) { return; }
+  const qs = (d && d.questions) || []; if (!qs.length) return;
+  $id("prebox").hidden = false;
+  $id("pre").innerHTML = qs.map((q) => `<div class="preq"><div class="preqq">${esc(q.prompt)}</div><div class="preqa">${q.answer ? esc(q.answer) : "<span class=\"mut\">受访者还没有填写</span>"}</div></div>`).join("");
+}
+
 // ---------------- start ----------------
 async function start() {
   msg(T.connecting);
@@ -605,6 +613,7 @@ async function start() {
     $id("wbox").hidden = false;
     const setAdmit = (admit) => guard(async () => { await api(`/interviews/${iid}/admit`, { method: "POST", body: { admit } }); toast(admit ? "已放行，受访者现在可以进入" : "已请受访者稍等"); await poll(); });
     $id("b-admit").onclick = setAdmit(true); $id("b-hold").onclick = setAdmit(false);
+    loadPretask();  // show the participant's pre-interview answers (both human and AI moderation)
   }
   if (S.moderation === "ai") {
     C.on = true;
