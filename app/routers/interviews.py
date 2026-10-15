@@ -342,6 +342,7 @@ async def upload_chunk(iid: str, rid: str, request: Request, seq: int, offset_ms
         raise HTTPException(404, "录制不存在")
     if rec.status not in ("recording", "processing"):
         raise HTTPException(409, "这次录制已经结束")
+    db.commit()  # 先把数据库连接还给连接池，再等（可能很慢的跨国）上传；save_chunk 会重新取一个
     data = await request.body()
     if len(data) > settings.max_chunk_bytes or seq < 0 or seq > 20_000:
         raise HTTPException(413, "分片太大")

@@ -12,6 +12,8 @@ RUN grep -viE '^(pytest|playwright|pillow|numpy)' requirements.txt > /tmp/requir
     && pip install --no-cache-dir -r /tmp/requirements.runtime.txt
 
 COPY app ./app
+# The AI moderator reads its demo interview guides (eval/guides) and the offline scripted brain (eval/mock_brain.py) at runtime.
+COPY eval ./eval
 
 ENV PYTHONUNBUFFERED=1 PYTHONUTF8=1
 EXPOSE 8000

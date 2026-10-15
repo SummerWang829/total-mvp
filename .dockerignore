@@ -20,6 +20,5 @@ qa_report.md
 *.gguf
 models
 tests
-eval
 docs
 .claude

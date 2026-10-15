@@ -182,6 +182,7 @@ async def upload_chunk(token: str, rid: str, request: Request, seq: int, offset_
         raise HTTPException(404, "not found")
     if rec.status not in ("recording", "processing"):
         raise HTTPException(409, "recording finished")
+    db.commit()  # give the pooled connection back BEFORE waiting for the (possibly slow, overseas) upload; save_chunk takes one again
     data = await request.body()
     if len(data) > settings.max_chunk_bytes or seq < 0 or seq > 20_000:
         raise HTTPException(413, "chunk too large")

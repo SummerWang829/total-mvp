@@ -6,7 +6,10 @@ rtc:
   tcp_port: 7881
   port_range_start: 50000
   port_range_end: 50200
-  use_external_ip: true
+  # The server sits behind the cloud's 1:1 NAT (private 10.x address). Tell LiveKit its public IP explicitly instead of guessing it via STUN
+  # (the guess logged "could not validate external IP"). CHANGE THIS if the server or its public IP changes.
+  use_external_ip: false
+  node_ip: 43.160.208.195
 webhook:
   api_key: totalkey    # must equal LIVEKIT_API_KEY in deploy/.env (LiveKit does not expand variables in this file)
   urls:
@@ -14,4 +17,4 @@ webhook:
 room:
   empty_timeout: 300
 logging:
-  level: warn
+  level: info          # shows joins, leaves and connection quality while we are still testing; set back to warn later
