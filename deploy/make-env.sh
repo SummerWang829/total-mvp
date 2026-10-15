@@ -18,6 +18,8 @@ if [ -n "$KEYS" ]; then
   grep -E '^(MODERATOR|LLM)_[A-Z_]*=' "$KEYS" | sed -E 's/[[:space:]]+#.*$//; s/[[:space:]]+$//' >> .env || true
 fi
 
+sed -i -E '/^[A-Z_]+=/ s/[[:space:]]+#.*$//' .env   # no inline comments in the final file
+
 set_var() {  # set_var NAME VALUE  (replace the line, or append)
   if grep -q "^$1=" .env; then sed -i -E "s|^$1=.*|$1=$2|" .env; else echo "$1=$2" >> .env; fi
 }

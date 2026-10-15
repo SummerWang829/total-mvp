@@ -50,7 +50,12 @@
 
 ---
 
-## 2026-10-15 · 线上测试环境：服务器已买、部署文件已写，待授权后上线（进行中）
+## 2026-10-15 · 线上测试环境已上线：https://deepresearch.morningstarsystem.tech（待创建第一个管理员、待真人浏览器测试）
+**已完成（用户 2026-10-15 授权）**：① DNSPod 新增两条 A 记录：`deepresearch`、`lk-deepresearch` → 43.160.208.195（原有 34 条未动，现共 36 条）；② 新加坡服务器防火墙新增 TCP 443、UDP 443、TCP 7881、UDP 50000-50200（原有 22/80/ICMP，现共 7 条）；③ 本机生成专用 SSH 密钥（`~/.ssh/total_sg_ed25519`，私钥只在 SW 电脑），公钥已装到服务器 `ubuntu` 用户，部署完成后可删除 `authorized_keys` 里那一行（注释 `claude-total-deploy-20261015`）；④ 服务器用 apt 装 Docker 29.1.3 / Compose 2.40.3；⑤ 代码传到 `/opt/total-mvp`（`git archive`），`deploy/.env` 由 `deploy/make-env.sh` 在服务器上生成（新的 SECRET_KEY / LIVEKIT_API_SECRET 在服务器上生成；DeepSeek 相关行从本机 `.env` 的 `MODERATOR_*`/`LLM_*` 行复制，未读取、未回显，临时副本已删）；⑥ `docker compose up -d --build`：app / livekit / caddy 三个容器正常，Caddy 已自动签发 https 证书。
+**验证**：公网 `https://deepresearch.morningstarsystem.tech/api/health` = 200，首页 200；`https://lk-deepresearch.morningstarsystem.tech/` = 200；容器内 `python -m app.doctor`：视频服务器在线 ✓、洞察/翻译 ✓、AI 主持人 ✓（DeepSeek）、水印字体 ✓（Noto CJK）、转写为演示模式（服务器没有 whisper）。**还没有用真人浏览器走过摄像头/麦克风视频**（LiveKit 日志里有 “could not validate external IP: context canceled” 警告，不确定是否影响 WebRTC，等真人测试确认）。
+**踩坑记录**：① Windows 上写的文件是 CRLF，在 Linux 上 shell 脚本报错、`.env` 值会带回车 → 已加 `.gitattributes`（`*.sh`、`deploy/**`、Dockerfile 强制 LF）；② LiveKit 的 `bind_addresses: 127.0.0.1` 会让 Caddy 容器连不上（502）→ 已去掉，7880 靠腾讯云防火墙不对外开放；③ 腾讯云控制台的“确认”类按钮有时第一次点击不生效，要看结果再点。
+**待办（按顺序）**：a. 用户在网站注册第一个管理员 → 我把 `ALLOW_SIGNUP` 改成 `false` 重启；b. 用户用两个浏览器（电脑 + 手机/另一台电脑）真人测试视频；c. 转写：选云端 ASR 或在服务器装 whisper；d. 上线给真实受访者之前：Postgres、备份、限流、同意书审、录像合成隔离、应急预案；e. 部署完成后删掉服务器上本机的 SSH 公钥（如不再需要）；f. 服务器 2026-11-15 到期，要续费或升配。
+**旧记录（部署前）**：
 **做了什么**
 - 服务器：用户的腾讯云账号里原有一台硅谷服务器（2 核 2GB，上面跑着用户的其他业务：nginx、node、apiAgent、apiproxy、govpn-server 等，**不要动**，我只做了只读检查）。新买了一台**新加坡**轻量应用服务器给本项目专用：Ubuntu 26.04、2 核 4GB、60GB、200Mbps，公网 IP `43.160.208.195`，实例 `lhins-7h9fxm7j`，名称 Ubuntu-aDDV，¥60/月（用户已付款），2026-11-15 到期。基线检查：干净，只开了 SSH，有 sudo，没有 Docker。
 - 域名：`morningstarsystem.tech` 在用户的腾讯云 DNSPod，已有 34 条记录（其他业务在用），没有 deepresearch 相关记录。计划新增两条 A 记录（`deepresearch`、`lk-deepresearch` → 新服务器 IP）。

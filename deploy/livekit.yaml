@@ -1,7 +1,7 @@
 # LiveKit for the test server. The key/secret come from the LIVEKIT_KEYS environment variable (see docker-compose.yml), not from this file.
 port: 7880
-bind_addresses:
-  - 127.0.0.1          # only Caddy (same host) may reach the signalling port
+# Signalling (7880) listens on all interfaces so Caddy's container can reach it through the Docker bridge.
+# It is NOT exposed to the internet: the Tencent Cloud firewall does not open 7880 (only 80/443/7881/50000-50200).
 rtc:
   tcp_port: 7881
   port_range_start: 50000
