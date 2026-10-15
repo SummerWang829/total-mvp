@@ -16,7 +16,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from .. import concept
+from .. import concept, marks
 from ..asr_live import token_out
 from ..audit import audit
 from ..db import SessionLocal, get_db
@@ -113,6 +113,55 @@ def show_stimulus(iid: str, body: ShowBody, ctx: Ctx = Depends(require_roles(*OP
     audit(db, ctx.org_id, ctx.actor, "stimulus.show" if body.stimulus_id else "stimulus.hide", body.stimulus_id or itv.id, ip=ctx.ip)
     db.commit()
     return {"stimulus": concept.current_stimulus(db, itv.id, staff=True)}
+
+
+# ---------- marking the material (♥ like / ✕ dislike on an image) ----------
+class MarkBody(BaseModel):
+    kind: Literal["like", "dislike"]
+    x: float = Field(ge=0, le=1)  # fraction of the image width
+    y: float = Field(ge=0, le=1)  # fraction of the image height
+
+
+@router.post("/public/join/{token}/stimulus/{sid}/mark", status_code=201)
+def add_mark(token: str, sid: str, body: MarkBody, db: Session = Depends(get_db)):
+    """The participant taps the material to mark a spot they like or dislike."""
+    itv = _entered_participant(db, token)
+    try:
+        m = marks.add_mark(db, itv.org_id, itv, sid, itv.participant_id, body.kind, body.x, body.y)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    db.commit()
+    return marks.mark_out(m)
+
+
+@router.delete("/public/join/{token}/stimulus/{sid}/mark/{mid}", status_code=204)
+def remove_mark(token: str, sid: str, mid: str, db: Session = Depends(get_db)):
+    """The participant taps one of their own pins to take it off."""
+    itv = _entered_participant(db, token)
+    if not marks.remove_mark(db, itv.id, itv.participant_id, mid):
+        raise HTTPException(404, "没有这个标记")
+    db.commit()
+
+
+@router.get("/public/join/{token}/stimulus/{sid}/marks")
+def my_marks(token: str, sid: str, db: Session = Depends(get_db)):
+    """The participant's own marks on one material (to redraw their pins after a refresh)."""
+    itv = _entered_participant(db, token)
+    return {"marks": marks.participant_marks(db, itv.id, sid, itv.participant_id)}
+
+
+@router.get("/interviews/{iid}/stimulus/{sid}/marks")
+def stimulus_marks(iid: str, sid: str, ctx: Ctx = Depends(require_roles(*OPERATE)), db: Session = Depends(get_db)):
+    """Every mark on one material, for the moderator's live overlay (observers excluded)."""
+    itv = visible_interview(db, ctx, iid)
+    return {"marks": marks.stimulus_marks(db, itv.id, sid)}
+
+
+@router.get("/interviews/{iid}/stimulus-marks")
+def marks_summary(iid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    """The research team's heatmap: each image material with its marks and like / dislike totals."""
+    itv = visible_interview(db, ctx, iid)
+    return {"stimuli": marks.summary(db, itv.id)}
 
 
 # ---------- live captions ----------

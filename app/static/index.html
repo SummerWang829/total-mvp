@@ -437,6 +437,21 @@ function editPretask(iid, qs) {
   });
 }
 
+// ---- material marks heatmap (staff only; the participant's ♥ like / ✕ dislike on each image) ----
+async function loadMarksCard(iid) {
+  const card = $("#markcard"); if (!card) return;
+  const data = await api(`/interviews/${iid}/stimulus-marks`).catch(() => ({ stimuli: [] }));
+  if (!$("#markcard")) return;
+  const stims = (data.stimuli || []).filter((s) => s.like || s.dislike || s.marks.length);
+  if (!stims.length) { card.hidden = true; return; }
+  card.hidden = false;
+  const pins = (marks) => marks.map((m) => `<span class="pin ${m.kind === "like" ? "like" : "dislike"}" style="left:${(m.x * 100).toFixed(2)}%;top:${(m.y * 100).toFixed(2)}%">${m.kind === "like" ? "♥" : "✕"}</span>`).join("");
+  card.innerHTML = `<div class="row"><h3 style="margin:0">素材标记热力</h3></div>
+    <p class="sm mut" style="margin:6px 0 0">受访者在素材上点出的喜欢（♥）和不喜欢（✕），叠加在图上。只给研究团队看，并随保留期删除。</p>
+    <div class="hmgrid">${stims.map((s) => `<div class="hmstim"><div class="row sm" style="gap:8px;margin-bottom:6px"><b>${esc(s.title)}</b><span class="sp"></span><span class="tag o">♥ ${s.like}</span><span class="tag">✕ ${s.dislike}</span></div>
+      <div class="stimwrap hm"><img src="${esc(s.url)}" alt="" referrerpolicy="no-referrer"><div class="pins">${pins(s.marks)}</div></div></div>`).join("")}</div>`;
+}
+
 async function interviewView(iid, tab) {
   const my = renderSeq;
   const staff = STAFF();
@@ -455,9 +470,10 @@ async function interviewView(iid, tab) {
     ${staff && canRoom && !invite ? `<div class="note row">邀请链接已隐藏。<span class="sp"></span><button class="s" id="rot">重新生成</button></div>` : ""}
     ${staff ? `<div class="card" id="timeslotcard"><p class="sm mut" style="margin:0">候选时间加载中…</p></div>` : ""}
     ${staff ? `<div class="card" id="pretaskcard"><p class="sm mut" style="margin:0">访谈前问题加载中…</p></div>` : ""}
+    ${staff ? `<div class="card" id="markcard" hidden></div>` : ""}
     <div class="tabs">${tabs.map(([k, n]) => `<a href="#/i/${iid}/${k}" class="${tab === k ? "on" : ""}">${n}</a>`).join("")}</div><div id="tab"></div>`, { active: "insights", p });
   const rot = $("#rot"); if (rot) rot.onclick = guard(async () => { const r = await api(`/interviews/${iid}/invite/rotate`, { method: "POST" }); sessionStorage.setItem("invite_" + iid, location.origin + r.invite_path); render(); });
-  if (staff) { loadTimeslotsCard(iid, canRoom); loadPretaskCard(iid, canRoom); }
+  if (staff) { loadTimeslotsCard(iid, canRoom); loadPretaskCard(iid, canRoom); loadMarksCard(iid); }
   if (tab === "transcript") return transcriptTab(iid, it, staff, my);
   if (tab === "clips") return clipsTab(iid, staff, my);
   if (tab === "highlights" && staff) return highlightsTab(iid, my);

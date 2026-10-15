@@ -461,6 +461,59 @@ def timeslot_section(br, D):
     ctx.close()
 
 
+def marks_section(br, D):
+    """Material marking (Sprint 1): the participant taps ♥ like / ✕ dislike on an image, the team reads it as a heatmap."""
+    adm, mod, obs, pid = D["tok"]["admin"], D["tok"]["moderator"], D["tok"]["observer"], D["pid"]
+    part = call(f"/projects/{pid}/participants", {"name": "圈选受访者", "country": "SG", "language": "zh"}, adm)
+    it = call(f"/projects/{pid}/interviews", {"participant_id": part["id"], "title": "素材圈选深访", "language": "zh",
+                                              "moderator_id": D["ids"]["moderator"], "observer_ids": [D["ids"]["observer"]]}, adm)
+    iid, T = it["id"], it["invite_token"]
+    call(f"/interviews/{iid}/concept/template", {"template": "loreal_skincare_concept"}, adm)
+    call(f"/public/join/{T}/device", {"camera": True, "microphone": True, "speaker": True})
+    call(f"/public/join/{T}/consent", {"country": "SG", "recording": True, "observers": True, "cross_border": True})
+    call(f"/interviews/{iid}/start", {}, mod)
+    call(f"/interviews/{iid}/admit", {"admit": True}, mod)
+    call(f"/public/join/{T}/enter", {})
+    shown = next(s for s in call(f"/interviews/{iid}/concept", token=mod)["stimuli"] if s["key"] == "concept_a")
+    call(f"/interviews/{iid}/stimulus/show", {"stimulus_id": shown["id"]}, mod)
+    # (a) participant: a toolbar and tap-to-mark on the image (like, then dislike); own pins can be removed
+    ctx, pg, errs = new_page(br, 390)
+    pg.goto(B + f"/room.html?t={T}"); pg.wait_for_selector("#claims")
+    ok(wait_until(lambda: pg.locator("#stim .stimwrap img").is_visible(), 8), "[marks participant] the image is shown with a mark layer")
+    ok(pg.locator("#stim .marktools .mk").count() == 2, "[marks participant] the ♥ like / ✕ dislike toolbar is present")
+    pg.locator("#stim .stimwrap").click(position={"x": 60, "y": 60})
+    ok(wait_until(lambda: pg.locator("#stim .pins button.pin.like").count() == 1, 8), "[marks participant] tapping adds a ♥ like pin")
+    pg.click("#stim .marktools .mk.dislike")
+    pg.locator("#stim .stimwrap").click(position={"x": 160, "y": 90})
+    ok(wait_until(lambda: pg.locator("#stim .pins button.pin.dislike").count() == 1, 8), "[marks participant] switching to ✕ adds a dislike pin")
+    audit_page(pg, "marks participant/phone", errs)
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "marks_participant_390.png"), full_page=True)
+    pg.locator("#stim .pins button.pin.dislike").first.click()
+    ok(wait_until(lambda: pg.locator("#stim .pins button.pin.dislike").count() == 0, 8), "[marks participant] tapping a own pin removes it")
+    ctx.close()
+    # (b) moderator: a read-only live overlay of the participant's marks (polled)
+    ctx, pg, errs = new_page(br, 1280, token=mod)
+    pg.goto(B + f"/room.html?i={iid}&as=moderator"); pg.wait_for_selector("#claims")
+    ok(wait_until(lambda: pg.locator("#stim .pins span.pin").count() >= 1, 10), "[marks moderator] sees the live overlay of the participant's marks")
+    ok(pg.locator("#stim .marktools").count() == 0, "[marks moderator] the moderator cannot place marks (overlay only)")
+    audit_page(pg, "marks room moderator/desktop", errs)
+    ctx.close()
+    # (c) the client observer never sees the marks
+    ctx, pg, errs = new_page(br, 1280, token=obs)
+    pg.goto(B + f"/room.html?i={iid}&as=observer"); pg.wait_for_selector("#claims")
+    ok(wait_until(lambda: pg.locator("#stim img").is_visible(), 8), "[marks observer] sees the image")
+    ok(not wait_until(lambda: pg.locator("#stim .pins .pin").count() >= 1, 3), "[marks observer] never sees any marks")
+    ctx.close()
+    # (d) staff heatmap card on the session page: the image with counts and pins
+    ctx, pg, errs = new_page(br, 1280, token=adm)
+    pg.goto(B + f"/#/i/{iid}"); pg.wait_for_selector("#markcard .hmstim")
+    ok(pg.locator("#markcard .hmstim").count() >= 1 and pg.locator("#markcard .pins .pin").count() >= 1, "[marks] the heatmap card shows the image with marks overlaid")
+    ok("♥ 1" in pg.inner_text("#markcard"), "[marks] the heatmap shows the like count")
+    audit_page(pg, "marks heatmap card/desktop", errs)
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "marks_heatmap_card_1280.png"), full_page=True)
+    ctx.close()
+
+
 def run():
     os.makedirs(os.path.join(ROOT, "qa_shots"), exist_ok=True)
     D = seed()
@@ -740,6 +793,7 @@ def run():
         concept_room_section(br, D)
         pretask_section(br, D)
         timeslot_section(br, D)
+        marks_section(br, D)
 
         # ---------- C2. dialogs and expandable panels on the staff pages (both screen sizes) ----------
         for w, vp in ((1280, "desktop"), (390, "phone")):

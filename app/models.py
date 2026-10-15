@@ -2,7 +2,7 @@ import threading
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
@@ -317,6 +317,26 @@ class TimeSlot(Base):
     org_id: Mapped[str] = mapped_column(String(32), index=True)
     interview_id: Mapped[str] = mapped_column(ForeignKey("interviews.id"), index=True)
     start_at: Mapped[datetime] = mapped_column(DateTime)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class StimulusMark(Base):
+    """A participant's point mark on a shown material: ♥ like or ✕ dislike at a position on a concept card / image.
+
+    Coordinates are fractions of the image (0..1) so they line up on any screen. Personal data: purged with the
+    interview (``app/retention.py``). Same shape as the concept-test circling an external survey platform pushes in
+    (roadmap §5), so the two feed one heatmap.
+    """
+    __tablename__ = "stimulus_marks"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
+    org_id: Mapped[str] = mapped_column(String(32), index=True)
+    interview_id: Mapped[str] = mapped_column(ForeignKey("interviews.id"), index=True)
+    stimulus_id: Mapped[str] = mapped_column(ForeignKey("stimuli.id"), index=True)
+    participant_id: Mapped[str] = mapped_column(ForeignKey("participants.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(8))  # like | dislike
+    x: Mapped[float] = mapped_column(Float)  # 0..1, fraction of the image width
+    y: Mapped[float] = mapped_column(Float)  # 0..1, fraction of the image height
+    at_ms: Mapped[int] = mapped_column(Integer, default=0)  # ms since the interview started, on our clock
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 

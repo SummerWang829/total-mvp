@@ -14,7 +14,7 @@ from .config import settings
 from .media import purge_cache
 from . import ai_room
 from .models import (BackroomMessage, CaptionLine, Clip, Evidence, Highlight, Insight, Interview, Participant, PreTask, PreTaskAnswer, Project, Recording,
-                     RecordingTrack, ShareLink, TimeSlot, TranscriptSegment, utcnow)
+                     RecordingTrack, ShareLink, StimulusMark, TimeSlot, TranscriptSegment, utcnow)
 
 PURGED = "[已按保留期删除]"
 
@@ -43,6 +43,7 @@ def purge_interview(db: Session, itv: Interview, reason: str, actor: str = "syst
     db.execute(delete(PreTaskAnswer).where(PreTaskAnswer.interview_id == itv.id))  # pre-interview answers are personal data
     db.execute(delete(PreTask).where(PreTask.interview_id == itv.id))
     db.execute(delete(TimeSlot).where(TimeSlot.interview_id == itv.id))  # candidate times (config)
+    db.execute(delete(StimulusMark).where(StimulusMark.interview_id == itv.id))  # material marks are personal data
     clip_ids = [c.id for c in db.scalars(select(Clip).where(Clip.interview_id == itv.id))]
     if clip_ids:
         db.execute(update(ShareLink).where(ShareLink.clip_id.in_(clip_ids)).values(revoked_at=utcnow()))
