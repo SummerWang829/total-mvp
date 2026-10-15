@@ -26,6 +26,17 @@
 | Sprint 6 真人试点准备 | 未开始 |
 | 实时字幕（腾讯云）/ AI 语音 / 编码分析 / 部署 | 未开始 |
 
+## 2026-10-15 · 大平台决策定稿 + 舆情数据源策略（代码未改，文档）
+**用户拍板**：① 定量＝外部接入、平台未定 → 先做通用契约 + 留适配层；② 舆情数据源＝我来定（大陆+海外主流）；③ 允许云端大模型处理公开评论；④ 座谈会最大 10 人；⑤ git 工作流对 LW/SW 很重要。
+**做了什么**
+- 按「用 skill 发动资源」要求，`npx skills find` 排查了 sentiment / social listening / brand monitoring 相关技能：多为方法论（小红书监听工作法等）或爬取型数据服务（ScrapeCreators、Apify、千瓜/飞瓜/蝉妈妈）。方法论已吸收进设计；爬取型**仅限开发期造样本**，产品守「不自建爬虫」红线。
+- 新增 `docs/舆情_数据源与接入策略_v1.md`：大陆（微博/微信/抖音/小红书/B站/电商评论/黑猫…）+ 海外（X/Reddit/YouTube/TikTok/Meta/新闻 GDELT/App 与电商评论…）主流源怎么合规接；供应商候选（海外 Brandwatch/Meltwater/Talkwalker；大陆 慧科/数说故事/识微 + 千瓜/飞瓜）；统一 `SentimentSource` 连接器；**三档上线（Tier 0 零成本先跑通 → Tier 1 官方 API → Tier 2 采购供应商）**；预算 A/B/C 档。
+- 路线图总纲同步固化上述决策（§4 座谈会 10 人、§5 定量留适配、§7 云模型可用 + 数据源引用、§9 决策记录含 git 工作流）。
+- **git 工作流（LW/SW 交接）定为**：云端走 feature 分支 + 每 Sprint 一个 PR，qa 全绿后合并进 main；合并后 LW/SW 照旧 `git pull origin main`；要预览未合并分支用 `git fetch && git checkout <分支>`；云端默认不直接推 main、不自行合并（待用户一句确认）。
+**qa.sh**：未改应用代码，沿用上一条。
+**还差什么**：用户确认 git 流程；开始 Sprint 1（深访补全）。
+**风险**：无新增。
+
 ## 2026-10-15 · 云端 Agent 接手：环境搭建 + 整套 qa 跑通 + 大平台架构总纲（代码未改应用逻辑）
 **做了什么**
 - 在 Cursor 云端 VM 从零搭好环境：`.venv` + `requirements.txt`、Playwright Chromium + 系统图形库、Noto Sans CJK 字体、`bin/livekit-server`（LiveKit 1.8.4）、ffmpeg/ffprobe、`.env`（演示模式，无真实密钥）。`python -m app.doctor` 无必须解决的问题。
