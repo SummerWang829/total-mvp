@@ -1,0 +1,5 @@
+# Files that run on Linux (the server / containers) must keep Unix line endings, whatever the developer's OS.
+*.sh text eol=lf
+deploy/** text eol=lf
+Dockerfile text eol=lf
+.dockerignore text eol=lf
