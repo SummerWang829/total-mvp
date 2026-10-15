@@ -8,5 +8,6 @@ tenacity>=8.2  # retry with exponential backoff for model calls (AI moderator)
 pytest>=8
 # used by scripts/qa.sh (browser QA + watermark check); after installing run once: python -m playwright install chromium
 playwright>=1.45
+websockets>=12  # tests/fake_asr.py: a stand-in for Tencent's real-time speech recognition in tests/e2e_room.py
 pillow>=10
 numpy>=1.26

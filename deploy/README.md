@@ -14,6 +14,12 @@
 4. 打开 `https://<APP_HOST>`，注册第一个管理员；然后把 `.env` 里 `ALLOW_SIGNUP` 改成 `false`，`docker compose up -d`。
 5. 检查：`docker compose ps`、`curl https://<APP_HOST>/api/health`、`docker compose logs --tail=50 livekit`。
 
+## 开启实时字幕
+在腾讯云开通“语音识别”后，在服务器上自己编辑 `deploy/.env`，填 `TENCENT_ASR_APPID`、`TENCENT_ASR_SECRET_ID`、`TENCENT_ASR_SECRET_KEY`，然后 `docker compose up -d`（只重启 app）。`docker compose exec app python -m app.doctor` 应显示“实时字幕：已配置”。密钥不要发到聊天里。
+
+## 排查“卡”
+在 `deploy/.env` 里加 `LOOP_WATCH_S=2`，`docker compose up -d`；之后 `docker compose logs app | grep -E "slow request|event loop blocked"` 会列出慢请求（带线程池/连接池占用）和事件循环被堵时的代码栈。查完把它删掉。
+
 ## 升级
 `git pull && docker compose up -d --build`（数据在卷 `appdata` 里，不会丢）。
 

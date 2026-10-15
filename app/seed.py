@@ -13,6 +13,7 @@ PW = "demo12345"
 USERS = [("admin", "管理员", "admin"), ("researcher", "研究员", "researcher"), ("moderator", "主持人", "moderator"), ("observer", "观察员（客户）", "observer")]
 PROJECT = "演示：新加坡护肤品深访"
 TEST_TITLE = "演示访谈（给你测试用）"
+CONCEPT_TITLE = "护肤概念测试（10 分钟，实时字幕）"
 
 PEOPLE = [  # name, country, language
     ("Tan Wei Ling", "SG", "en"), ("陈美玲", "SG", "zh"), ("Nur Aisyah", "SG", "ms"), ("Kavitha R.", "SG", "ta"),
@@ -63,13 +64,28 @@ def main() -> None:
         test = c.post(f"/projects/{pid}/interviews", headers=rs, json={"participant_id": part["id"], "title": TEST_TITLE,
                                                                        "moderator_id": ids["moderator"], "observer_ids": [ids["observer"]]}).json()
         invite = test["invite_path"]
+    concept_invite = concept_session(c, rs, pid, ids)
     print("\n" + "=" * 60)
     print(f"打开  {a.url}   用下面任一账号登录（密码都是 {PW}）：")
     for key, name, _ in USERS:
         print(f"   {name:　<8} {key}@demo.test")
     print(f"\n演示项目：{a.url}/#/p/{pid}/home")
     print(f"给你测试用的受访者邀请链接（用另一个浏览器或无痕窗口打开）：\n   {a.url}{invite}")
+    print(f"\n护肤概念测试（10 分钟，欧莱雅广告片 + 两个概念卡 + 实时字幕）的受访者邀请链接：\n   {a.url}{concept_invite}")
     print("=" * 60)
+
+
+def concept_session(c: httpx.Client, rs: dict, pid: str, ids: dict) -> str:
+    """A second testing session with the concept-test script and materials already loaded; returns a fresh invitation path."""
+    its = c.get(f"/projects/{pid}/interviews", headers=rs).json()
+    sess = next((i for i in its if i["title"] == CONCEPT_TITLE and i["status"] != "ended" and not i["purged"]), None)
+    if sess:
+        return c.post(f"/interviews/{sess['id']}/invite/rotate", headers=rs).json()["invite_path"]
+    part = c.post(f"/projects/{pid}/participants", headers=rs, json={"name": "概念测试受访者", "country": "SG", "language": "zh"}).json()
+    sess = c.post(f"/projects/{pid}/interviews", headers=rs, json={"participant_id": part["id"], "title": CONCEPT_TITLE, "language": "zh",
+                                                                    "moderator_id": ids["moderator"], "observer_ids": [ids["observer"]]}).json()
+    c.post(f"/interviews/{sess['id']}/concept/template", headers=rs, json={"template": "loreal_skincare_concept"})
+    return sess["invite_path"]
 
 
 def build(c: httpx.Client, rs: dict, mod: dict, pid: str, ids: dict) -> None:

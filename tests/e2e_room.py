@@ -7,6 +7,7 @@ tracks -> transcribe -> insight -> clip -> share page plays a short WATERMARKED 
 """
 import json
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -17,7 +18,18 @@ import urllib.request
 from playwright.sync_api import sync_playwright
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from fake_asr import FakeASR  # a stand-in for Tencent's real-time speech recognition (same protocol)
 from qa_site import AUDIT_JS  # the same colour / font-size / tap-target audit the whole-site QA uses
+
+# what the fake recogniser "hears", handed out in connection order: the moderator's browser connects first, then the participant's
+ASR_SCRIPTS = [["我们先聊聊你平时的护肤习惯。", "你为什么会选这一款？"], ["我平时会先看成分，再看价格。", "我最担心买到假货。"]]
+FAKE = FakeASR(ASR_SCRIPTS)
+NET_JS = """(() => { const f = window.fetch; window.__net = []; window.__pend = {}; let n = 0;
+  window.fetch = async (...a) => { const id = ++n, t0 = performance.now(), u = String(a[0]).slice(-38); window.__pend[id] = [u, t0];
+    try { const r = await f(...a); window.__net.push([u, Math.round(performance.now() - t0), r.status]); return r; }
+    catch (e) { window.__net.push([u, Math.round(performance.now() - t0), 'ERR ' + e]); throw e; }
+    finally { delete window.__pend[id]; } }; })();"""  # records how long each of a page's own API calls took (printed when a caption check fails)
+CAPSTATE = "() => ({on: CAP.on, tries: CAP.tries, ws: CAP.ws ? CAP.ws.readyState : null, ctx: CAP.ctx ? CAP.ctx.state : null, mic: !!micTrack, live: last && last.status, stopping: CAP.stopping, queued: CAP.queue.length, ended: ended})"  # what the room page's caption code is doing, printed when a caption check fails
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SHOTS = os.path.join(ROOT, "qa_shots")
@@ -65,6 +77,10 @@ def audit(page, label, phone=False):
         page.set_viewport_size({"width": 1280, "height": 760})
 
 
+PUMP = [None]  # a page whose events are serviced between polls: Playwright's sync API runs route handlers and listeners only while the test thread is
+#                inside a Playwright call, so a plain time.sleep() would leave every request of a context that has a route paused (this cost 45 s once)
+
+
 def wait_for(fn, timeout=60, step=0.5):
     t = time.time()
     while time.time() - t < timeout:
@@ -74,7 +90,10 @@ def wait_for(fn, timeout=60, step=0.5):
                 return v
         except Exception:
             pass
-        time.sleep(step)
+        if PUMP[0] is not None:
+            PUMP[0].wait_for_timeout(int(step * 1000))
+        else:
+            time.sleep(step)
     return None
 
 
@@ -102,9 +121,12 @@ logging:
   level: warn
 """)
     lk = subprocess.Popen([lk_bin, "--config", os.path.join(tmp, "lk.yaml")], stdout=open(os.path.join(tmp, "lk.log"), "w"), stderr=subprocess.STDOUT)
+    asr_port = FAKE.start()
     env = {**os.environ, "DATABASE_URL": f"sqlite:///{tmp}/e2e.db", "MEDIA_DIR": f"{tmp}/media", "LIVEKIT_URL": f"ws://127.0.0.1:{LKPORT}", "RECORDING_GRACE_S": "25",
            "DISABLE_WORKER": "", "ASR_PROVIDER": "mock", "LLM_PROVIDER": "mock", "ASR_API_KEY": "", "LLM_API_KEY": "",
-           "MODERATOR_PROVIDER": "mock", "MODERATOR_API_KEY": "", "MODERATOR_VENDOR": ""}
+           "MODERATOR_PROVIDER": "mock", "MODERATOR_API_KEY": "", "MODERATOR_VENDOR": "",
+           "TENCENT_ASR_APPID": "1250000000", "TENCENT_ASR_SECRET_ID": "AKIDe2e", "TENCENT_ASR_SECRET_KEY": "e2e-secret-key", "ASR_LIVE_WS_BASE": f"ws://127.0.0.1:{asr_port}",
+           "LOOP_WATCH_S": "2"}  # the server names whatever blocks its event loop (printed below if it happens)
     srv = subprocess.Popen([sys.executable, "-m", "uvicorn", "app.main:app", "--port", str(PORT), "--log-level", "warning"], cwd=ROOT, env=env,
                            stdout=open(os.path.join(tmp, "srv.log"), "w"), stderr=subprocess.STDOUT)
     try:
@@ -112,11 +134,24 @@ logging:
             print("server did not start"); sys.exit(2)
         run(tmp)
     finally:
+        FAKE.stop()
         srv.terminate(); lk.terminate()
         try:
             srv.wait(5); lk.wait(5)
         except Exception:
             srv.kill(); lk.kill()
+    errs_srv = [ln for ln in open(os.path.join(tmp, "srv.log"), errors="ignore").read().splitlines() if re.search(r"Error|Traceback|locked|Exception", ln) and "slow request" not in ln]
+    if errs_srv:
+        print(f"  SERVER LOG: {len(errs_srv)} error lines, first: " + " || ".join(x.strip()[:140] for x in errs_srv[:4]))
+    slow_reqs = [ln for ln in open(os.path.join(tmp, "srv.log"), errors="ignore").read().splitlines() if "slow request" in ln]
+    if slow_reqs:
+        print(f"  SLOW REQUESTS: {len(slow_reqs)}; first and worst:")
+        print("   " + slow_reqs[0][:300]); print("   " + max(slow_reqs, key=lambda x: float(x.split("slow request ")[1].split("s")[0]))[:300])
+    stalls = open(os.path.join(tmp, "srv.log"), errors="ignore").read().split("event loop blocked")[1:]  # see app/loopwatch.py
+    secs = [float(s.split("more than ")[1].split("s")[0]) for s in stalls if "more than " in s]
+    if secs:
+        print(f"  SERVER STALLS: {len(secs)} times the event loop was blocked, seconds: {secs}")
+        print("  worst one:" + stalls[secs.index(max(secs))][:1500])
     print(f"\nE2E ROOM: {PASSES} checks passed, {len(FAILS)} failed")
     if FAILS:
         print("\n".join(" - " + f for f in FAILS)); sys.exit(1)
@@ -399,8 +434,10 @@ def run(tmp):
         pam.goto(f"{B}/room.html?i={aid}&as=moderator"); pap.goto(f"{B}/room.html?t={atk}"); pao.goto(f"{B}/room.html?i={aid}&as=observer")
         in_room = lambda pg: pg.evaluate("() => room && room.state === 'connected'")
         ok(wait_for(lambda: in_room(pam) and in_room(pap) and in_room(pao), 30), "AI interview: everybody is in the real video room")
-        ok(pam.evaluate("() => room.remoteParticipants.size") == 1 and pap.evaluate("() => room.remoteParticipants.size") == 1,
-           "AI interview: the observer is still invisible to the moderator and the participant")
+        sizes = lambda: (pam.evaluate("() => room.remoteParticipants.size"), pap.evaluate("() => room.remoteParticipants.size"))
+        ok(wait_for(lambda: sizes() == (1, 1), 15), f"AI interview: each of them sees exactly one other person: the observer is invisible ({sizes()})")  # "connected" does not mean the other is listed yet
+        pam.wait_for_timeout(1500)
+        ok(sizes() == (1, 1), f"AI interview: the observer stays invisible a moment later ({sizes()})")
         ok(pao.locator("#a-start, #a-take, #a-back, #wform, #hform").count() == 0, "AI interview: the observer has no controls")
         ok("还没有启动" in pam.inner_text("#aist") and pap.is_disabled("#cin"), "AI interview: nothing is said and the participant cannot type before the AI is started")
         pam.click("#a-start")
@@ -440,7 +477,148 @@ def run(tmp):
         for c in (cam, cap, cao):
             c.close()
 
+        concept_phase(pw, tok, ids, pid, errs)  # its console errors join the same list (data-channel errors after the end are tolerated by finish())
         finish(br, errs, n_before_end)
+
+
+def slow(page):
+    """A page's own API calls: how many, the failures, the slowest, and the ones still waiting (path, ms or age, status)."""
+    try:
+        d = page.evaluate("() => ({net: window.__net || [], pend: Object.values(window.__pend || {}).map(([u, t0]) => [u, Math.round(performance.now() - t0)])})")
+        bad = [x for x in d["net"] if not str(x[2]).startswith("2")][:6]
+        worst = sorted(d["net"], key=lambda x: -x[1])[:4]
+        return f"calls={len(d['net'])} not-2xx={bad} slowest={worst} still-waiting={d['pend'][:6]}"
+    except Exception as e:
+        return f"n/a ({e})"
+
+
+def timeline():
+    t0 = FAKE.phase[0]["at"] if FAKE.phase else 0
+    return [(round(c["at"] - t0, 1), c["frames"], c["bad_frames"], c["loud_frames"], c["ended"], len(c["sent"])) for c in FAKE.phase]
+
+
+def concept_phase(pw, tok, ids, pid, errs):
+    """The concept test as a human tester runs it: script + materials, the live captions of two real microphones, quotes and follow-ups."""
+    part = call(f"/projects/{pid}/participants", {"name": "概念测试受访者", "country": "SG", "language": "zh"}, tok["researcher"])
+    itv = call(f"/projects/{pid}/interviews", {"participant_id": part["id"], "title": "护肤概念测试", "language": "zh", "moderator_id": ids["moderator"],
+                                               "observer_ids": [ids["observer"]]}, tok["researcher"])
+    iid, T = itv["id"], itv["invite_token"]
+    FAKE.mark()  # earlier phases (English interviews) also opened recognition sessions: count and hand out scripts from here
+    call(f"/interviews/{iid}/concept/template", {"template": "loreal_skincare_concept"}, tok["researcher"])
+    call(f"/public/join/{T}/device", {"camera": True, "microphone": True, "speaker": True})
+    call(f"/public/join/{T}/consent", {"country": "SG", "recording": True, "observers": True, "cross_border": True})
+    # NOT the autoplay override the other phases use: the real browser rules apply to the caption microphone (the participant has clicked "enter")
+    br = pw.chromium.launch(args=["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream"])
+
+    def ctx(name, token=None):
+        c = br.new_context(viewport={"width": 1280, "height": 900}, permissions=["camera", "microphone"])
+        if token:
+            c.add_init_script(f"try{{localStorage.setItem('tt_token','{token}')}}catch(e){{}}")
+        c.add_init_script(NET_JS)  # time this page's own API calls
+        c.route("https://player.bilibili.com/**", lambda r: r.fulfill(status=200, content_type="text/html", body="<html><body>video player (test stub)</body></html>"))
+        p = c.new_page()
+        p.on("console", lambda m: errs.append(f"[{name}] console: {m.text}") if m.type == "error" else None)
+        p.on("pageerror", lambda e: errs.append(f"[{name}] pageerror: {e}"))
+        p.on("dialog", lambda d: d.accept())
+        return c, p
+
+    cm, pm = ctx("concept-moderator", tok["moderator"])
+    co, po = ctx("concept-observer", tok["observer"])
+    cp, pp = ctx("concept-participant")
+    pm.goto(f"{B}/room.html?i={iid}&as=moderator"); po.goto(f"{B}/room.html?i={iid}&as=observer")
+    PUMP[0] = pm  # see wait_for(): this phase's contexts have a route, which must keep being serviced while we wait
+    in_room = lambda pg: pg.evaluate("() => room && room.state === 'connected'")
+    ok(wait_for(lambda: in_room(pm) and in_room(po), 30), "concept test: the moderator and the hidden observer are in the real video room")
+
+    # ---- the script and the materials ----
+    pm.wait_for_selector("#plan details", timeout=15000)
+    ok(pm.locator("#plan details").count() == 5 and pm.locator("#plan button[data-show]").count() == 3, "concept test: the moderator sees the 5-step script with 3 materials to show")
+    ok("访谈开始后" in pm.inner_text("#plantm") and po.locator("#planbox").is_hidden(), "concept test: the timer waits for the start; the observer has no script")
+    pm.screenshot(path=f"{SHOTS}/e2e_concept_script.png")
+
+    # ---- start: the moderator's microphone is captioned ----
+    pm.click("#b-start")
+    ok(wait_for(lambda: "已用" in pm.inner_text("#plantm"), 10), "concept test: after the start the script shows the elapsed time and the current step")
+    ok(wait_for(lambda: len(FAKE.phase) >= 1, 25), "concept test: the moderator's browser opened a speech-recognition session")
+    first = FAKE.phase[0] if FAKE.phase else {"query": {}}
+    ok(first["query"].get("engine_model_type") == "16k_zh" and first["query"].get("voice_format") == "1" and "e2e-secret-key" not in str(first["query"]),
+       f"concept test: signed Mandarin 16k PCM address, and the secret key never reached the browser ({sorted(first['query'])})")
+    ok(wait_for(lambda: "字幕已开启" in pm.inner_text("#capst"), 10), "concept test: the caption panel says captions are on")
+
+    # ---- the participant arrives the way a person does: invitation page -> waiting room -> "enter" (a real click) ----
+    pp.goto(f"{B}/join.html?t={T}")
+    pp.wait_for_selector("#enter")
+    pm.click("#b-admit")
+    ok(wait_for(lambda: pp.get_attribute("#enter", "aria-disabled") != "true", 10), "concept test: the participant can enter once the moderator lets them in")
+    pp.click("#enter")
+    ok(wait_for(lambda: in_room(pp), 30), "concept test: the participant is in the real video room")
+    two = wait_for(lambda: len(FAKE.phase) >= 2, 45)
+    ok(two, f"concept test: the participant's browser opened its own speech-recognition session (no autoplay override) {timeline()} participant caption state: {pp.evaluate(CAPSTATE)} slowest calls: {slow(pp)}")
+
+    # ---- live captions: both speakers, each sentence labelled ----
+    want = [("主持人", s) for s in ASR_SCRIPTS[0]] + [("受访者", s) for s in ASR_SCRIPTS[1]]
+    got = lambda pg: [tuple(x) for x in pg.evaluate("() => [...document.querySelectorAll('#caps .cap')].map((c) => [c.querySelector('b').textContent, c.lastChild.textContent])")]
+    partial_now = lambda: any(call(f"/interviews/{iid}/captions?after=0", token=tok["observer"])["partial"].values())
+    seen_partial = wait_for(partial_now, 30, 0.3)  # while the participant's first sentence is still being recognised
+    ok(wait_for(lambda: len(got(pm)) >= 4, 60), f"concept test: four finished sentences reach the moderator's panel ({got(pm)})")
+    ok(sorted(got(pm)) == sorted(want), f"concept test: each sentence is attributed to the right speaker ({got(pm)})")
+    ok(wait_for(lambda: sorted(got(po)) == sorted(want), 15), "concept test: the hidden observer follows the same captions")
+    ok([t for s, t in got(pm) if s == "受访者"] == ASR_SCRIPTS[1], "concept test: sentences keep their order")
+    ok(seen_partial, "concept test: the sentence still being spoken is shown while it is recognised")
+    lines = call(f"/interviews/{iid}/captions?after=0", token=tok["observer"])["lines"]
+    ok(all(a["at_ms"] <= b["at_ms"] for a, b in zip(lines, lines[1:])) and lines and lines[0]["at_ms"] > 0, "concept test: caption times come from the server clock and never go backwards")
+    pm.screenshot(path=f"{SHOTS}/e2e_concept_captions.png")
+
+    # ---- quote and follow-up ----
+    pm.locator("#caps .cap.pt", has_text="假货").locator("button", has_text="引用").click()
+    hl = lambda: call(f"/interviews/{iid}/highlights", token=tok["moderator"])
+    ok(wait_for(lambda: any(h["kind"] == "quote" and h["text"] == "我最担心买到假货。" and h["speaker"] == "participant" for h in hl()), 8),
+       f"concept test: a quote is stored word for word, attributed to the participant ({hl()})")
+    pm.locator("#caps .cap.pt", has_text="成分").locator("button", has_text="追问").click()
+    ok(wait_for(lambda: pm.locator("#probes .pr").count() == 1 and "成分" in pm.inner_text("#probes"), 8), "concept test: a follow-up on a sentence is queued for the moderator")
+    ok(wait_for(lambda: "成分" in po.inner_text("#probes"), 10), "concept test: the observer sees the queued follow-up")
+    po.fill("#pin", "价格多少算贵？"); po.click("#psend")
+    ok(wait_for(lambda: "价格多少算贵" in pm.inner_text("#probes"), 10), "concept test: a follow-up typed by the observer reaches the moderator")
+    pm.locator("#probes .pr", has_text="成分").locator("button", has_text="已问").click()
+    ok(wait_for(lambda: pm.locator("#probes .pr.done").count() == 1, 8), "concept test: the moderator marks a follow-up as asked")
+    ok(pm.locator("#probes .pr", has_text="价格多少算贵").locator("button", has_text="删除").count() == 1 and po.locator("#probes .pr", has_text="成分").locator("button", has_text="删除").count() == 0,
+       "concept test: an observer can delete only their own follow-up")
+
+    # ---- the material on the participant's screen ----
+    pm.evaluate("document.querySelectorAll('#plan details').forEach((d) => (d.open = true))")
+    ok(pp.locator("#stim").is_hidden(), "concept test: nothing is on the participant's screen before the moderator shows it")
+    pm.locator('#plan button[data-show="concept_a"]').click()
+    ok(wait_for(lambda: pp.locator("#stim img").is_visible() and pp.evaluate("() => document.querySelector('#stim img').naturalWidth") > 0, 10), "concept test: the participant sees concept card A")
+    ok(wait_for(lambda: po.locator("#stim img").is_visible(), 10), "concept test: the observer sees the same material")
+    ok(pp.get_attribute("#stim img", "src").endswith("/concepts/concept_a.svg") and "概念 A" not in pp.inner_text("body"), "concept test: the participant gets the picture, not its title")
+    ok(wait_for(lambda: "正在展示" in pm.inner_text("#plantm") and "概念 A" in pm.inner_text("#plantm"), 8), "concept test: the script says what is on screen")
+    pm.screenshot(path=f"{SHOTS}/e2e_concept_moderator.png"); pp.screenshot(path=f"{SHOTS}/e2e_concept_participant.png")
+    pm.locator('#plan button[data-show="ad_film"]').click()
+    ok(wait_for(lambda: (pp.get_attribute("#stim iframe", "src") or "").startswith("https://player.bilibili.com/player.html?bvid=BV"), 10), "concept test: the ad film is shown through its embedded player")
+    ok(pp.get_attribute("#stim iframe", "sandbox") is not None, "concept test: the embedded player is sandboxed")
+    pm.click("#plan-hide")
+    ok(wait_for(lambda: pp.locator("#stim").is_hidden(), 10), "concept test: the moderator takes the material off the screen")
+
+    # ---- the participant sees nothing internal; every screen passes the usual layout / contrast audit, in both colour themes ----
+    ok(pp.locator("#caps, #probes").count() == 0 and pp.locator("#lpan").is_hidden() and pp.locator("#rpan").is_hidden() and "待追问" not in pp.inner_text("body"),
+       "concept test: the participant never sees the script, captions or follow-ups")
+    for name, page in (("moderator", pm), ("observer", po), ("participant", pp)):
+        audit(page, f"concept/{name}")
+    audit(pm, "concept/moderator-phone", phone=True)
+    for name, page in (("moderator", pm), ("participant", pp)):
+        page.click("#theme"); audit(page, f"concept/{name}/dark"); page.click("#theme")
+
+    # ---- end: both browsers close their recognition sessions properly ----
+    pm.click("#b-end")
+    done = wait_for(lambda: len(FAKE.phase) == 2 and all(c["ended"] for c in FAKE.phase), 20)
+    ok(done, f"concept test: both browsers end their speech-recognition sessions with the end message {timeline()} moderator: {pm.evaluate(CAPSTATE)} participant: {pp.evaluate(CAPSTATE)} slow moderator calls: {slow(pm)} slow participant calls: {slow(pp)}")
+    ok(all(c["frames"] >= 20 and c["bad_frames"] == 0 and c["loud_frames"] > 0 for c in FAKE.phase),
+       f"concept test: real microphone audio streamed as 200 ms 16 kHz PCM frames ({[(c['frames'], c['bad_frames'], c['loud_frames']) for c in FAKE.phase]})")
+    ok(wait_for(lambda: "已结束" in pm.inner_text("#msg"), 15), "concept test: the interview ends for everybody")
+    PUMP[0] = None
+    for c in (cm, co, cp):
+        c.close()
+    br.close()
 
 
 def finish(br, errs, n_before_end=None):

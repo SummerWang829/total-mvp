@@ -226,6 +226,65 @@ def seed():
     return dict(tok=tok, pid=pid, itv=itv, main=main_i, share=share, ids=ids, people=people, demo_pid=dpid)
 
 
+def concept_room_section(br, D):
+    """The concept-test room in dev mode (no video): the script, the material on screen, captions with quote / follow-up, for every role."""
+    pid, adm, mod, obs = D["pid"], D["tok"]["admin"], D["tok"]["moderator"], D["tok"]["observer"]
+    part = call(f"/projects/{pid}/participants", {"name": "概念测试受访者", "country": "SG", "language": "zh"}, adm)
+    it = call(f"/projects/{pid}/interviews", {"participant_id": part["id"], "title": "概念测试", "language": "zh", "moderator_id": D["ids"]["moderator"],
+                                              "observer_ids": [D["ids"]["observer"]]}, adm)
+    iid, T = it["id"], it["invite_token"]
+    call(f"/interviews/{iid}/concept/template", {"template": "loreal_skincare_concept"}, adm)
+    call(f"/public/join/{T}/device", {"camera": True, "microphone": True, "speaker": True})
+    call(f"/public/join/{T}/consent", {"country": "SG", "recording": True, "observers": True, "cross_border": True})
+    call(f"/interviews/{iid}/start", {}, mod)
+    call(f"/interviews/{iid}/admit", {"admit": True}, mod)
+    call(f"/public/join/{T}/enter", {})
+    for who, text in (("m", "先聊聊你平时的护肤习惯。"), ("p", "我平时先看成分，再看价格，最担心买到假货。"), ("m", "你为什么会选这一款？"), ("p", "因为朋友推荐，而且旗舰店有保障。")):
+        if who == "m":
+            call(f"/interviews/{iid}/captions", {"text": text, "final": True}, mod)
+        else:
+            call(f"/public/join/{T}/captions", {"text": text, "final": True})
+    lines = call(f"/interviews/{iid}/captions?after=0", token=mod)["lines"]
+    call(f"/interviews/{iid}/highlights", {"kind": "quote", "caption_id": lines[1]["id"]}, obs)
+    call(f"/interviews/{iid}/highlights", {"kind": "probe", "caption_id": lines[1]["id"]}, mod)
+    call(f"/interviews/{iid}/highlights", {"kind": "probe", "text": "价格多少算贵？"}, obs)
+    shown = next(s for s in call(f"/interviews/{iid}/concept", token=mod)["stimuli"] if s["key"] == "concept_a")
+    call(f"/interviews/{iid}/stimulus/show", {"stimulus_id": shown["id"]}, mod)
+    for w, vp in ((1280, "desktop"), (390, "phone")):
+        for theme in (None, "dark"):
+            tag = f"concept room/{theme or 'light'}/{vp}"
+            for role, asr in (("moderator", "moderator"), ("observer", "observer")):
+                ctx, pg, errs = new_page(br, w, token=D["tok"][role], room_theme=theme)
+                pg.goto(B + f"/room.html?i={iid}&as={asr}"); pg.wait_for_selector("#claims", timeout=8000)
+                ok(wait_until(lambda: pg.locator("#caps .cap").count() == 4 and pg.locator("#probes .pr").count() == 2, 10), f"[{tag} {role}] four sentences and two follow-ups are on screen")
+                ok(pg.locator("#caps .cap .hd button", has_text="引用").count() == 4 and pg.locator("#caps .cap .hd button", has_text="追问").count() == 4, f"[{tag} {role}] every sentence has quote / follow-up buttons")
+                ok(wait_until(lambda: pg.locator("#stim img").is_visible(), 8), f"[{tag} {role}] the material on screen is visible")
+                if role == "moderator":
+                    ok(wait_until(lambda: pg.locator("#plan details").count() == 5 and "已用" in pg.inner_text("#plantm"), 8), f"[{tag}] the script and the timer are shown")
+                    ok(pg.locator("#plan button[data-show]").count() == 3 and pg.locator("#plan .q input").count() == 18, f"[{tag}] 3 materials to show and 18 tick boxes for the questions")
+                    pg.evaluate("document.querySelectorAll('#plan details').forEach((d) => (d.open = true))")  # audit the opened script too
+                else:
+                    ok(pg.locator("#planbox").is_hidden() and pg.locator("#probes .pr button", has_text="已问").count() == 0, f"[{tag}] the observer has no script and cannot mark a follow-up as asked")
+                audit_page(pg, f"{tag} {role}", errs)
+                ctx.close()
+            ctx, pg, errs = new_page(br, w, room_theme=theme)  # the participant: the picture only, nothing internal
+            pg.goto(B + f"/room.html?t={T}"); pg.wait_for_selector("#claims", timeout=8000)
+            ok(wait_until(lambda: pg.locator("#stim img").is_visible(), 8), f"[{tag} participant] the participant sees the material the moderator shows")
+            ok(pg.locator("#caps, #probes").count() == 0 and pg.locator("#lpan").is_hidden() and pg.locator("#rpan").is_hidden(), f"[{tag} participant] no script, captions or follow-ups")
+            audit_page(pg, f"{tag} participant", errs)
+            ctx.close()
+    ctx, pg, errs = new_page(br, 1280, token=adm)  # after the interview: quotes, follow-ups and the caption record on the interview page (team only)
+    pg.goto(B + f"/#/i/{iid}/highlights"); pg.wait_for_selector("#tab .card")
+    ok(pg.locator("#tab .card").count() == 3 and "最担心买到假货" in pg.inner_text("#tab"), "[interview page] quotes, follow-ups and the caption record are listed")
+    audit_page(pg, "interview highlights/desktop", errs)
+    ctx.close()
+    for role in ("moderator", "observer"):
+        c, g, e = new_page(br, 1280, token=D["tok"][role])
+        g.goto(B + f"/#/i/{iid}"); g.wait_for_selector("main .tabs")
+        ok(g.locator(".tabs a:has-text('引用与追问')").count() == 0, f"[interview page] {role} does not get the quotes tab")
+        c.close()
+
+
 def ai_room_section(br, D):
     """An AI-moderated interview in the room, seen by the participant, the moderator and a hidden observer."""
     it, mod, obs, adm = D["itv"]["ai_zh"], D["tok"]["moderator"], D["tok"]["observer"], D["tok"]["admin"]
@@ -584,6 +643,7 @@ def run():
 
         # ---------- C3. AI moderation in the room (Sprint 5): participant chat, the team's AI panel, observer, alerts; both colour themes, desktop + phone ----------
         ai_room_section(br, D)
+        concept_room_section(br, D)
 
         # ---------- C2. dialogs and expandable panels on the staff pages (both screen sizes) ----------
         for w, vp in ((1280, "desktop"), (390, "phone")):

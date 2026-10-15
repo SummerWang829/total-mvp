@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from .. import ai_room
+from .. import ai_room, concept
 from ..audit import audit
 from ..config import settings
 from ..db import get_db
@@ -303,7 +303,8 @@ def live_state(iid: str, ctx: Ctx = Depends(current_ctx), db: Session = Depends(
     itv = visible_interview(db, ctx, iid)
     rec = _active_recording(db, itv.id)
     consented = db.scalar(select(Consent.id).where(Consent.interview_id == itv.id, Consent.recording.is_(True), Consent.cross_border.is_(True))) is not None
-    out = {"status": itv.status, "consented": consented, "recording": {"id": rec.id, "elapsed_ms": elapsed_ms(rec)} if rec else None}
+    out = {"status": itv.status, "consented": consented, "recording": {"id": rec.id, "elapsed_ms": elapsed_ms(rec)} if rec else None,
+           "stimulus": concept.current_stimulus(db, itv.id, staff=True), "elapsed_ms": concept.at_ms(itv) if itv.status == "live" else None}
     if ctx.user.role != "observer":  # who is in the waiting room is for the moderator, not the client
         out["participant"] = {"waiting": in_waiting_room(itv), "admitted": itv.admitted_at is not None,
                               "held": itv.held_at is not None and itv.admitted_at is None, "device_ok": itv.device_ok_at is not None}

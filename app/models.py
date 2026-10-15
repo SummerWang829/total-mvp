@@ -266,3 +266,72 @@ class ChatMessage(Base):
     operator: Mapped[str] = mapped_column(String(20), default="")
     phase: Mapped[str] = mapped_column(String(12), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+# ---- concept test: the interview script, the materials shown in the room, live captions, quotes / follow-ups ----
+class InterviewPlan(Base):
+    """The moderator's script for one interview (JSON, see app/concept.py). Internal: participants never see it."""
+    __tablename__ = "interview_plans"
+    interview_id: Mapped[str] = mapped_column(ForeignKey("interviews.id"), primary_key=True)
+    org_id: Mapped[str] = mapped_column(String(32), index=True)
+    template: Mapped[str] = mapped_column(String(60))
+    title: Mapped[str] = mapped_column(String(200))
+    script_json: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class Stimulus(Base):
+    """A material (ad film, concept card, image) the moderator can put on the participant's screen."""
+    __tablename__ = "stimuli"
+    __table_args__ = (UniqueConstraint("interview_id", "key"),)
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
+    org_id: Mapped[str] = mapped_column(String(32), index=True)
+    interview_id: Mapped[str] = mapped_column(ForeignKey("interviews.id"), index=True)
+    key: Mapped[str] = mapped_column(String(40))  # stable name used by the script ("ad_film", "concept_a")
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    kind: Mapped[str] = mapped_column(String(10))  # image | video (a video is an embedded player page, never a file on our server)
+    title: Mapped[str] = mapped_column(String(200))
+    url: Mapped[str] = mapped_column(String(500))  # image: the picture; video: the player's embed address
+    source_note: Mapped[str] = mapped_column(String(300), default="")  # where the material comes from (staff only)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class RoomState(Base):
+    """What is on the participant's screen right now (one row per interview)."""
+    __tablename__ = "room_states"
+    interview_id: Mapped[str] = mapped_column(ForeignKey("interviews.id"), primary_key=True)
+    org_id: Mapped[str] = mapped_column(String(32), index=True)
+    stimulus_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    shown_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    shown_by: Mapped[str] = mapped_column(String(40), default="")
+
+
+class CaptionLine(Base):
+    """One finished sentence of the live captions. Personal data: purged with the interview (app/retention.py)."""
+    __tablename__ = "caption_lines"
+    __table_args__ = (UniqueConstraint("interview_id", "seq"),)
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
+    org_id: Mapped[str] = mapped_column(String(32), index=True)
+    interview_id: Mapped[str] = mapped_column(ForeignKey("interviews.id"), index=True)
+    seq: Mapped[int] = mapped_column(Integer)
+    speaker: Mapped[str] = mapped_column(String(20))  # moderator | participant (each browser captions its own microphone)
+    text: Mapped[str] = mapped_column(Text)
+    at_ms: Mapped[int] = mapped_column(Integer, default=0)  # milliseconds since the interview started, taken from OUR clock
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class Highlight(Base):
+    """A quote the team marked, or a follow-up question queued for the moderator. The quote text is copied from the caption line by the server."""
+    __tablename__ = "highlights"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
+    org_id: Mapped[str] = mapped_column(String(32), index=True)
+    interview_id: Mapped[str] = mapped_column(ForeignKey("interviews.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(10))  # quote | probe
+    speaker: Mapped[str] = mapped_column(String(20), default="")
+    text: Mapped[str] = mapped_column(Text)
+    caption_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    stimulus_key: Mapped[str] = mapped_column(String(40), default="")  # which material was on screen when it was said
+    at_ms: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(10), default="open")  # open | done (a probe that was asked)
+    created_by: Mapped[str] = mapped_column(String(32), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

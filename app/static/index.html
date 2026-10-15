@@ -310,7 +310,7 @@ async function interviewView(iid, tab) {
   const invite = sessionStorage.getItem("invite_" + iid);
   const room = (as, cls) => `<a class="btn ${cls}" href="/room.html?i=${iid}&as=${as}" target="_blank" rel="noopener">${as === "observer" ? "隐身观察" : "进入房间（主持）"}</a>`;
   const canRoom = it.status !== "ended" && !it.purged;
-  const tabs = [["transcript", "转写"], ["insights", "洞察"], ["clips", "片段"]];
+  const tabs = [["transcript", "转写"], ["insights", "洞察"], ["clips", "片段"], ...(staff ? [["highlights", "引用与追问"]] : [])];
   shell(`<a class="back" href="#/p/${it.project_id}/insights">← 洞察与片段</a>
     <div class="head"><div><h1>${esc(it.title)}</h1><p class="lead" style="margin:6px 0 0">受访者：${esc(it.participant.name)}${it.participant.country ? " · " + esc(it.participant.country) : ""} · 访谈语言 ${esc(LANGS[it.language] || it.language)} · <span class="tag ${c}">${t}</span>${it.moderation === "ai" ? ` <span class="tag o">AI 主持</span>` : ""}${it.invite_state ? ` <span class="tag ${(INVITE[it.invite_state] || [])[1] || ""}">${(INVITE[it.invite_state] || [it.invite_state])[0]}</span>` : ""}</p></div><span class="sp"></span>
       <div class="row">${canRoom ? (ME.role === "observer" ? room("observer", "") : staff ? room("moderator", "p") + room("observer", "") : room("moderator", "p")) : ""}</div></div>
@@ -320,6 +320,7 @@ async function interviewView(iid, tab) {
   const rot = $("#rot"); if (rot) rot.onclick = guard(async () => { const r = await api(`/interviews/${iid}/invite/rotate`, { method: "POST" }); sessionStorage.setItem("invite_" + iid, location.origin + r.invite_path); render(); });
   if (tab === "transcript") return transcriptTab(iid, it, staff, my);
   if (tab === "clips") return clipsTab(iid, staff, my);
+  if (tab === "highlights" && staff) return highlightsTab(iid, my);
   return insightsTab(iid, staff, my);
 }
 
@@ -376,6 +377,20 @@ async function transcriptTab(iid, it, staff, my) {
     app.querySelectorAll("[data-seek]").forEach((a) => a.onclick = (e) => { e.preventDefault(); pv.currentTime = +a.dataset.seek / 1000; pv.play().catch(() => {}); pv.scrollIntoView({ block: "nearest" }); });
   }
   if (busy) { clearTimeout(window._recT); window._recT = setTimeout(() => { if (location.hash.startsWith("#/i/" + iid)) render(); }, 3000); }
+}
+
+const MATERIAL = { ad_film: "广告片", concept_a: "概念 A", concept_b: "概念 B", ad_film_2: "备用广告片" };
+const WHO = { moderator: "主持人", participant: "受访者" };
+async function highlightsTab(iid, my) {  // quotes and follow-ups marked in the room, plus the live-caption record (may contain recognition errors)
+  const [hs, caps] = await Promise.all([api(`/interviews/${iid}/highlights`), api(`/interviews/${iid}/captions?after=0`)]);
+  if (stale(my) || !$("#tab")) return;
+  const row = (h) => `<div class="quote"><div>${h.speaker ? `${esc(WHO[h.speaker] || h.speaker)}：` : ""}“${esc(h.text)}”</div>
+    <div class="sm mut">${fmt(h.at_ms)}${h.stimulus_key ? ` · 当时在看：${esc(MATERIAL[h.stimulus_key] || h.stimulus_key)}` : ""}${h.kind === "probe" ? ` · ${h.status === "done" ? "已追问" : "待追问"}` : ""}</div></div>`;
+  const quotes = hs.filter((h) => h.kind === "quote"), probes = hs.filter((h) => h.kind === "probe");
+  $("#tab").innerHTML = `<div class="card"><h3>引用（${quotes.length}）</h3>${quotes.length ? quotes.map(row).join("") : `<p class="mut">访谈中在字幕旁点“引用”，会出现在这里，原话由系统从字幕里原样复制。</p>`}</div>
+    <div class="card"><h3>追问（${probes.length}）</h3>${probes.length ? probes.map(row).join("") : `<p class="mut">还没有追问记录。</p>`}</div>
+    <div class="card"><h3>实时字幕记录（${caps.lines.length} 句）</h3><p class="sm mut">实时识别的结果，可能有错字；正式逐字稿以“转写”为准。</p>
+      ${caps.lines.length ? caps.lines.map((c) => `<div class="quote"><div>${esc(WHO[c.speaker] || c.speaker)}：${esc(c.text)}</div><div class="sm mut">${fmt(c.at_ms)}</div></div>`).join("") : `<p class="mut">这场访谈没有实时字幕。</p>`}</div>`;
 }
 
 async function insightsTab(iid, staff, my) {

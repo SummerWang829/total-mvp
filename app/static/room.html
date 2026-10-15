@@ -17,9 +17,10 @@
 <div class="rbody">
   <aside class="rpan side" id="lpan" hidden><h3>本场</h3><div id="kv"></div>
     <div id="wbox" hidden><h3 style="margin-top:6px">候场室</h3><div class="wst" id="wst" role="status"></div>
-      <div class="row" style="margin-top:8px"><button class="p s" id="b-admit" type="button">放行</button><button class="s" id="b-hold" type="button">暂缓</button></div></div></aside>
-  <section><div class="vgrid" id="grid"></div></section>
-  <aside class="rpan side" id="rpan" hidden><h3>实时字幕</h3><p>接入腾讯云实时语音识别后，这里会实时显示双方说的话和中文翻译，并可以一键引用。录制结束后的逐字转写在访谈页。</p></aside>
+      <div class="row" style="margin-top:8px"><button class="p s" id="b-admit" type="button">放行</button><button class="s" id="b-hold" type="button">暂缓</button></div></div>
+    <div id="planbox" hidden><h3 style="margin-top:6px">访谈提纲</h3><div class="plan" id="plan"></div></div></aside>
+  <section><div class="stim" id="stim" hidden></div><div class="vgrid" id="grid"></div></section>
+  <aside class="rpan side" id="rpan" hidden><h3>实时字幕</h3><p>录制结束后的逐字转写在访谈页。</p></aside>
 </div>
 <div class="bar" id="bar"></div>
 <script src="/app.js"></script>
@@ -138,6 +139,8 @@ async function poll() {
     st = await r.json();
   } catch { return; }
   last = st;
+  renderStimulus(st.stimulus);
+  if (typeof st.elapsed_ms === "number") { PLAN.elapsed = st.elapsed_ms; PLAN.at = performance.now(); } else PLAN.elapsed = null;
   $id("state").textContent = role === "moderator" || role === "observer" ? ({ scheduled: "待开始", live: "进行中", ended: "已结束" }[st.status] || st.status) : "";
   $id("state").hidden = !$id("state").textContent;
   $id("state").className = "tag " + (st.status === "live" ? "live" : st.status === "ended" ? "ok" : "");
@@ -164,9 +167,9 @@ async function poll() {
     msg(`你是<b>主持人</b>。${P.waiting ? "受访者在候场室，点左侧“放行”让 TA 进来。" : ""}${st.status === "scheduled" ? "点“开始访谈”后，放行的受访者才能进入。" : st.consented ? (st.recording ? "正在录制，你和受访者的画面声音都在被记录。" : "受访者已同意，可以点“开始录制”。") : "受访者还没有同意录制，同意后才能录制。"}`);
   }
 }
-function tick() { if (recStart) { const s = Math.floor((performance.now() - recStart.at) / 1000); $id("recdot").textContent = `${T.rec} ${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`; } }
+function tick() { updatePlanTimer(); if (recStart) { const s = Math.floor((performance.now() - recStart.at) / 1000); $id("recdot").textContent = `${T.rec} ${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`; } }
 function finish() {
-  ended = true; stopRecorder(); localTracks.forEach((t) => { try { t.stop(); } catch {} }); if (room) room.disconnect();
+  ended = true; stopRecorder(); capStop(); localTracks.forEach((t) => { try { t.stop(); } catch {} }); if (room) room.disconnect();
   $id("recdot").hidden = true; bar.querySelectorAll("button").forEach((b) => (b.disabled = true));
   msg(role === "participant" ? T.ended : "访谈已结束。录像会在几十秒内合成，之后可以在访谈页转写。");
   if (role !== "participant") bar.innerHTML = `<a class="btn" id="back" href="/#/i/${iid}">回到访谈页</a>`;
@@ -264,6 +267,234 @@ function buildAiPanel() {  // the team's side: status, alert, controls (moderato
   form("wform", "win", "whisper", "悄悄话已发给 AI（下一轮生效）"); form("hform", "hin", "say", "已发送");
 }
 
+// ---------------- concept test: the material on the participant's screen ----------------
+let shownId = null;
+function renderStimulus(s) {  // everyone in the room sees the same material; its address comes from the server's reviewed list
+  const id = s ? s.id : null, box = $id("stim");
+  if (id === shownId) return;
+  shownId = id; box.textContent = ""; box.hidden = !s;
+  if (!s) return;
+  if (s.kind === "video") {
+    const f = document.createElement("iframe");
+    f.src = s.url; f.allow = "fullscreen; autoplay"; f.allowFullscreen = true; f.title = "material";
+    f.setAttribute("sandbox", "allow-scripts allow-same-origin allow-presentation");
+    box.appendChild(f);
+  } else {
+    const im = new Image(); im.src = s.url; im.alt = ""; im.referrerPolicy = "no-referrer"; box.appendChild(im);
+  }
+}
+
+// ---------------- live captions: this browser streams ITS OWN microphone to the speech recogniser ----------------
+// The server hands out a short-lived signed address (the secret key never reaches the browser); finished sentences are then posted back,
+// so the team sees both speakers, each sentence labelled by who spoke.
+const CAP = { on: false, ws: null, ctx: null, tries: 0, stopping: false, partial: "", sentPartial: "", queue: [], busy: false };
+const capApi = (p) => (inviteT ? `/api/public/join/${encodeURIComponent(inviteT)}/${p}` : `/api/interviews/${iid}/${p}`);
+const PCM_WORKLET = [  // 16 kHz 16-bit mono, 200 ms (3200 samples) per message
+  "class P extends AudioWorkletProcessor{",
+  "constructor(){super();this.o=[];this.acc=0;this.cnt=0;this.pos=0;this.ratio=sampleRate/16000;}",
+  "process(inp){const c=inp[0]&&inp[0][0];if(!c)return true;",
+  "for(let k=0;k<c.length;k++){this.acc+=c[k];this.cnt++;this.pos+=1;",
+  "if(this.pos>=this.ratio){this.pos-=this.ratio;this.o.push(this.acc/this.cnt);this.acc=0;this.cnt=0;",
+  "if(this.o.length>=3200){const b=new Int16Array(3200);for(let j=0;j<3200;j++){const s=Math.max(-1,Math.min(1,this.o[j]));b[j]=s<0?s*32768:s*32767;}this.o=[];this.port.postMessage(b.buffer,[b.buffer]);}}}",
+  "return true;}}",
+  "registerProcessor('pcm16',P);",
+].join("\n");
+const capStatus = (t) => { const e = $id("capst"); if (e) e.textContent = t; };
+async function capFlush() {  // finished sentences, in order; a hiccup retries, a refusal (not live / no consent) drops the sentence
+  if (CAP.busy) return; CAP.busy = true;
+  while (CAP.queue.length) {
+    try {
+      const r = await fetch(capApi("captions"), { method: "POST", headers: { ...authHdr(), "Content-Type": "application/json" }, body: JSON.stringify(CAP.queue[0]) });
+      if (r.ok || (r.status >= 400 && r.status < 500 && r.status !== 429)) CAP.queue.shift(); else await sleep(1000);
+    } catch { await sleep(1000); }
+    if (CAP.queue.length > 50) CAP.queue.splice(0, CAP.queue.length - 50);
+  }
+  CAP.busy = false;
+}
+function capPost(text) { CAP.partial = ""; CAP.sentPartial = ""; CAP.queue.push({ text, final: true }); capFlush(); }
+setInterval(() => {  // the sentence being spoken: at most twice a second, only the latest
+  if (!CAP.partial || CAP.partial === CAP.sentPartial || CAP.queue.length) return;
+  CAP.sentPartial = CAP.partial;
+  fetch(capApi("captions"), { method: "POST", headers: { ...authHdr(), "Content-Type": "application/json" }, body: JSON.stringify({ text: CAP.partial, final: false }) }).catch(() => {});
+}, 500);
+async function capAudio() {
+  if (CAP.ctx) return;
+  let ctx; try { ctx = new AudioContext({ sampleRate: 16000 }); } catch { ctx = new AudioContext(); }  // Safari ignores the requested rate: the worklet resamples
+  CAP.ctx = ctx;
+  const resume = () => { if (ctx.state === "suspended") ctx.resume().catch(() => {}); };
+  ["pointerdown", "keydown", "touchstart"].forEach((ev) => addEventListener(ev, resume, { passive: true })); resume();
+  await ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([PCM_WORKLET], { type: "text/javascript" })));
+  const node = new AudioWorkletNode(ctx, "pcm16");
+  node.port.onmessage = (e) => { if (CAP.ws && CAP.ws.readyState === 1) CAP.ws.send(e.data); };
+  // the page's own microphone track (muting the mic in the room also silences the captions); not connected to the speakers, so no echo
+  ctx.createMediaStreamSource(new MediaStream([micTrack.mediaStreamTrack])).connect(node);
+}
+function capRetry() {
+  if (ended || !CAP.on || CAP.stopping) return;
+  if (++CAP.tries > 8) { capStatus("字幕已断开，请刷新页面"); return; }
+  capStatus("字幕重连中…"); setTimeout(capLoop, Math.min(1000 * 2 ** CAP.tries, 15000));
+}
+async function capLoop() {  // (re)connect, only while the interview is live
+  if (ended || !CAP.on || CAP.stopping) return;
+  if (!last || last.status !== "live") { setTimeout(capLoop, 2000); return; }
+  let cfg;
+  try { cfg = await (await fetch(capApi("asr"), { headers: authHdr() })).json(); } catch { return capRetry(); }
+  if (!cfg.enabled) { capStatus(cfg.reason || "字幕未开启"); if (cfg.retry) setTimeout(capLoop, 3000); else CAP.on = false; return; }
+  let ws; try { ws = new WebSocket(cfg.url); } catch { return capRetry(); }
+  ws.binaryType = "arraybuffer"; CAP.ws = ws;
+  ws.onopen = async () => { capStatus("字幕已开启：正在听你的麦克风"); try { await capAudio(); } catch (e) { capStatus("字幕无法使用麦克风"); } };
+  ws.onmessage = (ev) => {
+    let m; try { m = JSON.parse(ev.data); } catch { return; }
+    if (m.code !== 0) { capStatus("字幕出错：" + (m.message || m.code)); return; }  // the recogniser then closes; we reconnect with a new voice id
+    CAP.tries = 0;
+    const r = m.result; if (!r || !r.voice_text_str) return;
+    if (r.slice_type === 2) capPost(r.voice_text_str); else CAP.partial = r.voice_text_str;
+  };
+  ws.onclose = () => { if (CAP.ws === ws) { CAP.ws = null; capRetry(); } };
+}
+function capStart() { if (CAP.on || role === "observer" || C.on || !micTrack) return; CAP.on = true; capLoop(); }
+function capStop() {
+  CAP.stopping = true; CAP.on = false;
+  try { if (CAP.ws && CAP.ws.readyState === 1) CAP.ws.send(JSON.stringify({ type: "end" })); if (CAP.ws) CAP.ws.close(); } catch {}
+  if (CAP.ctx) { CAP.ctx.close().catch(() => {}); CAP.ctx = null; }  // release the audio thread
+}
+
+// ---- the team's caption panel: both speakers, quote and follow-up on any sentence ----
+const CP = { after: 0 };
+const mmss = (ms) => `${String(Math.floor(ms / 60000)).padStart(2, "0")}:${String(Math.floor(ms / 1000) % 60).padStart(2, "0")}`;
+const SPEAKER = { moderator: "主持人", participant: "受访者" };
+async function markCap(kind, id) {
+  await api(`/interviews/${iid}/highlights`, { method: "POST", body: { kind, caption_id: id } });
+  toast(kind === "quote" ? "已引用，会出现在访谈页的“引用与追问”里" : "已加入待追问");
+  if (kind === "probe") await pollProbes();
+}
+function addCap(c) {
+  const log = $id("caps"); if (!log || log.querySelector(`[data-id="${c.id}"]`)) return;
+  const d = document.createElement("div"); d.className = "cap " + (c.speaker === "participant" ? "pt" : "mo"); d.dataset.id = c.id;
+  const hd = document.createElement("div"); hd.className = "hd";
+  const t = document.createElement("span"); t.textContent = mmss(c.at_ms);
+  const who = document.createElement("b"); who.textContent = SPEAKER[c.speaker] || c.speaker;
+  const sp = document.createElement("span"); sp.className = "sp";
+  const q = document.createElement("button"); q.type = "button"; q.textContent = "引用"; q.setAttribute("aria-label", "引用这句话"); q.onclick = guard(() => markCap("quote", c.id));
+  const p = document.createElement("button"); p.type = "button"; p.textContent = "追问"; p.setAttribute("aria-label", "就这句话加入待追问"); p.onclick = guard(() => markCap("probe", c.id));
+  hd.append(t, who, sp, q, p);
+  const tx = document.createElement("div"); tx.textContent = c.text;
+  d.append(hd, tx);
+  const stick = log.scrollTop + log.clientHeight >= log.scrollHeight - 40;
+  log.appendChild(d); if (stick) log.scrollTop = log.scrollHeight;
+}
+function renderPartial(partial) {
+  const box = $id("cappart"); if (!box) return;
+  const txt = ["moderator", "participant"].filter((k) => partial && partial[k]).map((k) => `${SPEAKER[k]}：${partial[k]}`).join("\n");
+  box.hidden = !txt; box.textContent = txt;
+}
+async function pollCaps() {
+  if (!$id("caps") || ended) return;
+  try {
+    const r = await fetch(`/api/interviews/${iid}/captions?after=${CP.after}`, { headers: authHdr() }); if (!r.ok) return;
+    const d = await r.json();
+    d.lines.forEach((c) => { addCap(c); CP.after = Math.max(CP.after, c.seq); });
+    renderPartial(d.partial);
+  } catch {}
+}
+async function pollProbes() {
+  const box = $id("probes"); if (!box || ended) return;
+  let list; try { list = await api(`/interviews/${iid}/highlights?kind=probe`); } catch { return; }
+  box.textContent = "";
+  if (!list.length) { const e = document.createElement("p"); e.textContent = "还没有。点字幕旁的“追问”，或在下面直接写一句。"; box.appendChild(e); return; }
+  list.sort((a, b) => (a.status === "done") - (b.status === "done")).forEach((h) => {
+    const row = document.createElement("div"); row.className = "pr" + (h.status === "done" ? " done" : "");
+    const s = document.createElement("span"); s.textContent = `${mmss(h.at_ms)} ${h.speaker ? "「" + h.text + "」" : h.text}`; row.appendChild(s);
+    if (role === "moderator" && h.status !== "done") {
+      const b = document.createElement("button"); b.type = "button"; b.textContent = "已问"; b.onclick = guard(async () => { await api(`/highlights/${h.id}`, { method: "PATCH", body: { status: "done" } }); await pollProbes(); }); row.appendChild(b);
+    }
+    if (h.mine || role === "moderator") {
+      const x = document.createElement("button"); x.type = "button"; x.textContent = "删除"; x.setAttribute("aria-label", "删除这条待追问");
+      x.onclick = guard(async () => { await api(`/highlights/${h.id}`, { method: "DELETE" }); await pollProbes(); }); row.appendChild(x);
+    }
+    box.appendChild(row);
+  });
+}
+function buildCaptionPanel() {
+  $id("rpan").innerHTML = `<h3>实时字幕</h3><div class="wst" id="capst" role="status">${role === "moderator" ? "等访谈开始后，字幕会自动开启" : "字幕由主持人和受访者各自的麦克风生成"}</div>
+    <div class="caps" id="caps" role="log" aria-live="polite" tabindex="0"></div><div class="cap live" id="cappart" hidden style="white-space:pre-wrap"></div>
+    <h3 style="margin-top:6px">待追问</h3><div class="probes" id="probes"></div>
+    <form id="pform"><label for="pin">想追问什么（${role === "moderator" ? "写给自己" : "主持人会看到"}）</label><textarea id="pin" rows="2" maxlength="300"></textarea><button id="psend" type="submit">加入待追问</button></form>`;
+  $id("pform").onsubmit = guard(async (e) => {
+    e.preventDefault(); const ta = $id("pin"), text = ta.value.trim(); if (!text) return;
+    await api(`/interviews/${iid}/highlights`, { method: "POST", body: { kind: "probe", text } }); ta.value = ""; toast("已加入待追问"); await pollProbes();
+  });
+  pollCaps(); pollProbes(); setInterval(pollCaps, 1000); setInterval(pollProbes, 4000);
+}
+
+// ---------------- concept test: the moderator's script, with the materials one click away ----------------
+const PLAN = { d: null, cur: -1, elapsed: null, at: 0, asked: {} };
+const SHORT = { ad_film: "广告片", concept_a: "概念 A", concept_b: "概念 B", ad_film_2: "备用广告片" };  // short button labels (the full title is in the tooltip and the status line)
+const planKey = () => "tt_plan_" + iid;
+function saveAsked() { try { localStorage.setItem(planKey(), JSON.stringify(PLAN.asked)); } catch (e) {} }
+async function showStimulus(id) { await api(`/interviews/${iid}/stimulus/show`, { method: "POST", body: { stimulus_id: id } }); toast(id ? "已在受访者屏幕上展示" : "已收起素材"); await poll(); }
+function renderPlan() {
+  const box = $id("plan"); $id("planbox").hidden = false; box.textContent = ""; PLAN.cur = -1;
+  const d = PLAN.d;
+  if (!d || !d.template) {
+    const p = document.createElement("p"); p.textContent = "这场访谈还没有提纲。"; box.appendChild(p);
+    const b = document.createElement("button"); b.type = "button"; b.className = "p"; b.id = "plan-load"; b.textContent = "载入：欧莱雅护肤概念测试（10 分钟）";
+    b.onclick = guard(async () => { await api(`/interviews/${iid}/concept/template`, { method: "POST", body: { template: "loreal_skincare_concept" } }); toast("提纲和素材已载入"); await loadPlan(); });
+    box.appendChild(b); return;
+  }
+  const stim = Object.fromEntries(d.stimuli.map((s) => [s.key, s]));
+  const tm = document.createElement("div"); tm.className = "tm"; tm.id = "plantm"; box.appendChild(tm);
+  const off = document.createElement("button"); off.type = "button"; off.className = "mini"; off.id = "plan-hide"; off.textContent = "收起素材"; off.onclick = guard(() => showStimulus(null)); box.appendChild(off);
+  d.script.steps.forEach((s, i) => {
+    const det = document.createElement("details"); det.dataset.i = i;
+    const sm = document.createElement("summary"); sm.textContent = `${i + 1}. ${s.title} · ${s.minutes} 分钟`; det.appendChild(sm);
+    if (s.say) { const p = document.createElement("p"); p.className = "say"; p.textContent = "开场白：" + s.say; det.appendChild(p); }
+    if (s.show && stim[s.show]) {
+      const b = document.createElement("button"); b.type = "button"; b.className = "mini p"; b.dataset.show = s.show; b.textContent = "展示：" + (SHORT[s.show] || "素材"); b.title = stim[s.show].title;
+      b.onclick = guard(() => showStimulus(stim[s.show].id)); det.appendChild(b);
+      if (stim[s.show].kind === "video") { const n = document.createElement("p"); n.className = "pb"; n.textContent = "视频：展示后请受访者点一下播放，播完再提问。"; det.appendChild(n); }
+    }
+    const qs = document.createElement("div"); qs.className = "qs";
+    s.questions.forEach((q, j) => {  // a tick box per question: "asked" is remembered in this browser only
+      const k = `${i}.${j}`, lab = document.createElement("label"); lab.className = "q";
+      const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = !!PLAN.asked[k];
+      const tx = document.createElement("span"); tx.textContent = q;
+      const paint = () => lab.classList.toggle("asked", cb.checked);
+      cb.onchange = () => { PLAN.asked[k] = cb.checked; saveAsked(); paint(); }; paint();
+      lab.append(cb, tx); qs.appendChild(lab);
+    });
+    det.appendChild(qs);
+    if (s.probes && s.probes.length) { const p = document.createElement("p"); p.className = "pb"; p.textContent = "追问提示：" + s.probes.join(" / "); det.appendChild(p); }
+    if (s.must_cover && s.must_cover.length) { const p = document.createElement("p"); p.className = "pb"; p.textContent = "要问到：" + s.must_cover.join("、"); det.appendChild(p); }
+    box.appendChild(det);
+  });
+  updatePlanTimer();
+}
+function updatePlanTimer() {
+  const d = PLAN.d, tm = $id("plantm"); if (!d || !d.template || !tm) return;
+  const steps = d.script.steps, total = d.script.duration_min;
+  if (PLAN.elapsed == null) { tm.textContent = `共 ${total} 分钟。访谈开始后这里会显示用时和当前该问哪一段。`; return; }
+  const min = (PLAN.elapsed + (performance.now() - PLAN.at)) / 60000;
+  let acc = 0, cur = steps.length - 1, from = 0;
+  for (let i = 0; i < steps.length; i++) { if (min < acc + steps[i].minutes) { cur = i; from = acc; break; } acc += steps[i].minutes; if (i === steps.length - 1) from = acc - steps[i].minutes; }
+  const f = (m) => `${String(Math.floor(m)).padStart(2, "0")}:${String(Math.floor((m % 1) * 60)).padStart(2, "0")}`;
+  const bold = (t) => { const b = document.createElement("b"); b.textContent = t; return b; };
+  const line = (...parts) => { const d = document.createElement("div"); d.append(...parts); return d; };
+  tm.textContent = "";
+  tm.append(line("已用 ", bold(f(min)), ` / 建议 ${f(total)}${min > total ? "（已超时）" : ""}`),
+            line("现在：", bold(`${cur + 1}. ${steps[cur].title}（建议 ${f(from)}–${f(from + steps[cur].minutes)}）`)));
+  if (last && last.stimulus) tm.append(line("正在展示：", bold(last.stimulus.title)));
+  if (cur !== PLAN.cur) {
+    PLAN.cur = cur;
+    $id("plan").querySelectorAll("details").forEach((det) => { det.classList.toggle("cur", +det.dataset.i === cur); if (+det.dataset.i === cur) det.open = true; });
+  }
+}
+async function loadPlan() {
+  try { PLAN.asked = JSON.parse(localStorage.getItem(planKey()) || "{}"); } catch (e) { PLAN.asked = {}; }
+  try { PLAN.d = await api(`/interviews/${iid}/concept`); } catch (e) { PLAN.d = null; }
+  renderPlan();
+}
+
 // ---------------- start ----------------
 async function start() {
   msg(T.connecting);
@@ -282,6 +513,9 @@ async function start() {
   if (S.moderation === "ai") {
     C.on = true;
     if (role === "participant") buildParticipantChat(); else buildAiPanel();
+  } else if (role !== "participant") {
+    buildCaptionPanel();  // human-moderated: live captions with quote / follow-up buttons
+    if (role === "moderator") loadPlan();  // the script and the materials
   }
   document.title = T.title + " · 星桐";
   $id("who").textContent = role === "participant" ? T.title : { moderator: "主持人", observer: "观察员（隐身）" }[role];
@@ -315,7 +549,9 @@ async function start() {
   await new Promise((res, rej) => { const s = document.createElement("script"); s.src = "/vendor/livekit-client.umd.js"; s.onload = res; s.onerror = () => rej(new Error("video component failed to load")); document.head.appendChild(s); }).catch((e) => msg(esc(e.message)));
   if (!window.LivekitClient) return;
   const { Room, RoomEvent, Track, createLocalTracks } = LivekitClient;
-  room = new Room({ adaptiveStream: true, dynacast: true });
+  // The hidden observer only watches and subscribes the moment it joins: with adaptive stream on, its first quality message raced the connection
+  // ("cannot send signal request before connected"). It has nothing to save by adapting, so it gets full quality; everybody else keeps adaptive stream.
+  room = new Room({ adaptiveStream: role !== "observer", dynacast: true });
   const nameOf = (p) => (p.identity.startsWith("participant:") ? "受访者" : role === "participant" ? T.mod : p.name || p.identity);  // real participant names never reach observers; participants only ever see "Moderator"
   room.on(RoomEvent.ParticipantConnected, (p) => tile(p.identity, nameOf(p)));
   room.on(RoomEvent.TrackSubscribed, (track, pub, p) => { const el = tile(p.identity, nameOf(p)); if (track.kind === Track.Kind.Video) setTileVideo(el, track); else el.appendChild(track.attach()); });
@@ -334,10 +570,11 @@ async function start() {
       const me = tile("me", T.you); me.id = "t_me"; me.classList.add("me");
       if (camTrack) setTileVideo(me, camTrack);
       if (!camTrack) $id("b-cam")?.setAttribute("disabled", "");
+      capStart();  // live captions of this browser's own microphone (off in AI mode, where the chat is the text)
     }
   } catch (e) { msg(`<b>${esc(T.cantEnter)}：</b>${esc(e.message)}`); }
   poll(); setInterval(poll, 2000); setInterval(tick, 500);
 }
 start();
-addEventListener("pagehide", () => { stopRecorder(); localTracks.forEach((t) => { try { t.stop(); } catch {} }); if (room) room.disconnect(); });
+addEventListener("pagehide", () => { stopRecorder(); capStop(); localTracks.forEach((t) => { try { t.stop(); } catch {} }); if (room) room.disconnect(); });
 </script></body></html>

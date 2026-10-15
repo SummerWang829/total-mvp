@@ -17,6 +17,7 @@
 - AI 主持人（docs/AI主持人_工程与训练任务说明_v1.md）：场次分“人工主持 / AI 主持”（Interview.moderation）。只有 AI 主持的场次，同意书开头披露 AI 并多一个必勾项；用云端模型时必须在 .env 填 MODERATOR_VENDOR，同意书写明数据发给谁，没填就不能建 AI 场次。不自动上线：通过测试只是候选版，由用户确认（2026-10-12）。
 - `app/moderator/` 和 `eval/` 的新代码严格遵守用户的《代码质量宪章》：函数 ≤150 行、类 ≤500 行；不许裸 except / except-pass，异常要用 logging 记录（带 traceback，但不记受访者原话）；常量和文案放 constants.py；全部类型注解和 docstring（写明 Raises）；状态用 Enum + 统一的 can_transition 校验；外部模型调用要超时 + 指数退避重试，并通过接口注入以便 mock。tests/test_moderator_setup.py 里有自动检查（2026-10-12）。
 - 评估遇到模型服务拒绝（401/402/403/404：密钥失效、余额不足……）必须立刻停下并说明原因，不生成报告；任何报告里出现大量兜底句、`did not end` 或重复提问几千次，先怀疑服务挂了，不要当结果（2026-10-12：DeepSeek 欠费，白跑 4 小时）。启动长评估前先看余额。
+- 概念测试（2026-10-15）：展示给受访者的素材地址只能来自 `app/concept.py` 里审过的清单（受访者浏览器会嵌入它们），不开放自由填写；广告片只嵌入公开播放器、不在我们服务器存文件，且必须标明来源与版权状态。实时字幕：每个浏览器只识别自己的麦克风（天然知道谁在说），服务器只发短时效签名地址、密钥不出服务器；受访者必须已同意录制、已被放行、访谈进行中才会产生字幕。“引用”的原话一律由服务器从字幕行复制，不信浏览器传来的文本；字幕和引用随访谈一起按保留期删除。
 - 品牌：星 = 橙色，桐 = 白（深绿底）/ 深绿 #0B382C（白底）；用户侧深绿框架 + 白底 + 橙色强调；不要紫色。
 
 ## 进度记录（用户 2026-10-12 要求）
@@ -64,4 +65,5 @@
 app/livekit.py 角色→权限/清场 · app/recording.py 录制合成 · app/pipeline.py 录像→转写 · app/media.py 片段水印 · app/evidence.py 引文校验 · app/retention.py 清理 · app/providers.py ASR/LLM 接口 · app/consent.py 同意文本 ·
 app/moderator/ AI 主持人（providers 模型接口、compliance 能否启用、constants 常量与枚举、knowledge 提纲、pacing 时间预算、fsm 阶段状态机、memory 上下文、engine 每轮流水线、guardrails 红线 H1–H12、detectors 停止/危机/问是否 AI 的规则识别、operators 追问算子、templates 固定话术（开场披露、危机热线 995/1767、兜底句）、model_calls 结构化输出、prompts/v00N.json 版本化提示词）· eval/guides 示例提纲（提纲里准备的问题本身也必须过红线，引擎启动时检查）· eval/ 评估：`python -m eval.runner`（--brain mock --participant rule 离线跑通；真评估用 .env 里的模型；--split holdout 只验收，不许据此改规则）；scenarios/generate.py 生成版本化场景集 s001（300 个，20% 保留集）；checkers 规则检查；judges 评分模型（未用 30 段人工分校准前不作依据）；报告在 eval_reports/· eval/ 评估 · eval_reports/ 评估报告 ·
 app/ai_room.py + app/routers/ai_room.py AI 主持接入直播间（文字聊天：启动/接管/交还/悄悄话/告警，结束后聊天变成转写，AI 的话标“AI 主持人”；引擎在内存里，服务重启后自动交给真人并红色告警）· app/routers/ 接口 · app/static/ 前端（index 研究员端：左侧深绿导航 + 受访者招募/场次与邀请/直播间/洞察与片段；join 受访者流程：邀请→设备检测→同意→候场室；room 房间：研究员深色三栏、受访者明亮单栏；share 分享、logo.js 凤凰动效）
+app/concept.py 概念测试模板（提纲 + 素材清单）· app/routers/concept.py 提纲/素材展示/实时字幕/引用与追问 · app/asr_live.py 腾讯云实时识别的签名地址 · app/loopwatch.py 卡顿诊断（LOOP_WATCH_S）· tests/fake_asr.py 测试用的假识别服务（按官方协议）· deploy/ 线上部署（Docker + Caddy + LiveKit）
 界面和受访者流程以 docs/星桐TOTAL一体化平台v3_设计规范与受访者端交互说明.md 为准（颜色令牌、字号、组件、受访者 9 步旅程）。

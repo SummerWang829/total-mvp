@@ -57,6 +57,14 @@ class Settings:
     asr_model: str = os.getenv("ASR_MODEL", "whisper-1")  # needs segment timestamps (verbose_json)
     asr_timeout_s: int = int(os.getenv("ASR_TIMEOUT_S", "600"))  # per upload; raise it for a slow local CPU server
 
+    # Live captions while the interview is running: each browser streams its own microphone to Tencent Cloud real-time speech recognition
+    # (wss://asr.cloud.tencent.com/asr/v2/<appid>). The secret key stays on this server: the browser only gets a short-lived signed address.
+    # All three empty = captions are off (the panel says so). ASR_LIVE_WS_BASE exists so the tests can point browsers at a local fake server.
+    tencent_asr_appid: str = os.getenv("TENCENT_ASR_APPID", "")
+    tencent_asr_secret_id: str = os.getenv("TENCENT_ASR_SECRET_ID", "")
+    tencent_asr_secret_key: str = os.getenv("TENCENT_ASR_SECRET_KEY", "")
+    asr_live_ws_base: str = os.getenv("ASR_LIVE_WS_BASE", "wss://asr.cloud.tencent.com")
+
     # AI moderator (docs/AI主持人_工程与训练任务说明_v1.md). Any OpenAI-compatible chat API; switching model = changing these lines only.
     # Empty values fall back to the LLM_* settings above. A local server (Ollama on 127.0.0.1) keeps transcripts on this computer;
     # anything else is a cloud provider: MODERATOR_VENDOR must name it, because the consent text tells participants who receives their answers.
@@ -77,6 +85,7 @@ class Settings:
     ffprobe: str = os.getenv("FFPROBE", "ffprobe")
     watermark_font: str = os.getenv("WATERMARK_FONT", "")  # a .ttf/.ttc/.otf with Latin + Chinese glyphs; auto-detected if empty
     run_worker: bool = os.getenv("DISABLE_WORKER", "") == ""
+    loop_watch_s: float = float(os.getenv("LOOP_WATCH_S", "0") or 0)  # >0: log a stack trace whenever the event loop is blocked longer than this
 
     blocked_countries: set[str] = field(default_factory=lambda: _csv("BLOCKED_COUNTRIES", DEFAULT_BLOCKED))
     # First market: Singapore only (decision 2026-10-10). Anyone declaring another country is politely turned away.

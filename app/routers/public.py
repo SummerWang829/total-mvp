@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .. import concept
 from ..audit import audit
 from ..config import settings
 from ..consent import consent_for
@@ -156,8 +157,9 @@ def live(token: str, waiting: int = 0, db: Session = Depends(get_db)):
         itv.waiting_seen_at = utcnow()
         db.commit()
     rec = db.scalar(select(Recording).where(Recording.interview_id == itv.id, Recording.status == "recording")) if _consented(db, itv) else None
+    shown = concept.current_stimulus(db, itv.id, staff=False) if itv.status == "live" and itv.admitted_at is not None else None  # only someone who is in the room sees the material
     return {"status": itv.status, "admitted": itv.admitted_at is not None, "held": itv.held_at is not None and itv.admitted_at is None,
-            "recording": {"id": rec.id, "elapsed_ms": elapsed_ms(rec)} if rec else None}
+            "recording": {"id": rec.id, "elapsed_ms": elapsed_ms(rec)} if rec else None, "stimulus": shown}
 
 
 @router.post("/join/{token}/leave", status_code=204)

@@ -86,6 +86,11 @@ def main() -> int:
     check_provider("转写", settings.asr_provider, settings.asr_base_url, settings.asr_api_key, "ASR_API_KEY")
     check_provider("洞察/翻译", settings.llm_provider, settings.llm_base_url, settings.llm_api_key)
     check_moderator()
+    from .asr_live import live_captions_configured
+    if live_captions_configured():
+        line("ok", "实时字幕：已配置腾讯云实时语音识别（密钥只在服务器上，浏览器拿到的是短时效的签名地址）")
+    else:
+        line("warn", "实时字幕：没配置（TENCENT_ASR_APPID / TENCENT_ASR_SECRET_ID / TENCENT_ASR_SECRET_KEY），字幕栏会提示“未开启”")
     if "example.com" in settings.dpo_email:
         line("warn", "DPO_EMAIL 还是示例邮箱：同意书里显示的联系邮箱要换成真实的")
     if settings.secret_key.startswith(("dev-secret", "dev-only", "change-me")):

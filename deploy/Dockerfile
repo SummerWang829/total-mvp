@@ -8,7 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg fonts-no
 WORKDIR /srv/total
 COPY requirements.txt .
 # test-only packages are not needed at runtime
-RUN grep -viE '^(pytest|playwright|pillow|numpy)' requirements.txt > /tmp/requirements.runtime.txt \
+RUN grep -viE '^(pytest|playwright|pillow|numpy|websockets)' requirements.txt > /tmp/requirements.runtime.txt \
     && pip install --no-cache-dir -r /tmp/requirements.runtime.txt
 
 COPY app ./app
