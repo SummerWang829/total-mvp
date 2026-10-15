@@ -393,6 +393,7 @@ def pretask_section(br, D):
     pg.click(".modal form button.p"); pg.wait_for_selector("#pretaskcard .ptlist li")
     ok(pg.locator("#pretaskcard .ptlist li").count() == 2, "[pretask] the configured questions show on the session page")
     audit_page(pg, "pretask session card/desktop", errs)
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "pretask_session_card_1280.png"), full_page=True)
     ctx.close()
     # (b) participant journey: device + consent via the API, then the browser resumes at the new pre-task step
     call(f"/public/join/{T}/device", {"camera": True, "microphone": True, "speaker": True})
@@ -414,6 +415,7 @@ def pretask_section(br, D):
     ok(wait_until(lambda: pg.locator("#prebox:visible").count() == 1, 8), "[pretask] the moderator sees the pre-task answers in the room")
     ok("洁面、爽肤水、面霜" in pg.inner_text("#prebox"), "[pretask] the participant's answer is shown to the moderator")
     audit_page(pg, "pretask room moderator/desktop", errs)
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "pretask_room_moderator_1280.png"), full_page=True)
     ctx.close()
     ctx, pg, errs = new_page(br, 1280, token=D["tok"]["observer"])
     pg.goto(B + f"/room.html?i={iid}&as=observer"); pg.wait_for_selector("#claims")
