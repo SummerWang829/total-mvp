@@ -386,7 +386,7 @@ async function loadTimeslotsCard(iid, canEdit) {
 }
 
 function editTimeslots(iid, slots) {
-  const row = (iso) => `<div class="ptrow"><input type="datetime-local" class="tsq"${iso ? ` value="${tsLocalInput(iso)}"` : ""}><button type="button" class="s warn tsdel">删除</button></div>`;
+  const row = (iso) => `<div class="ptrow"><input type="datetime-local" class="tsq" aria-label="候选时间"${iso ? ` value="${tsLocalInput(iso)}"` : ""}><button type="button" class="s warn tsdel">删除</button></div>`;
   const m = modal(`<h2>候选时间</h2><p class="sm mut">最多 6 个，按你本地时区填写。保存后原先的固定时间会被清除，受访者需要自己选一个；全部清空则恢复用固定时间。</p>
     <form id="f"><div id="tsrows">${(slots.length ? slots.map((s) => s.start_at) : [null]).map(row).join("")}</div>
     <button type="button" class="s" id="tsadd">+ 再加一个时间</button>
