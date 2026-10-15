@@ -369,6 +369,41 @@ async function analysisView(p) {
 }
 
 // ---------------- 单场：转写 / 洞察 / 片段 ----------------
+// ---- candidate interview times (staff config; shown on the session page) ----
+const tsLocalInput = (iso) => { const d = new Date(iso + "Z"), p = (n) => String(n).padStart(2, "0"); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; };
+
+async function loadTimeslotsCard(iid, canEdit) {
+  const card = $("#timeslotcard"); if (!card) return;
+  const data = await api(`/interviews/${iid}/timeslots`).catch(() => ({ slots: [], chosen: null }));
+  if (!$("#timeslotcard")) return;
+  const slots = data.slots || [];
+  const picked = (s) => data.chosen && data.chosen.slice(0, 16) === s.start_at.slice(0, 16);
+  card.innerHTML = `<div class="row"><h3 style="margin:0">候选时间</h3><span class="sp"></span>${canEdit ? `<button class="s" id="tsed">${slots.length ? "编辑" : "提供候选时间"}</button>` : ""}</div>
+    <p class="sm mut" style="margin:6px 0 0">提供几个候选时间，受访者在自己的时区里选一个，选定后写回场次时间。不提供就用你建场次时填的固定时间。</p>
+    ${slots.length ? `<ul class="ptlist">${slots.map((s) => `<li>${esc(new Date(s.start_at + "Z").toLocaleString())}${picked(s) ? ` <span class="tag ok">受访者已选</span>` : ""}</li>`).join("")}</ul>${data.chosen ? "" : `<p class="sm mut" style="margin:8px 0 0">受访者还没有选时间。</p>`}`
+      : `<p class="sm mut" style="margin:8px 0 0">还没有提供候选时间。</p>`}`;
+  const b = $("#tsed", card); if (b) b.onclick = () => editTimeslots(iid, slots);
+}
+
+function editTimeslots(iid, slots) {
+  const row = (iso) => `<div class="ptrow"><input type="datetime-local" class="tsq"${iso ? ` value="${tsLocalInput(iso)}"` : ""}><button type="button" class="s warn tsdel">删除</button></div>`;
+  const m = modal(`<h2>候选时间</h2><p class="sm mut">最多 6 个，按你本地时区填写。保存后原先的固定时间会被清除，受访者需要自己选一个；全部清空则恢复用固定时间。</p>
+    <form id="f"><div id="tsrows">${(slots.length ? slots.map((s) => s.start_at) : [null]).map(row).join("")}</div>
+    <button type="button" class="s" id="tsadd">+ 再加一个时间</button>
+    <div class="row" style="margin-top:14px"><button class="p">保存</button><button type="button" id="c">取消</button></div></form>`);
+  const rows = $("#tsrows", m);
+  const bind = () => rows.querySelectorAll(".tsdel").forEach((d) => d.onclick = () => { if (rows.children.length > 1) d.closest(".ptrow").remove(); else $(".tsq", d.closest(".ptrow")).value = ""; });
+  bind();
+  $("#tsadd", m).onclick = () => { if (rows.children.length >= 6) return toast("最多 6 个", true); rows.insertAdjacentHTML("beforeend", row(null)); bind(); };
+  $("#c", m).onclick = () => m.remove();
+  $("#f", m).onsubmit = guard(async (e) => {
+    e.preventDefault();
+    const starts = [...rows.querySelectorAll(".tsq")].map((i) => i.value).filter(Boolean).map((v) => new Date(v).toISOString().replace("Z", ""));
+    await api(`/interviews/${iid}/timeslots`, { method: "PUT", body: { starts } });
+    m.remove(); toast(starts.length ? "已保存候选时间" : "已恢复固定时间"); render();
+  });
+}
+
 // ---- pre-interview questions (staff config; shown on the session page) ----
 async function loadPretaskCard(iid, canEdit) {
   const card = $("#pretaskcard"); if (!card) return;
@@ -418,10 +453,11 @@ async function interviewView(iid, tab) {
       <div class="row">${canRoom ? (ME.role === "observer" ? room("observer", "") : staff ? room("moderator", "p") + room("observer", "") : room("moderator", "p")) : ""}</div></div>
     ${staff && invite && canRoom ? `<div class="card"><h3>受访者邀请链接</h3><code class="copy" id="inv">${esc(invite)}</code><p class="sm mut" style="margin:8px 0 0">只显示这一次，发给受访者后请不要转发。丢了可以重新生成（旧链接会失效）。</p></div>` : ""}
     ${staff && canRoom && !invite ? `<div class="note row">邀请链接已隐藏。<span class="sp"></span><button class="s" id="rot">重新生成</button></div>` : ""}
+    ${staff ? `<div class="card" id="timeslotcard"><p class="sm mut" style="margin:0">候选时间加载中…</p></div>` : ""}
     ${staff ? `<div class="card" id="pretaskcard"><p class="sm mut" style="margin:0">访谈前问题加载中…</p></div>` : ""}
     <div class="tabs">${tabs.map(([k, n]) => `<a href="#/i/${iid}/${k}" class="${tab === k ? "on" : ""}">${n}</a>`).join("")}</div><div id="tab"></div>`, { active: "insights", p });
   const rot = $("#rot"); if (rot) rot.onclick = guard(async () => { const r = await api(`/interviews/${iid}/invite/rotate`, { method: "POST" }); sessionStorage.setItem("invite_" + iid, location.origin + r.invite_path); render(); });
-  if (staff) loadPretaskCard(iid, canRoom);
+  if (staff) { loadTimeslotsCard(iid, canRoom); loadPretaskCard(iid, canRoom); }
   if (tab === "transcript") return transcriptTab(iid, it, staff, my);
   if (tab === "clips") return clipsTab(iid, staff, my);
   if (tab === "highlights" && staff) return highlightsTab(iid, my);

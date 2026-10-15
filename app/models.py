@@ -306,6 +306,20 @@ class PreTaskAnswer(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
+class TimeSlot(Base):
+    """A candidate interview time offered to one participant. They pick one and it becomes ``Interview.scheduled_at``.
+
+    Opt-in per interview: no ``TimeSlot`` rows means the research team fixed the time directly, so the journey is
+    unchanged. ``start_at`` is naive UTC (same convention as ``Interview.scheduled_at``).
+    """
+    __tablename__ = "time_slots"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
+    org_id: Mapped[str] = mapped_column(String(32), index=True)
+    interview_id: Mapped[str] = mapped_column(ForeignKey("interviews.id"), index=True)
+    start_at: Mapped[datetime] = mapped_column(DateTime)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class Stimulus(Base):
     """A material (ad film, concept card, image) the moderator can put on the participant's screen."""
     __tablename__ = "stimuli"

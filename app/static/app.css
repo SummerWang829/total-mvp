@@ -357,7 +357,7 @@ main.enter .pbar6 i{animation:grow 1s var(--ease) .15s both}@keyframes grow{from
 .ptlist{margin:10px 0 0;padding-left:22px;display:flex;flex-direction:column;gap:10px;font-size:14px}
 .ptlist li{padding-left:2px}
 .ptrow{display:flex;gap:10px;align-items:flex-start;margin:0 0 10px}
-.ptrow .ptq{flex:1;min-width:0}.ptrow .chk{padding:6px 0}
+.ptrow .ptq,.ptrow .tsq{flex:1;min-width:0}.ptrow .chk{padding:6px 0}
 @media (max-width:900px){.hero{grid-template-columns:1fr}.ptrow{flex-wrap:wrap}}
 
 /* share page watermark */

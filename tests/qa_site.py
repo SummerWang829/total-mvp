@@ -423,6 +423,44 @@ def pretask_section(br, D):
     ctx.close()
 
 
+def timeslot_section(br, D):
+    """Candidate interview times (Sprint 1): the team offers a few, the participant picks one."""
+    adm, pid = D["tok"]["admin"], D["pid"]
+    part = call(f"/projects/{pid}/participants", {"name": "选时间受访者", "country": "SG", "language": "en"}, adm)
+    it = call(f"/projects/{pid}/interviews", {"participant_id": part["id"], "title": "选时间深访", "language": "en",
+                                              "moderator_id": D["ids"]["moderator"]}, adm)
+    iid, T = it["id"], it["invite_token"]
+    # (a) staff config card: offer two candidate times through the dialog
+    ctx, pg, errs = new_page(br, 1280, token=adm)
+    pg.goto(B + f"/#/i/{iid}"); pg.wait_for_selector("#timeslotcard #tsed")
+    pg.click("#tsed"); pg.wait_for_selector(".modal #tsrows .tsq")
+    pg.fill(".modal .tsq", "2099-01-01T09:00")
+    pg.click(".modal #tsadd"); pg.wait_for_selector(".modal .ptrow:nth-child(2) .tsq")
+    pg.locator(".modal .tsq").nth(1).fill("2099-01-02T14:00")
+    audit_page(pg, "timeslot config dialog/desktop", errs)
+    pg.click(".modal form button.p"); pg.wait_for_selector("#timeslotcard .ptlist li")
+    ok(pg.locator("#timeslotcard .ptlist li").count() == 2, "[timeslot] configured candidate times show on the session page")
+    audit_page(pg, "timeslot session card/desktop", errs)
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "timeslot_session_card_1280.png"), full_page=True)
+    ctx.close()
+    # (b) participant: the invitation step offers the times; picking one confirms it and moves on to the invitation card
+    ctx, pg, errs = new_page(br, 390)
+    pg.goto(B + f"/join.html?t={T}"); pg.wait_for_selector("#tf input[name=slot]")
+    ok(pg.locator("#tf input[name=slot]").count() == 2 and pg.locator("#accept").count() == 0, "[timeslot] the participant must choose a time before anything else")
+    ok("选时间深访" not in pg.inner_text("#box"), "[timeslot] the internal session title never leaks to the participant")
+    audit_page(pg, "timeslot participant pick/phone", errs)
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "join_timeslot_390.png"), full_page=True)
+    pg.locator("#tf input[name=slot]").first.check(); pg.click("#tf button")
+    pg.wait_for_selector("#accept")
+    ok(call(f"/interviews/{iid}", token=adm)["scheduled_at"] is not None, "[timeslot] picking a time writes it back to the session")
+    ctx.close()
+    # (c) the session page now marks which time the participant chose
+    ctx, pg, errs = new_page(br, 1280, token=adm)
+    pg.goto(B + f"/#/i/{iid}"); pg.wait_for_selector("#timeslotcard .ptlist")
+    ok(pg.locator("#timeslotcard .tag.ok").count() == 1, "[timeslot] the session page marks the time the participant chose")
+    ctx.close()
+
+
 def run():
     os.makedirs(os.path.join(ROOT, "qa_shots"), exist_ok=True)
     D = seed()
@@ -701,6 +739,7 @@ def run():
         ai_room_section(br, D)
         concept_room_section(br, D)
         pretask_section(br, D)
+        timeslot_section(br, D)
 
         # ---------- C2. dialogs and expandable panels on the staff pages (both screen sizes) ----------
         for w, vp in ((1280, "desktop"), (390, "phone")):

@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import concept, pretask
+from .. import concept, pretask, scheduling
 from ..audit import audit
 from ..config import settings
 from ..consent import consent_for
@@ -55,7 +55,7 @@ def join_info(token: str, db: Session = Depends(get_db)):
     return {"org": org.name, "scheduled_at": itv.scheduled_at.isoformat() if itv.scheduled_at else None,
             "status": itv.status, "can_enter_now": _window_ok(itv), "consented": consent is not None,
             "device_ok": itv.device_ok_at is not None, "consent": consent_for(itv.language, org.name, ai=itv.moderation == ModerationMode.AI.value),
-            "pretask": pretask.participant_view(db, itv.id, itv.participant_id)}
+            "pretask": pretask.participant_view(db, itv.id, itv.participant_id), "timeslots": scheduling.public_view(db, itv)}
 
 
 @router.post("/join/{token}/opened", status_code=204)
@@ -122,6 +122,25 @@ def give_consent(token: str, body: ConsentBody, request: Request, db: Session = 
     return {"ok": True}
 
 
+class SlotBody(BaseModel):
+    slot_id: str
+
+
+@router.post("/join/{token}/slot")
+def pick_slot(token: str, body: SlotBody, request: Request, db: Session = Depends(get_db)):
+    """The participant chooses one of the candidate times; it becomes the interview's scheduled time."""
+    itv = _by_invite(db, token)
+    if itv.status == "ended":
+        raise HTTPException(409, "The interview has ended / 访谈已结束")
+    try:
+        scheduling.pick(db, itv, body.slot_id)
+    except ValueError:
+        raise HTTPException(409, "That time is no longer available / 该时间已不可选")
+    audit(db, itv.org_id, f"participant:{itv.participant_id}", "timeslot.pick", itv.id, ip=client_ip(request))
+    db.commit()
+    return {"scheduled_at": itv.scheduled_at.isoformat()}
+
+
 class PreTaskBody(BaseModel):
     answers: dict[str, str]
 
@@ -151,6 +170,8 @@ def enter(token: str, request: Request, db: Session = Depends(get_db)):
     part: Participant = itv.participant
     if part.screening != "eligible":
         raise HTTPException(403, "Not open in your region yet / 暂时不面向你所在的地区")
+    if scheduling.needs_pick(db, itv):
+        raise HTTPException(409, "Please choose an interview time first / 请先选择访谈时间")
     if not db.scalar(select(Consent).where(Consent.interview_id == itv.id, Consent.participant_id == part.id)):
         raise HTTPException(403, "Please read and agree first / 请先阅读并同意")
     if not pretask.answered(db, itv.id, part.id):

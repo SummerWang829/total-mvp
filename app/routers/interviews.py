@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from .. import ai_room, concept, export, pretask
+from .. import ai_room, concept, export, pretask, scheduling
 from ..audit import audit
 from ..config import settings
 from ..db import get_db
@@ -191,6 +191,33 @@ def get_pretask(iid: str, ctx: Ctx = Depends(require_roles("admin", "researcher"
     """The questions and this participant's answers. Moderators see it in the room; observers (clients) never do."""
     itv = visible_interview(db, ctx, iid)
     return pretask.staff_view(db, itv.id, itv.participant_id)
+
+
+# ---------- candidate interview times ----------
+class TimeSlots(BaseModel):
+    starts: list[datetime] = Field(default_factory=list, max_length=scheduling.MAX_SLOTS)
+
+
+@router.put("/interviews/{iid}/timeslots")
+def set_timeslots(iid: str, body: TimeSlots, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    """Offer the participant a few candidate times to choose from. Empty list removes them. Non-empty clears the fixed time."""
+    itv = visible_interview(db, ctx, iid)
+    if itv.status == "ended" or itv.purged_at:
+        raise HTTPException(409, "访谈已结束")
+    try:
+        scheduling.set_slots(db, ctx.org_id, itv.id, body.starts)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    audit(db, ctx.org_id, ctx.actor, "timeslots.config", itv.id, n=len(body.starts))
+    db.commit()
+    return scheduling.staff_view(db, itv)
+
+
+@router.get("/interviews/{iid}/timeslots")
+def get_timeslots(iid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    """The candidate times and which one the participant chose."""
+    itv = visible_interview(db, ctx, iid)
+    return scheduling.staff_view(db, itv)
 
 
 @router.post("/interviews/{iid}/invite/rotate")

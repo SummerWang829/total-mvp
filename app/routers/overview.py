@@ -9,7 +9,7 @@ from ..audit import audit
 from ..db import get_db
 from ..deps import STAFF, Ctx, require_roles
 from ..models import (AuditLog, Clip, Consent, Evidence, Insight, Interview, InterviewObserver, Participant, PreTask, PreTaskAnswer, Project, Recording,
-                      RecordingTrack, ShareLink, TranscriptSegment, User, utcnow)
+                      RecordingTrack, ShareLink, TimeSlot, TranscriptSegment, User, utcnow)
 from ..retention import _delete_file
 from ..media import purge_cache
 from .projects import get_project
@@ -67,7 +67,7 @@ ACTION_ZH = {
     "participant.erase": "删除了一位受访者的数据", "interview.create": "新建了场次", "interview.invite.rotate": "重新生成了邀请链接",
     "invite.open": "打开了邀请", "device.check": "完成了设备检测", "consent.give": "同意了隐私说明", "consent.blocked_region": "所在地区暂未开放",
     "participant.admit": "放行了受访者", "participant.hold": "请受访者稍等", "room.token": "进入了房间", "room.leave": "离开了房间",
-    "pretask.submit": "填写了访谈前问题",
+    "pretask.submit": "填写了访谈前问题", "timeslot.pick": "选择了访谈时间",
     "interview.start": "开始了访谈", "interview.end": "结束了访谈", "recording.start": "开始录制", "recording.stop": "停止录制",
     "recording.ready": "录像合成完成", "recording.failed": "录像合成失败", "transcript.transcribe": "完成了转写", "transcript.edit": "校对了转写",
     "insight.generate": "生成了 AI 洞察", "insight.create": "写了一条洞察", "insight.approve": "通过了一条洞察", "insight.delete": "删除了一条洞察",
@@ -131,7 +131,7 @@ def reset_demo(ctx: Ctx = Depends(require_roles("admin")), db: Session = Depends
         db.execute(delete(Clip).where(Clip.interview_id.in_(ids)))
         if ins_ids:
             db.execute(delete(Evidence).where(Evidence.insight_id.in_(ins_ids)))
-        for model in (Insight, TranscriptSegment, Recording, Consent, InterviewObserver, PreTaskAnswer, PreTask):
+        for model in (Insight, TranscriptSegment, Recording, Consent, InterviewObserver, PreTaskAnswer, PreTask, TimeSlot):
             db.execute(delete(model).where(model.interview_id.in_(ids)))
         db.execute(delete(Interview).where(Interview.id.in_(ids)))
     n_parts = db.execute(delete(Participant).where(Participant.org_id == ctx.org_id)).rowcount
