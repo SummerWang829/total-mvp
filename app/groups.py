@@ -12,10 +12,12 @@ Design (kept deliberately simple to avoid two divergent code paths):
 The ``seat`` number (1..:data:`MAX_GROUP`) is stable for the life of the interview and doubles as the recording-track /
 transcript speaker key (``p1``, ``p2``, …) and the "参与者 ·NN" label shown in the room.
 """
+from dataclasses import dataclass
+
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from .models import Interview, InterviewParticipant, Participant, utcnow
+from .models import Interview, InterviewParticipant, Participant
 from .security import token_hash
 
 MAX_GROUP = 10
@@ -103,6 +105,36 @@ def label(seat: InterviewParticipant) -> str:
 def purge(db: Session, interview_id: str) -> None:
     """Delete every seat for an interview (its per-participant journey is personal data)."""
     db.execute(delete(InterviewParticipant).where(InterviewParticipant.interview_id == interview_id))
+
+
+@dataclass
+class Joiner:
+    """The person an invite link belongs to.
+
+    ``seat`` is the journey row the join flow reads and writes: the ``Interview`` itself for a depth interview, or the
+    ``InterviewParticipant`` for one focus-group seat. Both carry the same journey fields (``device_ok_at``,
+    ``admitted_at``, ``entered_at``, …), so one set of endpoints serves both.
+    """
+    itv: Interview
+    seat: Interview | InterviewParticipant
+    participant: Participant
+
+
+def resolve_joiner(db: Session, token: str) -> Joiner | None:
+    """The interview and seat for an invite token, or None when it matches nothing or the interview is purged.
+
+    A focus group's own ``Interview.invite_hash`` is not a participant link — each seat has its own — so it does not resolve.
+    """
+    seat = seat_by_invite(db, token)
+    if seat:
+        itv = db.get(Interview, seat.interview_id)
+        if not itv or itv.purged_at or not is_group(itv):
+            return None
+        return Joiner(itv, seat, seat.participant)
+    itv = db.scalar(select(Interview).where(Interview.invite_hash == token_hash(token)))
+    if not itv or itv.purged_at or is_group(itv):
+        return None
+    return Joiner(itv, itv, itv.participant)
 
 
 def admitted_count(db: Session, interview_id: str) -> int:

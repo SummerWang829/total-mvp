@@ -29,11 +29,13 @@ def project_summary(db: Session, p: Project) -> dict:
     return {
         "participants": db.scalar(select(func.count()).select_from(Participant).where(Participant.project_id == p.id)) or 0,
         "sessions": len(its),
-        "done": sum(1 for i in its if i.status == "ended" and i.entered_at),
+        "done": sum(1 for i in its if i.status == "ended" and (i.entered_at or any(s.entered_at for s in i.group_participants))),
         "ended": sum(1 for i in its if i.status == "ended"),
         "live": sum(1 for i in its if i.status == "live"),
         "upcoming": sum(1 for i in its if i.status == "scheduled"),
-        "waiting": sum(1 for i in its if i.status != "ended" and i.waiting_seen_at and not i.admitted_at and (now - i.waiting_seen_at).total_seconds() <= 10),
+        "waiting": sum(1 for i in its if i.kind != "group" and i.status != "ended" and i.waiting_seen_at and not i.admitted_at and (now - i.waiting_seen_at).total_seconds() <= 10)
+        + sum(1 for i in its if i.kind == "group" and i.status != "ended" for s in i.group_participants
+              if s.waiting_seen_at and not s.admitted_at and (now - s.waiting_seen_at).total_seconds() <= 10),
         "transcribed": len({i for (i,) in db.execute(select(TranscriptSegment.interview_id).join(Interview, Interview.id == TranscriptSegment.interview_id)
                                                      .where(Interview.project_id == p.id).distinct())}),
         "insights": sum(by.values()), "approved": by.get("approved", 0), "to_review": by.get("draft", 0) + by.get("needs_review", 0),

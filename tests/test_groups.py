@@ -1,5 +1,6 @@
 """Focus-group foundation (Sprint 2): the per-participant seat model and the app/groups.py helper."""
 import pytest
+from sqlalchemy import select
 
 from app import groups
 from app.db import SessionLocal
@@ -183,6 +184,67 @@ def test_observer_sees_group_headcount_but_not_names(org):
     iid = _create_group(org, pid, pids, observer_ids=[org.users["observer"]]).json()["id"]
     got = org.c.get(f"/api/interviews/{iid}", headers=org.h("observer")).json()
     assert got["participant"]["name"] == "受访者" and "group" not in got  # the client sees no roster or names
+
+
+def _ready(org, token):
+    assert org.c.post(f"/api/public/join/{token}/device", json={"camera": True, "microphone": True, "speaker": True}).json()["passed"]
+    assert org.c.post(f"/api/public/join/{token}/consent", json={"country": "SG", "recording": True, "observers": True, "cross_border": True}).status_code == 201
+
+
+def test_each_seat_has_its_own_journey(org):
+    """Consent, device check, admit and entry belong to one seat: letting one person in does not let the other in."""
+    from conftest import decode_unverified
+
+    pid = org.project()
+    pids = [org.participant(pid)["id"] for _ in range(2)]
+    created = _create_group(org, pid, pids, observer_ids=[org.users["observer"]]).json()
+    iid = created["id"]
+    invites = {g["participant_id"]: g["invite_token"] for g in created["group_invites"]}
+    t1, t2 = invites[pids[0]], invites[pids[1]]
+    _ready(org, t1)
+    assert org.c.get(f"/api/public/join/{t1}").json()["consented"] is True
+    assert org.c.get(f"/api/public/join/{t2}").json()["consented"] is False  # the other person has not agreed
+    assert org.c.get(f"/api/public/join/{t2}").json()["device_ok"] is False
+    org.c.post(f"/api/interviews/{iid}/start", headers=org.h("moderator"))
+    assert org.c.post(f"/api/interviews/{iid}/admit", headers=org.h("moderator"), json={"admit": True}).status_code == 422  # a group names the seat
+    assert org.c.post(f"/api/interviews/{iid}/admit", headers=org.h("moderator"), json={"admit": True, "participant_id": "nope"}).status_code == 404
+    assert org.c.post(f"/api/interviews/{iid}/admit", headers=org.h("moderator"), json={"admit": True, "participant_id": pids[0]}).json() == {"admitted": True, "held": False}
+    assert org.c.post(f"/api/public/join/{t1}/enter").status_code == 200
+    assert org.c.post(f"/api/public/join/{t2}/enter").status_code == 403  # not consented, and not admitted
+    _ready(org, t2)
+    assert org.c.post(f"/api/public/join/{t2}/enter").status_code == 409  # consented, but not let in
+    org.c.get(f"/api/public/join/{t2}/live?waiting=1")
+    live = org.c.get(f"/api/interviews/{iid}/live", headers=org.h("moderator")).json()
+    assert "participant" not in live
+    by = {p["participant_id"]: p for p in live["participants"]}
+    assert by[pids[0]]["admitted"] and by[pids[0]]["entered"] and by[pids[0]]["label"] == "参与者 ·01"
+    assert by[pids[1]]["waiting"] and not by[pids[1]]["admitted"]
+    assert "participants" not in org.c.get(f"/api/interviews/{iid}/live", headers=org.h("observer")).json()
+    org.c.post(f"/api/interviews/{iid}/admit", headers=org.h("moderator"), json={"admit": True, "participant_id": pids[1]})
+    ent = org.c.post(f"/api/public/join/{t2}/enter")
+    assert ent.status_code == 200 and decode_unverified(ent.json()["token"])["name"] == "参与者 ·02"
+    org.c.post(f"/api/public/join/{t2}/leave")
+    assert org.c.post(f"/api/public/join/{t2}/enter").status_code == 409  # leaving needs a fresh admit
+    assert org.c.post(f"/api/public/join/{t1}/enter").status_code == 200  # the other person is unaffected
+
+
+def test_a_group_seat_records_on_its_own_track(org):
+    from app.models import RecordingTrack
+
+    pid = org.project()
+    pids = [org.participant(pid)["id"] for _ in range(2)]
+    created = _create_group(org, pid, pids).json()
+    iid, t1 = created["id"], created["group_invites"][0]["invite_token"]
+    _ready(org, t1)
+    org.c.post(f"/api/interviews/{iid}/start", headers=org.h("moderator"))
+    org.c.post(f"/api/interviews/{iid}/admit", headers=org.h("moderator"), json={"admit": True, "participant_id": pids[0]})
+    org.c.post(f"/api/public/join/{t1}/enter")
+    rid = org.c.post(f"/api/interviews/{iid}/recording/start", headers=org.h("moderator")).json()["id"]
+    up = org.c.post(f"/api/public/join/{t1}/recording/{rid}/chunk?seq=0&offset_ms=0", content=b"abc", headers={"Content-Type": "video/webm"})
+    assert up.status_code == 204
+    with SessionLocal() as db:
+        roles = [t.role for t in db.scalars(select(RecordingTrack).where(RecordingTrack.recording_id == rid))]
+    assert roles == ["p1"]  # seat 1, not the shared "participant" track a depth interview uses
 
 
 def test_group_roster_is_tenant_scoped(client):

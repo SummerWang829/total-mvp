@@ -53,9 +53,11 @@ def invite_state(db: Session, itv: Interview) -> str:
 WAITING_FRESH_S = 10  # the waiting room polls every 3 s; seen within this window = waiting right now
 
 
-def in_waiting_room(itv: Interview) -> bool:
-    return (itv.status != "ended" and itv.waiting_seen_at is not None and itv.admitted_at is None
-            and (utcnow() - itv.waiting_seen_at).total_seconds() <= WAITING_FRESH_S)
+def in_waiting_room(itv: Interview, seat=None) -> bool:
+    """True when this person is in the waiting room right now. ``seat`` is the journey row (the interview, for a depth interview)."""
+    row = itv if seat is None else seat
+    return (itv.status != "ended" and row.waiting_seen_at is not None and row.admitted_at is None
+            and (utcnow() - row.waiting_seen_at).total_seconds() <= WAITING_FRESH_S)
 
 
 def interview_out(itv: Interview, ctx: Ctx, invite_token: str | None = None, db: Session | None = None) -> dict:
@@ -406,28 +408,46 @@ def live_state(iid: str, ctx: Ctx = Depends(current_ctx), db: Session = Depends(
     out = {"status": itv.status, "consented": consented, "recording": {"id": rec.id, "elapsed_ms": elapsed_ms(rec)} if rec else None,
            "stimulus": concept.current_stimulus(db, itv.id, staff=True), "elapsed_ms": concept.at_ms(itv) if itv.status == "live" else None}
     if ctx.user.role != "observer":  # who is in the waiting room is for the moderator, not the client
-        out["participant"] = {"waiting": in_waiting_room(itv), "admitted": itv.admitted_at is not None,
-                              "held": itv.held_at is not None and itv.admitted_at is None, "device_ok": itv.device_ok_at is not None}
+        if groups.is_group(itv):
+            out["participants"] = [{"participant_id": s.participant_id, "seat": s.seat, "label": groups.label(s),
+                                    "name": s.participant.name, "waiting": in_waiting_room(itv, s),
+                                    "admitted": s.admitted_at is not None, "held": s.held_at is not None and s.admitted_at is None,
+                                    "device_ok": s.device_ok_at is not None, "entered": s.entered_at is not None}
+                                   for s in groups.seats(db, itv.id)]
+        else:
+            out["participant"] = {"waiting": in_waiting_room(itv), "admitted": itv.admitted_at is not None,
+                                  "held": itv.held_at is not None and itv.admitted_at is None, "device_ok": itv.device_ok_at is not None}
     return out
 
 
 class AdmitBody(BaseModel):
     admit: bool
+    participant_id: str | None = None  # which seat, for a focus group; a depth interview has only one
 
 
 @router.post("/interviews/{iid}/admit")
 def admit(iid: str, body: AdmitBody, ctx: Ctx = Depends(require_roles("admin", "researcher", "moderator")), db: Session = Depends(get_db)):
-    """Waiting room: let the participant into the room, or ask them to wait a little longer."""
+    """Waiting room: let a participant into the room, or ask them to wait a little longer.
+
+    A depth interview has one participant. A focus group admits one seat at a time (``participant_id``)."""
     itv = visible_interview(db, ctx, iid)
     if itv.status == "ended" or itv.purged_at:
         raise HTTPException(409, "访谈已结束")
-    if body.admit:
-        itv.admitted_at, itv.held_at = utcnow(), None
+    if groups.is_group(itv):
+        if not body.participant_id:
+            raise HTTPException(422, "请指定要放行的受访者")
+        row = groups.seat_for(db, itv.id, body.participant_id)
+        if not row:
+            raise HTTPException(404, "不在名单中")
     else:
-        itv.admitted_at, itv.held_at = None, utcnow()
+        row = itv
+    if body.admit:
+        row.admitted_at, row.held_at = utcnow(), None
+    else:
+        row.admitted_at, row.held_at = None, utcnow()
     audit(db, ctx.org_id, ctx.actor, "participant.admit" if body.admit else "participant.hold", itv.id)
     db.commit()
-    return {"admitted": itv.admitted_at is not None, "held": itv.held_at is not None}
+    return {"admitted": row.admitted_at is not None, "held": row.held_at is not None}
 
 
 _EXT = {"video/webm": "webm", "audio/webm": "webm", "video/mp4": "mp4", "audio/mp4": "mp4", "audio/ogg": "ogg"}

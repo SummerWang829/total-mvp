@@ -21,10 +21,11 @@ from sqlalchemy.orm import Session
 
 from .audit import audit
 from .config import settings
-from .models import Recording, RecordingTrack, utcnow
+from .models import Interview, Recording, RecordingTrack, utcnow
 
-ROLES = ("moderator", "participant")
+ROLES = ("moderator", "participant")  # a depth interview; a focus group adds "p1".."p10" (one track per seat)
 TILE_W, TILE_H, BG = 640, 360, "0x0B382C"
+MAX_SEAT = 10
 _locks: dict[str, threading.Lock] = {}
 
 
@@ -64,8 +65,28 @@ def clean_part(part: str) -> str:
     return re.sub(r"[^a-z0-9]", "", (part or "0").lower())[:16] or "0"
 
 
+def is_track_role(role: str) -> bool:
+    """A recording track key: the moderator, the single depth participant, or a focus-group seat (``p1``..``p10``)."""
+    if role in ROLES:
+        return True
+    if len(role) >= 2 and role[0] == "p" and role[1:].isdigit():
+        return 1 <= int(role[1:]) <= MAX_SEAT
+    return False
+
+
+def track_order(role: str) -> tuple[int, int]:
+    """Mix order: moderator, then the depth participant, then group seats by number."""
+    if role == "moderator":
+        return (0, 0)
+    if role == "participant":
+        return (1, 0)
+    if role.startswith("p") and role[1:].isdigit():
+        return (2, int(role[1:]))
+    return (9, 0)
+
+
 def save_chunk(db: Session, rec: Recording, role: str, part: str, seq: int, offset_ms: int, ext: str, data: bytes, last: bool) -> None:
-    if role not in ROLES:
+    if not is_track_role(role):
         raise ValueError(role)
     part, ext = clean_part(part), (ext if ext in ("webm", "mp4", "ogg") else "webm")
     d = os.path.join(rec_dir(rec), role, part)
@@ -119,7 +140,8 @@ def _mix(built: list[dict], out: str) -> int:
     for b in built:
         cmd += ["-i", b["path"]]
     n_in = len(built)
-    for r_i, role in enumerate(r for r in ROLES if any(b["role"] == r for b in built)):
+    speakers = sorted({b["role"] for b in built}, key=track_order)
+    for r_i, role in enumerate(speakers):
         cmd += ["-f", "lavfi", "-i", f"color=c={BG}:s={TILE_W}x{TILE_H}:r=25"]  # the tile background (also what shows when a camera is off)
         cur, n_in = f"{n_in}:v", n_in + 1
         for i, b in enumerate(built):
@@ -156,7 +178,7 @@ def finalize(db: Session, rec: Recording) -> None:
         audit(db, rec.org_id, "system", "recording.failed", rec.interview_id, reason="no_data")
         db.commit()
         return
-    built.sort(key=lambda b: (ROLES.index(b["role"]), b["offset_ms"]))
+    built.sort(key=lambda b: (*track_order(b["role"]), b["offset_ms"]))
     rec.duration_ms = _mix(built, rec_file(rec))
     rec.status, rec.error = "ready", ""
     audit(db, rec.org_id, "system", "recording.ready", rec.interview_id, speakers=sorted({b["role"] for b in built}), parts=len(built), duration_ms=rec.duration_ms)
@@ -182,13 +204,30 @@ def has_tracks(rec: Recording) -> bool:
 
 
 # ---------- background worker ----------
+def _all_speakers_finished(db: Session, rec: Recording, tracks: list[RecordingTrack]) -> bool:
+    """True when every expected speaker has uploaded a finished track.
+
+    A depth interview keeps the old rule (at least the two roles, every track closed). A focus group waits for the
+    moderator and every seated participant; anyone who never joins is covered by the grace timeout instead.
+    """
+    if not tracks or any(t.last_seq is None for t in tracks):
+        return False
+    itv = db.get(Interview, rec.interview_id)
+    if itv is not None and itv.kind == "group":
+        from . import groups
+
+        wanted = {"moderator"} | {f"p{s.seat}" for s in groups.seats(db, itv.id)}
+        return wanted <= {t.role for t in tracks}
+    return len(tracks) >= len(ROLES)
+
+
 def process_pending(db: Session, now=None) -> int:
     now = now or utcnow()
     done = 0
     for rec in db.scalars(select(Recording).where(Recording.status == "processing")).all():
         tracks = db.scalars(select(RecordingTrack).where(RecordingTrack.recording_id == rec.id)).all()
         waited = rec.stopped_at is not None and now >= rec.stopped_at + timedelta(seconds=settings.recording_grace_s)
-        everyone = len(tracks) >= len(ROLES) and all(t.last_seq is not None for t in tracks)
+        everyone = _all_speakers_finished(db, rec, tracks)
         if not (waited or everyone):
             continue
         try:

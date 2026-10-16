@@ -16,7 +16,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from .. import concept
+from .. import concept, groups
 from ..asr_live import token_out
 from ..audit import audit
 from ..db import SessionLocal, get_db
@@ -24,7 +24,7 @@ from ..deps import STAFF, Ctx, current_ctx, require_roles, visible_interview
 from ..models import BackroomMessage, CaptionLine, Highlight, Interview, RoomState, Stimulus, utcnow
 from ..providers import get_llm
 from .interviews import _ingest
-from .public import _by_invite, _consented
+from .public import _consented, resolve_join
 
 log = logging.getLogger(__name__)
 
@@ -157,17 +157,18 @@ def post_staff_caption(iid: str, body: CaptionIn, ctx: Ctx = Depends(require_rol
     _store_caption(db, itv, "moderator", body)
 
 
-def _entered_participant(db: Session, token: str) -> Interview:
-    itv = _by_invite(db, token)
-    if itv.status != "live" or itv.admitted_at is None or not _consented(db, itv):
+def _entered_participant(db: Session, token: str) -> groups.Joiner:
+    j = resolve_join(db, token)
+    if j.itv.status != "live" or j.seat.admitted_at is None or not _consented(db, j.itv, j.participant.id):
         raise HTTPException(409, "还不能发送字幕")  # no consent to recording / not let in / not live: nothing is captured
-    return itv
+    return j
 
 
 @router.post("/public/join/{token}/captions", status_code=204)
 def post_participant_caption(token: str, body: CaptionIn, db: Session = Depends(get_db)):
     """The participant's browser captions the participant's own microphone."""
-    _store_caption(db, _entered_participant(db, token), "participant", body)
+    j = _entered_participant(db, token)
+    _store_caption(db, j.itv, groups.speaker_key(j.itv, j.seat), body)
 
 
 @router.get("/interviews/{iid}/captions")
@@ -214,10 +215,10 @@ def staff_asr(iid: str, ctx: Ctx = Depends(require_roles(*OPERATE)), db: Session
 
 @router.get("/public/join/{token}/asr")
 def participant_asr(token: str, db: Session = Depends(get_db)):
-    itv = _by_invite(db, token)
-    if itv.status != "live" or itv.admitted_at is None or not _consented(db, itv):
+    j = resolve_join(db, token)
+    if j.itv.status != "live" or j.seat.admitted_at is None or not _consented(db, j.itv, j.participant.id):
         return {"enabled": False, "retry": True, "reason": "访谈开始、你同意录制并被放行后才会开启字幕"}  # temporary: the browser asks again
-    return token_out(itv.language)
+    return token_out(j.itv.language)
 
 
 # ---------- the team's private chat (observers <-> moderator <-> researchers) ----------
@@ -291,9 +292,9 @@ def post_staff_netstat(iid: str, body: NetStat, ctx: Ctx = Depends(current_ctx),
 
 @router.post("/public/join/{token}/netstat", status_code=204)
 def post_participant_netstat(token: str, body: NetStat, db: Session = Depends(get_db)):
-    itv = _by_invite(db, token)
-    if itv.status == "live" and itv.admitted_at is not None:
-        _store_netstat(itv, "participant", body)
+    j = resolve_join(db, token)
+    if j.itv.status == "live" and j.seat.admitted_at is not None:
+        _store_netstat(j.itv, groups.speaker_key(j.itv, j.seat), body)
 
 
 @router.get("/interviews/{iid}/netstat")
