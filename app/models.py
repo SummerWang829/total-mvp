@@ -106,6 +106,7 @@ class Interview(Base):
 
     participant: Mapped[Participant] = relationship(lazy="joined")
     observers: Mapped[list["InterviewObserver"]] = relationship(cascade="all, delete-orphan", lazy="selectin")
+    group_participants: Mapped[list["InterviewParticipant"]] = relationship(cascade="all, delete-orphan", lazy="selectin")
 
 
 class InterviewObserver(Base):

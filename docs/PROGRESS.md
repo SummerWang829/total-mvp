@@ -4,6 +4,17 @@
 > 每条记录写：日期 · 做了什么 · `scripts/qa.sh` 结果数字 · 还差什么 · 风险。最新的写在最上面。
 > qa.sh 数字的顺序：逻辑测试（pytest）/ 全站浏览器检查 / 真实视频访谈 / 一键启动。
 
+## 2026-10-16 · Sprint 2 座谈会（进行中·2/N）：建场次 + 名册端点（pytest 793 全过）
+**做了什么**（分支 `cursor/sprint2-focus-groups-c58e`）
+- 建场次支持选**深访/座谈会**：`POST /projects/{pid}/interviews` 新增 `kind` 与 `participant_ids`；座谈会要求 1..10 位同项目、合规受访者，拒绝 AI 主持；为每位建座位并返回**一次性邀请链接**（`group_invites`）。深访路径完全不变。
+- 名册端点：`POST /interviews/{iid}/participants`（加座位，返回邀请链接）、`DELETE .../participants/{pid}`（仅开始前、且至少留一位）、`POST .../participants/{pid}/invite/rotate`（重发某座位链接）。
+- `interview_out` 加 `kind`；座谈会显示「N 位受访者」+（仅研究团队）名册 `group`；客户观察员只见人数、不见姓名/名册。新增 `Interview.group_participants` 关系。
+- 审计文案：`group.add` / `group.remove` / `group.invite.rotate`。
+- 测试：`tests/test_groups.py` 增 8 项（建座谈会返回一次性邀请 / 拒 AI 与非法人数 / 必须同项目 / 深访不变 / 加删改座位 / 名册端点拒深访与末位与开始后 / 观察员只见人数 / 租户隔离）。
+
+**qa.sh**：pytest **793 全过**；UI 未改，浏览器/视频/一键启动待前端步连带重跑。
+**还差什么**：入场旅程按座位泛化（device/consent/admit/enter）→ 令牌多发布者 → 录制 N 轨/转写 N 说话人 → 前端 → e2e≥3 + qa 全绿。
+
 ## 2026-10-16 · Sprint 2 座谈会（进行中·地基 1/N）：数据模型 + 座位助手（pytest 785 全过）
 **做了什么**（分支 `cursor/sprint2-focus-groups-c58e`，基于 main；Sprint 1 三项在另一分支 PR #2 待合并）
 - 目标：把 1:1 深访泛化成**座谈会（最多 10 位受访者）**，大量复用现有房间/同意/设备检测/候场/录制/转写/洞察/片段框架。先搭**纯增量、零行为变化**的地基，再逐步接线，每步保持全绿。

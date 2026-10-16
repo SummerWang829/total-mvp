@@ -67,6 +67,7 @@ ACTION_ZH = {
     "participant.erase": "删除了一位受访者的数据", "interview.create": "新建了场次", "interview.invite.rotate": "重新生成了邀请链接",
     "invite.open": "打开了邀请", "device.check": "完成了设备检测", "consent.give": "同意了隐私说明", "consent.blocked_region": "所在地区暂未开放",
     "participant.admit": "放行了受访者", "participant.hold": "请受访者稍等", "room.token": "进入了房间", "room.leave": "离开了房间",
+    "group.add": "把一位受访者加入座谈会", "group.remove": "从座谈会移除了一位受访者", "group.invite.rotate": "重新生成了座谈会邀请链接",
     "interview.start": "开始了访谈", "interview.end": "结束了访谈", "recording.start": "开始录制", "recording.stop": "停止录制",
     "recording.ready": "录像合成完成", "recording.failed": "录像合成失败", "transcript.transcribe": "完成了转写", "transcript.edit": "校对了转写",
     "insight.generate": "生成了 AI 洞察", "insight.create": "写了一条洞察", "insight.approve": "通过了一条洞察", "insight.delete": "删除了一条洞察",
