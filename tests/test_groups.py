@@ -1,4 +1,6 @@
 """Focus-group foundation (Sprint 2): the per-participant seat model and the app/groups.py helper."""
+import json
+
 import pytest
 from sqlalchemy import select
 
@@ -222,7 +224,8 @@ def test_each_seat_has_its_own_journey(org):
     assert "participants" not in org.c.get(f"/api/interviews/{iid}/live", headers=org.h("observer")).json()
     org.c.post(f"/api/interviews/{iid}/admit", headers=org.h("moderator"), json={"admit": True, "participant_id": pids[1]})
     ent = org.c.post(f"/api/public/join/{t2}/enter")
-    assert ent.status_code == 200 and decode_unverified(ent.json()["token"])["name"] == "参与者 ·02"
+    claims = decode_unverified(ent.json()["token"])
+    assert ent.status_code == 200 and claims["name"] == "P-02" and json.loads(claims["metadata"])["seat"] == 2
     org.c.post(f"/api/public/join/{t2}/leave")
     assert org.c.post(f"/api/public/join/{t2}/enter").status_code == 409  # leaving needs a fresh admit
     assert org.c.post(f"/api/public/join/{t1}/enter").status_code == 200  # the other person is unaffected

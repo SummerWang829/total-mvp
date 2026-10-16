@@ -3,6 +3,7 @@
 Observers are the security-critical case: subscribe-only, hidden from other participants,
 no data channel, no metadata updates. Enforced by the token, never by UI hiding.
 """
+import json
 import time
 
 import jwt
@@ -16,13 +17,16 @@ GRANTS = {
 }
 
 
-def build_room_token(*, identity: str, name: str, room: str, role: str, ttl_min: int | None = None) -> str:
+def build_room_token(*, identity: str, name: str, room: str, role: str, ttl_min: int | None = None, seat: int | None = None) -> str:
     if role not in GRANTS:
         raise ValueError(role)
     now = int(time.time())
     video = {"room": room, "roomJoin": True, **GRANTS[role]}
     if role == "observer":
         video["canPublishSources"] = []
+    meta = {"role": role}
+    if seat is not None:
+        meta["seat"] = seat  # focus-group seat number; the browser translates the label, the real name never goes in
     claims = {
         "iss": settings.livekit_api_key,
         "sub": identity,
@@ -30,7 +34,7 @@ def build_room_token(*, identity: str, name: str, room: str, role: str, ttl_min:
         "nbf": now - 5,
         "exp": now + 60 * (ttl_min or settings.room_token_ttl_min),
         "video": video,
-        "metadata": '{"role":"%s"}' % role,
+        "metadata": json.dumps(meta, separators=(",", ":")),
     }
     return jwt.encode(claims, settings.livekit_api_secret, algorithm="HS256")
 

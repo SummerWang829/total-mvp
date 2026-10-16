@@ -77,6 +77,9 @@ def interview_out(itv: Interview, ctx: Ctx, invite_token: str | None = None, db:
         out["participant"] = {"name": f"{n} 位受访者" if sees_name else "受访者"}
         if db is not None and sees_name:
             out["group"] = groups.roster_view(db, itv)
+            rows = itv.group_participants
+            out["waiting"] = any(in_waiting_room(itv, s) for s in rows)
+            out["admitted"] = any(s.admitted_at is not None for s in rows)
     if db is not None and sees_name and not groups.is_group(itv):  # the participant's progress is for the research team, not the client
         out["invite_state"] = invite_state(db, itv)
         out["waiting"] = in_waiting_room(itv)

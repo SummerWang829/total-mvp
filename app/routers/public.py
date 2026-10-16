@@ -142,9 +142,10 @@ def enter(token: str, request: Request, db: Session = Depends(get_db)):
         raise HTTPException(403, "Please test your device first / 请先完成设备检测")
     if not seat.admitted_at:
         raise HTTPException(409, "The moderator has not let you in yet / 主持人还没有放行")
-    # real name never goes into the video room; a group seat is labelled by number only
-    shown_name = groups.label(seat) if groups.is_group(itv) else "Participant"
-    jwt_ = build_room_token(identity=f"participant:{part.id}", name=shown_name, room=itv.room_name, role="participant")
+    # real name never goes into the video room; a group seat is "P-01" and the browser translates it
+    shown_name = f"P-{seat.seat:02d}" if groups.is_group(itv) else "Participant"
+    jwt_ = build_room_token(identity=f"participant:{part.id}", name=shown_name, room=itv.room_name, role="participant",
+                            seat=seat.seat if groups.is_group(itv) else None)
     if not seat.entered_at:
         seat.entered_at = utcnow()
     audit(db, itv.org_id, f"participant:{part.id}", "room.token", itv.id, ip=client_ip(request), role="participant")
