@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from ..audit import audit
 from ..db import get_db
 from ..deps import STAFF, Ctx, require_roles
-from ..models import (AuditLog, Clip, Consent, Evidence, Insight, Interview, InterviewObserver, Participant, Project, Recording,
+from ..models import (AuditLog, Clip, Consent, Evidence, Insight, Interview, InterviewObserver, InterviewParticipant, Participant, Project, Recording,
                       RecordingTrack, ShareLink, TranscriptSegment, User, utcnow)
 from ..retention import _delete_file
 from ..media import purge_cache
@@ -130,7 +130,7 @@ def reset_demo(ctx: Ctx = Depends(require_roles("admin")), db: Session = Depends
         db.execute(delete(Clip).where(Clip.interview_id.in_(ids)))
         if ins_ids:
             db.execute(delete(Evidence).where(Evidence.insight_id.in_(ins_ids)))
-        for model in (Insight, TranscriptSegment, Recording, Consent, InterviewObserver):
+        for model in (Insight, TranscriptSegment, Recording, Consent, InterviewObserver, InterviewParticipant):
             db.execute(delete(model).where(model.interview_id.in_(ids)))
         db.execute(delete(Interview).where(Interview.id.in_(ids)))
     n_parts = db.execute(delete(Participant).where(Participant.org_id == ctx.org_id)).rowcount

@@ -101,6 +101,7 @@ class Interview(Base):
     admitted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     held_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     moderation: Mapped[str] = mapped_column(String(10), default="human")  # app.moderator.constants.ModerationMode; "ai": the consent text discloses it
+    kind: Mapped[str] = mapped_column(String(10), default="depth")  # depth (1:1) | group (focus group, up to 10 participants); see app/groups.py
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
     participant: Mapped[Participant] = relationship(lazy="joined")
@@ -113,6 +114,35 @@ class InterviewObserver(Base):
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
     interview_id: Mapped[str] = mapped_column(ForeignKey("interviews.id"), index=True)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+
+
+class InterviewParticipant(Base):
+    """One participant's seat in a focus group (``Interview.kind == "group"``). Mirrors ``InterviewObserver`` but also
+    carries the per-participant join journey (invite link, device check, waiting-room admit, entry) that a 1:1 depth
+    interview keeps on the ``Interview`` itself.
+
+    Depth interviews are untouched: they keep their single participant on ``Interview.participant_id`` and never create
+    these rows. The ``seat`` number (1..10) is stable and doubles as the participant's recording-track / transcript
+    speaker key (``p1``, ``p2``, …) and the "参与者 ·NN" label shown in the room. Personal data: purged with the
+    interview (``app/retention.py``)."""
+    __tablename__ = "interview_participants"
+    __table_args__ = (UniqueConstraint("interview_id", "participant_id"), UniqueConstraint("interview_id", "seat"))
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
+    org_id: Mapped[str] = mapped_column(String(32), index=True)
+    interview_id: Mapped[str] = mapped_column(ForeignKey("interviews.id"), index=True)
+    participant_id: Mapped[str] = mapped_column(ForeignKey("participants.id"), index=True)
+    seat: Mapped[int] = mapped_column(Integer)  # 1..MAX_GROUP, stable; also the track/speaker key ("p1"…)
+    invite_hash: Mapped[str] = mapped_column(String(64), index=True)
+    # this participant's journey (a depth interview keeps the same fields on Interview): sent -> opened -> device_ok -> consented -> entered
+    opened_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    device_ok_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    waiting_seen_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    admitted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    held_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    entered_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+    participant: Mapped[Participant] = relationship(lazy="joined")
 
 
 class Consent(Base):

@@ -4,6 +4,19 @@
 > 每条记录写：日期 · 做了什么 · `scripts/qa.sh` 结果数字 · 还差什么 · 风险。最新的写在最上面。
 > qa.sh 数字的顺序：逻辑测试（pytest）/ 全站浏览器检查 / 真实视频访谈 / 一键启动。
 
+## 2026-10-16 · Sprint 2 座谈会（进行中·地基 1/N）：数据模型 + 座位助手（pytest 785 全过）
+**做了什么**（分支 `cursor/sprint2-focus-groups-c58e`，基于 main；Sprint 1 三项在另一分支 PR #2 待合并）
+- 目标：把 1:1 深访泛化成**座谈会（最多 10 位受访者）**，大量复用现有房间/同意/设备检测/候场/录制/转写/洞察/片段框架。先搭**纯增量、零行为变化**的地基，再逐步接线，每步保持全绿。
+- **新增 `Interview.kind`**（`depth` | `group`，默认 `depth`，`ensure_columns` 自动加列）：现有深访全部走 `depth`，行为不变。
+- **新模型 `InterviewParticipant`（座位）**：仿 `InterviewObserver`，但额外带**每位受访者各自的入场旅程**（邀请哈希、opened/device_ok/waiting_seen/admitted/held/entered）。深访**不建**这些行，继续把单个受访者放在 `Interview.participant_id`。座位号 1..10 稳定，兼作录制轨/转写说话人键（`p1`…）与房间里「参与者 ·NN」标签。字段名刻意与 `Interview` 对齐，好让入场旅程代码一套逻辑同时处理深访（作用于 Interview）与座谈会（作用于座位），避免两套分叉代码。
+- **新纯函数模块 `app/groups.py`**：`MAX_GROUP=10`、`is_group`、`seats`、`add_seat`（座位号取最小空位、重复/满员 ValueError）、`remove_seat`（释放号码可复用）、`seat_by_invite`、`speaker_key`、`label`、`roster_view`、`purge`（全部类型注解 + docstring）。
+- 清理：`retention.purge_interview` 与 `demo.reset` 一并删除座位。
+- 测试：`tests/test_groups.py`（7 项：深访无座位且非 group / 座位号紧凑且拒重复 / 删座位号码复用 / 满 10 拒绝 / 按邀请解析座位 + 说话人键 + 标签 / 名册视图不多泄 / 保留期清理）。
+
+**qa.sh**：pytest **785 全过**（含本次 +7）；浏览器/视频/一键启动本次未改 UI 未重跑，下一接线步会连带跑。
+**还差什么（Sprint 2 剩余，逐步接线）**：① 建场次选深访/座谈会 + 名册端点（加/减座位、每人邀请链接）；② 入场旅程泛化（device/consent/admit/enter 按座位）；③ LiveKit 令牌多发布者；④ 录制 N 轨合成 + 转写 N 说话人；⑤ 前端 join/room/index；⑥ e2e ≥3 受访者 + qa 全绿。
+**风险**：N 轨混音布局/同步；SQLite 单写锁（测试里别在持写事务时再经 API 写）。
+
 ## 总目标（2026-10-12）
 先出整套深访平台的 MVP：每场访谈可由**人工**或 **AI 主持人**主持（研究员或 PM 选择），可上线给自己的同事内测。先测中文，包含语音、视频访谈、高速字幕和总结、编码、分析和切片。
 
