@@ -39,3 +39,14 @@ const ROLE = { admin: "管理员", researcher: "研究员", moderator: "主持�
 // the participant's journey as the research team sees it (design spec 3.5): label + tag colour
 const INVITE = { sent: ["已发送", ""], opened: ["已打开", "o"], device_ok: ["检测通过", "o"], consented: ["已同意", "o"], entered: ["已进入", "ok"], done: ["已完成", "ok"], ended_absent: ["未到场", "bad"] };
 const pcode = (n) => "P-" + String(n + 1).padStart(3, "0");  // participant number shown instead of a name wherever a name is not needed
+// Transcript / caption speaker keys. A focus-group seat is "p1"…"p10" and is shown as 「参与者 ·01」, never the raw key.
+function speakerName(key) {
+  const m = /^p([1-9]|10)$/.exec(String(key || ""));
+  if (m) return "参与者 ·" + String(+m[1]).padStart(2, "0");
+  return { moderator: "主持人", ai_moderator: "AI 主持人", participant: "受访者", observer: "观察员" }[key] || key || "";
+}
+function speakerClass(key) {
+  if (/^p([1-9]|10)$/.test(String(key || ""))) return "participant";
+  if (key === "moderator" || key === "ai_moderator" || key === "participant") return key;
+  return "participant";
+}

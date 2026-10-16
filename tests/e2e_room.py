@@ -133,6 +133,7 @@ logging:
         if not wait_for(lambda: urllib.request.urlopen(B + "/api/health").status == 200, 20):
             print("server did not start"); sys.exit(2)
         run(tmp)
+        run_group(tmp)
     finally:
         FAKE.stop()
         srv.terminate(); lk.terminate()
@@ -629,6 +630,143 @@ def concept_phase(pw, tok, ids, pid, errs):
     for c in (cm, co, cp):
         c.close()
     br.close()
+
+
+def _mp4s(tmp):
+    media = os.path.join(tmp, "media")
+    return {os.path.join(dp, f) for dp, _, fs in os.walk(media) for f in fs if f.endswith(".mp4")}
+
+
+def _join_group_participant(page, token):
+    """Invitation, device check, consent, waiting room. The interview language is English, so the copy matches the 1:1 checks."""
+    page.goto(f"{B}/join.html?t={token}")
+    page.wait_for_selector("#accept")
+    page.click("#accept")
+    page.wait_for_selector("#devnext:not([disabled])", timeout=20000)
+    page.click("#play")
+    page.click("#devnext")
+    page.wait_for_selector("form#f")
+    page.select_option("select[name=country]", "SG")
+    for n in ("recording", "observers", "cross_border"):
+        page.check(f"input[name={n}]")
+    page.click("form button")
+    page.wait_for_selector("#enter")
+
+
+def _tiles(page):
+    return page.evaluate("""() => [...document.querySelectorAll('.tile')].map(t => { const v = t.querySelector('video'); return {id: t.id, w: v ? v.videoWidth : 0, playing: v ? (!v.paused && v.readyState >= 2) : false, name: t.querySelector('.nm').textContent}; })""")
+
+
+def _tiles_ready(page, n):
+    return lambda: (lambda vs: len(vs) == n and all(v["w"] > 0 and v["playing"] for v in vs))(_tiles(page))
+
+
+def run_group(tmp):
+    """Focus group: three participants, one moderator, one hidden observer, on the same LiveKit server as the 1:1 run."""
+    reg = call("/auth/register", {"org_name": "GroupCo", "name": "Admin", "email": "a@group.test", "password": "password123"})
+    adm = reg["token"]
+    ids = {}
+    for role, name in (("moderator", "Mika Moderator"), ("observer", "Olive Observer"), ("researcher", "Rae Researcher")):
+        ids[role] = call("/users", {"name": name, "email": f"{role}@group.test", "password": "password123", "role": role}, adm)["id"]
+    tok = {r: call("/auth/login", {"email": f"{r}@group.test", "password": "password123"})["token"] for r in ids}
+    pid = call("/projects", {"name": "Focus SG", "market": "SG", "language": "en"}, tok["researcher"])["id"]
+    names = ("Aisha Tan", "Ben Lim", "Cara Ng")
+    people = [call(f"/projects/{pid}/participants", {"name": n, "country": "SG", "language": "en"}, tok["researcher"]) for n in names]
+    itv = call(f"/projects/{pid}/interviews", {"kind": "group", "participant_ids": [p["id"] for p in people], "title": "三人座谈会",
+                                              "language": "en", "moderator_id": ids["moderator"], "observer_ids": [ids["observer"]]}, tok["researcher"])
+    iid = itv["id"]
+    invites = sorted(itv["group_invites"], key=lambda g: g["seat"])
+    ok([g["seat"] for g in invites] == [1, 2, 3], "the group is created with three seats")
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch(args=["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream", "--autoplay-policy=no-user-gesture-required"])
+        errs = []
+
+        def ctx(name, token=None):
+            c = br.new_context(viewport={"width": 1280, "height": 760}, permissions=["camera", "microphone"])
+            if token:
+                c.add_init_script(f"try{{localStorage.setItem('tt_token','{token}')}}catch(e){{}}")
+            p = c.new_page()
+            p.on("console", lambda m: errs.append(f"[{name}] console: {m.text}") if m.type == "error" else None)
+            p.on("pageerror", lambda e: errs.append(f"[{name}] pageerror: {e}"))
+            p.on("dialog", lambda d: d.accept())
+            return c, p
+
+        pages, contexts = [], []
+        for i, g in enumerate(invites):
+            c, p = ctx(f"p{i + 1}")
+            contexts.append(c)
+            pages.append(p)
+            _join_group_participant(p, g["invite_token"])
+            ok("Waiting for the moderator" in p.inner_text("#pw"), f"seat {i + 1} waits until admitted")
+        cm, pm = ctx("moderator", tok["moderator"])
+        co, po = ctx("observer", tok["observer"])
+        contexts += [cm, co]
+        pm.goto(f"{B}/room.html?i={iid}")
+        po.goto(f"{B}/room.html?i={iid}&as=observer")
+        ok(wait_for(lambda: pm.locator("#gwait [data-admit]").count() == 3, 15), "moderator sees one admit button per seat")
+        ok("参与者 ·01" in pm.inner_text("#gwait") and "参与者 ·03" in pm.inner_text("#gwait"), "waiting list uses seat labels")
+        ok(not po.is_visible("#wbox"), "the observer does not see the waiting list or anyone's name")
+        pm.click("#b-start")
+        for i, (page, g) in enumerate(zip(pages, invites)):
+            pm.locator(f'#gwait [data-admit="{g["participant_id"]}"]').click()
+            ok(wait_for(lambda page=page: page.get_attribute("#enter", "aria-disabled") == "false", 15), f"seat {i + 1} is let in")
+            page.click("#enter")
+        ok(wait_for(_tiles_ready(pm, 4), 45), "moderator sees self and three participants")
+        for i, page in enumerate(pages):
+            ok(wait_for(_tiles_ready(page, 4), 45), f"seat {i + 1} sees the moderator and the other two")
+        ok(wait_for(_tiles_ready(po, 4), 45), "observer sees four tiles and no self tile")
+        vm, vo = _tiles(pm), _tiles(po)
+        labels = [v["name"] for v in vm + vo]
+        ok(all(f"参与者 ·0{n}" in labels for n in (1, 2, 3)), f"staff tiles are numbered ({labels})")
+        ok("t_me" not in [v["id"] for v in vo], "observer publishes nothing")
+        blob = " ".join(p.content() for p in pages + [pm, po])
+        ok(all(n not in blob for n in names), "real names never reach any browser")
+        leak = po.evaluate("() => JSON.stringify([...room.remoteParticipants.values()].map(p => [p.identity, p.name, p.metadata]))")
+        ok(all(n not in leak for n in names), "observer metadata has no real names")
+        seen = pages[0].evaluate("() => [...document.querySelectorAll('.tile .nm')].map(n => n.textContent).join(' ')")
+        ok("Participant ·02" in seen and "Participant ·03" in seen and "You" in seen and "Aisha" not in seen, f"an English participant sees numbered seats ({seen})")
+        perms = po.evaluate("() => { const p = room.localParticipant.permissions; return {pub: p.canPublish, data: p.canPublishData, hidden: p.hidden}; }")
+        ok(perms == {"pub": False, "data": False, "hidden": True}, f"observer stays subscribe-only ({perms})")
+        pubs = [p.evaluate("() => room.localParticipant.permissions.canPublish") for p in pages]
+        ok(pubs == [True, True, True], f"each participant can publish ({pubs})")
+        pm.screenshot(path=f"{SHOTS}/e2e_group_moderator.png")
+        pages[0].screenshot(path=f"{SHOTS}/e2e_group_participant.png")
+        po.screenshot(path=f"{SHOTS}/e2e_group_observer.png")
+        call(f"/public/join/{invites[0]['invite_token']}/captions", {"text": "I look at the ingredients first.", "final": True, "dur_ms": 900})
+        ok(wait_for(lambda: "参与者 ·01" in pm.inner_text("#caps") and "I look at the ingredients first." in pm.inner_text("#caps"), 12), "live captions name the seat")
+        ok("p1" not in pm.inner_text("#caps"), "live captions do not show the raw speaker key")
+        pm.screenshot(path=f"{SHOTS}/e2e_group_captions.png")
+        before = _mp4s(tmp)
+        pm.click("#b-rec")
+        ok(wait_for(lambda: all(p.is_visible("#recdot") for p in pages), 15), "every participant sees the recording indicator")
+        time.sleep(8)
+        pm.click("#b-stop")
+        recs = wait_for(lambda: (lambda r: r if r and r[0]["status"] == "ready" else None)(call(f"/interviews/{iid}/recordings", token=tok["researcher"])), 90)
+        ok(bool(recs), f"group recording became ready ({call(f'/interviews/{iid}/recordings', token=tok['researcher'])})")
+        made = _mp4s(tmp) - before
+        ok(len(made) == 1, f"one new mixed file ({len(made)})")
+        if made:
+            info = json.loads(subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=codec_type,width,height", "-of", "json", next(iter(made))], capture_output=True, text=True).stdout or "{}")
+            width = next((s.get("width") for s in info.get("streams", []) if s.get("codec_type") == "video"), 0)
+            ok(width == 640 * 4, f"four seats sit side by side (width {width})")
+        logs = call("/audit?limit=30", token=adm)
+        ready = next((r for r in logs if r["action"] == "recording.ready"), None)
+        speakers = set((ready or {}).get("meta", {}).get("speakers") or [])
+        ok(speakers >= {"moderator", "p1", "p2", "p3"}, f"the mix kept one track per seat ({sorted(speakers)})")
+        pages[2].click("#b-leave")
+        left = invites[2]["participant_id"]
+        ok(wait_for(lambda: pm.locator(f'#gwait [data-admit="{left}"]:not([disabled])').count() == 1, 12), "the person who left needs a fresh admit")
+        ok(pm.locator(f'#gwait [data-admit="{invites[0]["participant_id"]}"]').is_disabled(), "the others stay admitted")
+        ok(wait_for(_tiles_ready(pm, 3), 20), "moderator's grid drops the person who left")
+        pm.click("#theme")
+        ok("t-dark" in pm.evaluate("document.body.className"), "group room switches to dark green")
+        pm.screenshot(path=f"{SHOTS}/e2e_group_moderator_dark.png")
+        pages[0].set_viewport_size({"width": 390, "height": 780})
+        pages[0].screenshot(path=f"{SHOTS}/e2e_group_participant_phone.png")
+        audit(pm, "group room moderator/dark/desktop")
+        real = [e for e in errs if "favicon" not in e and "DataChannel error" not in e]
+        ok(not real, f"group room: no console errors: {real[:3]}")
 
 
 def finish(br, errs, n_before_end=None):

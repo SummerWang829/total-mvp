@@ -199,6 +199,25 @@ def group_section(br, D):
     ok(wait_until(lambda: pg.locator("#gwait .sm", has_text="已放行").count() == 1, 8), "[group room] admitting one seat leaves the others unadmitted")
     pg.screenshot(path=os.path.join(ROOT, "qa_shots", "group_room_moderator_1280.png"), full_page=True)
     ctx.close()
+    seat = it["group_invites"][1]  # seat 1 was admitted above without consent; seat 2 walks the real path
+    tok = seat["invite_token"]
+    call(f"/public/join/{tok}/device", {"camera": True, "microphone": True, "speaker": True})
+    call(f"/public/join/{tok}/consent", {"country": "SG", "recording": True, "observers": True, "cross_border": True})
+    call(f"/interviews/{iid}/start", {}, mod)
+    call(f"/interviews/{iid}/admit", {"admit": True, "participant_id": seat["participant_id"]}, mod)
+    call(f"/public/join/{tok}/enter", {})
+    call(f"/public/join/{tok}/captions", {"text": "我先说成分。", "final": True, "dur_ms": 800})
+    call(f"/interviews/{iid}/transcript/from-captions", {}, adm)
+    ctx, pg, errs = new_page(br, 1280, token=adm)
+    pg.goto(B + f"/#/i/{iid}/transcript"); pg.wait_for_selector(".seg")
+    said = pg.locator(".seg .s").all_inner_texts()
+    ok("参与者 ·02" in said and "p2" not in said and "我先说成分。" in pg.inner_text("#tab"), "[group] the transcript names the seat, not the raw key")
+    audit_page(pg, "group transcript/desktop", errs)
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "group_transcript_1280.png"), full_page=True)
+    pg.goto(B + f"/#/i/{iid}/highlights"); pg.wait_for_selector(".quote")
+    ok("参与者 ·02" in pg.inner_text("#tab") and "p2" not in pg.inner_text("#tab") and "我先说成分。" in pg.inner_text("#tab"),
+       "[group] captions and quotes name the seat, not the raw key")
+    ctx.close()
 
 
 def main():

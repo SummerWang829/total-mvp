@@ -489,7 +489,7 @@ def play_recording(iid: str, rid: str, ctx: Ctx = Depends(require_roles("admin",
 # ---------- transcript ----------
 class SegIn(BaseModel):
     idx: int = Field(ge=0)
-    speaker: str = Field(pattern="^(moderator|participant)$")
+    speaker: str = Field(pattern=groups.SPEAKER_PATTERN)
     start_ms: int = Field(ge=0)
     end_ms: int = Field(ge=0)
     text_orig: str = Field(min_length=1)
@@ -502,10 +502,18 @@ class TranscriptIn(BaseModel):
 
 
 def _ingest(db: Session, itv: Interview, segs: list[dict]) -> None:
+    """Replace an interview's transcript. A focus group stores ``p1`` … ``p10``; a depth interview stores ``participant``.
+
+    Raises:
+        HTTPException: insights already quote the old transcript (409), a speaker key does not belong on this interview (422),
+            or a segment ends before it starts (422).
+    """
     if db.scalar(select(Insight.id).where(Insight.interview_id == itv.id)):
         raise HTTPException(409, "已有洞察引用旧转写，不能整体替换；请逐段校对")
     db.execute(delete(TranscriptSegment).where(TranscriptSegment.interview_id == itv.id))
     for s in segs:
+        if not groups.speaker_fits(itv, s["speaker"]):
+            raise HTTPException(422, f"片段 #{s['idx']} 的发言人无效")
         if s["end_ms"] < s["start_ms"]:
             raise HTTPException(422, f"片段 #{s['idx']} 结束时间早于开始时间")
         db.add(TranscriptSegment(org_id=itv.org_id, interview_id=itv.id, **s))

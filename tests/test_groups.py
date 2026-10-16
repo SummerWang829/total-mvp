@@ -257,3 +257,48 @@ def test_group_roster_is_tenant_scoped(client):
     iid = _create_group(org, pid, pids).json()["id"]
     other = Org(client, "Other", "b@other.com")
     assert client.post(f"/api/interviews/{iid}/participants", headers=other.h(), json={"participant_id": pids[0]}).status_code == 404
+
+
+def test_speaker_label_turns_a_seat_key_into_the_room_words():
+    assert groups.speaker_label("p1") == "参与者 ·01"
+    assert groups.speaker_label("p10") == "参与者 ·10"
+    assert groups.speaker_label("participant") == "受访者"
+    assert groups.speaker_label("moderator") == "主持人"
+    assert groups.speaker_label("ai_moderator") == "AI 主持人"
+    assert groups.speaker_label("p11") == "p11"  # not a seat; leave it visible
+    assert groups.speaker_label("") == ""
+
+
+def test_a_group_transcript_stores_seat_keys_and_a_depth_one_does_not(org):
+    pid = org.project()
+    pids = [org.participant(pid)["id"] for _ in range(2)]
+    iid = _create_group(org, pid, pids).json()["id"]
+    body = {"segments": [
+        {"idx": 0, "speaker": "p1", "start_ms": 0, "end_ms": 1000, "text_orig": "第一位"},
+        {"idx": 1, "speaker": "moderator", "start_ms": 1000, "end_ms": 2000, "text_orig": "好的"},
+    ]}
+    assert org.c.post(f"/api/interviews/{iid}/transcript", headers=org.h(), json=body).status_code == 200
+    got = org.c.get(f"/api/interviews/{iid}/transcript", headers=org.h()).json()
+    assert [s["speaker"] for s in got] == ["p1", "moderator"]
+    shared = {"segments": [{"idx": 0, "speaker": "participant", "start_ms": 0, "end_ms": 1000, "text_orig": "不该用这个键"}]}
+    assert org.c.post(f"/api/interviews/{iid}/transcript", headers=org.h(), json=shared).status_code == 422
+    depth = org.interview(pid)
+    seat_key = {"segments": [{"idx": 0, "speaker": "p1", "start_ms": 0, "end_ms": 1000, "text_orig": "深访没有座位"}]}
+    assert org.c.post(f"/api/interviews/{depth['id']}/transcript", headers=org.h(), json=seat_key).status_code == 422
+    assert org.c.post(f"/api/interviews/{iid}/transcript", headers=org.h(), json={"segments": [
+        {"idx": 0, "speaker": "p11", "start_ms": 0, "end_ms": 1, "text_orig": "超出"}]}).status_code == 422
+
+
+def test_group_connection_reports_are_kept_per_seat(org):
+    pid = org.project()
+    pids = [org.participant(pid)["id"] for _ in range(2)]
+    created = _create_group(org, pid, pids).json()
+    iid, t1 = created["id"], created["group_invites"][0]["invite_token"]
+    _ready(org, t1)
+    org.c.post(f"/api/interviews/{iid}/start", headers=org.h("moderator"))
+    org.c.post(f"/api/interviews/{iid}/admit", headers=org.h("moderator"), json={"admit": True, "participant_id": pids[0]})
+    org.c.post(f"/api/public/join/{t1}/enter")
+    body = {"transport": "udp", "kind": "host", "rtt_ms": 30, "loss_pct": 1.0, "jitter_ms": 2}
+    assert org.c.post(f"/api/public/join/{t1}/netstat", json=body).status_code == 204
+    got = org.c.get(f"/api/interviews/{iid}/netstat", headers=org.h("moderator")).json()
+    assert got["p1"]["rtt_ms"] == 30 and "participant" not in got

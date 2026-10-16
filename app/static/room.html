@@ -160,13 +160,13 @@ async function netProbe() {
   NET.last = { transport, kind: ["host", "srflx", "prflx", "relay"].includes(kind) ? kind : "unknown", rtt_ms: rtt, loss_pct: Math.min(100, loss), jitter_ms: jitter };
   fetch(inviteT ? `/api/public/join/${encodeURIComponent(inviteT)}/netstat` : `/api/interviews/${iid}/netstat`, { method: "POST", headers: { ...authHdr(), "Content-Type": "application/json" }, body: JSON.stringify(NET.last) }).catch(() => {});
 }
-const NETNAME = { moderator: "主持人", participant: "受访者", observer: "观察员" };
-async function netShow() {  // the team's header: both sides' latest report
+const NET_ORDER = ["moderator", "participant", "p1", "p2", "p3", "p4", "p5", "p6", "p7", "p8", "p9", "p10"];
+async function netShow() {  // the team's header: the moderator and each participant who has reported
   if (role === "participant" || ended) return;
   let d; try { const r = await fetch(`/api/interviews/${iid}/netstat`, { headers: authHdr() }); if (!r.ok) return; d = await r.json(); } catch { return; }
   const one = (k) => { const s = d[k]; if (!s) return null; const bad = s.loss_pct >= 5 || s.rtt_ms >= 300 || s.transport === "tcp" || s.kind === "relay";
-    return { bad, t: `${NETNAME[k]}：${s.kind === "relay" ? "中继" : (s.transport || "?").toUpperCase()} ${s.rtt_ms} ms 丢包 ${s.loss_pct}%` }; };
-  const parts = ["moderator", "participant"].map(one).filter(Boolean), box = $id("netq");
+    return { bad, t: `${speakerName(k)}：${s.kind === "relay" ? "中继" : (s.transport || "?").toUpperCase()} ${s.rtt_ms} ms 丢包 ${s.loss_pct}%` }; };
+  const parts = NET_ORDER.map(one).filter(Boolean), box = $id("netq");
   box.hidden = !parts.length; box.textContent = parts.map((p) => p.t).join(" · "); box.classList.toggle("bad", parts.some((p) => p.bad));
   box.title = "连接方式（UDP 最好，TCP/中继会卡）、往返时延、丢包率；每 5 秒更新";
 }
@@ -475,7 +475,7 @@ function buildBackroom(host) {
 // ---- the team's caption panel: both speakers, quote and follow-up on any sentence ----
 const CP = { after: 0 };
 const mmss = (ms) => `${String(Math.floor(ms / 60000)).padStart(2, "0")}:${String(Math.floor(ms / 1000) % 60).padStart(2, "0")}`;
-const SPEAKER = { moderator: "主持人", participant: "受访者" };
+const seatVoice = (k) => k === "participant" || /^p([1-9]|10)$/.test(k || "");
 async function markCap(kind, id) {
   await api(`/interviews/${iid}/highlights`, { method: "POST", body: { kind, caption_id: id } });
   toast(kind === "quote" ? "已引用，会出现在访谈页的“引用与追问”里" : "已加入待追问");
@@ -483,10 +483,10 @@ async function markCap(kind, id) {
 }
 function addCap(c) {
   const log = $id("caps"); if (!log || log.querySelector(`[data-id="${c.id}"]`)) return;
-  const d = document.createElement("div"); d.className = "cap " + (c.speaker === "participant" ? "pt" : "mo"); d.dataset.id = c.id;
+  const d = document.createElement("div"); d.className = "cap " + (seatVoice(c.speaker) ? "pt" : "mo"); d.dataset.id = c.id;
   const hd = document.createElement("div"); hd.className = "hd";
   const t = document.createElement("span"); t.textContent = mmss(c.at_ms);
-  const who = document.createElement("b"); who.textContent = SPEAKER[c.speaker] || c.speaker;
+  const who = document.createElement("b"); who.textContent = speakerName(c.speaker);
   const sp = document.createElement("span"); sp.className = "sp";
   const q = document.createElement("button"); q.type = "button"; q.textContent = "引用"; q.setAttribute("aria-label", "引用这句话"); q.onclick = guard(() => markCap("quote", c.id));
   const p = document.createElement("button"); p.type = "button"; p.textContent = "追问"; p.setAttribute("aria-label", "就这句话加入待追问"); p.onclick = guard(() => markCap("probe", c.id));
@@ -499,7 +499,9 @@ function addCap(c) {
 }
 function renderPartial(partial) {
   const box = $id("cappart"); if (!box) return;
-  const txt = ["moderator", "participant"].filter((k) => partial && partial[k]).map((k) => `${SPEAKER[k]}：${partial[k]}`).join("\n");
+  const keys = Object.keys(partial || {}).filter((k) => partial[k]);
+  keys.sort((a, b) => (a === "moderator" ? -1 : b === "moderator" ? 1 : a.localeCompare(b, "en", { numeric: true })));
+  const txt = keys.map((k) => `${speakerName(k)}：${partial[k]}`).join("\n");
   box.hidden = !txt; box.textContent = txt;
 }
 async function pollCaps() {

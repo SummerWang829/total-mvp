@@ -1,4 +1,4 @@
-"""Insight export: a Word report and a CSV for a project. Built with the standard library only (a .docx is a zip of small XML files).
+"""Insight export: a Word report and a CSV for a project. The .docx is a zip of small XML files, built with the standard library.
 
 Participants appear as P-001 codes, never by name. Evidence quotes are the verbatim transcript sentences; the timestamp is the one stored with the quote.
 """
@@ -6,6 +6,8 @@ import csv
 import io
 import zipfile
 from xml.sax.saxutils import escape
+
+from .groups import speaker_label
 
 CSV_HEADER = ["受访者", "场次", "主题", "洞察", "状态", "来源", "引文", "发言人", "时间(秒)"]
 STATUS_ZH = {"approved": "已通过", "draft": "待审核", "needs_review": "需复核"}
@@ -35,7 +37,7 @@ def to_csv(rows: list[dict]) -> bytes:
     for r in rows:
         for e in r["evidence"] or [None]:
             w.writerow([_csv_cell(x) for x in (r["pcode"], r["interview"], r["theme"], r["statement"], STATUS_ZH.get(r["status"], r["status"]), KIND_ZH.get(r["kind"], r["kind"]),
-                                              e["quote"] if e else "", (e["speaker"] or "") if e else "", round(e["start_ms"] / 1000, 1) if e else "")])
+                                              e["quote"] if e else "", speaker_label(e["speaker"] or "") if e else "", round(e["start_ms"] / 1000, 1) if e else "")])
     return ("﻿" + buf.getvalue()).encode("utf-8")
 
 
@@ -57,7 +59,7 @@ def to_docx(project_name: str, rows: list[dict], generated: str) -> bytes:
             body.append(_p(r["statement"], bold=True))
             body.append(_p(f'{r["pcode"]} · {r["interview"]} · {STATUS_ZH.get(r["status"], r["status"])} · {KIND_ZH.get(r["kind"], r["kind"])}', italic=True))
             for e in r["evidence"]:
-                body.append(_p(f'“{e["quote"]}” —— {e["speaker"] or "?"} {_clock(e["start_ms"])}', "Quote"))
+                body.append(_p(f'“{e["quote"]}” —— {speaker_label(e["speaker"] or "") or "?"} {_clock(e["start_ms"])}', "Quote"))
     doc = f'{XML}<w:document xmlns:w="{NS}"><w:body>' + "".join(body) + "</w:body></w:document>"
     styles = (f'{XML}<w:styles xmlns:w="{NS}">'
               '<w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri" w:eastAsia="Microsoft YaHei" w:hAnsi="Calibri"/><w:sz w:val="22"/></w:rPr></w:rPrDefault></w:docDefaults>'

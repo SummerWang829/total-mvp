@@ -420,7 +420,6 @@ async function interviewView(iid, tab) {
   return insightsTab(iid, staff, my);
 }
 
-const SPEAKER = { moderator: "主持人", ai_moderator: "AI 主持人", participant: "受访者" };
 const REC_ST = { recording: ["录制中", "live"], processing: ["合成中", "o"], ready: ["已就绪", "ok"], failed: ["失败", "bad"], deleted: ["已清除", ""] };
 async function transcriptTab(iid, it, staff, my) {
   const [segs, recs, cfg, caps] = await Promise.all([api(`/interviews/${iid}/transcript`), staff ? api(`/interviews/${iid}/recordings`) : [], loadConfig(),
@@ -434,12 +433,12 @@ async function transcriptTab(iid, it, staff, my) {
       ${caps.lines.length ? `<div class="row" style="margin-top:10px"><span class="sm mut">访谈时有 ${caps.lines.length} 句实时字幕。没有录像或想先看看时，可以直接用它生成转写（可能有错字）。</span><span class="sp"></span><button class="s" id="fromcaps">用实时字幕生成转写</button></div>` : ""}
       <p class="sm mut" style="margin:8px 0 0">${mock ? "当前是演示转写：内容是固定的示例对话，不是真的识别录音（接入语音识别服务后才是真实转写，见 README）。" : "转写会调用语音识别服务，录音越长耗时越久。"}</p>
       ${play ? `<video id="pv" controls controlsList="nodownload" playsinline style="width:100%;max-height:360px;background:#0E1A16;border-radius:12px;margin-top:10px"></video>` : ""}</div>` : ""}
-    <div class="card" style="padding:4px 22px">${segs.length ? segs.map((s) => `<div class="seg"><div class="t">${play ? `<a href="#" class="sk" data-seek="${s.start_ms}">${fmt(s.start_ms)}</a>` : fmt(s.start_ms)}</div><div class="s ${s.speaker}">${SPEAKER[s.speaker] || "受访者"}</div>
+    <div class="card" style="padding:4px 22px">${segs.length ? segs.map((s) => `<div class="seg"><div class="t">${play ? `<a href="#" class="sk" data-seek="${s.start_ms}">${fmt(s.start_ms)}</a>` : fmt(s.start_ms)}</div><div class="s ${speakerClass(s.speaker)}">${esc(speakerName(s.speaker))}</div>
       <div class="x"><div>${esc(s.text_orig)}</div>${s.text_zh ? `<div class="zh">${esc(s.text_zh)}</div>` : ""}${staff ? `<div class="sm segacts"><a href="#" data-edit="${s.id}">校对</a><a href="#" data-ins="${s.id}">写洞察</a></div>` : ""}</div></div>`).join("") : `<div class="empty"><b>还没有转写。</b><span>${staff ? "访谈结束、录像合成完成后，点上面的“转写录制”。" : "研究员转写后，双方说的话会逐句显示在这里。"}</span></div>`}</div>`;
   const segById = Object.fromEntries(segs.map((x) => [x.id, x]));
   app.querySelectorAll("[data-edit]").forEach((a) => a.onclick = (e) => {
     e.preventDefault(); const sg = segById[a.dataset.edit];
-    const m = modal(`<h2>校对转写 #${sg.idx}</h2><p class="sm mut">${SPEAKER[sg.speaker] || "受访者"} · ${fmt(sg.start_ms)}。改动会记入审计日志；如果某条洞察引用的原话被改没了，那条洞察会自动变成“需复核”，客户立刻看不到。</p>
+    const m = modal(`<h2>校对转写 #${sg.idx}</h2><p class="sm mut">${esc(speakerName(sg.speaker))} · ${fmt(sg.start_ms)}。改动会记入审计日志；如果某条洞察引用的原话被改没了，那条洞察会自动变成“需复核”，客户立刻看不到。</p>
       <form id="f"><label class="f"><span>原文</span><textarea name="text_orig" rows="3" required>${esc(sg.text_orig)}</textarea></label>
       <label class="f"><span>中文翻译</span><textarea name="text_zh" rows="3">${esc(sg.text_zh)}</textarea></label>
       <div class="row"><button class="p">保存</button><button type="button" id="c">取消</button></div></form>`);
@@ -482,17 +481,16 @@ async function transcriptTab(iid, it, staff, my) {
 }
 
 const MATERIAL = { ad_film: "广告片", concept_a: "概念 A", concept_b: "概念 B", ad_film_2: "备用广告片" };
-const WHO = { moderator: "主持人", participant: "受访者" };
 async function highlightsTab(iid, my) {  // quotes and follow-ups marked in the room, plus the live-caption record (may contain recognition errors)
   const [hs, caps] = await Promise.all([api(`/interviews/${iid}/highlights`), api(`/interviews/${iid}/captions?after=0`)]);
   if (stale(my) || !$("#tab")) return;
-  const row = (h) => `<div class="quote"><div>${h.speaker ? `${esc(WHO[h.speaker] || h.speaker)}：` : ""}“${esc(h.text)}”</div>
+  const row = (h) => `<div class="quote"><div>${h.speaker ? `${esc(speakerName(h.speaker))}：` : ""}“${esc(h.text)}”</div>
     <div class="sm mut">${fmt(h.at_ms)}${h.stimulus_key ? ` · 当时在看：${esc(MATERIAL[h.stimulus_key] || h.stimulus_key)}` : ""}${h.kind === "probe" ? ` · ${h.status === "done" ? "已追问" : "待追问"}` : ""}</div></div>`;
   const quotes = hs.filter((h) => h.kind === "quote"), probes = hs.filter((h) => h.kind === "probe");
   $("#tab").innerHTML = `<div class="card"><h3>引用（${quotes.length}）</h3>${quotes.length ? quotes.map(row).join("") : `<p class="mut">访谈中在字幕旁点“引用”，会出现在这里，原话由系统从字幕里原样复制。</p>`}</div>
     <div class="card"><h3>追问（${probes.length}）</h3>${probes.length ? probes.map(row).join("") : `<p class="mut">还没有追问记录。</p>`}</div>
     <div class="card"><h3>实时字幕记录（${caps.lines.length} 句）</h3><p class="sm mut">实时识别的结果，可能有错字；正式逐字稿以“转写”为准。</p>
-      ${caps.lines.length ? caps.lines.map((c) => `<div class="quote"><div>${esc(WHO[c.speaker] || c.speaker)}：${esc(c.text)}</div><div class="sm mut">${fmt(c.at_ms)}</div></div>`).join("") : `<p class="mut">这场访谈没有实时字幕。</p>`}</div>`;
+      ${caps.lines.length ? caps.lines.map((c) => `<div class="quote"><div>${esc(speakerName(c.speaker))}：${esc(c.text)}</div><div class="sm mut">${fmt(c.at_ms)}</div></div>`).join("") : `<p class="mut">这场访谈没有实时字幕。</p>`}</div>`;
 }
 
 async function insightsTab(iid, staff, my) {

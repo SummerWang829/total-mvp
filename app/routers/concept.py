@@ -299,11 +299,14 @@ def post_participant_netstat(token: str, body: NetStat, db: Session = Depends(ge
 
 @router.get("/interviews/{iid}/netstat")
 def get_netstat(iid: str, ctx: Ctx = Depends(current_ctx), db: Session = Depends(get_db)):
-    """The latest connection report of the moderator and of the participant (what the room header shows to the team)."""
+    """The latest connection report of the moderator and of each participant (what the room header shows to the team).
+
+    A depth interview reports ``participant``. A focus group reports ``p1`` … ``p10``, one line per seat that has checked in.
+    """
     itv = visible_interview(db, ctx, iid)
     now = time.time()
     out = {}
-    for role in ("moderator", "participant"):
+    for role in groups.NET_ROLES:
         rec = _NETSTAT.get((itv.id, role))
         if rec and now - rec["at"] < _NETSTAT_TTL_S:
             out[role] = {k: v for k, v in rec.items() if k != "at"}

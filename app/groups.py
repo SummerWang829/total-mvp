@@ -12,6 +12,7 @@ Design (kept deliberately simple to avoid two divergent code paths):
 The ``seat`` number (1..:data:`MAX_GROUP`) is stable for the life of the interview and doubles as the recording-track /
 transcript speaker key (``p1``, ``p2``, …) and the "参与者 ·NN" label shown in the room.
 """
+import re
 from dataclasses import dataclass
 
 from sqlalchemy import delete, select
@@ -24,6 +25,12 @@ MAX_GROUP = 10
 KIND_DEPTH = "depth"
 KIND_GROUP = "group"
 KINDS = (KIND_DEPTH, KIND_GROUP)
+_SEAT_KEY = re.compile(r"^p([1-9]|10)$")
+# Manual transcript upload. A depth interview still only stores "participant"; a group stores p1..p10. Checked again in the ingest.
+SPEAKER_PATTERN = r"^(moderator|ai_moderator|participant|p([1-9]|10))$"
+_SPEAKER_ZH = {"moderator": "主持人", "ai_moderator": "AI 主持人", "participant": "受访者", "observer": "观察员"}
+# Connection reports the room header may show. An observer's own line is stored but not listed here.
+NET_ROLES = ("moderator", "participant") + tuple(f"p{n}" for n in range(1, MAX_GROUP + 1))
 
 
 def is_group(itv: Interview) -> bool:
@@ -100,6 +107,41 @@ def speaker_key(itv: Interview, seat: object) -> str:
 def label(seat: InterviewParticipant) -> str:
     """The room label for a seat — a number only, never the real name (observers / other participants must not learn it)."""
     return f"参与者 ·{seat.seat:02d}"
+
+
+def is_seat_speaker(key: str) -> bool:
+    """True for the transcript keys ``p1`` … ``p10`` (a focus-group seat). ``p11`` and ``participant`` are not."""
+    return bool(_SEAT_KEY.fullmatch(key or ""))
+
+
+def speaker_label(key: str) -> str:
+    """Chinese words for a transcript, caption or export speaker key.
+
+    ``p1`` becomes 「参与者 ·01」. Known roles keep their own words (主持人 / 受访者 / AI 主持人).
+    An unknown key is returned as-is so a bad value stays visible.
+    """
+    if not key:
+        return ""
+    named = _SPEAKER_ZH.get(key)
+    if named:
+        return named
+    m = _SEAT_KEY.fullmatch(key)
+    if m:
+        return f"参与者 ·{int(m.group(1)):02d}"
+    return key
+
+
+def speaker_fits(itv: Interview, key: str) -> bool:
+    """Whether this speaker key belongs on this interview's transcript.
+
+    A depth interview keeps ``participant``. A focus group uses ``p1`` … ``p10`` and never the shared ``participant`` key.
+    ``moderator`` and ``ai_moderator`` fit both.
+    """
+    if key in ("moderator", "ai_moderator"):
+        return True
+    if is_group(itv):
+        return is_seat_speaker(key)
+    return key == "participant"
 
 
 def purge(db: Session, interview_id: str) -> None:
