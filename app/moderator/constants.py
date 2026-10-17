@@ -109,6 +109,16 @@ DEFAULT_RECENT_TURNS_VERBATIM = 12    # older turns are condensed for the model
 DIGEST_LINE_CHARS = 70                # one older participant answer, cut to this many characters in the condensed history
 CONTEXT_ASKED_QUESTIONS = 20          # the model is shown only the last 20 questions asked (the repeat guard in the engine checks all of them)
 DIGEST_MAX_CHARS = 1800               # the condensed history never grows past this (the newest lines win)
+FACT_CARD_CHARS = 90                  # one key fact the participant stated (cut to this length)
+FACT_CARDS_MAX = 60                   # the fact list never holds more; the oldest go first when a new one arrives
+FACTS_CONTEXT_CHARS = 2000            # facts shown to the model per turn (the newest win when over)
+NEW_FACTS_PER_TURN = 3                # at most this many facts are taken from one answer
+RECALL_TOP_K = 3                      # older lines brought back word for word when they match what is being discussed
+RECALL_LINE_CHARS = 160
+RECALL_MIN_SCORE = 1.5                # an older line needs about two rare character pairs in common with the query (a pair found in many lines counts for little)
+SUMMARY_EVERY_TURNS = 12              # a model-written summary is refreshed when this many lines have left the verbatim window
+SUMMARY_RETRY_AFTER_TURNS = 6         # after a failed summary call, wait this many lines before trying again
+SUMMARY_MAX_CHARS = 1200              # the model-written summary is cut to this (the model is asked for less)
 
 class ResponseCategory(str, Enum):
     """What kind of answer the participant just gave (task doc 4.2 "judge")."""

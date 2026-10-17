@@ -10,10 +10,10 @@ from .constants import MAX_PARSE_RETRIES, REJECTION_FIX_HINTS
 from .memory import ModeratorContext
 from .prompts import PromptSet
 from .providers import ChatError, ChatFatalError, ChatMessage, ModeratorChatProvider
-from .schemas import DialogueActionPlan, RespondentInputAnalysis, SpokenDraft, Violation
+from .schemas import DialogueActionPlan, MemoryUpdate, RespondentInputAnalysis, SpokenDraft, Violation
 
 log = logging.getLogger(__name__)
-Reply = TypeVar("Reply", RespondentInputAnalysis, SpokenDraft)  # works on Python 3.10+ (the doctor's minimum)
+Reply = TypeVar("Reply", RespondentInputAnalysis, SpokenDraft, MemoryUpdate)  # works on Python 3.10+ (the doctor's minimum)
 
 
 def _context_json(ctx: ModeratorContext) -> dict:
@@ -24,6 +24,7 @@ def _context_json(ctx: ModeratorContext) -> dict:
         "RECENT_TURNS": [{"speaker": t.speaker.value, "text": t.text} for t in ctx.recent_turns],
         "HYPOTHESES": ctx.hypotheses_internal, "FORBIDDEN_TOPICS": ctx.forbidden_topics, "PRODUCT_FACTS": ctx.product_facts,
         "BRAND_DISCLOSURE_ALLOWED": ctx.brand_disclosure_allowed, "ALREADY_ASKED": ctx.asked_questions,
+        "KEY_FACTS": ctx.key_facts, "RECALLED_EARLIER": ctx.recalled,
     }
 
 
@@ -80,6 +81,28 @@ class ModelCaller:
                 "REJECTED_DRAFTS": rejected_drafts or []}
         messages = [{"role": "system", "content": self.prompts.speak}, {"role": "user", "content": json.dumps(user, ensure_ascii=False)}]
         return self._ask(messages, SpokenDraft, "draft")
+
+    def summarize(self, language: str, previous: str, lines: list[tuple[str, str]], facts: list[str]) -> MemoryUpdate | None:
+        """Fold lines that have left the verbatim window into the running summary of the interview.
+
+        Args:
+            language: the interview language (the summary is written in it).
+            previous: the summary so far ("" at first).
+            lines: (speaker, text) of the lines to fold in, in order.
+            facts: the key facts already remembered (the summary need not repeat them).
+
+        Returns:
+            The new summary, or None when this prompt version has no summary prompt or the model gave nothing usable
+            (the caller keeps the old summary; the rule-based digest still covers the gap).
+
+        Raises:
+            ChatFatalError: the service refused (bad key, no balance, ...).
+        """
+        if not self.prompts.summarize:
+            return None
+        user = {"LANGUAGE": language, "PREVIOUS_SUMMARY": previous, "KEY_FACTS": facts, "NEW_LINES": [{"speaker": s, "text": t} for s, t in lines]}
+        messages = [{"role": "system", "content": self.prompts.summarize}, {"role": "user", "content": json.dumps(user, ensure_ascii=False)}]
+        return self._ask(messages, MemoryUpdate, "summary")
 
     def _ask(self, messages: list[ChatMessage], schema: type[Reply], what: str) -> Reply | None:
         """Call the model and validate; one more try on failure (MAX_PARSE_RETRIES); None after that (logged, not raised)."""

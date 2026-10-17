@@ -1,7 +1,7 @@
 """Structured model output (task doc 4.4). Every model reply is validated against these before anything else uses it."""
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from .constants import DEEP_DIVE_WEIGHTS, AlertLevel, LadderLevel, Operator, QualityRule, RedLine, ResponseCategory
+from .constants import DEEP_DIVE_WEIGHTS, NEW_FACTS_PER_TURN, SUMMARY_MAX_CHARS, AlertLevel, LadderLevel, Operator, QualityRule, RedLine, ResponseCategory
 from .fsm import PacingDecision
 
 NOTE_FIELD_MAX_CHARS = 400  # InternalNote fields are capped at this length
@@ -42,6 +42,7 @@ class RespondentInputAnalysis(BaseModel):
     question_answered: bool = False
     ready_to_start: bool = False                                  # intro: the participant agreed to begin
     asks_if_ai: bool = False                                      # "are you a real person?" (red line H3)
+    new_facts: list[str] = Field(default_factory=list, max_length=NEW_FACTS_PER_TURN * 2)  # facts the participant just stated, to remember all interview
 
 
 class InternalNote(BaseModel):
@@ -117,3 +118,11 @@ class ModeratorTurnPayload(BaseModel):
     alert: AlertLevel = AlertLevel.NONE
     alert_reason: str = ""
     latency_s: float = Field(default=0.0, ge=0)
+
+
+class MemoryUpdate(BaseModel):
+    """What the summarising call must return: the running summary of the interview so far."""
+
+    model_config = ConfigDict(frozen=True)
+
+    summary: str = Field(min_length=1, max_length=SUMMARY_MAX_CHARS * 2)

@@ -160,7 +160,7 @@ def test_a_participant_who_needs_something_else_still_gets_it_at_the_last_try(ca
 
 def test_prompt_v004_tells_the_model_how_to_move_on_and_what_a_fresh_angle_is():
     v4, v3 = load_prompts("v004"), load_prompts("v003")
-    assert load_prompts().version == "v005"
+    assert load_prompts().version == "v006"
     assert 'reason is "no_new_info"' in v4.speak and "这一块我们先聊到这里" in v4.speak and "never mention that their answers were short" in v4.speak
     assert "different angle" in v4.operators[Operator.FRESH_ANGLE] and Operator.FRESH_ANGLE not in v3.operators
     assert json.dumps(v4.speak) != json.dumps(v3.speak)

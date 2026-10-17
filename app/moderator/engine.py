@@ -9,7 +9,7 @@ import logging
 import time
 
 from .clock import Clock, SystemClock
-from .constants import (ALERT_SERVICE_UNAVAILABLE, DRY_ANSWER_MAX_CHARS, DRY_ANSWER_MAX_WORDS, MAX_REGENERATIONS, RED_ALERT_AFTER_FAILED_TURNS, AlertLevel, ControlMode, EndReason, PacingAction, Phase,
+from .constants import (ALERT_SERVICE_UNAVAILABLE, DRY_ANSWER_MAX_CHARS, DRY_ANSWER_MAX_WORDS, MAX_REGENERATIONS, NEW_FACTS_PER_TURN, RED_ALERT_AFTER_FAILED_TURNS, SUMMARY_RETRY_AFTER_TURNS, AlertLevel, ControlMode, EndReason, PacingAction, Phase,
                         QualityRule, ResponseCategory, Speaker, TransitionReason)
 from .detectors import detect_asks_if_ai, detect_crisis, detect_mentions_ai, detect_ready, detect_stop
 from .fsm import FOLLOWUP_PHASES, InterviewStateMachine, PacingDecision, TurnUpdate
@@ -63,6 +63,7 @@ class ModeratorEngine:
         self.turn_log: list[ModeratorTurnPayload] = []
         self._last_was_followup = False
         self._failed_turns_in_row = 0
+        self._summary_retry_at = 0
         self._intro = self.texts.intro.format(topic=guide.participant_topic or self.texts.default_topic)
         if found := check_utterance(self._intro, self._gate(is_first_turn=True)):
             raise ValueError(f"the fixed intro breaks a red line: {found[0].red_line.value} {found[0].detail}")
@@ -161,7 +162,9 @@ class ModeratorEngine:
             return self._end_with(EndReason.CRISIS, None, asks_ai)
         if detect_stop(text):
             return self._end_with(EndReason.PARTICIPANT_STOPPED, None, asks_ai)
+        self._refresh_summary()
         analysis = self._analyze(text)
+        self.memory.add_facts(analysis.new_facts[:NEW_FACTS_PER_TURN], self._now())
         asks_ai = asks_ai or (analysis.asks_if_ai and detect_mentions_ai(text))  # the model's flag only counts when these words are about AI
         if analysis.category is ResponseCategory.CRISIS:
             return self._end_with(EndReason.CRISIS, analysis, asks_ai)
@@ -183,7 +186,7 @@ class ModeratorEngine:
     def _analyze(self, text: str) -> RespondentInputAnalysis:
         """The model's reading of the answer, or a neutral reading if the model failed (logged in model_calls)."""
         snapshot = self.fsm.snapshot()
-        ctx = self.memory.build_context(self.guide, snapshot, self._peek_decision(), consume_whispers=False)  # whispers are for the speaking call
+        ctx = self.memory.build_context(self.guide, snapshot, self._peek_decision(), consume_whispers=False, recall_query=text)  # whispers are for the speaking call
         uncovered = {i.id: i.text for i in self.fsm.missed_items()}
         analysis = self.calls.analyze(ctx, uncovered, text)
         return analysis or RespondentInputAnalysis(saturation=snapshot.saturation)
@@ -290,8 +293,24 @@ class ModeratorEngine:
         return payload
 
     def _context(self, decision: PacingDecision) -> ModeratorContext:
-        """This turn's context for the model (consumes queued whispers)."""
-        return self.memory.build_context(self.guide, self.fsm.snapshot(), decision)
+        """This turn's context for the model (consumes queued whispers); older lines about what is being discussed come back word for word."""
+        latest = next((t.text for t in reversed(self.memory.turns) if t.speaker is Speaker.PARTICIPANT), "")
+        about = " ".join(x for x in (latest, decision.question or "", decision.missed_item.text if decision.missed_item else "") if x)
+        return self.memory.build_context(self.guide, self.fsm.snapshot(), decision, recall_query=about)
+
+    def _refresh_summary(self) -> None:
+        """Every SUMMARY_EVERY_TURNS lines that leave the verbatim window, fold them into the running summary (one extra model call).
+
+        A failed call changes nothing: the rule-based digest in memory.history_digest still covers those lines, and the next turn tries again."""
+        if not self.memory.summary_due() or len(self.memory.turns) < self._summary_retry_at:
+            return
+        old = self.memory.turns_to_summarize()
+        update = self.calls.summarize(self.guide.language, self.memory.summary, [(t.speaker.value, t.text) for t in old],
+                                      [f for _, f in self.memory.facts])
+        if update:
+            self.memory.set_summary(update.summary, old[-1].index + 1)
+        else:
+            self._summary_retry_at = len(self.memory.turns) + SUMMARY_RETRY_AFTER_TURNS  # do not spend two failing calls on every turn
 
     def _peek_decision(self) -> PacingDecision:
         """A read-only "where are we" decision, used for the analysis call before the state machine moves."""
