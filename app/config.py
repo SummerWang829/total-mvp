@@ -41,6 +41,10 @@ class Settings:
     join_late_min: int = int(os.getenv("JOIN_LATE_MIN", "360"))
 
     rate_limit: bool = os.getenv("RATE_LIMIT", "") == "1"  # failed-login and link-probing limits (app/ratelimit.py); on in the deployed image
+    cos_bucket: str = os.getenv("COS_BUCKET", "")      # off-site copy of the database backups (Tencent COS); empty = off
+    cos_region: str = os.getenv("COS_REGION", "ap-singapore")
+    cos_secret_id: str = os.getenv("COS_SECRET_ID", "")  # a sub-account that may only write to that one bucket
+    cos_secret_key: str = os.getenv("COS_SECRET_KEY", "")
     backup_dir: str = os.getenv("BACKUP_DIR", "/data/backups")  # python -m app.backup writes here (a folder next to the database in the deployed image)
     backup_keep_days: int = int(os.getenv("BACKUP_KEEP_DAYS", "14"))  # copies expire so erased personal data does not live on in them
     retention_days: int = int(os.getenv("RETENTION_DAYS", "180"))  # counted from PROJECT close (decision 2026-10-10)

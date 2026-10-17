@@ -91,6 +91,25 @@ def check_backup() -> None:
     line("ok" if hours < 36 else "warn", f"备份：最近一次 {hours:.0f} 小时前（{newest.name}）" + ("" if hours < 36 else "，超过 36 小时，检查定时任务"))
 
 
+def check_offsite() -> None:
+    """Whether the off-site copy is set up and when it last worked."""
+    from datetime import datetime, timezone
+    from pathlib import Path
+
+    from .backup import OFFSITE_MARKER, offsite_configured
+
+    if not offsite_configured():
+        if os.path.exists("/.dockerenv"):
+            line("warn", "异地备份：没配置（COS_BUCKET / COS_SECRET_ID / COS_SECRET_KEY）；备份只在本机，磁盘坏了会一起丢")
+        return
+    marker = Path(settings.backup_dir) / OFFSITE_MARKER
+    if not marker.exists():
+        line("warn", "异地备份：已配置，但还没成功上传过")
+        return
+    hours = (datetime.now(timezone.utc) - datetime.fromisoformat(marker.read_text(encoding="utf-8").strip())).total_seconds() / 3600
+    line("ok" if hours < 36 else "warn", f"异地备份：最近一次成功是 {hours:.0f} 小时前" + ("" if hours < 36 else "，超过 36 小时，检查密钥和网络"))
+
+
 def main() -> int:
     print("环境检查")
     line("ok" if sys.version_info >= (3, 10) else "bad", f"Python {sys.version.split()[0]}" + ("" if sys.version_info >= (3, 10) else "（需要 3.10 以上）"))
@@ -132,6 +151,7 @@ def main() -> int:
         line("warn", "实时字幕：没配置（TENCENT_ASR_APPID / TENCENT_ASR_SECRET_ID / TENCENT_ASR_SECRET_KEY），字幕栏会提示“未开启”")
     line("ok" if settings.rate_limit else "warn", "限流：已开启（登录失败、乱猜链接、注册洪水）" if settings.rate_limit else "限流：没开（RATE_LIMIT=1 才开启）；线上必须开")
     check_backup()
+    check_offsite()
     if settings.allow_signup and os.path.exists("/.dockerenv"):
         line("warn", "ALLOW_SIGNUP 还是 true：线上建好第一个管理员后要改成 false")
     if "example.com" in settings.dpo_email:

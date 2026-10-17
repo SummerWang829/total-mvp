@@ -380,7 +380,7 @@ def room_token(iid: str, request: Request, body: TokenReq | None = None, ctx: Ct
     token = build_room_token(identity=f"{'obs' if role == 'observer' else 'staff'}:{ctx.user.id}", name=ctx.user.name, room=itv.room_name, role=role)
     audit(db, ctx.org_id, ctx.actor, "room.token", itv.id, ip=ctx.ip, role=role)
     db.commit()
-    return {"token": token, "url": url_for_client(request.headers.get("host")), "room": itv.room_name, "role": role, "dev_mode": not settings.livekit_url, "moderation": itv.moderation}
+    return {"token": token, "url": url_for_client(request.headers.get("host")), "room": itv.room_name, "role": role, "dev_mode": not settings.livekit_url, "moderation": itv.moderation, "kind": itv.kind}
 
 
 @router.post("/interviews/{iid}/start")

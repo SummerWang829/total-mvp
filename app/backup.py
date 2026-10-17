@@ -18,6 +18,7 @@ from pathlib import Path
 
 from sqlalchemy.engine import make_url
 
+from . import cos_upload
 from .config import settings
 
 log = logging.getLogger(__name__)
@@ -112,10 +113,43 @@ def verify(backup: Path) -> dict[str, int]:
             raise BackupError(f"备份文件无法读取：{type(e).__name__}") from e
 
 
+OFFSITE_MARKER = "offsite-last-ok.txt"
+
+
+def offsite_configured() -> bool:
+    """Whether the off-site copy is switched on (bucket and both key parts are set)."""
+    return bool(settings.cos_bucket and settings.cos_secret_id and settings.cos_secret_key)
+
+
+def upload_offsite(path: Path, key: str | None = None) -> str:
+    """Send one file to the COS bucket and note the time of success next to the backups. Returns the object key.
+
+    Raises:
+        BackupError: the off-site copy is not configured, or the upload failed (the reason is in the message).
+    """
+    if not offsite_configured():
+        raise BackupError("异地备份没有配置（COS_BUCKET / COS_SECRET_ID / COS_SECRET_KEY）")
+    key = key or f"db/{path.name}"
+    try:
+        cos_upload.put_file(path, key, settings.cos_bucket, settings.cos_region, settings.cos_secret_id, settings.cos_secret_key)
+    except cos_upload.CosError as e:
+        raise BackupError(str(e)) from e
+    (path.parent / OFFSITE_MARKER).write_text(datetime.now(timezone.utc).isoformat(), encoding="utf-8")
+    log.info("off-site copy uploaded: %s", key)
+    return key
+
+
 def main(argv: list[str]) -> int:
-    """python -m app.backup [--verify FILE]: make a backup (and prune), or check an existing one. Exit code 0 on success."""
+    """python -m app.backup [--verify FILE | --offsite-test]: make a backup (prune it, send it off-site if set up), check one, or test the off-site link.
+
+    Exit code 0 on success, 1 on a failure, 3 when only the off-site copy failed (the local one is fine)."""
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     try:
+        if argv == ["--offsite-test"]:
+            probe = Path(tempfile.mkdtemp()) / "hello.txt"
+            probe.write_text("星桐异地备份连通性测试 / off-site backup connectivity test", encoding="utf-8")
+            print(f"异地备份连通：已写入 {upload_offsite(probe, 'test/hello.txt')}")
+            return 0
         if len(argv) == 2 and argv[0] == "--verify":
             counts = verify(Path(argv[1]))
             print("可以恢复：" + "，".join(f"{t} {n}" for t, n in sorted(counts.items()) if n))
@@ -125,6 +159,13 @@ def main(argv: list[str]) -> int:
         counts = verify(path)  # a backup nobody has opened is not yet a backup
         removed = prune(out_dir, settings.backup_keep_days)
         print(f"备份完成：{path.name}（{path.stat().st_size // 1024} KB，{len(counts)} 张表）；已清理过期备份 {len(removed)} 个")
+        if offsite_configured():
+            try:
+                print(f"异地备份完成：{upload_offsite(path)}")
+            except BackupError as e:  # the local copy is safe; say loudly that the off-site one is not
+                log.error("off-site backup failed: %s", e)
+                print(f"异地备份失败：{e}")
+                return 3
         return 0
     except BackupError as e:
         log.error("backup failed: %s", e)
