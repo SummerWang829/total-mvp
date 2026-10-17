@@ -125,9 +125,9 @@ class MarkBody(BaseModel):
 @router.post("/public/join/{token}/stimulus/{sid}/mark", status_code=201)
 def add_mark(token: str, sid: str, body: MarkBody, db: Session = Depends(get_db)):
     """The participant taps the material to mark a spot they like or dislike."""
-    itv = _entered_participant(db, token)
+    j = _entered_participant(db, token)
     try:
-        m = marks.add_mark(db, itv.org_id, itv, sid, itv.participant_id, body.kind, body.x, body.y)
+        m = marks.add_mark(db, j.itv.org_id, j.itv, sid, j.participant.id, body.kind, body.x, body.y)
     except ValueError as e:
         raise HTTPException(422, str(e))
     db.commit()
@@ -137,8 +137,8 @@ def add_mark(token: str, sid: str, body: MarkBody, db: Session = Depends(get_db)
 @router.delete("/public/join/{token}/stimulus/{sid}/mark/{mid}", status_code=204)
 def remove_mark(token: str, sid: str, mid: str, db: Session = Depends(get_db)):
     """The participant taps one of their own pins to take it off."""
-    itv = _entered_participant(db, token)
-    if not marks.remove_mark(db, itv.id, itv.participant_id, mid):
+    j = _entered_participant(db, token)
+    if not marks.remove_mark(db, j.itv.id, j.participant.id, mid):
         raise HTTPException(404, "没有这个标记")
     db.commit()
 
@@ -146,8 +146,8 @@ def remove_mark(token: str, sid: str, mid: str, db: Session = Depends(get_db)):
 @router.get("/public/join/{token}/stimulus/{sid}/marks")
 def my_marks(token: str, sid: str, db: Session = Depends(get_db)):
     """The participant's own marks on one material (to redraw their pins after a refresh)."""
-    itv = _entered_participant(db, token)
-    return {"marks": marks.participant_marks(db, itv.id, sid, itv.participant_id)}
+    j = _entered_participant(db, token)
+    return {"marks": marks.participant_marks(db, j.itv.id, sid, j.participant.id)}
 
 
 @router.get("/interviews/{iid}/stimulus/{sid}/marks")

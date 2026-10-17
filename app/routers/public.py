@@ -62,7 +62,7 @@ def join_info(token: str, db: Session = Depends(get_db)):
     return {"org": org.name, "scheduled_at": itv.scheduled_at.isoformat() if itv.scheduled_at else None,
             "status": itv.status, "can_enter_now": _window_ok(itv), "consented": consent is not None,
             "device_ok": seat.device_ok_at is not None, "consent": consent_for(itv.language, org.name, ai=itv.moderation == ModerationMode.AI.value),
-            "pretask": pretask.participant_view(db, itv.id, itv.participant_id), "timeslots": scheduling.public_view(db, itv)}
+            "pretask": pretask.participant_view(db, itv.id, j.participant.id), "timeslots": scheduling.public_view(db, itv)}
 
 
 @router.post("/join/{token}/opened", status_code=204)
@@ -155,8 +155,8 @@ class PreTaskBody(BaseModel):
 @router.post("/join/{token}/pretask", status_code=201)
 def submit_pretask(token: str, body: PreTaskBody, request: Request, db: Session = Depends(get_db)):
     """The participant's answers to the pre-interview questions (after consent, before the waiting room)."""
-    itv = _by_invite(db, token)
-    part: Participant = itv.participant
+    j = resolve_join(db, token)
+    itv, part = j.itv, j.participant
     if not db.scalar(select(Consent).where(Consent.interview_id == itv.id, Consent.participant_id == part.id)):
         raise HTTPException(403, "Please read and agree first / 请先阅读并同意")
     pt = pretask.get(db, itv.id)
