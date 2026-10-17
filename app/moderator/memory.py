@@ -54,6 +54,7 @@ class ModeratorContext(BaseModel):
     asked_questions: list[str]          # everything the moderator already asked (no repeats)
     key_facts: list[str] = Field(default_factory=list)   # what the participant stated earlier that must not be contradicted or asked again
     recalled: list[str] = Field(default_factory=list)    # older lines word for word that match what is being discussed now
+    profile: list[str] = Field(default_factory=list)     # this participant's screening answers ("question → answer"), fixed for the whole interview
 
 
 class ConversationMemory:
@@ -61,12 +62,14 @@ class ConversationMemory:
 
     Args:
         recent_turns_verbatim: how many latest turns the model sees word for word.
+        profile: the participant's screening answers, shown to the model every turn (never summarised away).
     """
 
-    def __init__(self, recent_turns_verbatim: int = DEFAULT_RECENT_TURNS_VERBATIM) -> None:
+    def __init__(self, recent_turns_verbatim: int = DEFAULT_RECENT_TURNS_VERBATIM, profile: list[str] | None = None) -> None:
         if recent_turns_verbatim < 1:
             raise ValueError("the model must see at least the latest turn")
         self.recent_turns_verbatim = recent_turns_verbatim
+        self.profile = list(profile or [])  # background about this participant that was known before the interview began
         self.turns: list[DialogueTurn] = []
         self.summary = ""
         self.summarized_upto = 0  # turns[:summarized_upto] are covered by `summary`
@@ -199,5 +202,5 @@ class ConversationMemory:
             whispers=[w.text for w in self.take_whispers()] if consume_whispers else [], summary=self.history_digest(window_start), recent_turns=recent,
             hypotheses_internal=list(guide.hypotheses), forbidden_topics=list(guide.forbidden_topics),
             product_facts=list(guide.product_facts), brand_disclosure_allowed=guide.brand_disclosure_allowed,
-            asked_questions=self.asked_questions()[-CONTEXT_ASKED_QUESTIONS:], key_facts=self.facts_digest(),
+            asked_questions=self.asked_questions()[-CONTEXT_ASKED_QUESTIONS:], key_facts=self.facts_digest(), profile=self.profile,
             recalled=self.recalled_lines(recall_query, window_start) if recall_query else [])

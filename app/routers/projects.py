@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .. import screener
 from ..audit import audit
 from ..config import settings
 from ..db import get_db
@@ -33,7 +34,12 @@ class NewParticipant(BaseModel):
     email: str = ""
     country: str = Field(default="", max_length=2)
     language: str = Field(default="", max_length=10)
+    screener_text: str = Field(default="", max_length=20000)  # optional: the screening answers, one "question：answer" per line
     _l = field_validator("language")(_lang)
+
+
+class ScreenerBody(BaseModel):
+    text: str = Field(max_length=20000)
 
 
 def project_out(p: Project) -> dict:
@@ -43,9 +49,9 @@ def project_out(p: Project) -> dict:
             "retention_days": settings.retention_days}
 
 
-def participant_out(p: Participant) -> dict:
+def participant_out(p: Participant, screener_count: int = 0) -> dict:
     return {"id": p.id, "name": p.name, "email": p.email, "country": p.country, "language": p.language,
-            "screening": p.screening, "anonymized": p.anonymized_at is not None}
+            "screening": p.screening, "anonymized": p.anonymized_at is not None, "screener": screener_count}
 
 
 def get_project(db: Session, ctx: Ctx, pid: str) -> Project:
@@ -112,21 +118,59 @@ def reopen_project(pid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Sess
 @router.post("/projects/{pid}/participants", status_code=201)
 def add_participant(pid: str, body: NewParticipant, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
     proj = get_project(db, ctx, pid)
+    try:
+        answers = screener.parse_text(body.screener_text)
+    except screener.ScreenerError as e:
+        raise HTTPException(422, str(e))
     country = body.country.upper()
     screening = "eligible" if (not country or settings.region_open(country)) else "blocked_region"  # empty: declared at consent
     p = Participant(org_id=ctx.org_id, project_id=proj.id, name=body.name, email=body.email, country=country,
                     language=body.language, screening=screening)
     db.add(p)
     db.flush()  # assigns the id, so the audit row points at this participant
-    audit(db, ctx.org_id, ctx.actor, "participant.create", p.id, screening=screening)
+    screener.save(db, ctx.org_id, p.id, answers)
+    audit(db, ctx.org_id, ctx.actor, "participant.create", p.id, screening=screening, screener=len(answers))
     db.commit()
-    return participant_out(p)
+    return participant_out(p, len(answers))
 
 
 @router.get("/projects/{pid}/participants")
 def list_participants(pid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
     proj = get_project(db, ctx, pid)
-    return [participant_out(p) for p in db.scalars(select(Participant).where(Participant.project_id == proj.id).order_by(Participant.created_at))]
+    people = db.scalars(select(Participant).where(Participant.project_id == proj.id).order_by(Participant.created_at)).all()
+    counted = screener.counts(db, [p.id for p in people])
+    return [participant_out(p, counted.get(p.id, 0)) for p in people]
+
+
+def _own_participant(db: Session, ctx: Ctx, part_id: str) -> Participant:
+    p = db.get(Participant, part_id)
+    if not p or p.org_id != ctx.org_id:
+        raise HTTPException(404, "受访者不存在")
+    return p
+
+
+@router.get("/participants/{part_id}/screener")
+def get_screener(part_id: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    """The participant's screening answers (research team only; clients and observers never see them)."""
+    p = _own_participant(db, ctx, part_id)
+    items = screener.items_for(db, p.id)
+    return {"items": items, "text": screener.as_text(items)}
+
+
+@router.put("/participants/{part_id}/screener")
+def put_screener(part_id: str, body: ScreenerBody, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    """Replace the participant's screening answers with the pasted lines ("question：answer", one per line)."""
+    p = _own_participant(db, ctx, part_id)
+    if p.anonymized_at:
+        raise HTTPException(409, "这位受访者的数据已被清除")
+    try:
+        answers = screener.parse_text(body.text)
+    except screener.ScreenerError as e:
+        raise HTTPException(422, str(e))
+    n = screener.save(db, ctx.org_id, p.id, answers)
+    audit(db, ctx.org_id, ctx.actor, "participant.screener", p.id, count=n)
+    db.commit()
+    return {"count": n}
 
 
 @router.delete("/participants/{part_id}/data")

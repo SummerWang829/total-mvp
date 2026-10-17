@@ -16,6 +16,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from .audit import audit
+from . import screener
 from .models import AiSession, ChatMessage, Interview, RoomState, Stimulus, TranscriptSegment, utcnow
 from .moderator.compliance import ai_moderation_blocker
 from .moderator.constants import AlertLevel, ModerationMode, Phase
@@ -163,7 +164,7 @@ def start(db: Session, itv: Interview, guide: dict | None, actor: str) -> AiSess
         the_guide = InterviewGuide.model_validate(guide) if guide else demo_guide(itv.language)
     except ValueError as e:
         raise AiRoomError(422, f"提纲不合格：{str(e)[:200]}") from e
-    engine = ModeratorEngine(the_guide, _chat_model())
+    engine = ModeratorEngine(the_guide, _chat_model(), profile=screener.profile_lines(db, itv.participant_id))
     sess = AiSession(interview_id=itv.id, org_id=itv.org_id, guide_json=the_guide.model_dump_json())
     db.add(sess)
     with _lock(itv.id):

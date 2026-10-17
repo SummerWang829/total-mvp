@@ -46,18 +46,20 @@ class ModeratorEngine:
         config: pacing limits.
         clock: time source.
         seed: fixed model seed for repeatable eval runs.
+        profile: the participant's screening answers ("question → answer"), given to the model as background every turn.
 
     Raises:
         ValueError: unsupported language, or the fixed intro breaks a red line (e.g. participant_topic too long).
     """
 
     def __init__(self, guide: InterviewGuide, chat: ModeratorChatProvider, prompts: PromptSet | None = None,
-                 config: PacingConfig | None = None, clock: Clock | None = None, seed: int | None = None) -> None:
+                 config: PacingConfig | None = None, clock: Clock | None = None, seed: int | None = None,
+                 profile: list[str] | None = None) -> None:
         self.guide = guide
         self.texts: LanguageTemplates = templates_for(guide.language)
         self.clock = clock or SystemClock()
         self.fsm = InterviewStateMachine(guide, config, self.clock)
-        self.memory = ConversationMemory()
+        self.memory = ConversationMemory(profile=profile)
         self.calls = ModelCaller(chat, prompts or load_prompts(), seed)
         self.control = ControlMode.AI
         self.turn_log: list[ModeratorTurnPayload] = []

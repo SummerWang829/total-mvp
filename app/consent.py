@@ -9,7 +9,7 @@ import hashlib
 from .config import settings
 from .moderator.compliance import moderator_runs_locally
 
-VERSION = "2026-10-draft-4"  # draft-4: AI-moderator disclosure (AI interviews only)
+VERSION = "2026-10-draft-5"  # draft-5: the AI also reads the screening answers; draft-4: AI-moderator disclosure (AI interviews only)
 
 TEXTS = {
     "en": (
@@ -81,6 +81,13 @@ AI_CLOUD = {
     "ms": "Untuk menjalankan AI, jawapan anda dihantar kepada {vendor}, pembekal perkhidmatan AI, yang memprosesnya bagi pihak kami untuk temu bual ini sahaja.",
     "ta": "AI-ஐ இயக்க, உங்கள் பதில்கள் AI சேவை வழங்குநரான {vendor}-க்கு அனுப்பப்படும்; அது எங்கள் சார்பில் இந்த நேர்காணலுக்காக மட்டுமே அவற்றைச் செயலாக்கும்.",
 }
+# The screening questionnaire answers are background for the AI (it must not ask again what was already answered).
+AI_PROFILE = {
+    "en": "The AI can also see the screening questions you answered earlier, so that it does not ask the same things again.",
+    "zh": "AI 也能看到您之前填写的甄别问卷答案，以免重复询问。",
+    "ms": "AI juga boleh melihat soal selidik saringan yang anda jawab sebelum ini supaya tidak menanyakan perkara yang sama lagi.",
+    "ta": "நீங்கள் முன்பு பதிலளித்த தேர்வு வினாக்களையும் AI பார்க்க முடியும்; அதனால் ஒரே கேள்விகளை மீண்டும் கேட்காது.",
+}
 AI_LABELS = {
     "en": "I understand the interviewer is an AI, not a person",
     "zh": "我知道本次访谈由 AI 主持，不是真人",
@@ -93,7 +100,7 @@ def _ai_disclosure(lang: str) -> str:
     """The AI paragraph for one language: who moderates, and where the AI runs (a cloud provider is named)."""
     where = AI_LOCAL[lang] if moderator_runs_locally() else AI_CLOUD[lang].format(vendor=settings.moderator_vendor.strip())
     sep = "" if lang == "zh" else " "  # Chinese sentences are not separated by spaces
-    return AI_TEXTS[lang] + sep + where + sep
+    return AI_TEXTS[lang] + sep + AI_PROFILE[lang] + sep + where + sep
 
 
 def consent_for(lang: str, org_name: str, ai: bool = False) -> dict:

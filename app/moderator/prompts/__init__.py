@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from ..constants import OPERATORS_ADDED_IN, Operator
 
 PROMPT_DIR = Path(__file__).parent
-CURRENT_PROMPT_VERSION = "v006"  # v006 (2026-10-17): long-interview memory (key facts from the analysis call, rolling summary prompt, recalled older lines); v005 (2026-10-13): varied move-on bridges, fresh_angle without a label; v004 (2026-10-13): fresh_angle last try + move-on wording for participants with nothing more to say; v003 (2026-10-12): questions only (no commands), no "是不是", reword instead of repeating, explore instruction; v001/v002 stay on disk for comparison
+CURRENT_PROMPT_VERSION = "v007"  # v007 (2026-10-17): the participant's screening answers as background (PARTICIPANT_PROFILE); v006 (2026-10-17): long-interview memory (key facts from the analysis call, rolling summary prompt, recalled older lines); v005 (2026-10-13): varied move-on bridges, fresh_angle without a label; v004 (2026-10-13): fresh_angle last try + move-on wording for participants with nothing more to say; v003 (2026-10-12): questions only (no commands), no "是不是", reword instead of repeating, explore instruction; v001/v002 stay on disk for comparison
 
 
 class PromptSet(BaseModel):

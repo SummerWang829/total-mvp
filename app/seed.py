@@ -30,6 +30,16 @@ TRANSCRIPT = [  # speaker, seconds, original, Chinese
 ]
 
 
+# a 20-question screening questionnaire, as an external survey platform would hand it over (the AI moderator reads it as background)
+DEMO_SCREENER = "\n".join([
+    "性别：女", "年龄：29", "居住地：新加坡", "职业：市场专员", "月收入区间：5000 到 8000 新币", "肤质：混合偏油，T 区爱出油",
+    "是否有敏感肌困扰：偶尔，换季会泛红", "护肤频率：每天早晚各一次", "每月护肤预算：100 到 150 新币", "最常用的品类：精华和面霜",
+    "最近一次购买的品牌：兰蔻小黑瓶", "主要购买渠道：屈臣氏和丝芙兰", "购买前会做什么：先看小红书和 Shopee 评价",
+    "是否用过含玻尿酸的产品：用过，感觉还不错", "对香精的态度：尽量避开，闻着太重会不舒服", "最看重的功效：保湿和提亮",
+    "是否看广告影响购买：看明星代言但更相信真人评价", "最近一年是否试过新品牌：试过两个", "社交媒体使用：小红书每天，Instagram 每周几次",
+    "是否愿意为功效多付钱：愿意，前提是成分写清楚"])
+
+
 def iso(dt: datetime) -> str:
     return dt.astimezone(timezone.utc).replace(tzinfo=None).isoformat()
 
@@ -81,7 +91,7 @@ def concept_session(c: httpx.Client, rs: dict, pid: str, ids: dict) -> str:
     sess = next((i for i in its if i["title"] == CONCEPT_TITLE and i["status"] != "ended" and not i["purged"]), None)
     if sess:
         return c.post(f"/interviews/{sess['id']}/invite/rotate", headers=rs).json()["invite_path"]
-    part = c.post(f"/projects/{pid}/participants", headers=rs, json={"name": "概念测试受访者", "country": "SG", "language": "zh"}).json()
+    part = c.post(f"/projects/{pid}/participants", headers=rs, json={"name": "概念测试受访者", "country": "SG", "language": "zh", "screener_text": DEMO_SCREENER}).json()
     sess = c.post(f"/projects/{pid}/interviews", headers=rs, json={"participant_id": part["id"], "title": CONCEPT_TITLE, "language": "zh",
                                                                     "moderator_id": ids["moderator"], "observer_ids": [ids["observer"]]}).json()
     c.post(f"/interviews/{sess['id']}/concept/template", headers=rs, json={"template": "loreal_skincare_concept"})

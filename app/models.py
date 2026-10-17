@@ -480,3 +480,21 @@ class InsightCode(Base):
     code_id: Mapped[str] = mapped_column(ForeignKey("codes.id"), primary_key=True)
     org_id: Mapped[str] = mapped_column(String(32), index=True)
     suggested: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class ScreenerAnswer(Base):
+    """One screening-questionnaire question and the participant's answer (up to ~20 per participant).
+
+    They travel with the participant into every interview: the team sees them, and the AI moderator reads them as background so it
+    does not ask again what was already answered and can make its follow-ups personal. Personal data: deleted when the participant
+    is anonymised (``app/retention.py``). Entered by hand or pasted today; an external survey platform will push the same shape.
+    """
+    __tablename__ = "screener_answers"
+    __table_args__ = (UniqueConstraint("participant_id", "position"),)
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
+    org_id: Mapped[str] = mapped_column(String(32), index=True)
+    participant_id: Mapped[str] = mapped_column(ForeignKey("participants.id"), index=True)
+    position: Mapped[int] = mapped_column(Integer)  # the order of the questionnaire
+    question: Mapped[str] = mapped_column(String(300))
+    answer: Mapped[str] = mapped_column(String(1000))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

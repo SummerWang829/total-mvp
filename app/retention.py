@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from .audit import audit
 from .config import settings
 from .media import purge_cache
-from . import ai_room
+from . import ai_room, screener
 from .models import (BackroomMessage, CaptionLine, Clip, Evidence, Highlight, Insight, Interview, InterviewParticipant, Participant, PreTask, PreTaskAnswer, Project,
                      Recording, RecordingTrack, ShareLink, StimulusMark, TimeSlot, TranscriptSegment, utcnow)
 
@@ -55,6 +55,7 @@ def purge_interview(db: Session, itv: Interview, reason: str, actor: str = "syst
 
 def anonymize_participant(db: Session, p: Participant) -> None:
     p.name, p.email, p.anonymized_at = "已匿名", "", utcnow()
+    screener.erase(db, p.id)  # the questionnaire answers are personal data too
 
 
 def purge_date(project: Project):

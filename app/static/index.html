@@ -184,10 +184,10 @@ async function homeView(p) {
 async function peopleView(p) {
   const [parts, its] = await Promise.all([api(`/projects/${p.id}/participants`), api(`/projects/${p.id}/interviews`)]);
   const nIt = (id) => its.filter((i) => i.participant.id === id).length;
-  shell(`${head("受访者招募", `问卷平台接入后，通过甄别的人会自动出现在这里，并带上甄别题答案；现在可以手动添加。目前只开放新加坡。`, `<button class="p" id="np">添加受访者</button>`)}
+  shell(`${head("受访者招募", `问卷平台接入后，通过甄别的人会自动出现在这里，并带上甄别题答案；现在可以手动添加或粘贴甄别答案（AI 主持人会读它，避免重复提问）。目前只开放新加坡。`, `<button class="p" id="np">添加受访者</button>`)}
     ${parts.length ? `<div class="card scroll" style="padding:6px 10px"><table class="tbl rc"><thead><tr><th>编号</th><th>姓名</th><th>国家</th><th>语言</th><th>甄别题答案</th><th>状态</th><th>场次</th><th></th></tr></thead><tbody>
       ${parts.map((x, n) => `<tr><td class="code">${pcode(n)}</td><td><b>${esc(x.name)}</b>${x.email ? `<div class="sm mut">${esc(x.email)}</div>` : ""}</td><td>${esc(x.country || "—")}</td><td>${esc(LANGS[x.language] || x.language || "—")}</td>
-        <td class="mut" title="问卷平台接入后显示">—</td>
+        <td>${x.anonymized ? `<span class="mut">—</span>` : `<button class="s" data-scr="${x.id}">${x.screener ? `${x.screener} 题 · 查看` : "添加答案"}</button>`}</td>
         <td>${x.screening === "blocked_region" ? `<span class="tag bad">地区暂未开放</span>` : x.anonymized ? `<span class="tag">已匿名</span>` : `<span class="tag ok">可邀请</span>`}</td>
         <td>${nIt(x.id) ? `${nIt(x.id)} 场` : `<span class="mut">未邀请</span>`}</td>
         <td class="acts">${x.screening === "eligible" && !x.anonymized ? `<button class="s" data-inv="${x.id}">邀请到场次</button> ` : ""}${x.anonymized ? "" : `<button class="s warn" data-erase="${x.id}">删除数据</button>`}</td></tr>`).join("")}</tbody></table></div>`
@@ -195,10 +195,18 @@ async function peopleView(p) {
   $("#np").onclick = () => {
     const m = modal(`<h2>添加受访者</h2><form id="f"><label class="f"><span>姓名</span><input name="name" required></label><label class="f"><span>邮箱（选填）</span><input name="email" type="email"></label>
       <label class="f"><span>所在国家</span><select name="country">${openCountryOpts(p.market)}</select></label><label class="f"><span>语言</span><select name="language">${langOpts(p.language)}</select></label>
+      <label class="f"><span>甄别问卷答案（选填，每行一题，写成“题目：答案”）</span><textarea name="screener_text" rows="6" placeholder="多久使用一次护肤品：每天&#10;主要在哪里购买：屈臣氏"></textarea></label>
       <p class="sm mut">目前只开放新加坡。其他地区的受访者在自己选择国家时会被礼貌地婉拒。</p><div class="row"><button class="p">添加</button><button type="button" id="c">取消</button></div></form>`);
     $("#c", m).onclick = () => m.remove();
     $("#f", m).onsubmit = guard(async (e) => { e.preventDefault(); await api(`/projects/${p.id}/participants`, { method: "POST", body: Object.fromEntries(new FormData(e.target)) }); m.remove(); toast("已添加"); render(); });
   };
+  app.querySelectorAll("[data-scr]").forEach((b) => b.onclick = guard(async () => {
+    const id = b.dataset.scr, r = await api(`/participants/${id}/screener`);
+    const m = modal(`<h2>甄别问卷答案</h2><form id="f"><label class="f"><span>每行一题，写成“题目：答案”。保存后会替换原来的全部答案。</span><textarea name="text" rows="14">${esc(r.text)}</textarea></label>
+      <p class="sm mut">只有研究团队和 AI 主持人能看到。删除受访者数据时会一并清除。</p><div class="row"><button class="p">保存</button><button type="button" id="c">取消</button></div></form>`);
+    $("#c", m).onclick = () => m.remove();
+    $("#f", m).onsubmit = guard(async (e) => { e.preventDefault(); await api(`/participants/${id}/screener`, { method: "PUT", body: { text: e.target.text.value } }); m.remove(); toast("已保存"); render(); });
+  }));
   app.querySelectorAll("[data-inv]").forEach((b) => b.onclick = () => newSession(p, parts, b.dataset.inv));
   app.querySelectorAll("[data-erase]").forEach((b) => b.onclick = guard(async () => {
     if (!confirm("这会删除该受访者所有访谈的录制、转写、引文和分享链接，且无法恢复。继续？")) return;

@@ -32,7 +32,7 @@ AI_WORD = {"en": "AI interviewer", "zh": "AI 主持人", "ms": "pewawancara AI",
 
 # ---- consent ----
 def test_consent_version_bumped():
-    assert consent_mod.VERSION == "2026-10-draft-4"
+    assert consent_mod.VERSION == "2026-10-draft-5"
 
 
 @pytest.mark.parametrize("lang", LANGS)
