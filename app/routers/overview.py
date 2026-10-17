@@ -8,8 +8,8 @@ from sqlalchemy.orm import Session
 from ..audit import audit
 from ..db import get_db
 from ..deps import STAFF, Ctx, require_roles
-from ..models import (AuditLog, Clip, Consent, Evidence, Insight, Interview, InterviewObserver, Participant, PreTask, PreTaskAnswer, Project, Recording,
-                      RecordingTrack, ShareLink, StimulusMark, TimeSlot, TranscriptSegment, User, utcnow)
+from ..models import (AuditLog, Clip, Consent, Evidence, Insight, Interview, InterviewObserver, InterviewParticipant, Participant, PreTask, PreTaskAnswer,
+                      Project, Recording, RecordingTrack, ShareLink, StimulusMark, TimeSlot, TranscriptSegment, User, utcnow)
 from ..retention import _delete_file
 from ..media import purge_cache
 from .projects import get_project
@@ -29,11 +29,13 @@ def project_summary(db: Session, p: Project) -> dict:
     return {
         "participants": db.scalar(select(func.count()).select_from(Participant).where(Participant.project_id == p.id)) or 0,
         "sessions": len(its),
-        "done": sum(1 for i in its if i.status == "ended" and i.entered_at),
+        "done": sum(1 for i in its if i.status == "ended" and (i.entered_at or any(s.entered_at for s in i.group_participants))),
         "ended": sum(1 for i in its if i.status == "ended"),
         "live": sum(1 for i in its if i.status == "live"),
         "upcoming": sum(1 for i in its if i.status == "scheduled"),
-        "waiting": sum(1 for i in its if i.status != "ended" and i.waiting_seen_at and not i.admitted_at and (now - i.waiting_seen_at).total_seconds() <= 10),
+        "waiting": sum(1 for i in its if i.kind != "group" and i.status != "ended" and i.waiting_seen_at and not i.admitted_at and (now - i.waiting_seen_at).total_seconds() <= 10)
+        + sum(1 for i in its if i.kind == "group" and i.status != "ended" for s in i.group_participants
+              if s.waiting_seen_at and not s.admitted_at and (now - s.waiting_seen_at).total_seconds() <= 10),
         "transcribed": len({i for (i,) in db.execute(select(TranscriptSegment.interview_id).join(Interview, Interview.id == TranscriptSegment.interview_id)
                                                      .where(Interview.project_id == p.id).distinct())}),
         "insights": sum(by.values()), "approved": by.get("approved", 0), "to_review": by.get("draft", 0) + by.get("needs_review", 0),
@@ -68,6 +70,7 @@ ACTION_ZH = {
     "invite.open": "打开了邀请", "device.check": "完成了设备检测", "consent.give": "同意了隐私说明", "consent.blocked_region": "所在地区暂未开放",
     "participant.admit": "放行了受访者", "participant.hold": "请受访者稍等", "room.token": "进入了房间", "room.leave": "离开了房间",
     "pretask.submit": "填写了访谈前问题", "timeslot.pick": "选择了访谈时间",
+    "group.add": "把一位受访者加入座谈会", "group.remove": "从座谈会移除了一位受访者", "group.invite.rotate": "重新生成了座谈会邀请链接",
     "interview.start": "开始了访谈", "interview.end": "结束了访谈", "recording.start": "开始录制", "recording.stop": "停止录制",
     "recording.ready": "录像合成完成", "recording.failed": "录像合成失败", "transcript.transcribe": "完成了转写", "transcript.edit": "校对了转写",
     "insight.generate": "生成了 AI 洞察", "insight.create": "写了一条洞察", "insight.approve": "通过了一条洞察", "insight.delete": "删除了一条洞察",
@@ -131,7 +134,7 @@ def reset_demo(ctx: Ctx = Depends(require_roles("admin")), db: Session = Depends
         db.execute(delete(Clip).where(Clip.interview_id.in_(ids)))
         if ins_ids:
             db.execute(delete(Evidence).where(Evidence.insight_id.in_(ins_ids)))
-        for model in (Insight, TranscriptSegment, Recording, Consent, InterviewObserver, PreTaskAnswer, PreTask, TimeSlot, StimulusMark):
+        for model in (Insight, TranscriptSegment, Recording, Consent, InterviewObserver, PreTaskAnswer, PreTask, TimeSlot, StimulusMark, InterviewParticipant):
             db.execute(delete(model).where(model.interview_id.in_(ids)))
         db.execute(delete(Interview).where(Interview.id.in_(ids)))
     n_parts = db.execute(delete(Participant).where(Participant.org_id == ctx.org_id)).rowcount

@@ -167,6 +167,59 @@ def new_page(br, w, h=860, token=None, room_theme=None, **kw):
     return ctx, pg, errs
 
 
+def group_section(br, D):
+    """Focus group (Sprint 2): a session with several participants, a roster, and per-seat admit in the room."""
+    adm, mod, pid = D["tok"]["admin"], D["tok"]["moderator"], D["pid"]
+    ids = [call(f"/projects/{pid}/participants", {"name": n, "country": "SG", "language": "zh"}, adm)["id"] for n in ("座谈甲", "座谈乙", "座谈丙")]
+    it = call(f"/projects/{pid}/interviews", {"kind": "group", "participant_ids": ids, "title": "三人座谈会", "language": "zh",
+                                              "moderator_id": D["ids"]["moderator"], "observer_ids": [D["ids"]["observer"]]}, adm)
+    iid = it["id"]
+    ctx, pg, errs = new_page(br, 1280, token=adm)
+    pg.goto(B + f"/#/p/{pid}/sessions"); pg.wait_for_selector(".tbl")
+    ok("三人座谈会" in pg.inner_text(".tbl"), "[group] the session list shows the focus group")
+    audit_page(pg, "group sessions/desktop", errs)
+    pg.goto(B + f"/#/i/{iid}"); pg.wait_for_selector("#groupcard")
+    ok(pg.locator("#groupcard li").count() == 3 and "参与者 ·01" in pg.inner_text("#groupcard"), "[group] the roster lists three numbered seats")
+    audit_page(pg, "group roster/desktop", errs)
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "group_roster_1280.png"), full_page=True)
+    ctx.close()
+    ctx, pg, errs = new_page(br, 390, token=adm)
+    pg.goto(B + f"/#/p/{pid}/sessions"); pg.wait_for_selector("#ni"); pg.click("#ni"); pg.wait_for_selector("[name=kind]")
+    pg.select_option("[name=kind]", "group")
+    ok(pg.locator("#grouppick").is_visible() and not pg.locator("#depthpick").is_visible(), "[group] the new-session dialog switches to a multi-person picker")
+    audit_page(pg, "dialog 新建座谈会/phone", errs)
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "group_new_session_390.png"), full_page=True)
+    ctx.close()
+    ctx, pg, errs = new_page(br, 1280, token=mod)
+    pg.goto(B + f"/room.html?i={iid}&as=moderator"); pg.wait_for_selector("#claims")
+    ok(wait_until(lambda: pg.locator("#gwait [data-admit]").count() == 3, 8), "[group room] one admit button per seat")
+    ok(pg.locator("#wadmit").is_hidden(), "[group room] the single-person admit row is hidden")
+    audit_page(pg, "group room moderator/desktop", errs)
+    pg.locator("#gwait [data-admit]").first.click()
+    ok(wait_until(lambda: pg.locator("#gwait .sm", has_text="已放行").count() == 1, 8), "[group room] admitting one seat leaves the others unadmitted")
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "group_room_moderator_1280.png"), full_page=True)
+    ctx.close()
+    seat = it["group_invites"][1]  # seat 1 was admitted above without consent; seat 2 walks the real path
+    tok = seat["invite_token"]
+    call(f"/public/join/{tok}/device", {"camera": True, "microphone": True, "speaker": True})
+    call(f"/public/join/{tok}/consent", {"country": "SG", "recording": True, "observers": True, "cross_border": True})
+    call(f"/interviews/{iid}/start", {}, mod)
+    call(f"/interviews/{iid}/admit", {"admit": True, "participant_id": seat["participant_id"]}, mod)
+    call(f"/public/join/{tok}/enter", {})
+    call(f"/public/join/{tok}/captions", {"text": "我先说成分。", "final": True, "dur_ms": 800})
+    call(f"/interviews/{iid}/transcript/from-captions", {}, adm)
+    ctx, pg, errs = new_page(br, 1280, token=adm)
+    pg.goto(B + f"/#/i/{iid}/transcript"); pg.wait_for_selector(".seg")
+    said = pg.locator(".seg .s").all_inner_texts()
+    ok("参与者 ·02" in said and "p2" not in said and "我先说成分。" in pg.inner_text("#tab"), "[group] the transcript names the seat, not the raw key")
+    audit_page(pg, "group transcript/desktop", errs)
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "group_transcript_1280.png"), full_page=True)
+    pg.goto(B + f"/#/i/{iid}/highlights"); pg.wait_for_selector(".quote")
+    ok("参与者 ·02" in pg.inner_text("#tab") and "p2" not in pg.inner_text("#tab") and "我先说成分。" in pg.inner_text("#tab"),
+       "[group] captions and quotes name the seat, not the raw key")
+    ctx.close()
+
+
 def main():
     tmp = tempfile.mkdtemp()
     env = {**os.environ, "DATABASE_URL": f"sqlite:///{tmp}/qa.db", "MEDIA_DIR": f"{tmp}/media", "LIVEKIT_URL": "", "ASR_PROVIDER": "mock", "LLM_PROVIDER": "mock", "ASR_API_KEY": "", "LLM_API_KEY": "",
@@ -794,6 +847,7 @@ def run():
         pretask_section(br, D)
         timeslot_section(br, D)
         marks_section(br, D)
+        group_section(br, D)
 
         # ---------- C2. dialogs and expandable panels on the staff pages (both screen sizes) ----------
         for w, vp in ((1280, "desktop"), (390, "phone")):

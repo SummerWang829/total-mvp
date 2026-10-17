@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import concept, pretask, scheduling
+from .. import concept, groups, pretask, scheduling
 from ..audit import audit
 from ..config import settings
 from ..consent import consent_for
@@ -26,11 +26,17 @@ from ..security import sign_media, token_hash, verify_media
 router = APIRouter(prefix="/api/public", tags=["public"])
 
 
-def _by_invite(db: Session, token: str) -> Interview:
-    itv = db.scalar(select(Interview).where(Interview.invite_hash == token_hash(token)))
-    if not itv or itv.purged_at:
+def resolve_join(db: Session, token: str):
+    """The interview and the seat this invite link belongs to (the interview itself for a depth interview)."""
+    j = groups.resolve_joiner(db, token)
+    if not j:
         raise HTTPException(404, "Invalid invitation link / 邀请链接无效")
-    return itv
+    return j
+
+
+def _by_invite(db: Session, token: str) -> Interview:
+    """The interview for this invite link. Callers that read the journey (admit, device, entry) use :func:`resolve_join`."""
+    return resolve_join(db, token).itv
 
 
 def _window_ok(itv: Interview) -> bool:
@@ -49,22 +55,23 @@ def public_config():
 
 @router.get("/join/{token}")
 def join_info(token: str, db: Session = Depends(get_db)):
-    itv = _by_invite(db, token)
+    j = resolve_join(db, token)
+    itv, seat = j.itv, j.seat
     org = db.get(Org, itv.org_id)
-    consent = db.scalar(select(Consent).where(Consent.interview_id == itv.id))
+    consent = db.scalar(select(Consent).where(Consent.interview_id == itv.id, Consent.participant_id == j.participant.id))
     return {"org": org.name, "scheduled_at": itv.scheduled_at.isoformat() if itv.scheduled_at else None,
             "status": itv.status, "can_enter_now": _window_ok(itv), "consented": consent is not None,
-            "device_ok": itv.device_ok_at is not None, "consent": consent_for(itv.language, org.name, ai=itv.moderation == ModerationMode.AI.value),
+            "device_ok": seat.device_ok_at is not None, "consent": consent_for(itv.language, org.name, ai=itv.moderation == ModerationMode.AI.value),
             "pretask": pretask.participant_view(db, itv.id, itv.participant_id), "timeslots": scheduling.public_view(db, itv)}
 
 
 @router.post("/join/{token}/opened", status_code=204)
 def mark_opened(token: str, request: Request, db: Session = Depends(get_db)):
     """The invitation page was really opened by a person (a POST, so link previews in chat apps do not count)."""
-    itv = _by_invite(db, token)
-    if not itv.opened_at:
-        itv.opened_at = utcnow()
-        audit(db, itv.org_id, f"participant:{itv.participant_id}", "invite.open", itv.id, ip=client_ip(request))
+    j = resolve_join(db, token)
+    if not j.seat.opened_at:
+        j.seat.opened_at = utcnow()
+        audit(db, j.itv.org_id, f"participant:{j.participant.id}", "invite.open", j.itv.id, ip=client_ip(request))
         db.commit()
 
 
@@ -77,11 +84,11 @@ class DeviceBody(BaseModel):
 @router.post("/join/{token}/device")
 def device_check(token: str, body: DeviceBody, request: Request, db: Session = Depends(get_db)):
     """Result of the participant's device test. A working microphone is enough to take part (the camera may stay off)."""
-    itv = _by_invite(db, token)
+    j = resolve_join(db, token)
     passed = body.microphone
-    if passed and not itv.device_ok_at:
-        itv.device_ok_at = utcnow()
-    audit(db, itv.org_id, f"participant:{itv.participant_id}", "device.check", itv.id, ip=client_ip(request),
+    if passed and not j.seat.device_ok_at:
+        j.seat.device_ok_at = utcnow()
+    audit(db, j.itv.org_id, f"participant:{j.participant.id}", "device.check", j.itv.id, ip=client_ip(request),
           camera=body.camera, microphone=body.microphone, speaker=body.speaker)
     db.commit()
     return {"passed": passed}
@@ -97,8 +104,8 @@ class ConsentBody(BaseModel):
 
 @router.post("/join/{token}/consent", status_code=201)
 def give_consent(token: str, body: ConsentBody, request: Request, db: Session = Depends(get_db)):
-    itv = _by_invite(db, token)
-    part: Participant = itv.participant
+    j = resolve_join(db, token)
+    itv, part = j.itv, j.participant
     country = body.country.strip().upper()
     if len(country) != 2:
         raise HTTPException(422, "Please select your country or region / 请选择你所在的国家或地区")
@@ -166,8 +173,8 @@ def submit_pretask(token: str, body: PreTaskBody, request: Request, db: Session 
 
 @router.post("/join/{token}/enter")
 def enter(token: str, request: Request, db: Session = Depends(get_db)):
-    itv = _by_invite(db, token)
-    part: Participant = itv.participant
+    j = resolve_join(db, token)
+    itv, seat, part = j.itv, j.seat, j.participant
     if part.screening != "eligible":
         raise HTTPException(403, "Not open in your region yet / 暂时不面向你所在的地区")
     if scheduling.needs_pick(db, itv):
@@ -178,44 +185,50 @@ def enter(token: str, request: Request, db: Session = Depends(get_db)):
         raise HTTPException(403, "Please answer the pre-interview questions first / 请先完成访谈前的问题")
     if not _window_ok(itv):
         raise HTTPException(409, "Not time yet, or the interview has ended / 还没到访谈时间，或访谈已结束")
-    if not itv.device_ok_at:
+    if not seat.device_ok_at:
         raise HTTPException(403, "Please test your device first / 请先完成设备检测")
-    if not itv.admitted_at:
+    if not seat.admitted_at:
         raise HTTPException(409, "The moderator has not let you in yet / 主持人还没有放行")
-    jwt_ = build_room_token(identity=f"participant:{part.id}", name="Participant", room=itv.room_name, role="participant")  # real name never goes into the video room (observers must not learn it)
-    if not itv.entered_at:
-        itv.entered_at = utcnow()
+    # real name never goes into the video room; a group seat is "P-01" and the browser translates it
+    shown_name = f"P-{seat.seat:02d}" if groups.is_group(itv) else "Participant"
+    jwt_ = build_room_token(identity=f"participant:{part.id}", name=shown_name, room=itv.room_name, role="participant",
+                            seat=seat.seat if groups.is_group(itv) else None)
+    if not seat.entered_at:
+        seat.entered_at = utcnow()
     audit(db, itv.org_id, f"participant:{part.id}", "room.token", itv.id, ip=client_ip(request), role="participant")
     db.commit()
     return {"token": jwt_, "url": url_for_client(request.headers.get("host")), "room": itv.room_name, "role": "participant", "dev_mode": not settings.livekit_url,
             "interview_status": itv.status, "language": itv.language, "moderation": itv.moderation}
 
 
-def _consented(db: Session, itv: Interview) -> bool:
-    return db.scalar(select(Consent.id).where(Consent.interview_id == itv.id, Consent.participant_id == itv.participant_id, Consent.recording.is_(True))) is not None
+def _consented(db: Session, itv: Interview, participant_id: str | None = None) -> bool:
+    """True when this participant agreed to be recorded. Defaults to the depth interview's single participant."""
+    pid = participant_id if participant_id is not None else itv.participant_id
+    return db.scalar(select(Consent.id).where(Consent.interview_id == itv.id, Consent.participant_id == pid, Consent.recording.is_(True))) is not None
 
 
 @router.get("/join/{token}/live")
 def live(token: str, waiting: int = 0, db: Session = Depends(get_db)):
     """Polled by the participant's waiting room (waiting=1, so the moderator sees who is waiting) and room page:
     has the interview started / ended, has the moderator let them in, and is it being recorded right now."""
-    itv = _by_invite(db, token)
+    j = resolve_join(db, token)
+    itv, seat = j.itv, j.seat
     if waiting and itv.status != "ended":
-        itv.waiting_seen_at = utcnow()
+        seat.waiting_seen_at = utcnow()
         db.commit()
-    rec = db.scalar(select(Recording).where(Recording.interview_id == itv.id, Recording.status == "recording")) if _consented(db, itv) else None
-    shown = concept.current_stimulus(db, itv.id, staff=False) if itv.status == "live" and itv.admitted_at is not None else None  # only someone who is in the room sees the material
-    return {"status": itv.status, "admitted": itv.admitted_at is not None, "held": itv.held_at is not None and itv.admitted_at is None,
+    rec = db.scalar(select(Recording).where(Recording.interview_id == itv.id, Recording.status == "recording")) if _consented(db, itv, j.participant.id) else None
+    shown = concept.current_stimulus(db, itv.id, staff=False) if itv.status == "live" and seat.admitted_at is not None else None  # only someone who is in the room sees the material
+    return {"status": itv.status, "admitted": seat.admitted_at is not None, "held": seat.held_at is not None and seat.admitted_at is None,
             "recording": {"id": rec.id, "elapsed_ms": elapsed_ms(rec)} if rec else None, "stimulus": shown}
 
 
 @router.post("/join/{token}/leave", status_code=204)
 def leave(token: str, request: Request, db: Session = Depends(get_db)):
     """The participant pressed Leave: coming back needs the moderator to let them in again (design spec 3.2)."""
-    itv = _by_invite(db, token)
-    if itv.admitted_at:
-        itv.admitted_at = None
-        audit(db, itv.org_id, f"participant:{itv.participant_id}", "room.leave", itv.id, ip=client_ip(request))
+    j = resolve_join(db, token)
+    if j.seat.admitted_at:
+        j.seat.admitted_at = None
+        audit(db, j.itv.org_id, f"participant:{j.participant.id}", "room.leave", j.itv.id, ip=client_ip(request))
         db.commit()
 
 
@@ -225,18 +238,20 @@ _EXT = {"video/webm": "webm", "audio/webm": "webm", "video/mp4": "mp4", "audio/m
 @router.post("/join/{token}/recording/{rid}/chunk", status_code=204)
 async def upload_chunk(token: str, rid: str, request: Request, seq: int, offset_ms: int = 0, last: int = 0, part: str = "0", db: Session = Depends(get_db)):
     """The participant's browser uploads its own camera+mic recording. Only accepted after consent, and only for the live recording."""
-    itv = _by_invite(db, token)
+    j = resolve_join(db, token)
+    itv = j.itv
     rec = db.get(Recording, rid)
-    if not _consented(db, itv) or not rec or rec.interview_id != itv.id:
+    if not _consented(db, itv, j.participant.id) or not rec or rec.interview_id != itv.id:
         raise HTTPException(404, "not found")
     if rec.status not in ("recording", "processing"):
         raise HTTPException(409, "recording finished")
+    role = groups.speaker_key(itv, j.seat)  # depth: "participant"; a group seat: "p1"… so each person is their own track
     db.commit()  # give the pooled connection back BEFORE waiting for the (possibly slow, overseas) upload; save_chunk takes one again
     data = await request.body()
     if len(data) > settings.max_chunk_bytes or seq < 0 or seq > 20_000:
         raise HTTPException(413, "chunk too large")
     ext = _EXT.get(request.headers.get("content-type", "").split(";")[0].strip(), "webm")
-    await run_in_threadpool(save_chunk, db, rec, "participant", part, seq, offset_ms, ext, data, bool(last))
+    await run_in_threadpool(save_chunk, db, rec, role, part, seq, offset_ms, ext, data, bool(last))
 
 
 # ---------- share links ----------

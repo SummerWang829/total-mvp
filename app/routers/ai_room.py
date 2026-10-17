@@ -12,7 +12,7 @@ from .. import ai_room, guide_text
 from ..db import get_db
 from ..deps import Ctx, current_ctx, require_roles, visible_interview
 from ..models import Interview, Stimulus
-from .public import _by_invite  # noqa: PLC2701 — the same invite-token lookup as the rest of the participant flow
+from .public import resolve_join  # noqa: PLC2701 — the same invite-token lookup as the rest of the participant flow
 
 router = APIRouter(prefix="/api", tags=["ai-room"])
 STAFF_AND_MODERATOR = ("admin", "researcher", "moderator")  # who may control the AI (observers may not)
@@ -109,10 +109,10 @@ def ai_ack_alert(iid: str, ctx: Ctx = Depends(require_roles(*STAFF_AND_MODERATOR
 # ---------- the participant's side (by invitation token) ----------
 def _in_room(db: Session, token: str) -> Interview:
     """The interview of this invitation, for a participant who has been let in (the same gate as entering the room)."""
-    itv = _by_invite(db, token)
-    if not itv.admitted_at or not itv.entered_at:
+    j = resolve_join(db, token)
+    if not j.seat.admitted_at or not j.seat.entered_at:
         raise HTTPException(409, "Not in the room yet / 还没有进入房间")
-    return itv
+    return j.itv
 
 
 @router.get("/public/join/{token}/chat")

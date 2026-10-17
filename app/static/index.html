@@ -211,7 +211,9 @@ async function newSession(p, parts, preselect) {
   const el = parts.filter((x) => x.screening === "eligible" && !x.anonymized);
   const mods = users.filter((u) => ["moderator", "researcher", "admin"].includes(u.role)), obs = users.filter((u) => u.role === "observer");
   const m = modal(`<h2>新建场次</h2><form id="f"><label class="f"><span>场次名称（只给团队看，受访者看不到）</span><input name="title" required></label>
-    <label class="f"><span>受访者</span><select name="participant_id">${el.map((x) => `<option value="${x.id}"${x.id === preselect ? " selected" : ""}>${pcode(parts.indexOf(x))} · ${esc(x.name)} (${esc(x.country)})</option>`).join("")}</select></label>
+    <label class="f"><span>场次类型</span><select name="kind" id="kind"><option value="depth">深访（一对一）</option><option value="group">座谈会（最多 10 人，人工主持）</option></select></label>
+    <div id="depthpick"><label class="f"><span>受访者</span><select name="participant_id">${el.map((x) => `<option value="${x.id}"${x.id === preselect ? " selected" : ""}>${pcode(parts.indexOf(x))} · ${esc(x.name)} (${esc(x.country)})</option>`).join("")}</select></label></div>
+    <fieldset id="grouppick" hidden style="border:1px solid var(--line);border-radius:10px;margin:0 0 14px;padding:6px 14px"><legend class="sm mut">座谈会受访者（勾选 1 到 10 位，每人一条邀请链接）</legend>${el.map((x) => `<label class="chk"><input type="checkbox" name="pids" value="${x.id}"${x.id === preselect ? " checked" : ""}><span>${pcode(parts.indexOf(x))} · ${esc(x.name)}</span></label>`).join("")}</fieldset>
     <label class="f"><span>访谈语言（默认用受访者的语言）</span><select name="language">${langOpts("", "同受访者")}</select></label>
     <label class="f"><span>时间（留空则随时可进入）</span><input name="scheduled_at" type="datetime-local"></label>
     <label class="f"><span>谁来主持这场访谈</span><select name="moderation"><option value="human">真人主持人</option><option value="ai">AI 主持人（文字聊天，受访者会被告知并需单独同意）</option></select></label>
@@ -219,14 +221,33 @@ async function newSession(p, parts, preselect) {
     <fieldset style="border:1px solid var(--line);border-radius:10px;margin:0 0 14px;padding:6px 14px"><legend class="sm mut">观察员（隐身旁听）</legend>${obs.length ? obs.map((u) => `<label class="chk"><input type="checkbox" name="obs" value="${u.id}"><span>${esc(u.name)}</span></label>`).join("") : `<span class="sm mut">还没有观察员账号，可在“团队”里添加</span>`}</fieldset>
     <div class="row"><button class="p">创建并生成邀请链接</button><button type="button" id="c">取消</button></div></form>`);
   $("#c", m).onclick = () => m.remove();
+  $("#kind", m).onchange = () => {
+    const g = $("#kind", m).value === "group";
+    $("#grouppick", m).hidden = !g; $("#depthpick", m).hidden = g;
+    const mod = m.querySelector("[name=moderation]");
+    if (g) mod.value = "human";
+    mod.querySelector("option[value=ai]").disabled = g;
+  };
   $("#f", m).onsubmit = guard(async (e) => {
     e.preventDefault();
-    const fd = new FormData(e.target);
-    const body = { title: fd.get("title"), participant_id: fd.get("participant_id"), language: fd.get("language") || null, moderator_id: fd.get("moderator_id") || null, moderation: fd.get("moderation") || "human", observer_ids: fd.getAll("obs"),
+    const fd = new FormData(e.target), kind = fd.get("kind") || "depth";
+    const body = { kind, title: fd.get("title"), language: fd.get("language") || null, moderator_id: fd.get("moderator_id") || null,
+      moderation: kind === "group" ? "human" : (fd.get("moderation") || "human"), observer_ids: fd.getAll("obs"),
       scheduled_at: fd.get("scheduled_at") ? new Date(fd.get("scheduled_at")).toISOString().replace("Z", "") : null };
+    if (kind === "group") {
+      body.participant_ids = fd.getAll("pids");
+      if (!body.participant_ids.length || body.participant_ids.length > 10) return toast("座谈会请勾选 1 到 10 位受访者", true);
+    } else body.participant_id = fd.get("participant_id");
     const it = await api(`/projects/${p.id}/interviews`, { method: "POST", body });
-    m.remove(); showInvite(it.id, location.origin + it.invite_path, true, it.scheduled_at);
+    m.remove();
+    if (kind === "group") showGroupInvites(it); else showInvite(it.id, location.origin + it.invite_path, true, it.scheduled_at);
   });
+}
+
+function showGroupInvites(it) {
+  const rows = (it.group_invites || []).map((g) => `<li style="margin:8px 0"><b>座位 ${g.seat}</b><code class="copy">${esc(location.origin + g.invite_path)}</code></li>`).join("");
+  const m = modal(`<h2>座谈会已创建</h2><p class="sm mut">每人一条邀请链接，只显示这一次。请分别发给对应的受访者，不要互相转发。丢了可以在场次页单独重新生成。</p><ul style="padding-left:18px">${rows}</ul><div class="row"><button class="p" id="cx">完成</button></div>`);
+  $("#cx", m).onclick = () => { m.remove(); location.hash = `#/i/${it.id}`; };
 }
 
 // The platform does not send e-mail or messages: it prepares the link, a ready-to-send text and a calendar file, and the team sends them.
@@ -273,9 +294,9 @@ async function sessionsView(p) {
   shell(`${head("场次与邀请", "每个人的邀请进度一眼看清：已发送 → 已打开 → 检测通过 → 已同意 → 已进入 → 已完成。", `<button class="p" id="ni" ${parts.some((x) => x.screening === "eligible" && !x.anonymized) ? "" : "disabled"}>新建场次</button>`)}
     <div class="stats" role="group" aria-label="按邀请进度筛选">${SESS_FILTERS.map((k) => `<button data-f="${k}" aria-pressed="${f === k}">${k === "all" ? "全部" : INVITE[k][0]} <b>${count(k)}</b></button>`).join("")}</div>
     ${rows.length ? `<div class="card scroll" style="padding:6px 10px"><table class="tbl rc"><thead><tr><th>受访者</th><th>场次</th><th>时间</th><th>主持人</th><th>邀请进度</th><th></th></tr></thead><tbody>
-      ${rows.map((i) => { const [t, c] = INVITE[i.invite_state] || [i.invite_state, ""]; return `<tr><td><span class="code">${code(i.participant.id)}</span> <b>${esc(i.participant.name)}</b></td><td>${esc(i.title)}${i.moderation === "ai" ? ` <span class="tag o">AI 主持</span>` : ""}</td><td class="mut">${when(i.scheduled_at)}</td>
-        <td>${esc(uname[i.moderator_id] || "未指定")}</td><td><span class="tag ${c}">${t}</span></td>
-        <td class="acts">${i.status !== "ended" && !i.purged ? `<button class="s" data-rot="${i.id}" data-sched="${i.scheduled_at || ""}">重新生成邀请链接</button> ` : ""}<a class="btn s" href="#/i/${i.id}">查看</a></td></tr>`; }).join("")}</tbody></table></div>`
+      ${rows.map((i) => { const group = i.kind === "group"; const inv = INVITE[i.invite_state] || ["", ""]; const who = group ? `<b>${esc(i.participant.name)}</b>` : `<span class="code">${code(i.participant.id)}</span> <b>${esc(i.participant.name)}</b>`; return `<tr><td>${who}</td><td>${esc(i.title)}${group ? ` <span class="tag o">座谈会</span>` : ""}${i.moderation === "ai" ? ` <span class="tag o">AI 主持</span>` : ""}</td><td class="mut">${when(i.scheduled_at)}</td>
+        <td>${esc(uname[i.moderator_id] || "未指定")}</td><td>${group ? `<span class="tag o">座谈会</span>` : `<span class="tag ${inv[1]}">${inv[0]}</span>`}</td>
+        <td class="acts">${!group && i.status !== "ended" && !i.purged ? `<button class="s" data-rot="${i.id}" data-sched="${i.scheduled_at || ""}">重新生成邀请链接</button> ` : ""}<a class="btn s" href="#/i/${i.id}">查看</a></td></tr>`; }).join("")}</tbody></table></div>`
       : `<div class="card empty">${its.length ? `<b>这个进度下没有场次。</b><span>点“全部”看所有场次。</span>` : `<b>还没有场次。</b><span>每个场次对应一位受访者和一个邀请链接。先在“受访者招募”里添加受访者，再点右上角“新建场次”。</span>`}</div>`}`, { active: "sessions", p });
   app.querySelectorAll("[data-f]").forEach((b) => b.onclick = () => { sessionStorage.setItem("sessf", b.dataset.f); render(); });
   $("#ni").onclick = () => newSession(p, parts);
@@ -304,7 +325,7 @@ async function roomsView(p) {
   const table = (rows) => `<div class="card scroll" style="padding:6px 10px"><table class="tbl rc"><thead><tr><th>受访者</th><th>场次</th><th>时间</th><th>状态</th><th></th></tr></thead><tbody>
     ${rows.sort(newest).map((i) => { const [t, c] = roomState(i); const open = i.status !== "ended" && !i.purged; return `<tr><td><b>${esc(i.participant.name)}</b></td><td>${esc(i.title)}</td><td class="mut">${when(i.scheduled_at)}</td><td><span class="tag ${c}">${t}</span></td>
       <td class="acts">${open ? (obs ? go(i, "observer", "隐身观察", "") : go(i, "moderator", "进入 TA 的房间", "p") + (staff ? " " + go(i, "observer", "隐身观察", "") : "")) : `<a class="btn s" href="#/i/${i.id}">看转写和洞察</a>`}</td></tr>`; }).join("")}</tbody></table></div>`;
-  shell(`${head("直播间", obs ? "隐身进入：受访者看不到你，你不能发言，也不会出现在录制里。" : "深访是一人一间。受访者做完设备检测和同意后会进入候场室，你进入房间后放行，TA 才能进来。")}
+  shell(`${head("直播间", obs ? "隐身进入：受访者看不到你，你不能发言，也不会出现在录制里。" : "深访是一人一间，座谈会最多 10 人。受访者做完设备检测和同意后会进入候场室，你进入房间后放行，对方才能进来。座谈会要逐个放行。")}
     ${its.length ? groups.filter(([, rows]) => rows.length).map(([name, rows]) => `<div class="group"><h2>${name}</h2><span class="tag">${rows.length}</span></div>${table(rows)}`).join("")
       : `<div class="card empty">${staff ? `<b>还没有场次。</b><span>先在“场次与邀请”里新建场次，把邀请链接发给受访者。</span><a class="btn p" href="#/p/${p.id}/sessions">去场次与邀请</a>` : `<b>还没有分配给你的场次。</b><span>研究员把你加入某场访谈后，它会出现在这里。</span>`}</div>`}`, { active: "rooms", p });
 }
@@ -464,15 +485,21 @@ async function interviewView(iid, tab) {
   const canRoom = it.status !== "ended" && !it.purged;
   const tabs = [["transcript", "转写"], ["insights", "洞察"], ["clips", "片段"], ...(staff ? [["highlights", "引用与追问"]] : [])];
   shell(`<a class="back" href="#/p/${it.project_id}/insights">← 洞察与片段</a>
-    <div class="head"><div><h1>${esc(it.title)}</h1><p class="lead" style="margin:6px 0 0">受访者：${esc(it.participant.name)}${it.participant.country ? " · " + esc(it.participant.country) : ""} · 访谈语言 ${esc(LANGS[it.language] || it.language)} · <span class="tag ${c}">${t}</span>${it.moderation === "ai" ? ` <span class="tag o">AI 主持</span>` : ""}${it.invite_state ? ` <span class="tag ${(INVITE[it.invite_state] || [])[1] || ""}">${(INVITE[it.invite_state] || [it.invite_state])[0]}</span>` : ""}</p></div><span class="sp"></span>
+    <div class="head"><div><h1>${esc(it.title)}</h1><p class="lead" style="margin:6px 0 0">${it.kind === "group" ? "座谈会" : "受访者"}：${esc(it.participant.name)}${it.participant.country ? " · " + esc(it.participant.country) : ""} · 访谈语言 ${esc(LANGS[it.language] || it.language)} · <span class="tag ${c}">${t}</span>${it.kind === "group" ? ` <span class="tag o">座谈会</span>` : ""}${it.moderation === "ai" ? ` <span class="tag o">AI 主持</span>` : ""}${it.invite_state ? ` <span class="tag ${(INVITE[it.invite_state] || [])[1] || ""}">${(INVITE[it.invite_state] || [it.invite_state])[0]}</span>` : ""}</p></div><span class="sp"></span>
       <div class="row">${canRoom ? (ME.role === "observer" ? room("observer", "") : staff ? room("moderator", "p") + room("observer", "") : room("moderator", "p")) : ""}</div></div>
-    ${staff && invite && canRoom ? `<div class="card"><h3>受访者邀请链接</h3><code class="copy" id="inv">${esc(invite)}</code><p class="sm mut" style="margin:8px 0 0">只显示这一次，发给受访者后请不要转发。丢了可以重新生成（旧链接会失效）。</p></div>` : ""}
-    ${staff && canRoom && !invite ? `<div class="note row">邀请链接已隐藏。<span class="sp"></span><button class="s" id="rot">重新生成</button></div>` : ""}
+    ${it.kind === "group" && staff && it.group ? `<div class="card" id="groupcard"><h3>座谈会名单</h3><p class="sm mut" style="margin:6px 0 0">每人一条邀请链接，在房间里逐个放行。链接丢了可以单独重新生成（旧的立即失效）。</p>
+      <ul class="ptlist">${it.group.seats.map((s) => `<li><b>${esc(s.label)}</b> ${esc(s.name)} <span class="tag ${s.entered ? "ok" : s.admitted ? "live" : ""}">${s.entered ? "已进入" : s.admitted ? "已放行" : s.device_ok ? "检测通过" : "未到"}</span>${canRoom ? ` <button class="s" data-grot="${s.participant_id}">重新生成链接</button>` : ""}</li>`).join("")}</ul></div>` : ""}
+    ${it.kind !== "group" && staff && invite && canRoom ? `<div class="card"><h3>受访者邀请链接</h3><code class="copy" id="inv">${esc(invite)}</code><p class="sm mut" style="margin:8px 0 0">只显示这一次，发给受访者后请不要转发。丢了可以重新生成（旧链接会失效）。</p></div>` : ""}
+    ${it.kind !== "group" && staff && canRoom && !invite ? `<div class="note row">邀请链接已隐藏。<span class="sp"></span><button class="s" id="rot">重新生成</button></div>` : ""}
     ${staff ? `<div class="card" id="timeslotcard"><p class="sm mut" style="margin:0">候选时间加载中…</p></div>` : ""}
     ${staff ? `<div class="card" id="pretaskcard"><p class="sm mut" style="margin:0">访谈前问题加载中…</p></div>` : ""}
     ${staff ? `<div class="card" id="markcard" hidden></div>` : ""}
     <div class="tabs">${tabs.map(([k, n]) => `<a href="#/i/${iid}/${k}" class="${tab === k ? "on" : ""}">${n}</a>`).join("")}</div><div id="tab"></div>`, { active: "insights", p });
   const rot = $("#rot"); if (rot) rot.onclick = guard(async () => { const r = await api(`/interviews/${iid}/invite/rotate`, { method: "POST" }); sessionStorage.setItem("invite_" + iid, location.origin + r.invite_path); render(); });
+  app.querySelectorAll("[data-grot]").forEach((b) => b.onclick = guard(async () => {
+    const r = await api(`/interviews/${iid}/participants/${b.dataset.grot}/invite/rotate`, { method: "POST" });
+    showInvite(iid + "_" + b.dataset.grot, location.origin + r.invite_path, false, it.scheduled_at);
+  }));
   if (staff) { loadTimeslotsCard(iid, canRoom); loadPretaskCard(iid, canRoom); loadMarksCard(iid); }
   if (tab === "transcript") return transcriptTab(iid, it, staff, my);
   if (tab === "clips") return clipsTab(iid, staff, my);
@@ -480,7 +507,6 @@ async function interviewView(iid, tab) {
   return insightsTab(iid, staff, my);
 }
 
-const SPEAKER = { moderator: "主持人", ai_moderator: "AI 主持人", participant: "受访者" };
 const REC_ST = { recording: ["录制中", "live"], processing: ["合成中", "o"], ready: ["已就绪", "ok"], failed: ["失败", "bad"], deleted: ["已清除", ""] };
 async function transcriptTab(iid, it, staff, my) {
   const [segs, recs, cfg, caps] = await Promise.all([api(`/interviews/${iid}/transcript`), staff ? api(`/interviews/${iid}/recordings`) : [], loadConfig(),
@@ -494,12 +520,12 @@ async function transcriptTab(iid, it, staff, my) {
       ${caps.lines.length ? `<div class="row" style="margin-top:10px"><span class="sm mut">访谈时有 ${caps.lines.length} 句实时字幕。没有录像或想先看看时，可以直接用它生成转写（可能有错字）。</span><span class="sp"></span><button class="s" id="fromcaps">用实时字幕生成转写</button></div>` : ""}
       <p class="sm mut" style="margin:8px 0 0">${mock ? "当前是演示转写：内容是固定的示例对话，不是真的识别录音（接入语音识别服务后才是真实转写，见 README）。" : "转写会调用语音识别服务，录音越长耗时越久。"}</p>
       ${play ? `<video id="pv" controls controlsList="nodownload" playsinline style="width:100%;max-height:360px;background:#0E1A16;border-radius:12px;margin-top:10px"></video>` : ""}</div>` : ""}
-    <div class="card" style="padding:4px 22px">${segs.length ? segs.map((s) => `<div class="seg"><div class="t">${play ? `<a href="#" class="sk" data-seek="${s.start_ms}">${fmt(s.start_ms)}</a>` : fmt(s.start_ms)}</div><div class="s ${s.speaker}">${SPEAKER[s.speaker] || "受访者"}</div>
+    <div class="card" style="padding:4px 22px">${segs.length ? segs.map((s) => `<div class="seg"><div class="t">${play ? `<a href="#" class="sk" data-seek="${s.start_ms}">${fmt(s.start_ms)}</a>` : fmt(s.start_ms)}</div><div class="s ${speakerClass(s.speaker)}">${esc(speakerName(s.speaker))}</div>
       <div class="x"><div>${esc(s.text_orig)}</div>${s.text_zh ? `<div class="zh">${esc(s.text_zh)}</div>` : ""}${staff ? `<div class="sm segacts"><a href="#" data-edit="${s.id}">校对</a><a href="#" data-ins="${s.id}">写洞察</a></div>` : ""}</div></div>`).join("") : `<div class="empty"><b>还没有转写。</b><span>${staff ? "访谈结束、录像合成完成后，点上面的“转写录制”。" : "研究员转写后，双方说的话会逐句显示在这里。"}</span></div>`}</div>`;
   const segById = Object.fromEntries(segs.map((x) => [x.id, x]));
   app.querySelectorAll("[data-edit]").forEach((a) => a.onclick = (e) => {
     e.preventDefault(); const sg = segById[a.dataset.edit];
-    const m = modal(`<h2>校对转写 #${sg.idx}</h2><p class="sm mut">${SPEAKER[sg.speaker] || "受访者"} · ${fmt(sg.start_ms)}。改动会记入审计日志；如果某条洞察引用的原话被改没了，那条洞察会自动变成“需复核”，客户立刻看不到。</p>
+    const m = modal(`<h2>校对转写 #${sg.idx}</h2><p class="sm mut">${esc(speakerName(sg.speaker))} · ${fmt(sg.start_ms)}。改动会记入审计日志；如果某条洞察引用的原话被改没了，那条洞察会自动变成“需复核”，客户立刻看不到。</p>
       <form id="f"><label class="f"><span>原文</span><textarea name="text_orig" rows="3" required>${esc(sg.text_orig)}</textarea></label>
       <label class="f"><span>中文翻译</span><textarea name="text_zh" rows="3">${esc(sg.text_zh)}</textarea></label>
       <div class="row"><button class="p">保存</button><button type="button" id="c">取消</button></div></form>`);
@@ -542,17 +568,16 @@ async function transcriptTab(iid, it, staff, my) {
 }
 
 const MATERIAL = { ad_film: "广告片", concept_a: "概念 A", concept_b: "概念 B", ad_film_2: "备用广告片" };
-const WHO = { moderator: "主持人", participant: "受访者" };
 async function highlightsTab(iid, my) {  // quotes and follow-ups marked in the room, plus the live-caption record (may contain recognition errors)
   const [hs, caps] = await Promise.all([api(`/interviews/${iid}/highlights`), api(`/interviews/${iid}/captions?after=0`)]);
   if (stale(my) || !$("#tab")) return;
-  const row = (h) => `<div class="quote"><div>${h.speaker ? `${esc(WHO[h.speaker] || h.speaker)}：` : ""}“${esc(h.text)}”</div>
+  const row = (h) => `<div class="quote"><div>${h.speaker ? `${esc(speakerName(h.speaker))}：` : ""}“${esc(h.text)}”</div>
     <div class="sm mut">${fmt(h.at_ms)}${h.stimulus_key ? ` · 当时在看：${esc(MATERIAL[h.stimulus_key] || h.stimulus_key)}` : ""}${h.kind === "probe" ? ` · ${h.status === "done" ? "已追问" : "待追问"}` : ""}</div></div>`;
   const quotes = hs.filter((h) => h.kind === "quote"), probes = hs.filter((h) => h.kind === "probe");
   $("#tab").innerHTML = `<div class="card"><h3>引用（${quotes.length}）</h3>${quotes.length ? quotes.map(row).join("") : `<p class="mut">访谈中在字幕旁点“引用”，会出现在这里，原话由系统从字幕里原样复制。</p>`}</div>
     <div class="card"><h3>追问（${probes.length}）</h3>${probes.length ? probes.map(row).join("") : `<p class="mut">还没有追问记录。</p>`}</div>
     <div class="card"><h3>实时字幕记录（${caps.lines.length} 句）</h3><p class="sm mut">实时识别的结果，可能有错字；正式逐字稿以“转写”为准。</p>
-      ${caps.lines.length ? caps.lines.map((c) => `<div class="quote"><div>${esc(WHO[c.speaker] || c.speaker)}：${esc(c.text)}</div><div class="sm mut">${fmt(c.at_ms)}</div></div>`).join("") : `<p class="mut">这场访谈没有实时字幕。</p>`}</div>`;
+      ${caps.lines.length ? caps.lines.map((c) => `<div class="quote"><div>${esc(speakerName(c.speaker))}：${esc(c.text)}</div><div class="sm mut">${fmt(c.at_ms)}</div></div>`).join("") : `<p class="mut">这场访谈没有实时字幕。</p>`}</div>`;
 }
 
 async function insightsTab(iid, staff, my) {

@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from .. import ai_room, concept, export, pretask, scheduling
+from .. import ai_room, concept, export, groups, pretask, scheduling
 from ..audit import audit
 from ..config import settings
 from ..db import get_db
@@ -53,9 +53,11 @@ def invite_state(db: Session, itv: Interview) -> str:
 WAITING_FRESH_S = 10  # the waiting room polls every 3 s; seen within this window = waiting right now
 
 
-def in_waiting_room(itv: Interview) -> bool:
-    return (itv.status != "ended" and itv.waiting_seen_at is not None and itv.admitted_at is None
-            and (utcnow() - itv.waiting_seen_at).total_seconds() <= WAITING_FRESH_S)
+def in_waiting_room(itv: Interview, seat=None) -> bool:
+    """True when this person is in the waiting room right now. ``seat`` is the journey row (the interview, for a depth interview)."""
+    row = itv if seat is None else seat
+    return (itv.status != "ended" and row.waiting_seen_at is not None and row.admitted_at is None
+            and (utcnow() - row.waiting_seen_at).total_seconds() <= WAITING_FRESH_S)
 
 
 def interview_out(itv: Interview, ctx: Ctx, invite_token: str | None = None, db: Session | None = None) -> dict:
@@ -68,9 +70,17 @@ def interview_out(itv: Interview, ctx: Ctx, invite_token: str | None = None, db:
         "moderator_id": itv.moderator_id, "observer_ids": [o.user_id for o in itv.observers],
         "participant": {"id": itv.participant.id, "name": itv.participant.name, "country": itv.participant.country} if sees_name
         else {"name": "受访者"},
-        "purged": itv.purged_at is not None, "moderation": itv.moderation,
+        "purged": itv.purged_at is not None, "moderation": itv.moderation, "kind": itv.kind,
     }
-    if db is not None and sees_name:  # the participant's progress is for the research team, not the client
+    if groups.is_group(itv):  # a group has no single participant; show the headcount, and (staff only) the roster
+        n = len(itv.group_participants)
+        out["participant"] = {"name": f"{n} 位受访者" if sees_name else "受访者"}
+        if db is not None and sees_name:
+            out["group"] = groups.roster_view(db, itv)
+            rows = itv.group_participants
+            out["waiting"] = any(in_waiting_room(itv, s) for s in rows)
+            out["admitted"] = any(s.admitted_at is not None for s in rows)
+    if db is not None and sees_name and not groups.is_group(itv):  # the participant's progress is for the research team, not the client
         out["invite_state"] = invite_state(db, itv)
         out["waiting"] = in_waiting_room(itv)
         out["admitted"] = itv.admitted_at is not None
@@ -100,7 +110,9 @@ def clip_out(c: Clip) -> dict:
 
 # ---------- interviews ----------
 class NewInterview(BaseModel):
-    participant_id: str
+    participant_id: str | None = None  # depth: the one participant
+    participant_ids: list[str] = []  # group (focus group): the seated participants, 1..groups.MAX_GROUP
+    kind: str = groups.KIND_DEPTH
     title: str = Field(min_length=1, max_length=200)
     scheduled_at: datetime | None = None
     language: str | None = None
@@ -115,31 +127,64 @@ class NewInterview(BaseModel):
             raise ValueError("language must be one of " + ", ".join(settings.languages))
         return v
 
+    @field_validator("kind")
+    @classmethod
+    def _kind(cls, v):
+        if v not in groups.KINDS:
+            raise ValueError("kind must be one of " + ", ".join(groups.KINDS))
+        return v
 
-@router.post("/projects/{pid}/interviews", status_code=201)
-def create_interview(pid: str, body: NewInterview, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
-    proj = get_project(db, ctx, pid)
-    part = db.get(Participant, body.participant_id)
+
+def _eligible_participant(db: Session, ctx: Ctx, proj: Project, participant_id: str) -> Participant:
+    """A participant that belongs to this project and may be interviewed (region open)."""
+    part = db.get(Participant, participant_id)
     if not part or part.org_id != ctx.org_id or part.project_id != proj.id:
         raise HTTPException(422, "受访者不在这个项目里")
     if part.screening != "eligible":
         raise HTTPException(422, "该受访者所在地区不在首批开放范围内，不能安排访谈")
+    return part
+
+
+@router.post("/projects/{pid}/interviews", status_code=201)
+def create_interview(pid: str, body: NewInterview, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    proj = get_project(db, ctx, pid)
+    is_group = body.kind == groups.KIND_GROUP
+    if is_group and body.moderation is ModerationMode.AI:
+        raise HTTPException(422, "座谈会暂不支持 AI 主持，请选择人工主持")
+    if body.moderation is ModerationMode.AI and (why := ai_moderation_blocker()):
+        raise HTTPException(422, why)
+    if is_group:
+        pids = list(dict.fromkeys(body.participant_ids))
+        if not (1 <= len(pids) <= groups.MAX_GROUP):
+            raise HTTPException(422, f"座谈会需要 1 到 {groups.MAX_GROUP} 位受访者")
+        parts = [_eligible_participant(db, ctx, proj, p) for p in pids]
+    else:
+        if not body.participant_id:
+            raise HTTPException(422, "请选择受访者")
+        parts = [_eligible_participant(db, ctx, proj, body.participant_id)]
     if body.moderator_id:
         get_user_in_org(db, ctx, body.moderator_id, ("moderator", "researcher", "admin"))
     obs = [get_user_in_org(db, ctx, uid_, ("observer", "researcher", "admin")) for uid_ in dict.fromkeys(body.observer_ids)]
-    if body.moderation is ModerationMode.AI and (why := ai_moderation_blocker()):
-        raise HTTPException(422, why)
-    token = new_secret_token()
-    itv = Interview(org_id=ctx.org_id, project_id=proj.id, participant_id=part.id, moderator_id=body.moderator_id, title=body.title,
-                    language=body.language or part.language or proj.language, scheduled_at=body.scheduled_at, invite_hash=token_hash(token),
-                    moderation=body.moderation.value)
+    token = new_secret_token()  # depth: the participant's link; group: unused placeholder (each seat has its own link)
+    itv = Interview(org_id=ctx.org_id, project_id=proj.id, participant_id=parts[0].id, moderator_id=body.moderator_id, title=body.title,
+                    language=body.language or parts[0].language or proj.language, scheduled_at=body.scheduled_at, invite_hash=token_hash(token),
+                    moderation=body.moderation.value, kind=body.kind)
     itv.observers = [InterviewObserver(user_id=u.id) for u in obs]
     db.add(itv)
     db.flush()  # assigns the id, so the audit row points at this interview
-    audit(db, ctx.org_id, ctx.actor, "interview.create", itv.id, ip=ctx.ip)
+    group_invites = []
+    if is_group:
+        for p in parts:
+            tok = new_secret_token()
+            seat = groups.add_seat(db, itv, p, token_hash(tok))
+            group_invites.append({"participant_id": p.id, "seat": seat.seat, "invite_path": f"/join.html?t={tok}", "invite_token": tok})
+    audit(db, ctx.org_id, ctx.actor, "interview.create", itv.id, ip=ctx.ip, kind=body.kind)
     db.commit()
     db.refresh(itv)
-    return interview_out(itv, ctx, token)
+    out = interview_out(itv, ctx, None if is_group else token, db=db)
+    if is_group:
+        out["group_invites"] = group_invites  # shown once, like the depth invite link
+    return out
 
 
 @router.get("/projects/{pid}/interviews")
@@ -254,6 +299,65 @@ def remove_observer(iid: str, user_id: str, ctx: Ctx = Depends(require_roles(*ST
     return {"observer_ids": [o.user_id for o in itv.observers]}
 
 
+# ---------- focus-group roster (seats; only for kind="group") ----------
+class SeatBody(BaseModel):
+    participant_id: str
+
+
+def _group_only(itv: Interview) -> None:
+    if not groups.is_group(itv):
+        raise HTTPException(409, "这不是座谈会")
+
+
+@router.post("/interviews/{iid}/participants", status_code=201)
+def add_group_participant(iid: str, body: SeatBody, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    """Seat another participant in a focus group; returns their one-time invite link."""
+    itv = visible_interview(db, ctx, iid)
+    if itv.status == "ended" or itv.purged_at:
+        raise HTTPException(409, "访谈已结束")
+    _group_only(itv)
+    proj = get_project(db, ctx, itv.project_id)
+    part = _eligible_participant(db, ctx, proj, body.participant_id)
+    tok = new_secret_token()
+    try:
+        seat = groups.add_seat(db, itv, part, token_hash(tok))
+    except ValueError:
+        raise HTTPException(422, f"无法加入：可能已在名单中，或已满 {groups.MAX_GROUP} 人")
+    audit(db, ctx.org_id, ctx.actor, "group.add", itv.id, seat=seat.seat)
+    db.commit()
+    return {"seat": seat.seat, "participant_id": part.id, "invite_path": f"/join.html?t={tok}", "invite_token": tok}
+
+
+@router.delete("/interviews/{iid}/participants/{participant_id}", status_code=204)
+def remove_group_participant(iid: str, participant_id: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    """Remove a participant from a focus group (only before it starts, and never the last one)."""
+    itv = visible_interview(db, ctx, iid)
+    _group_only(itv)
+    if itv.status != "scheduled":
+        raise HTTPException(409, "访谈已开始，不能移除受访者")
+    if len(groups.seats(db, itv.id)) <= 1:
+        raise HTTPException(409, "座谈会至少保留一位受访者")
+    if not groups.remove_seat(db, itv.id, participant_id):
+        raise HTTPException(404, "不在名单中")
+    audit(db, ctx.org_id, ctx.actor, "group.remove", itv.id)
+    db.commit()
+
+
+@router.post("/interviews/{iid}/participants/{participant_id}/invite/rotate")
+def rotate_group_invite(iid: str, participant_id: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    """A fresh invite link for one seat (the old one stops working)."""
+    itv = visible_interview(db, ctx, iid)
+    _group_only(itv)
+    seat = groups.seat_for(db, itv.id, participant_id)
+    if not seat:
+        raise HTTPException(404, "不在名单中")
+    tok = new_secret_token()
+    seat.invite_hash = token_hash(tok)
+    audit(db, ctx.org_id, ctx.actor, "group.invite.rotate", itv.id, seat=seat.seat)
+    db.commit()
+    return {"invite_path": f"/join.html?t={tok}", "invite_token": tok}
+
+
 # ---------- room tokens (staff side; participant side is in public.py) ----------
 class TokenReq(BaseModel):
     as_: str | None = Field(default=None, alias="as")
@@ -364,28 +468,46 @@ def live_state(iid: str, ctx: Ctx = Depends(current_ctx), db: Session = Depends(
     out = {"status": itv.status, "consented": consented, "recording": {"id": rec.id, "elapsed_ms": elapsed_ms(rec)} if rec else None,
            "stimulus": concept.current_stimulus(db, itv.id, staff=True), "elapsed_ms": concept.at_ms(itv) if itv.status == "live" else None}
     if ctx.user.role != "observer":  # who is in the waiting room is for the moderator, not the client
-        out["participant"] = {"waiting": in_waiting_room(itv), "admitted": itv.admitted_at is not None,
-                              "held": itv.held_at is not None and itv.admitted_at is None, "device_ok": itv.device_ok_at is not None}
+        if groups.is_group(itv):
+            out["participants"] = [{"participant_id": s.participant_id, "seat": s.seat, "label": groups.label(s),
+                                    "name": s.participant.name, "waiting": in_waiting_room(itv, s),
+                                    "admitted": s.admitted_at is not None, "held": s.held_at is not None and s.admitted_at is None,
+                                    "device_ok": s.device_ok_at is not None, "entered": s.entered_at is not None}
+                                   for s in groups.seats(db, itv.id)]
+        else:
+            out["participant"] = {"waiting": in_waiting_room(itv), "admitted": itv.admitted_at is not None,
+                                  "held": itv.held_at is not None and itv.admitted_at is None, "device_ok": itv.device_ok_at is not None}
     return out
 
 
 class AdmitBody(BaseModel):
     admit: bool
+    participant_id: str | None = None  # which seat, for a focus group; a depth interview has only one
 
 
 @router.post("/interviews/{iid}/admit")
 def admit(iid: str, body: AdmitBody, ctx: Ctx = Depends(require_roles("admin", "researcher", "moderator")), db: Session = Depends(get_db)):
-    """Waiting room: let the participant into the room, or ask them to wait a little longer."""
+    """Waiting room: let a participant into the room, or ask them to wait a little longer.
+
+    A depth interview has one participant. A focus group admits one seat at a time (``participant_id``)."""
     itv = visible_interview(db, ctx, iid)
     if itv.status == "ended" or itv.purged_at:
         raise HTTPException(409, "访谈已结束")
-    if body.admit:
-        itv.admitted_at, itv.held_at = utcnow(), None
+    if groups.is_group(itv):
+        if not body.participant_id:
+            raise HTTPException(422, "请指定要放行的受访者")
+        row = groups.seat_for(db, itv.id, body.participant_id)
+        if not row:
+            raise HTTPException(404, "不在名单中")
     else:
-        itv.admitted_at, itv.held_at = None, utcnow()
+        row = itv
+    if body.admit:
+        row.admitted_at, row.held_at = utcnow(), None
+    else:
+        row.admitted_at, row.held_at = None, utcnow()
     audit(db, ctx.org_id, ctx.actor, "participant.admit" if body.admit else "participant.hold", itv.id)
     db.commit()
-    return {"admitted": itv.admitted_at is not None, "held": itv.held_at is not None}
+    return {"admitted": row.admitted_at is not None, "held": row.held_at is not None}
 
 
 _EXT = {"video/webm": "webm", "audio/webm": "webm", "video/mp4": "mp4", "audio/mp4": "mp4", "audio/ogg": "ogg"}
@@ -424,7 +546,7 @@ def play_recording(iid: str, rid: str, ctx: Ctx = Depends(require_roles("admin",
 # ---------- transcript ----------
 class SegIn(BaseModel):
     idx: int = Field(ge=0)
-    speaker: str = Field(pattern="^(moderator|participant)$")
+    speaker: str = Field(pattern=groups.SPEAKER_PATTERN)
     start_ms: int = Field(ge=0)
     end_ms: int = Field(ge=0)
     text_orig: str = Field(min_length=1)
@@ -437,10 +559,18 @@ class TranscriptIn(BaseModel):
 
 
 def _ingest(db: Session, itv: Interview, segs: list[dict]) -> None:
+    """Replace an interview's transcript. A focus group stores ``p1`` … ``p10``; a depth interview stores ``participant``.
+
+    Raises:
+        HTTPException: insights already quote the old transcript (409), a speaker key does not belong on this interview (422),
+            or a segment ends before it starts (422).
+    """
     if db.scalar(select(Insight.id).where(Insight.interview_id == itv.id)):
         raise HTTPException(409, "已有洞察引用旧转写，不能整体替换；请逐段校对")
     db.execute(delete(TranscriptSegment).where(TranscriptSegment.interview_id == itv.id))
     for s in segs:
+        if not groups.speaker_fits(itv, s["speaker"]):
+            raise HTTPException(422, f"片段 #{s['idx']} 的发言人无效")
         if s["end_ms"] < s["start_ms"]:
             raise HTTPException(422, f"片段 #{s['idx']} 结束时间早于开始时间")
         db.add(TranscriptSegment(org_id=itv.org_id, interview_id=itv.id, **s))

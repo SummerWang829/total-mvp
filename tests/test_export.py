@@ -25,7 +25,7 @@ def test_csv_and_docx_export(org):
     c = org.c.get(f"/api/projects/{pid}/insights/export?format=csv", headers=org.h())
     assert c.status_code == 200 and "attachment" in c.headers["content-disposition"]
     text = c.content.decode("utf-8-sig")
-    assert "clear halal certification" in text and "怕假货" in text and "P-001" in text and "Wei Ling" not in text
+    assert "clear halal certification" in text and "怕假货" in text and "P-001" in text and "Wei Ling" not in text and "受访者" in text
     d = org.c.get(f"/api/projects/{pid}/insights/export?format=docx", headers=org.h())
     assert d.status_code == 200
     with zipfile.ZipFile(io.BytesIO(d.content)) as z:
@@ -50,6 +50,16 @@ def test_export_permissions_and_isolation(org, client):
     assert client.get(f"/api/projects/{pid}/insights/export").status_code in (401, 403)
     other = Org(client, "B", "b@b.com")
     assert client.get(f"/api/projects/{pid}/insights/export", headers=other.h()).status_code == 404
+
+
+def test_export_names_a_group_seat_instead_of_its_key():
+    row = {"pcode": "P-001", "interview": "座谈", "theme": "t", "statement": "s", "status": "draft", "kind": "manual",
+           "evidence": [{"quote": "原话", "speaker": "p2", "start_ms": 1500}]}
+    text = export.to_csv([row]).decode("utf-8-sig")
+    assert "参与者 ·02" in text and "p2" not in text
+    with zipfile.ZipFile(io.BytesIO(export.to_docx("项目", [row], "2026-10-16"))) as z:
+        xml = z.read("word/document.xml").decode("utf-8")
+    assert "参与者 ·02" in xml and "p2" not in xml
 
 
 def test_csv_neutralises_formulas():

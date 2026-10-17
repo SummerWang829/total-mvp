@@ -13,8 +13,8 @@ from .audit import audit
 from .config import settings
 from .media import purge_cache
 from . import ai_room
-from .models import (BackroomMessage, CaptionLine, Clip, Evidence, Highlight, Insight, Interview, Participant, PreTask, PreTaskAnswer, Project, Recording,
-                     RecordingTrack, ShareLink, StimulusMark, TimeSlot, TranscriptSegment, utcnow)
+from .models import (BackroomMessage, CaptionLine, Clip, Evidence, Highlight, Insight, Interview, InterviewParticipant, Participant, PreTask, PreTaskAnswer, Project,
+                     Recording, RecordingTrack, ShareLink, StimulusMark, TimeSlot, TranscriptSegment, utcnow)
 
 PURGED = "[已按保留期删除]"
 
@@ -44,6 +44,7 @@ def purge_interview(db: Session, itv: Interview, reason: str, actor: str = "syst
     db.execute(delete(PreTask).where(PreTask.interview_id == itv.id))
     db.execute(delete(TimeSlot).where(TimeSlot.interview_id == itv.id))  # candidate times (config)
     db.execute(delete(StimulusMark).where(StimulusMark.interview_id == itv.id))  # material marks are personal data
+    db.execute(delete(InterviewParticipant).where(InterviewParticipant.interview_id == itv.id))  # focus-group seats (per-participant journey)
     clip_ids = [c.id for c in db.scalars(select(Clip).where(Clip.interview_id == itv.id))]
     if clip_ids:
         db.execute(update(ShareLink).where(ShareLink.clip_id.in_(clip_ids)).values(revoked_at=utcnow()))
@@ -73,14 +74,20 @@ def run_retention(db: Session, now=None) -> int:
     due = db.scalars(q).all()
     for itv in due:
         closed = db.get(Project, itv.project_id).closed_at is not None
+        people = [s.participant for s in itv.group_participants] if itv.kind == "group" else [itv.participant]
         purge_interview(db, itv, f"retention:{settings.retention_days}d-after-project-close" if closed else f"retention-backstop:{settings.retention_backstop_days}d")
-        anonymize_participant(db, itv.participant)
+        for person in people:
+            anonymize_participant(db, person)
     db.commit()
     return len(due)
 
 
 def erase_participant(db: Session, p: Participant, actor: str) -> int:
-    itvs = db.scalars(select(Interview).where(Interview.participant_id == p.id, Interview.purged_at.is_(None))).all()
+    ids = {i.id for i in db.scalars(select(Interview).where(Interview.participant_id == p.id, Interview.purged_at.is_(None)))}
+    seated = db.scalars(select(InterviewParticipant.interview_id).where(InterviewParticipant.participant_id == p.id)).all()
+    if seated:
+        ids.update(i.id for i in db.scalars(select(Interview).where(Interview.id.in_(seated), Interview.purged_at.is_(None))))
+    itvs = [db.get(Interview, i) for i in ids]
     for itv in itvs:
         purge_interview(db, itv, "data-subject-request", actor)
     anonymize_participant(db, p)

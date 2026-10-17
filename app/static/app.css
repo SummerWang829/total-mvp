@@ -277,6 +277,7 @@ body.participant .tag.o,body.participant .tag.live,.stage.t-light .tag.o,.stage.
 .alertbox button{align-self:flex-start;min-height:36px;background:var(--r-btn);border-color:var(--r-btnline);color:var(--r-btnink)}
 .stage.solo .rpan.chat{margin-top:12px;align-self:auto}
 /* ---------- concept test: the material on screen, live captions, the script, quotes and follow-ups ---------- */
+.ptlist{margin:8px 0 0;padding-left:18px}.ptlist li{margin:6px 0}
 .stim{margin-bottom:10px;border-radius:12px;overflow:hidden;background:#0B1A15;border:1px solid var(--r-line)}
 .stimhint{margin:0;padding:8px 12px;font-size:14px;color:var(--r-ink);background:var(--r-pan)}
 .stim iframe,.stim img{display:block;width:100%;aspect-ratio:16/9;border:0;background:#0B1A15;object-fit:contain}
