@@ -152,7 +152,7 @@ logging:
     secs = [float(s.split("more than ")[1].split("s")[0]) for s in stalls if "more than " in s]
     if secs:
         print(f"  SERVER STALLS: {len(secs)} times the event loop was blocked, seconds: {secs}")
-        print("  worst one:" + stalls[secs.index(max(secs))][:1500])
+        print("  worst one:" + stalls[secs.index(max(secs))][:5000])
     print(f"\nE2E ROOM: {PASSES} checks passed, {len(FAILS)} failed")
     if FAILS:
         print("\n".join(" - " + f for f in FAILS)); sys.exit(1)

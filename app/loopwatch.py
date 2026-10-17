@@ -39,6 +39,17 @@ async def slow_request_logger(request, call_next):  # noqa: ANN001 - Starlette m
 _threshold = [2.0]
 
 
+def _other_threads(skip: int) -> str:
+    """Where every other thread is right now (the one holding the GIL or the CPU is usually among them)."""
+    names = {t.ident: t.name for t in threading.enumerate()}
+    out = []
+    for tid, frame in sys._current_frames().items():
+        if tid == skip or names.get(tid) == "loop-watchdog":
+            continue
+        out.append(f"-- {names.get(tid, tid)}:\n" + "".join(traceback.format_stack(frame)[-3:]))
+    return "\n".join(out)
+
+
 def start(threshold_s: float) -> None:
     """Start the heartbeat (on the running loop) and the watchdog thread. Call from the app's startup, inside the event loop."""
     beat = [time.monotonic()]
@@ -60,6 +71,7 @@ def start(threshold_s: float) -> None:
                 frame = sys._current_frames().get(loop_thread)
                 where = "".join(traceback.format_stack(frame)[-6:]) if frame else "(no frame)"
                 log.warning("event loop blocked for more than %.1fs; the loop thread is in:\n%s", stalled, where)
+                log.warning("other threads at that moment:\n%s", _other_threads(loop_thread))
 
     asyncio.get_running_loop().create_task(pulse())
     threading.Thread(target=watch, daemon=True, name="loop-watchdog").start()
