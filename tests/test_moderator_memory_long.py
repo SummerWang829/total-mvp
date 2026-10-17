@@ -16,6 +16,8 @@ from tests.test_moderator_engine import GUIDE, NO_DRY_RULE, PROMPTS, SHALLOW, sa
 
 ALLERGY = "我对香精过敏，用过一次就起了红疹"
 ALLERGY_FACT = "对香精过敏，用过会起红疹"
+BUDGET = "我每个月的护肤预算大概两百块"
+BUDGET_FACT = "每月护肤预算约两百"
 
 
 # ---------- recall ----------
@@ -135,3 +137,83 @@ def test_a_failing_summary_service_does_not_break_the_interview_or_hammer_the_se
     engine = run_interview(model, 60, "这个产品适合敏感肌吗")
     assert engine.memory.summary == "" and engine.memory.facts  # the rule-based digest and the facts still work
     assert model.summary_calls <= 2 * (2 * 60 // SUMMARY_RETRY_AFTER_TURNS + 2)  # a try (2 attempts) only every few lines, not every turn
+
+
+def test_a_sloppy_fact_list_keeps_the_reading_of_the_answer():
+    from app.moderator.constants import NEW_FACTS_PER_TURN
+    from app.moderator.schemas import RespondentInputAnalysis
+
+    many = RespondentInputAnalysis.model_validate({"category": "answered", "new_facts": ["a", "b", "c", "d", 3, "  "]})
+    assert many.new_facts == ["a", "b", "c"][:NEW_FACTS_PER_TURN] and many.category.value == "answered"
+    assert RespondentInputAnalysis.model_validate({"new_facts": "not a list"}).new_facts == []
+
+
+# ---------- the memory work runs in the background (v007 made every reply wait for it: p95 5.1 s instead of 2.7 s) ----------
+import threading  # noqa: E402
+
+
+class BackgroundModel(LongInterview):
+    """Like LongInterview, but the analysis no longer carries facts: the `remember` call does. The memory calls can be held up."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.hold = threading.Event()
+        self.hold.set()
+        self.remember_calls = 0
+
+    def _reply(self, messages: list[dict]) -> dict:
+        system, user = messages[0]["content"], json.loads(messages[-1]["content"])
+        if system == PROMPTS.remember:
+            self.hold.wait(10)
+            self.remember_calls += 1
+            return {"new_facts": [fact for line, fact in ((ALLERGY, ALLERGY_FACT), (BUDGET, BUDGET_FACT)) if line in user["ANSWER"]]}
+        if system == PROMPTS.analyze:
+            return {**SHALLOW, "question_answered": False, "category": "answered"}
+        return super()._reply(messages)
+
+
+def run_background(model: BackgroundModel, exchanges: int) -> ModeratorEngine:
+    clock = ManualClock()
+    engine = ModeratorEngine(long_guide(), model.chat, prompts=PROMPTS, config=NO_DRY_RULE, clock=clock, background_memory=True)
+    engine.open()
+    engine.handle_participant("好的，可以开始")
+    for i in range(exchanges):
+        clock.advance(60)
+        engine.handle_participant(ALLERGY if i == 2 else f"第{i}回，我一般先看网上的评价再决定要不要买，因为担心{i}号成分不合适")
+        engine.flush_memory()  # tests wait so the order of calls is the same every run
+    return engine
+
+
+def test_in_the_background_the_facts_and_the_summary_still_reach_the_model():
+    model = BackgroundModel()
+    engine = run_background(model, 60)
+    engine.handle_participant("你们这个产品的香精味道重不重，会不会让人过敏")
+    last = model.shown[-1]
+    assert any(ALLERGY_FACT in f for f in last["KEY_FACTS"]) and any(ALLERGY in r for r in last["RECALLED_EARLIER"])
+    assert model.summary_calls >= 3 and model.remember_calls >= 30 and last["SUMMARY"]
+
+
+def test_the_reply_does_not_wait_for_the_memory_calls():
+    model = BackgroundModel()
+    engine = run_background(model, 3)
+    model.hold.clear()  # the next facts call is now stuck
+    engine.handle_participant(f"我想了想，{BUDGET}，不会再多了")
+    assert engine.turn_log[-1].spoken_response  # the AI answered although the memory call has not finished
+    assert BUDGET_FACT not in [f for _, f in engine.memory.facts]
+    model.hold.set()
+    engine.flush_memory()
+    assert BUDGET_FACT in [f for _, f in engine.memory.facts]  # and it lands once the call returns
+
+
+def test_a_broken_memory_call_never_breaks_the_interview():
+    model = BackgroundModel()
+    original = model._reply
+
+    def failing(messages):
+        if messages[0]["content"] in (PROMPTS.remember, PROMPTS.summarize):
+            raise ChatError("memory service down")
+        return original(messages)
+
+    model.chat.script = failing
+    engine = run_background(model, 30)
+    assert engine.turn_log[-1].spoken_response and engine.memory.facts == [] and engine.memory.summary == ""

@@ -164,7 +164,8 @@ def start(db: Session, itv: Interview, guide: dict | None, actor: str) -> AiSess
         the_guide = InterviewGuide.model_validate(guide) if guide else demo_guide(itv.language)
     except ValueError as e:
         raise AiRoomError(422, f"提纲不合格：{str(e)[:200]}") from e
-    engine = ModeratorEngine(the_guide, _chat_model(), profile=screener.profile_lines(db, itv.participant_id))
+    engine = ModeratorEngine(the_guide, _chat_model(), profile=screener.profile_lines(db, itv.participant_id),
+                             background_memory=True)  # facts and the summary are read while the participant waits for nothing
     sess = AiSession(interview_id=itv.id, org_id=itv.org_id, guide_json=the_guide.model_dump_json())
     db.add(sess)
     with _lock(itv.id):

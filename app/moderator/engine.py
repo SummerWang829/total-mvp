@@ -6,10 +6,11 @@ a failing draft is regenerated at most MAX_REGENERATIONS times, then a safe fixe
 When a human takes over, the AI never calls the model and never speaks (red line H11).
 """
 import logging
+import threading
 import time
 
 from .clock import Clock, SystemClock
-from .constants import (ALERT_SERVICE_UNAVAILABLE, DRY_ANSWER_MAX_CHARS, DRY_ANSWER_MAX_WORDS, MAX_REGENERATIONS, NEW_FACTS_PER_TURN, RED_ALERT_AFTER_FAILED_TURNS, SUMMARY_RETRY_AFTER_TURNS, AlertLevel, ControlMode, EndReason, PacingAction, Phase,
+from .constants import (ALERT_SERVICE_UNAVAILABLE, DRY_ANSWER_MAX_CHARS, DRY_ANSWER_MAX_WORDS, MAX_REGENERATIONS, NEW_FACTS_PER_TURN, RED_ALERT_AFTER_FAILED_TURNS, REMEMBER_MIN_CHARS, SUMMARY_RETRY_AFTER_TURNS, AlertLevel, ControlMode, EndReason, PacingAction, Phase,
                         QualityRule, ResponseCategory, Speaker, TransitionReason)
 from .detectors import detect_asks_if_ai, detect_crisis, detect_mentions_ai, detect_ready, detect_stop
 from .fsm import FOLLOWUP_PHASES, InterviewStateMachine, PacingDecision, TurnUpdate
@@ -47,6 +48,8 @@ class ModeratorEngine:
         clock: time source.
         seed: fixed model seed for repeatable eval runs.
         profile: the participant's screening answers ("question → answer"), given to the model as background every turn.
+        background_memory: read facts out of each answer and refresh the summary in a background thread, so the reply never waits for them
+            (the real rooms and evaluations; off in unit tests, whose scripted models count calls in order).
 
     Raises:
         ValueError: unsupported language, or the fixed intro breaks a red line (e.g. participant_topic too long).
@@ -54,7 +57,7 @@ class ModeratorEngine:
 
     def __init__(self, guide: InterviewGuide, chat: ModeratorChatProvider, prompts: PromptSet | None = None,
                  config: PacingConfig | None = None, clock: Clock | None = None, seed: int | None = None,
-                 profile: list[str] | None = None) -> None:
+                 profile: list[str] | None = None, background_memory: bool = False) -> None:
         self.guide = guide
         self.texts: LanguageTemplates = templates_for(guide.language)
         self.clock = clock or SystemClock()
@@ -66,6 +69,8 @@ class ModeratorEngine:
         self._last_was_followup = False
         self._failed_turns_in_row = 0
         self._summary_retry_at = 0
+        self.background_memory = background_memory
+        self._memory_thread: threading.Thread | None = None
         self._intro = self.texts.intro.format(topic=guide.participant_topic or self.texts.default_topic)
         if found := check_utterance(self._intro, self._gate(is_first_turn=True)):
             raise ValueError(f"the fixed intro breaks a red line: {found[0].red_line.value} {found[0].detail}")
@@ -110,6 +115,7 @@ class ModeratorEngine:
             raise EngineStateError("interview is not running")
         started = time.monotonic()
         self.memory.add_turn(Speaker.PARTICIPANT, text, self._now())
+        self._schedule_memory(text, self._now())
         if self.control is ControlMode.HUMAN:
             return self._record(ModeratorTurnPayload(analysis=None, plan=None, spoken_response=None))  # H11: silent
         try:
@@ -164,7 +170,8 @@ class ModeratorEngine:
             return self._end_with(EndReason.CRISIS, None, asks_ai)
         if detect_stop(text):
             return self._end_with(EndReason.PARTICIPANT_STOPPED, None, asks_ai)
-        self._refresh_summary()
+        if not self.background_memory:
+            self._refresh_summary()
         analysis = self._analyze(text)
         self.memory.add_facts(analysis.new_facts[:NEW_FACTS_PER_TURN], self._now())
         asks_ai = asks_ai or (analysis.asks_if_ai and detect_mentions_ai(text))  # the model's flag only counts when these words are about AI
@@ -299,6 +306,35 @@ class ModeratorEngine:
         latest = next((t.text for t in reversed(self.memory.turns) if t.speaker is Speaker.PARTICIPANT), "")
         about = " ".join(x for x in (latest, decision.question or "", decision.missed_item.text if decision.missed_item else "") if x)
         return self.memory.build_context(self.guide, self.fsm.snapshot(), decision, recall_query=about)
+
+    def _schedule_memory(self, text: str, at_s: float) -> None:
+        """Start the background memory work for this answer, after any earlier work has finished (one at a time, in order)."""
+        if not self.background_memory:
+            return
+        previous = self._memory_thread
+        thread = threading.Thread(target=self._memory_job, args=(previous, text, at_s), daemon=True, name="moderator-memory")
+        self._memory_thread = thread
+        thread.start()
+
+    def flush_memory(self) -> None:
+        """Wait until the background memory work has caught up (tests, and the end of an evaluation session)."""
+        thread = self._memory_thread
+        if thread is not None:
+            thread.join()
+
+    def _memory_job(self, previous: threading.Thread | None, text: str, at_s: float) -> None:
+        """Facts from this answer, then the summary if it is due. Never raises: the reply does not depend on it, and a model failure
+        here shows up on the next reply's own call (ChatFatalError) anyway."""
+        if previous is not None:
+            previous.join()
+        try:
+            if self.calls.prompts.remember and len(text.strip()) >= REMEMBER_MIN_CHARS:
+                note = self.calls.remember(self.guide.language, [f for _, f in self.memory.facts], self.memory.profile, text)
+                if note:
+                    self.memory.add_facts(note.new_facts, at_s)
+            self._refresh_summary()
+        except Exception:  # noqa: BLE001 - a background helper must not die loudly into the interview
+            log.exception("moderator memory update failed (the interview carries on without it)")
 
     def _refresh_summary(self) -> None:
         """Every SUMMARY_EVERY_TURNS lines that leave the verbatim window, fold them into the running summary (one extra model call).

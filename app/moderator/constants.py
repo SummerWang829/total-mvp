@@ -118,6 +118,7 @@ RECALL_LINE_CHARS = 160
 RECALL_MIN_SCORE = 1.5                # an older line needs about two rare character pairs in common with the query (a pair found in many lines counts for little)
 SUMMARY_EVERY_TURNS = 12              # a model-written summary is refreshed when this many lines have left the verbatim window
 SUMMARY_RETRY_AFTER_TURNS = 6         # after a failed summary call, wait this many lines before trying again
+REMEMBER_MIN_CHARS = 10               # a shorter answer ("好的", "yes") is not sent to the fact-extracting call
 SUMMARY_MAX_CHARS = 1200              # the model-written summary is cut to this (the model is asked for less)
 
 class ResponseCategory(str, Enum):

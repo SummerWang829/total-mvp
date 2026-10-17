@@ -62,3 +62,24 @@ def test_mentions_ai(text):
 @pytest.mark.parametrize("text", ["这个客户观察员是谁啊？", "我在 Shopee 买的，看了 TikTok 的评价", "Who will see my answers?", "好，那我相信你一次"])
 def test_does_not_mention_ai(text):
     assert not detect_mentions_ai(text)
+
+
+# found in evaluation runs (2026-10-17): the interview was ended by mistake on these
+NOT_STOP_IDIOMS = [
+    "But if it's late or cold that first time, I'm done — I won't give it a second chance.",
+    "I've gone back to one of the apps I quit, because they lured me with a big comeback voucher.",
+    "I quit using that app last year when the fees went up.",
+    "I'm done with that app, honestly; the delivery was always late.",
+    "Once the promotions dried up I was done with it.",
+]
+STOP_STILL = ["I'm done, can we stop here?", "I'm done with this interview.", "OK I quit.", "I quit", "Sorry, I'm done."]
+
+
+@pytest.mark.parametrize("text", NOT_STOP_IDIOMS)
+def test_an_idiom_about_something_else_does_not_end_the_interview(text):
+    assert not detect_stop(text)
+
+
+@pytest.mark.parametrize("text", STOP_STILL)
+def test_a_real_request_to_stop_is_still_caught(text):
+    assert detect_stop(text)

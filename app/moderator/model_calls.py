@@ -10,10 +10,10 @@ from .constants import MAX_PARSE_RETRIES, REJECTION_FIX_HINTS
 from .memory import ModeratorContext
 from .prompts import PromptSet
 from .providers import ChatError, ChatFatalError, ChatMessage, ModeratorChatProvider
-from .schemas import DialogueActionPlan, MemoryUpdate, RespondentInputAnalysis, SpokenDraft, Violation
+from .schemas import DialogueActionPlan, MemoryNote, MemoryUpdate, RespondentInputAnalysis, SpokenDraft, Violation
 
 log = logging.getLogger(__name__)
-Reply = TypeVar("Reply", RespondentInputAnalysis, SpokenDraft, MemoryUpdate)  # works on Python 3.10+ (the doctor's minimum)
+Reply = TypeVar("Reply", RespondentInputAnalysis, SpokenDraft, MemoryUpdate, MemoryNote)  # works on Python 3.10+ (the doctor's minimum)
 
 
 def _context_json(ctx: ModeratorContext) -> dict:
@@ -81,6 +81,27 @@ class ModelCaller:
                 "REJECTED_DRAFTS": rejected_drafts or []}
         messages = [{"role": "system", "content": self.prompts.speak}, {"role": "user", "content": json.dumps(user, ensure_ascii=False)}]
         return self._ask(messages, SpokenDraft, "draft")
+
+    def remember(self, language: str, known: list[str], profile: list[str], answer: str) -> MemoryNote | None:
+        """The facts one answer states that a later question must not contradict or ask again.
+
+        Args:
+            language: the interview language (facts are written in it).
+            known: the facts already remembered (not to be repeated).
+            profile: the participant's screening answers (not to be repeated either).
+            answer: the participant's answer.
+
+        Returns:
+            The facts, or None when this prompt version has no such prompt or the model gave nothing usable.
+
+        Raises:
+            ChatFatalError: the service refused (bad key, no balance, ...).
+        """
+        if not self.prompts.remember:
+            return None
+        user = {"LANGUAGE": language, "KEY_FACTS": known, "PARTICIPANT_PROFILE": profile, "ANSWER": answer}
+        messages = [{"role": "system", "content": self.prompts.remember}, {"role": "user", "content": json.dumps(user, ensure_ascii=False)}]
+        return self._ask(messages, MemoryNote, "facts")
 
     def summarize(self, language: str, previous: str, lines: list[tuple[str, str]], facts: list[str]) -> MemoryUpdate | None:
         """Fold lines that have left the verbatim window into the running summary of the interview.

@@ -16,7 +16,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from app.config import settings
 from app.moderator.knowledge import InterviewGuide
-from app.moderator.prompts import CURRENT_PROMPT_VERSION
+from app.moderator.prompts import ACTIVE_PROMPT_VERSION
 from app.moderator.constants import MSG_SERVICE_UNAVAILABLE
 from app.moderator.providers import ChatError, ChatFatalError, ModeratorChatProvider, OpenAICompatModeratorChat
 
@@ -163,7 +163,7 @@ def run(split: Split | None, seeds: list[int], brain: str, participant: str, use
     judged = {c.scenario_id: j for _, c, j in outcomes if j}
     calibration: Calibration | None = calibrate({k: v.composite for k, v in judged.items()}) if judge else None
     model_name = MockBrain.name if brain == MOCK else f"{settings.moderator_model}"
-    versions = Versions(prompt=CURRENT_PROMPT_VERSION, scenarios=SCENARIO_SET_VERSION, rubric=RUBRIC_VERSION, model=model_name,
+    versions = Versions(prompt=ACTIVE_PROMPT_VERSION, scenarios=SCENARIO_SET_VERSION, rubric=RUBRIC_VERSION, model=model_name,
                         participant="rule-based" if participant == "rule" else participant_model().model,
                         judge=judge_model().model if judge else "none", sim_clock=SIM_CLOCK_VERSION)
     return build_report(checks, judged, calibration, versions, split.value if split else "all", seeds, mock=brain == MOCK)

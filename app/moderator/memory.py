@@ -6,6 +6,8 @@
   refreshed as lines leave the window, and older lines that match what is being discussed now come back word for word (recall.py).
 - Hypotheses travel in the context to steer follow-ups but are marked internal; red lines (Sprint 2) stop them being said.
 """
+import threading
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from .constants import (CONTEXT_ASKED_QUESTIONS, DEFAULT_RECENT_TURNS_VERBATIM, DIGEST_LINE_CHARS, DIGEST_MAX_CHARS, FACT_CARD_CHARS, FACT_CARDS_MAX,
@@ -73,6 +75,7 @@ class ConversationMemory:
         self.turns: list[DialogueTurn] = []
         self.summary = ""
         self.summarized_upto = 0  # turns[:summarized_upto] are covered by `summary`
+        self._lock = threading.RLock()  # facts and the summary are written by a background thread while the reply is being built
         self.facts: list[tuple[float, str]] = []  # (seconds into the interview, fact) in the order stated
         self._pending_whispers: list[Whisper] = []
         self.whisper_log: list[Whisper] = []
@@ -122,16 +125,17 @@ class ConversationMemory:
         Returns:
             How many new facts were stored.
         """
-        known = {f for _, f in self.facts}
-        added = 0
-        for raw in facts:
-            fact = " ".join(raw.split())[:FACT_CARD_CHARS]
-            if fact and fact not in known:
-                self.facts.append((at_s, fact))
-                known.add(fact)
-                added += 1
-        del self.facts[:-FACT_CARDS_MAX]
-        return added
+        with self._lock:
+            known = {f for _, f in self.facts}
+            added = 0
+            for raw in facts:
+                fact = " ".join(raw.split())[:FACT_CARD_CHARS]
+                if fact and fact not in known:
+                    self.facts.append((at_s, fact))
+                    known.add(fact)
+                    added += 1
+            del self.facts[:-FACT_CARDS_MAX]
+            return added
 
     def facts_digest(self) -> list[str]:
         """The remembered facts, oldest first, each with its minute; when over FACTS_CONTEXT_CHARS the oldest are left out."""
@@ -151,10 +155,11 @@ class ConversationMemory:
         Raises:
             ValueError: upto_index goes backwards or past the end.
         """
-        if not self.summarized_upto <= upto_index <= len(self.turns):
-            raise ValueError("summary must cover a growing prefix of the turns")
-        self.summary = summary.strip()[:SUMMARY_MAX_CHARS]
-        self.summarized_upto = upto_index
+        with self._lock:
+            if not self.summarized_upto <= upto_index <= len(self.turns):
+                raise ValueError("summary must cover a growing prefix of the turns")
+            self.summary = summary.strip()[:SUMMARY_MAX_CHARS]
+            self.summarized_upto = upto_index
 
     def history_digest(self, window_start: int) -> str:
         """The condensed history of everything before the verbatim window, so the context stays a fixed size however long the interview.
@@ -195,6 +200,11 @@ class ConversationMemory:
         Returns:
             The validated context.
         """
+        with self._lock:  # one consistent view even while the background thread stores a new summary
+            return self._context(guide, snapshot, decision, consume_whispers, recall_query)
+
+    def _context(self, guide: InterviewGuide, snapshot: PacingSnapshot, decision: PacingDecision, consume_whispers: bool, recall_query: str) -> ModeratorContext:
+        """The body of build_context (the caller holds the lock)."""
         window_start = max(0, len(self.turns) - self.recent_turns_verbatim)
         recent = self.turns[window_start:]
         return ModeratorContext(

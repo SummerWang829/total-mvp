@@ -95,7 +95,7 @@ def run_session(scenario: Scenario, guide: InterviewGuide, chat: ModeratorChatPr
         The full record; `error` is set if the run broke (reported as a failure, never hidden).
     """
     clock = ManualClock()
-    engine = ModeratorEngine(guide, chat, clock=clock, seed=scenario.seed)
+    engine = ModeratorEngine(guide, chat, clock=clock, seed=scenario.seed, background_memory=True)
     intro = engine.open().spoken_response or ""
     history: list[tuple[str, str]] = [("interviewer", intro)]
     clock.advance(speaking_seconds(intro, guide.language) + THINK_PAUSE_S)

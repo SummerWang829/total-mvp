@@ -37,10 +37,13 @@ class MockBrain:
         prompts = load_prompts()
         self._analyze_prompt = prompts.analyze
         self._summarize_prompt = prompts.summarize
+        self._remember_prompt = prompts.remember
 
     def complete(self, messages: list[ChatMessage], temperature: float = 0.3, seed: int | None = None) -> dict:
         """Answer an analysis, a summary or a speaking request."""
         data = json.loads(messages[-1]["content"])
+        if self._remember_prompt and messages[0]["content"] == self._remember_prompt:
+            return {"new_facts": []}
         if self._summarize_prompt and messages[0]["content"] == self._summarize_prompt:
             return {"summary": (data["PREVIOUS_SUMMARY"] + " " + " ".join(x["text"][:20] for x in data["NEW_LINES"] if x["speaker"] == "participant"))[-600:]}
         return self._analyze(data) if messages[0]["content"] == self._analyze_prompt else self._speak(data)

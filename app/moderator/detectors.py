@@ -14,8 +14,8 @@ _CRISIS = [
 ]
 _STOP = [
     r"\b(?:i )?(?:want|would like|need) to stop\b", r"\bstop (?:the|this) (?:interview|session|chat)\b", r"\bend (?:the|this) (?:interview|session)\b",
-    r"\bi'?m done\b", r"\bdon'?t want to (?:continue|go on|do this)\b", r"\bcan we stop\b", r"\bplease stop\b", r"\bi (?:have to|need to|must) (?:go|leave)\b",
-    r"\bi quit\b", r"\bno more questions\b",
+    r"\bi'?m done(?! with\b)", r"\bi'?m done with (?:this|the|that) (?:interview|session|chat|conversation|survey)\b", r"\bdon'?t want to (?:continue|go on|do this)\b", r"\bcan we stop\b", r"\bplease stop\b", r"\bi (?:have to|need to|must) (?:go|leave)\b",
+    r"(?<!apps )(?<!app )(?<!one )(?<!ones )(?<!that )(?<!which )\bi quit\b(?!\s+[a-z])", r"\bno more questions\b",
     r"不想(?:再)?(?:继续|聊|做)(?:了|下去)?$", r"我想停", r"(?:请|可以)?停(?:止|下)(?:访谈|吧|一下)?(?:吧|了)?$", r"结束(?:访谈)?吧", r"不聊了", r"我要走了",
     r"不想(?:再)?继续", r"到此为止", r"我不(?:想)?参加了", r"我退出",
 ]
@@ -63,9 +63,23 @@ def detect_crisis(text: str) -> bool:
     return _matches(_CRISIS, text)
 
 
+_CONDITIONAL = re.compile(r"\b(?:if|when|whenever|once|unless)\b", re.IGNORECASE)
+
+
 def detect_stop(text: str) -> bool:
-    """The participant asks to stop or end the interview (red line H5: stop at once, politely)."""
-    return _matches(_STOP, text)
+    """The participant asks to stop or end the interview (red line H5: stop at once, politely).
+
+    A pattern found after "if / when / once ..." in the same sentence is an idiom about something else ("if the food is late, I'm
+    done" means done with the app, found in evaluation runs), not a request to end this interview. The model's own reading of the
+    answer still catches a real request that is phrased that way.
+    """
+    for sentence in re.split(r"(?<=[.!?。！？])\s*", text):
+        cleaned = sentence.strip().rstrip("。.!！?？~～ ")  # as _matches does, for the patterns anchored to the end
+        for pattern in _STOP:
+            found = re.search(pattern, cleaned, re.IGNORECASE)
+            if found and not _CONDITIONAL.search(cleaned[:found.start()]):
+                return True
+    return False
 
 
 def detect_asks_if_ai(text: str) -> bool:

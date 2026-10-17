@@ -42,7 +42,18 @@ class RespondentInputAnalysis(BaseModel):
     question_answered: bool = False
     ready_to_start: bool = False                                  # intro: the participant agreed to begin
     asks_if_ai: bool = False                                      # "are you a real person?" (red line H3)
-    new_facts: list[str] = Field(default_factory=list, max_length=NEW_FACTS_PER_TURN * 2)  # facts the participant just stated, to remember all interview
+    new_facts: list[str] = Field(default_factory=list)  # facts the participant just stated, to remember all interview (cut by _keep_a_few)
+
+
+    @field_validator("new_facts", mode="before")
+    @classmethod
+    def _keep_a_few(cls, value: object) -> list[str]:
+        """A model that lists too many facts, or puts something other than text in the list, still gets its first few real facts kept.
+
+        Rejecting the whole analysis for this would lose the answer's reading (coverage, saturation) over a side field."""
+        if not isinstance(value, list):
+            return []
+        return [v.strip() for v in value if isinstance(v, str) and v.strip()][:NEW_FACTS_PER_TURN]
 
 
 class InternalNote(BaseModel):
@@ -120,9 +131,25 @@ class ModeratorTurnPayload(BaseModel):
     latency_s: float = Field(default=0.0, ge=0)
 
 
+class MemoryNote(BaseModel):
+    """What the fact-extracting call returns: the facts one answer states (read in the background, never delays the reply)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    new_facts: list[str] = Field(default_factory=list)
+
+    @field_validator("new_facts", mode="before")
+    @classmethod
+    def _keep_a_few(cls, value: object) -> list[str]:
+        """Keep the first few real facts; anything that is not a list of text gives none."""
+        if not isinstance(value, list):
+            return []
+        return [v.strip() for v in value if isinstance(v, str) and v.strip()][:NEW_FACTS_PER_TURN]
+
+
 class MemoryUpdate(BaseModel):
     """What the summarising call must return: the running summary of the interview so far."""
 
     model_config = ConfigDict(frozen=True)
 
-    summary: str = Field(min_length=1, max_length=SUMMARY_MAX_CHARS * 2)
+    summary: str = Field(min_length=1, max_length=SUMMARY_MAX_CHARS * 6)  # a long one is kept and cut to SUMMARY_MAX_CHARS by the memory
