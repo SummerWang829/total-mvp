@@ -1,14 +1,15 @@
 from datetime import timedelta
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .. import ratelimit
 from ..audit import audit
 from ..config import settings
 from ..db import get_db
-from ..deps import Ctx, current_ctx, require_roles
+from ..deps import Ctx, client_ip, current_ctx, require_roles
 from ..models import Org, User, UserInvite, utcnow
 from ..security import create_access_token, hash_password, new_secret_token, token_hash, verify_password
 
@@ -57,10 +58,15 @@ def register(body: Register, db: Session = Depends(get_db)):
 
 
 @router.post("/auth/login")
-def login(body: Login, db: Session = Depends(get_db)):
+def login(body: Login, request: Request, db: Session = Depends(get_db)):
+    ip = client_ip(request)
+    if wait := ratelimit.retry_after_for_login(body.email, ip):
+        raise HTTPException(429, ratelimit.MESSAGE, headers={"Retry-After": str(wait)})
     u = db.scalar(select(User).where(User.email == body.email.lower()))
     if not u or not u.active or not verify_password(body.password, u.password_hash):
+        ratelimit.login_failed(body.email, ip)
         raise HTTPException(401, "邮箱或密码不对")
+    ratelimit.login_ok(body.email)
     audit(db, u.org_id, f"user:{u.id}", "login")
     db.commit()
     return {"token": create_access_token(u.id, u.org_id, u.role), "user": user_out(u)}

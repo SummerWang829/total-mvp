@@ -11,6 +11,7 @@ services:
     environment:  # these win over the same names inside .env
       DATABASE_URL: sqlite:////data/total.db   # test environment; use Postgres (DATABASE_URL) before real participants
       MEDIA_DIR: /data/media
+      RATE_LIMIT: "1"          # failed-login / link-probing limits (app/ratelimit.py)
       LIVEKIT_URL: wss://${LK_HOST}
     volumes:
       - appdata:/data

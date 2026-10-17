@@ -40,6 +40,9 @@ class Settings:
     join_early_min: int = int(os.getenv("JOIN_EARLY_MIN", "15"))
     join_late_min: int = int(os.getenv("JOIN_LATE_MIN", "360"))
 
+    rate_limit: bool = os.getenv("RATE_LIMIT", "") == "1"  # failed-login and link-probing limits (app/ratelimit.py); on in the deployed image
+    backup_dir: str = os.getenv("BACKUP_DIR", "/data/backups")  # python -m app.backup writes here (a folder next to the database in the deployed image)
+    backup_keep_days: int = int(os.getenv("BACKUP_KEEP_DAYS", "14"))  # copies expire so erased personal data does not live on in them
     retention_days: int = int(os.getenv("RETENTION_DAYS", "180"))  # counted from PROJECT close (decision 2026-10-10)
     retention_backstop_days: int = int(os.getenv("RETENTION_BACKSTOP_DAYS", "730"))  # projects never closed: purge this long after the interview ended
     dpo_email: str = os.getenv("DPO_EMAIL", "summer.wang@topvisiontechnology.com")  # Singapore PDPA: a business contact for data-protection queries

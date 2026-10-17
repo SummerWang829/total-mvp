@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from starlette.responses import Response
 
-from . import loopwatch
+from . import loopwatch, ratelimit
 from .config import settings
 from .db import Base, engine, ensure_columns
 from .recording import start_worker
@@ -26,6 +26,7 @@ async def lifespan(_app):
 app = FastAPI(title="星桐 TOTAL MVP", version="0.1.0", lifespan=lifespan)
 for r in (auth.router, projects.router, interviews.router, overview.router, public.router, ai_room.router, concept.router, analysis.router):
     app.include_router(r)
+app.middleware("http")(ratelimit.middleware)  # no-op unless RATE_LIMIT=1
 if settings.loop_watch_s > 0:
     app.middleware("http")(loopwatch.slow_request_logger)  # diagnostics only: LOOP_WATCH_S=2 logs requests slower than 2 s
 

@@ -73,6 +73,24 @@ def check_moderator() -> None:
         line("warn", why + "。填好之前不能新建 AI 主持的场次")
 
 
+def check_backup() -> None:
+    """Newest database backup and how old it is (only meaningful where backups run, i.e. a file database in the deployed image)."""
+    import time
+    from pathlib import Path
+
+    folder = Path(settings.backup_dir)
+    if not folder.exists():
+        if os.path.exists("/.dockerenv"):
+            line("warn", f"备份：还没有任何备份（{folder} 不存在）；deploy/backup.sh 每天跑一次")
+        return
+    newest = max(folder.glob("total-*.db.gz"), default=None, key=lambda f: f.name)
+    if not newest:
+        line("warn", "备份：目录里还没有备份文件")
+        return
+    hours = (time.time() - newest.stat().st_mtime) / 3600
+    line("ok" if hours < 36 else "warn", f"备份：最近一次 {hours:.0f} 小时前（{newest.name}）" + ("" if hours < 36 else "，超过 36 小时，检查定时任务"))
+
+
 def main() -> int:
     print("环境检查")
     line("ok" if sys.version_info >= (3, 10) else "bad", f"Python {sys.version.split()[0]}" + ("" if sys.version_info >= (3, 10) else "（需要 3.10 以上）"))
@@ -112,6 +130,10 @@ def main() -> int:
         line("ok", "实时字幕：已配置腾讯云实时语音识别（密钥只在服务器上，浏览器拿到的是短时效的签名地址）")
     else:
         line("warn", "实时字幕：没配置（TENCENT_ASR_APPID / TENCENT_ASR_SECRET_ID / TENCENT_ASR_SECRET_KEY），字幕栏会提示“未开启”")
+    line("ok" if settings.rate_limit else "warn", "限流：已开启（登录失败、乱猜链接、注册洪水）" if settings.rate_limit else "限流：没开（RATE_LIMIT=1 才开启）；线上必须开")
+    check_backup()
+    if settings.allow_signup and os.path.exists("/.dockerenv"):
+        line("warn", "ALLOW_SIGNUP 还是 true：线上建好第一个管理员后要改成 false")
     if "example.com" in settings.dpo_email:
         line("warn", "DPO_EMAIL 还是示例邮箱：同意书里显示的联系邮箱要换成真实的")
     if settings.secret_key.startswith(("dev-secret", "dev-only", "change-me")):
