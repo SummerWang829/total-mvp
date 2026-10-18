@@ -667,6 +667,17 @@ class InsightCode(Base):
     suggested: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
+class SegmentCode(Base):
+    """A code on a line of a transcript (a researcher tags what was said). Deleted with the interview's personal data."""
+    __tablename__ = "segment_codes"
+    segment_id: Mapped[str] = mapped_column(ForeignKey("transcript_segments.id"), primary_key=True)
+    code_id: Mapped[str] = mapped_column(ForeignKey("codes.id"), primary_key=True)
+    org_id: Mapped[str] = mapped_column(String(32), index=True)
+    interview_id: Mapped[str] = mapped_column(ForeignKey("interviews.id"), index=True)
+    created_by: Mapped[str] = mapped_column(String(32), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class ScreenerAnswer(Base):
     """One screening-questionnaire question and the participant's answer (up to ~20 per participant).
 

@@ -3,7 +3,7 @@
 Everything is filtered by what the person may open before anything is ranked (app/repo/search.py): a researcher never gets a passage of a project
 they are not on, in a search or in an answer. Participants appear as codes only.
 """
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -14,7 +14,7 @@ from ..db import get_db
 from ..deps import STAFF, Ctx, require_roles
 from ..models import RepoDocument
 from ..repo import ask as ask_mod
-from ..repo import documents, search
+from ..repo import documents, extract, search
 
 router = APIRouter(prefix="/api/repo", tags=["research-library"])
 MAX_RESULTS = 30
@@ -84,6 +84,28 @@ def add_document(body: DocBody, ctx: Ctx = Depends(require_roles(*STAFF)), db: S
     db.add(doc)
     db.flush()
     audit(db, ctx.org_id, ctx.actor, "repo.document_add", doc.id, chars=len(body.text))
+    db.commit()
+    return _doc_out(doc, search.visible_projects(db, ctx))
+
+
+@router.post("/documents/upload", status_code=201)
+async def upload_document(file: UploadFile = File(...), title: str = Form(""), project_id: str = Form(""), source_note: str = Form(""),
+                          ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    """Import a file (.docx, .txt, .md, .csv) as a document. The title defaults to the file name."""
+    pid = project_id or None
+    _project_filter(db, ctx, pid)
+    data = await file.read(extract.MAX_UPLOAD + 1)
+    try:
+        text = extract.file_text(file.filename or "", data)
+    except extract.ExtractError as e:
+        raise HTTPException(422, str(e)) from e
+    if len(text) > documents.MAX_CHARS:
+        raise HTTPException(422, f"文字太长了（最多 {documents.MAX_CHARS} 字）")
+    name = (title.strip() or (file.filename or "文档").rsplit(".", 1)[0])[:200]
+    doc = RepoDocument(org_id=ctx.org_id, project_id=pid, title=name, text=text, source_note=source_note.strip()[:300], created_by=ctx.user.id)
+    db.add(doc)
+    db.flush()
+    audit(db, ctx.org_id, ctx.actor, "repo.document_add", doc.id, chars=len(text), via="upload")
     db.commit()
     return _doc_out(doc, search.visible_projects(db, ctx))
 

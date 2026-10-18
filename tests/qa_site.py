@@ -363,6 +363,14 @@ def repo_section(br, D):
     pg.fill("[name=q]", "量子计算机的市场规模如何？"); pg.click("#ask")
     ok(wait_until(lambda: "证据不足" in pg.inner_text("#res"), 15), "[library] a question the library cannot answer is said so plainly")
     pg.click("[data-del]"); ok(wait_until(lambda: pg.locator("[data-del]").count() == 0, 8), "[library] a document can be deleted")
+    pg.click("#imp"); pg.wait_for_selector("#file")
+    pg.set_input_files("#file", {"name": "渠道笔记.txt", "mimeType": "text/plain", "buffer": "线下门店的体验区最能打动第一次购买的人。".encode("utf-8")})
+    ok(pg.input_value("[name=title]") == "渠道笔记", "[library] choosing a file fills in the title")
+    pg.click("#f button.p")
+    ok(wait_until(lambda: pg.locator("td", has_text="渠道笔记").count() == 1, 10), "[library] an uploaded file is imported")
+    pg.fill("[name=q]", "体验区"); pg.click("#srch")
+    ok(wait_until(lambda: "渠道笔记" in pg.inner_text("#res") and "导入资料" in pg.inner_text("#res"), 8), "[library] the text of an uploaded file is searchable")
+    pg.click("[data-del]"); ok(wait_until(lambda: pg.locator("[data-del]").count() == 0, 8), "[library] the uploaded document can be deleted too")
     ctx.close()
     ctx, pg, errs = new_page(br, 390, token=rs)
     pg.goto(B + "/#/repo"); pg.wait_for_selector("#qf")
@@ -574,6 +582,25 @@ def admin_data_section(br, D):
     audit_page(pg, "retention/phone", errs)
     pg.goto(B + "/#/audit"); pg.wait_for_selector("#arows tr")
     audit_page(pg, "audit/phone", errs)
+    ctx.close()
+
+
+def segcode_section(br, D):
+    """Transcript: search inside it, tag a line with a code (also a new code made on the spot), and see the tag on the line."""
+    rs, mi = D["tok"]["researcher"], D["main"]["id"]
+    ctx, pg, errs = new_page(br, 1280, token=rs)
+    pg.goto(B + f"/#/i/{mi}"); pg.wait_for_selector("#tsearch")
+    total = pg.locator(".seg").count()
+    ok(total >= 2, "[transcript] the transcript has lines")
+    pg.fill("#tsearch", "zzzz-no-such-word")
+    ok(wait_until(lambda: pg.locator(".seg:visible").count() == 0 and "0 句" in pg.inner_text("#tcount"), 5), "[transcript] searching for a word that is not there hides every line")
+    pg.fill("#tsearch", "")
+    ok(wait_until(lambda: pg.locator(".seg:visible").count() == total, 5), "[transcript] clearing the search brings every line back")
+    pg.locator("[data-tag]").first.click(); pg.wait_for_selector("#f [name=newcode]")
+    audit_page(pg, "transcript tag modal/desktop", errs)
+    pg.fill("[name=newcode]", "价格敏感QA"); pg.click("#f button.p")
+    ok(wait_until(lambda: pg.locator(".segacts .tag", has_text="价格敏感QA").count() == 1, 10), "[transcript] a new code is made and shown on the tagged line")
+    audit_page(pg, "transcript tagged/desktop", errs)
     ctx.close()
 
 
@@ -1231,6 +1258,7 @@ def run():
         quant_section(br, D)
         pool_section(br, D)
         admin_data_section(br, D)
+        segcode_section(br, D)
 
         # ---------- C2. dialogs and expandable panels on the staff pages (both screen sizes) ----------
         for w, vp in ((1280, "desktop"), (390, "phone")):

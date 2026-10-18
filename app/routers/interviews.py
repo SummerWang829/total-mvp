@@ -18,7 +18,7 @@ from ..moderator.constants import ModerationMode
 from ..deps import STAFF, Ctx, current_ctx, ensure_project, require_roles, visible_interview
 from ..evidence import check_evidence, quote_matches
 from ..livekit import build_room_token, delete_room, url_for_client
-from ..models import (AuditLog, Clip, InsightCode, Consent, Evidence, Insight, Interview, InterviewObserver, Participant, Project,
+from ..models import (AuditLog, Clip, SegmentCode, InsightCode, Consent, Evidence, Insight, Interview, InterviewObserver, Participant, Project,
                       Recording, ShareLink, TranscriptSegment, User, uid, utcnow)
 from ..pipeline import build_segments
 from ..providers import get_llm
@@ -570,6 +570,7 @@ def _ingest(db: Session, itv: Interview, segs: list[dict]) -> None:
     """
     if db.scalar(select(Insight.id).where(Insight.interview_id == itv.id)):
         raise HTTPException(409, "已有洞察引用旧转写，不能整体替换；请逐段校对")
+    db.execute(delete(SegmentCode).where(SegmentCode.interview_id == itv.id))   # a new transcript has new lines: the tags of the old ones go with them
     db.execute(delete(TranscriptSegment).where(TranscriptSegment.interview_id == itv.id))
     for s in segs:
         if not groups.speaker_fits(itv, s["speaker"]):

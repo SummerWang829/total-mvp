@@ -718,14 +718,23 @@ async function repoView() {
     const m = modal(`<h2>导入资料</h2><form id="f"><label class="f"><span>标题</span><input name="title" required maxlength="200"></label>
       <label class="f"><span>来源说明（选填，谁写的、什么时候）</span><input name="source_note" maxlength="300"></label>
       <label class="f"><span>谁能搜到</span><select name="project_id"><option value="">全公司的研究员和管理员</option>${projs.map((p) => `<option value="${p.id}">只有项目成员：${esc(p.name)}</option>`).join("")}</select></label>
-      <label class="f"><span>选一个文本文件（.txt / .md），或在下面直接粘贴文字</span><input type="file" id="file" accept=".txt,.md,text/plain,text/markdown"></label>
-      <label class="f"><span>内容</span><textarea name="text" rows="8" required maxlength="200000"></textarea></label>
+      <label class="f"><span>选一个文件（Word .docx、.txt、.md、.csv），或在下面直接粘贴文字</span><input type="file" id="file" accept=".docx,.txt,.md,.markdown,.csv,.tsv"></label>
+      <label class="f"><span>内容（选了文件就不用填）</span><textarea name="text" rows="8" maxlength="200000"></textarea></label>
       <div class="row"><button class="p">导入</button><button type="button" id="c">取消</button></div></form>`);
     $("#c", m).onclick = () => m.remove();
-    $("#file", m).onchange = async (e) => { const f = e.target.files[0]; if (!f) return; $("[name=text]", m).value = await f.text(); if (!$("[name=title]", m).value) $("[name=title]", m).value = f.name.replace(/\.[^.]+$/, ""); };
+    $("#file", m).onchange = (e) => { const f = e.target.files[0]; if (f && !$("[name=title]", m).value) $("[name=title]", m).value = f.name.replace(/\.[^.]+$/, ""); };
     $("#f", m).onsubmit = guard(async (e) => {
-      e.preventDefault(); const b = Object.fromEntries(new FormData(e.target)); b.project_id = b.project_id || null;
-      await api("/repo/documents", { method: "POST", body: b }); m.remove(); toast("已导入"); render();
+      e.preventDefault(); const fd = new FormData(e.target), file = $("#file", m).files[0];
+      if (file) {   // a file goes up as it is; the server reads the text (Word included)
+        const up = new FormData(); up.append("file", file); up.append("title", fd.get("title") || ""); up.append("project_id", fd.get("project_id") || ""); up.append("source_note", fd.get("source_note") || "");
+        const r = await fetch("/api/repo/documents/upload", { method: "POST", headers: { Authorization: "Bearer " + store.get("tt_token") }, body: up });
+        if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.detail || "导入失败"); }
+      } else {
+        const b = Object.fromEntries(fd); b.project_id = b.project_id || null;
+        if (!(b.text || "").trim()) throw new Error("请选一个文件，或粘贴文字内容");
+        await api("/repo/documents", { method: "POST", body: b });
+      }
+      m.remove(); toast("已导入"); render();
     });
   };
   app.querySelectorAll("[data-del]").forEach((b) => b.onclick = guard(async () => { if (!confirm("删除后这份资料不会再被搜索到。继续？")) return; await api(`/repo/documents/${b.dataset.del}`, { method: "DELETE" }); toast("已删除"); render(); }));
@@ -1040,8 +1049,10 @@ async function interviewView(iid, tab) {
 
 const REC_ST = { recording: ["录制中", "live"], processing: ["合成中", "o"], ready: ["已就绪", "ok"], failed: ["失败", "bad"], deleted: ["已清除", ""] };
 async function transcriptTab(iid, it, staff, my) {
-  const [segs, recs, cfg, caps] = await Promise.all([api(`/interviews/${iid}/transcript`), staff ? api(`/interviews/${iid}/recordings`) : [], loadConfig(),
-                                                    staff ? api(`/interviews/${iid}/captions?after=0`).catch(() => ({ lines: [] })) : { lines: [] }]);
+  const [segs, recs, cfg, caps, sc] = await Promise.all([api(`/interviews/${iid}/transcript`), staff ? api(`/interviews/${iid}/recordings`) : [], loadConfig(),
+                                                    staff ? api(`/interviews/${iid}/captions?after=0`).catch(() => ({ lines: [] })) : { lines: [] },
+                                                    staff ? api(`/interviews/${iid}/segment-codes`).catch(() => ({ codes: [], by_segment: {} })) : { codes: [], by_segment: {} }]);
+  const codeName = Object.fromEntries(sc.codes.map((c) => [c.id, c.name]));
   if (stale(my) || !$("#tab")) return;
   const ready = recs.find((r) => r.status === "ready"), play = recs.find((r) => r.playable), busy = recs.some((r) => ["recording", "processing"].includes(r.status));
   const mock = cfg.asr === "mock";
@@ -1051,9 +1062,28 @@ async function transcriptTab(iid, it, staff, my) {
       ${caps.lines.length ? `<div class="row" style="margin-top:10px"><span class="sm mut">访谈时有 ${caps.lines.length} 句实时字幕。没有录像或想先看看时，可以直接用它生成转写（可能有错字）。</span><span class="sp"></span><button class="s" id="fromcaps">用实时字幕生成转写</button></div>` : ""}
       <p class="sm mut" style="margin:8px 0 0">${mock ? "当前是演示转写：内容是固定的示例对话，不是真的识别录音（接入语音识别服务后才是真实转写，见 README）。" : "转写会调用语音识别服务，录音越长耗时越久。"}</p>
       ${play ? `<video id="pv" controls controlsList="nodownload" playsinline style="width:100%;max-height:360px;background:#0E1A16;border-radius:12px;margin-top:10px"></video>` : ""}</div>` : ""}
-    <div class="card" style="padding:4px 22px">${segs.length ? segs.map((s) => `<div class="seg"><div class="t">${play ? `<a href="#" class="sk" data-seek="${s.start_ms}">${fmt(s.start_ms)}</a>` : fmt(s.start_ms)}</div><div class="s ${speakerClass(s.speaker)}">${esc(speakerName(s.speaker))}</div>
-      <div class="x"><div>${esc(s.text_orig)}</div>${s.text_zh ? `<div class="zh">${esc(s.text_zh)}</div>` : ""}${staff ? `<div class="sm segacts"><a href="#" data-edit="${s.id}">校对</a><a href="#" data-ins="${s.id}">写洞察</a></div>` : ""}</div></div>`).join("") : `<div class="empty"><b>还没有转写。</b><span>${staff ? "访谈结束、录像合成完成后，点上面的“转写录制”。" : "研究员转写后，双方说的话会逐句显示在这里。"}</span></div>`}</div>`;
+    ${segs.length ? `<div class="card row" style="align-items:flex-end"><label class="f" style="margin:0;flex:1"><span>在这场转写里找</span><input id="tsearch" type="search" placeholder="输入文字，只显示包含它的句子" maxlength="100"></label><span class="sm mut" id="tcount" role="status"></span></div>` : ""}
+    <div class="card" style="padding:4px 22px">${segs.length ? segs.map((s) => `<div class="seg" data-segtext="${esc((s.text_orig + " " + (s.text_zh || "")).toLowerCase())}"><div class="t">${play ? `<a href="#" class="sk" data-seek="${s.start_ms}">${fmt(s.start_ms)}</a>` : fmt(s.start_ms)}</div><div class="s ${speakerClass(s.speaker)}">${esc(speakerName(s.speaker))}</div>
+      <div class="x"><div>${esc(s.text_orig)}</div>${s.text_zh ? `<div class="zh">${esc(s.text_zh)}</div>` : ""}${staff ? `<div class="sm segacts">${(sc.by_segment[s.id] || []).map((id) => `<span class="tag">${esc(codeName[id] || "?")}</span>`).join(" ")}<a href="#" data-tag="${s.id}">标签</a><a href="#" data-edit="${s.id}">校对</a><a href="#" data-ins="${s.id}">写洞察</a></div>` : ""}</div></div>`).join("") : `<div class="empty"><b>还没有转写。</b><span>${staff ? "访谈结束、录像合成完成后，点上面的“转写录制”。" : "研究员转写后，双方说的话会逐句显示在这里。"}</span></div>`}</div>`;
   const segById = Object.fromEntries(segs.map((x) => [x.id, x]));
+  const ts = $("#tsearch"); if (ts) ts.oninput = () => {   // only the lines that contain the typed words stay (nothing is sent anywhere)
+    const q = ts.value.trim().toLowerCase(); let n = 0;
+    app.querySelectorAll(".seg").forEach((d) => { const show = !q || d.dataset.segtext.includes(q); d.style.display = show ? "" : "none"; n += show; });
+    $("#tcount").textContent = q ? `${n} 句包含“${ts.value.trim()}”` : "";
+  };
+  app.querySelectorAll("[data-tag]").forEach((a) => a.onclick = (e) => {
+    e.preventDefault(); const sg = segById[a.dataset.tag], have = new Set(sc.by_segment[sg.id] || []);
+    const m = modal(`<h2>给这句话打标签</h2><p class="sm mut">${esc(speakerName(sg.speaker))} · ${fmt(sg.start_ms)}：${esc(sg.text_orig.slice(0, 80))}</p>
+      <form id="f">${sc.codes.length ? sc.codes.map((c) => `<label class="chk"><input type="checkbox" name="code" value="${c.id}"${have.has(c.id) ? " checked" : ""}><span>${esc(c.name)}</span></label>`).join("") : `<p class="mut">这个项目还没有编码。在下面新建第一个。</p>`}
+        <label class="f"><span>新建一个编码（可空）</span><input name="newcode" maxlength="60"></label><div class="row"><button class="p">保存</button><button type="button" id="c">取消</button></div></form>`);
+    $("#c", m).onclick = () => m.remove();
+    $("#f", m).onsubmit = guard(async (ev) => {
+      ev.preventDefault(); const fd = new FormData(ev.target); const ids = fd.getAll("code");
+      const nc = (fd.get("newcode") || "").trim();
+      if (nc) { const created = await api(`/projects/${it.project_id}/codes`, { method: "POST", body: { name: nc } }); if (!ids.includes(created.id)) ids.push(created.id); }
+      await api(`/transcript/${sg.id}/codes`, { method: "PUT", body: { code_ids: ids } }); m.remove(); toast("已保存"); render();
+    });
+  });
   app.querySelectorAll("[data-edit]").forEach((a) => a.onclick = (e) => {
     e.preventDefault(); const sg = segById[a.dataset.edit];
     const m = modal(`<h2>校对转写 #${sg.idx}</h2><p class="sm mut">${esc(speakerName(sg.speaker))} · ${fmt(sg.start_ms)}。改动会记入审计日志；如果某条洞察引用的原话被改没了，那条洞察会自动变成“需复核”，客户立刻看不到。</p>

@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from .audit import audit
 from . import content_rules, screener, signals
-from .models import AiSession, ChatMessage, Interview, Reaction, RoomState, Stimulus, TranscriptSegment, utcnow
+from .models import AiSession, ChatMessage, SegmentCode, Interview, Reaction, RoomState, Stimulus, TranscriptSegment, utcnow
 from .moderator.compliance import ai_moderation_blocker
 from .moderator.constants import AlertLevel, ModerationMode, Phase
 from .moderator.engine import EngineStateError, ModeratorEngine
@@ -418,6 +418,7 @@ def finalize(db: Session, itv: Interview) -> int:
         return 0
     rows = db.scalars(select(ChatMessage).where(ChatMessage.interview_id == itv.id, ChatMessage.sender.in_(tuple(SPEAKER_OF)))
                       .order_by(ChatMessage.seq)).all()
+    db.execute(delete(SegmentCode).where(SegmentCode.interview_id == itv.id))
     db.execute(delete(TranscriptSegment).where(TranscriptSegment.interview_id == itv.id))
     for i, r in enumerate(rows):
         start = _at_ms(itv, r)

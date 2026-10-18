@@ -13,7 +13,7 @@ from .audit import audit
 from .config import settings
 from .media import purge_cache
 from . import ai_room, screener
-from .models import (BackroomMessage, CaptionLine, Clip, CueCard, Evidence, Highlight, Insight, Interview, InterviewParticipant, Mention, Participant, PreTask, PreTaskAnswer, Project, RepoDocument,
+from .models import (BackroomMessage, CaptionLine, Clip, CueCard, Evidence, Highlight, Insight, Interview, InterviewParticipant, Mention, Participant, PreTask, PreTaskAnswer, Project, RepoDocument, SegmentCode,
                      Recording, RecordingTrack, Reaction, ShareLink, StimulusMark, TimeSlot, TranscriptSegment, utcnow)
 
 PURGED = "[已按保留期删除]"
@@ -35,6 +35,7 @@ def purge_interview(db: Session, itv: Interview, reason: str, actor: str = "syst
     ins_ids = [i.id for i in db.scalars(select(Insight).where(Insight.interview_id == itv.id))]
     if ins_ids:
         db.execute(update(Evidence).where(Evidence.insight_id.in_(ins_ids)).values(quote=PURGED, segment_id=None))
+    db.execute(delete(SegmentCode).where(SegmentCode.interview_id == itv.id))
     db.execute(delete(TranscriptSegment).where(TranscriptSegment.interview_id == itv.id))
     ai_room.purge(db, itv.id)  # the AI-mode chat is personal data too
     db.execute(delete(CaptionLine).where(CaptionLine.interview_id == itv.id))  # live captions and the quotes copied from them

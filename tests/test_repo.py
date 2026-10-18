@@ -247,3 +247,52 @@ def test_bad_documents_are_refused(org):
     assert org.c.post("/api/repo/documents", headers=org.h(), json={"title": "空", "text": "  \n\n "}).status_code == 422
     assert org.c.post("/api/repo/documents", headers=org.h(), json={"title": "", "text": "x"}).status_code == 422
     assert org.c.delete("/api/repo/documents/nope", headers=org.h()).status_code == 404
+
+
+# ---------- uploading files ----------
+def upload(org, name, data, headers=None, **form):
+    return org.c.post("/api/repo/documents/upload", headers=headers or org.h(), files={"file": (name, data, "application/octet-stream")}, data=form)
+
+
+def test_a_word_file_is_read_and_searchable(org):
+    from app import docx_writer
+    data = docx_writer.render([("title", "趋势报告"), ("p", "报告指出，新加坡消费者越来越关注成分透明度。"), ("table", ["指标", "数值"], [["关注度", "八成"]]), ("bullet", "直播带货影响年轻人")])
+    r = upload(org, "2023 趋势报告.docx", data, source_note="内部")
+    assert r.status_code == 201 and r.json()["title"] == "2023 趋势报告" and r.json()["source_note"] == "内部"
+    assert search(org, "成分透明度")[0]["type"] == "document" and search(org, "八成")[0]["title"] == "2023 趋势报告" and search(org, "直播带货")
+
+
+def test_text_files_work_and_a_title_can_be_given_and_a_project(org):
+    itv, pid = library(org)
+    r = upload(org, "notes.md", "# 访谈提纲\n\n先问购买习惯。".encode("utf-8"), title="我的笔记", project_id=pid)
+    assert r.status_code == 201 and r.json()["title"] == "我的笔记" and r.json()["project"]["id"] == pid
+    assert upload(org, "a.csv", "题目,选项\n购买渠道,线上".encode("utf-8-sig")).status_code == 201
+    other = second_researcher(org)
+    assert upload(org, "x.txt", b"hello world", headers=other["h"], project_id=pid).status_code == 404
+
+
+def test_files_that_cannot_be_read_are_refused_clearly(org):
+    for name, data, why in (("a.pdf", b"%PDF-1.4", "PDF"), ("a.exe", b"MZ", "只支持"), ("a.docx", b"not a zip", "有效的 Word"), ("empty.txt", b"  \n ", "没有可用的文字"),
+                            ("big.txt", b"x" * (8 * 1024 * 1024 + 10), "太大")):
+        r = upload(org, name, data)
+        assert r.status_code == 422 and why in r.json()["detail"], (name, r.text)
+
+
+def test_a_zip_that_unpacks_to_something_huge_is_refused():
+    import io
+    import zipfile
+    from app.repo import extract
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("word/document.xml", "<w:p><w:t>a</w:t></w:p>" + " " * (extract.MAX_XML + 10))
+    import pytest
+    with pytest.raises(extract.ExtractError):
+        extract.docx_text(buf.getvalue())
+    assert extract.docx_text(__import__("app.docx_writer", fromlist=["render"]).render([("p", "a & b <c>")])) == "a & b <c>"
+
+
+def test_uploading_needs_the_staff_role(org):
+    for role in ("moderator", "observer", "viewer"):
+        if role == "viewer":
+            continue
+        assert upload(org, "a.txt", b"hello", headers=org.h(role)).status_code == 403
