@@ -27,6 +27,7 @@ LOGIN_IP = (10, 300)         # failures, seconds
 LOGIN_ACCOUNT = (5, 900)
 LINK_PROBES = (30, 60)
 REGISTER = (10, 3600)
+ASK = (40, 3600)           # library questions per person per hour (each one is a paid model call)
 FORGOT_IP = (5, 3600)       # "forgot password" requests per address per hour
 FORGOT_ACCOUNT = (3, 3600)  # and per account, so one inbox cannot be flooded
 MAX_KEYS = 20000             # counters kept; when over, the quietest are dropped so memory cannot be filled by random keys
@@ -107,6 +108,14 @@ def forgot_allowed(email: str, ip: str) -> bool:
     record(f"forgot-ip:{ip}", FORGOT_IP[1])
     record(f"forgot-acct:{email.lower()}", FORGOT_ACCOUNT[1])
     return True
+
+
+def ask_allowed(user_id: str) -> int:
+    """Count one library question; returns 0 when allowed, otherwise the seconds to wait (always on: it limits cost, not guessing)."""
+    if wait := blocked(f"ask:{user_id}", ASK):
+        return wait
+    record(f"ask:{user_id}", ASK[1])
+    return 0
 
 
 def too_many(seconds: int) -> JSONResponse:

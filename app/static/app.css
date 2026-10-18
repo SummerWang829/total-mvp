@@ -255,6 +255,7 @@ body.participant .tag.o,body.participant .tag.live,.stage.t-light .tag.o,.stage.
 @media (max-width:1100px){.rbody{grid-template-columns:1fr}.rpan.side{order:2}}
 
 /* ---------- AI moderation: the text chat (participant) and the AI panel (team) ---------- */
+.hit{border-top:1px solid var(--line);padding:10px 0}.hit:first-child{border-top:0}
 .chat{display:flex;flex-direction:column;gap:8px}
 .chat .log{display:flex;flex-direction:column;gap:8px;max-height:340px;min-height:96px;overflow:auto;padding:2px}
 .chat .m{max-width:90%;padding:8px 12px;border-radius:12px;font-size:14.5px;line-height:1.5;background:var(--r-tile);color:var(--r-ink);overflow-wrap:anywhere;align-self:flex-start}

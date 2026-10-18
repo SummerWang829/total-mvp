@@ -97,6 +97,7 @@ def get_asr() -> ASR:
 class LLM(Protocol):
     def insights(self, segments: list[dict]) -> list[dict]: ...
     def translate(self, texts: list[str]) -> list[str]: ...  # into Chinese; same length and order; "" where it cannot
+    def answer(self, question: str, sources: list[dict]) -> dict: ...  # research library: {"claims": [{"text", "evidence": [source numbers]}], "insufficient": bool}
     def suggest_codes(self, statements: list[str], codebook: list[str]) -> list[list[str]]: ...  # per statement: 1-3 short code names (reuse the codebook where it fits)
 
 
@@ -108,6 +109,10 @@ class MockLLM:
 
     def translate(self, texts: list[str]) -> list[str]:
         return ["" for _ in texts]
+
+    def answer(self, question: str, sources: list[dict]) -> dict:
+        """Offline stand-in: one claim per best passage, quoting its opening. No real reading comprehension."""
+        return {"insufficient": not sources, "claims": [{"text": "资料里有这样的说法：" + s["text"][:50], "evidence": [s["n"]]} for s in sources[:3]]}
 
     def insights(self, segments: list[dict]) -> list[dict]:
         part = sorted((s for s in segments if s["speaker"] == "participant"), key=lambda s: -len(s["text_zh"] or s["text_orig"]))[:3]
@@ -149,6 +154,14 @@ class OpenAICompatLLM:
                 got = [(self._translate_batch([t]) or [""])[0] for t in batch]
             out += got
         return out
+
+    def answer(self, question: str, sources: list[dict]) -> dict:
+        """Ask the model to answer from the numbered passages only. The reply is untrusted: app/repo/ask.py checks every number and figure."""
+        prompt = ("你是研究资料库的问答助手。只能根据下面编号的资料回答问题，不要使用资料之外的知识，不要编造数字。"
+                  "把答案拆成几条结论，每条结论必须附上支持它的资料编号（只写数字编号，不要抄写原文）。用提问所用的语言回答。"
+                  "如果资料不足以回答，返回 insufficient 为 true。只输出 JSON："
+                  '{"claims":[{"text":str,"evidence":[int,...]}],"insufficient":bool}\n\n问题：' + question + "\n\n资料：\n" + json.dumps(sources, ensure_ascii=False))
+        return self._chat(prompt)
 
     def suggest_codes(self, statements: list[str], codebook: list[str]) -> list[list[str]]:
         """Ask the model for 1-3 short code names per insight; the answer is untrusted, so it is trimmed and padded to the right length."""

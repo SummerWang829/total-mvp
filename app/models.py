@@ -497,6 +497,20 @@ class UserInvite(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
+class RepoDocument(Base):
+    """A document the team imported into the research library (an earlier report, notes, desk research), as text. Searchable by everyone who can see its project
+    (no project = the whole company's staff)."""
+    __tablename__ = "repo_documents"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
+    org_id: Mapped[str] = mapped_column(ForeignKey("orgs.id"), index=True)
+    project_id: Mapped[str | None] = mapped_column(ForeignKey("projects.id"), nullable=True, index=True)
+    title: Mapped[str] = mapped_column(String(200))
+    source_note: Mapped[str] = mapped_column(String(300), default="")  # where it came from (who wrote it, when), for the reader
+    text: Mapped[str] = mapped_column(Text)
+    created_by: Mapped[str] = mapped_column(String(32))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class EmailOutbox(Base):
     """An account email waiting to go out (or tried and failed). The text holds a one-time link, so it is wiped as soon as the mail is sent or given up."""
     __tablename__ = "email_outbox"

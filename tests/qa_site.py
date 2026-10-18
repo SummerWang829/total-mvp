@@ -329,6 +329,34 @@ def studies_section(br, D):
     ctx.close()
 
 
+def repo_section(br, D):
+    """The research library: import a document, search it, ask a question and see verbatim evidence; say so when the evidence is not enough."""
+    rs = D["tok"]["researcher"]
+    ctx, pg, errs = new_page(br, 1280, token=rs)
+    pg.on("dialog", lambda d: d.accept())
+    pg.goto(B + "/#/repo"); pg.wait_for_selector("#qf")
+    ok("研究库" in pg.inner_text("nav.side"), "[library] the menu has the research library")
+    audit_page(pg, "library/desktop", errs)
+    pg.click("#imp"); pg.wait_for_selector("#f")
+    pg.fill("[name=title]", "2023 趋势报告"); pg.fill("[name=text]", "报告指出，新加坡消费者越来越关注成分透明度。" + chr(10) * 2 + "直播带货影响了年轻人的购买决定。")
+    pg.click("#f button.p"); pg.wait_for_selector("td:has-text('2023 趋势报告')")
+    pg.fill("[name=q]", "成分透明度"); pg.click("#srch")
+    ok(wait_until(lambda: pg.locator(".hit").count() >= 1 and "导入资料" in pg.inner_text("#res"), 8), "[library] searching finds the imported document")
+    pg.fill("[name=q]", "消费者关注成分透明度吗？"); pg.click("#ask")
+    ok(wait_until(lambda: pg.locator("#res details .hit").count() >= 1, 15), "[library] an answer shows the passages it rests on")
+    ok("成分透明度" in pg.inner_text("#res details"), "[library] the evidence is the original text")
+    audit_page(pg, "library answer/desktop", errs)
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "library_1280.png"), full_page=True)
+    pg.fill("[name=q]", "量子计算机的市场规模如何？"); pg.click("#ask")
+    ok(wait_until(lambda: "证据不足" in pg.inner_text("#res"), 15), "[library] a question the library cannot answer is said so plainly")
+    pg.click("[data-del]"); ok(wait_until(lambda: pg.locator("[data-del]").count() == 0, 8), "[library] a document can be deleted")
+    ctx.close()
+    ctx, pg, errs = new_page(br, 390, token=rs)
+    pg.goto(B + "/#/repo"); pg.wait_for_selector("#qf")
+    audit_page(pg, "library/phone", errs)
+    ctx.close()
+
+
 def main():
     tmp = tempfile.mkdtemp()
     env = {**os.environ, "DATABASE_URL": f"sqlite:///{tmp}/qa.db", "MEDIA_DIR": f"{tmp}/media", "LIVEKIT_URL": "", "ASR_PROVIDER": "mock", "LLM_PROVIDER": "mock", "ASR_API_KEY": "", "LLM_API_KEY": "",
@@ -682,7 +710,7 @@ def run():
     D = seed()
     mi, pid = D["main"]["id"], D["pid"]
     proj = [f"#/p/{pid}/rooms", f"#/p/{pid}/insights"]
-    staff_routes = [f"#/projects", f"#/p/{pid}/home", f"#/p/{pid}/people", f"#/p/{pid}/sessions", f"#/p/{pid}/analysis", f"#/p/{pid}/members", f"#/p/{pid}/studies"] + proj + [f"#/i/{mi}", f"#/i/{mi}/insights", f"#/i/{mi}/clips"]
+    staff_routes = [f"#/projects", f"#/p/{pid}/home", f"#/p/{pid}/people", f"#/p/{pid}/sessions", f"#/p/{pid}/analysis", f"#/p/{pid}/members", f"#/p/{pid}/studies", "#/repo"] + proj + [f"#/i/{mi}", f"#/i/{mi}/insights", f"#/i/{mi}/clips"]
     role_routes = {
         "demo_admin": ["#/projects", f"#/p/{D['demo_pid']}/home", "#/demo"],
         "admin": staff_routes + ["#/team", "#/audit"],
@@ -966,6 +994,7 @@ def run():
         group_section(br, D)
         members_section(br, D)
         studies_section(br, D)
+        repo_section(br, D)
 
         # ---------- C2. dialogs and expandable panels on the staff pages (both screen sizes) ----------
         for w, vp in ((1280, "desktop"), (390, "phone")):

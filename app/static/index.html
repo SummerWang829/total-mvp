@@ -18,7 +18,7 @@ async function projects(force) { if (!PROJECTS || force) PROJECTS = await api("/
 
 function navHtml(active, p) {
   const a = (href, label, key, ic = "", sub = false) => `<a class="nv${sub ? " sub" : ""}" href="#${href}"${active === key ? ' aria-current="page"' : ""}>${ic ? `<span class="ic" aria-hidden="true">${ic}</span>` : ""}${label}</a>`;
-  let h = `<a class="brand" href="#/projects" aria-label="星桐 TOTAL 首页">${LOGO_SVG}</a>${a("/projects", "全部项目", "projects", "▦")}`;
+  let h = `<a class="brand" href="#/projects" aria-label="星桐 TOTAL 首页">${LOGO_SVG}</a>${a("/projects", "全部项目", "projects", "▦")}${STAFF() ? a("/repo", "研究库", "repo", "◈") : ""}`;
   if (p) {
     h += `<div class="sec">当前项目<b>${esc(p.name)}</b></div>`;
     if (STAFF()) h += a(`/p/${p.id}/home`, "项目总览", "home", "◉") + a(`/p/${p.id}/members`, "项目成员", "members", "◎") + a(`/p/${p.id}/studies`, "异步研究", "studies", "✦");
@@ -100,6 +100,7 @@ async function render() {
       location.hash = `#/p/${p.id}/rooms`; return;
     }
     if (seg[1] === "i") return await interviewView(seg[2], seg[3] || "transcript");
+    if (r === "/repo" && STAFF()) return await repoView();
     if (r === "/team") return await teamView();
     if (r === "/audit") return await auditView();
     if (r === "/demo") return await demoView();
@@ -469,6 +470,63 @@ async function studyView(p, sid) {
       ${r.skipped.length ? `<p class="sm mut">没有生成：${r.skipped.map((x) => `${esc(x.name)}（${esc(x.why)}）`).join("、")}</p>` : ""}<div class="row" style="margin-top:12px"><button class="p" id="done">我已复制</button></div>`);
     $("#done", m).onclick = () => { m.remove(); render(); };
   });
+}
+
+// ---------------- 研究库：搜索和提问整个公司做过的研究 ----------------
+const HIT_TYPE = { segment: "访谈原话", insight: "已确认洞察", document: "导入资料" };
+const mmss = (ms) => `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, "0")}`;
+const hitHtml = (h) => `<div class="hit"><div class="sm mut"><span class="tag">${HIT_TYPE[h.type]}</span>${h.who ? ` <b>${esc(h.who)}</b> · ` : " "}${h.project ? esc(h.project.name) : "全公司资料"}${h.title ? ` · ${esc(h.title)}` : ""}${h.type === "segment" ? ` · ${mmss(h.at_ms)}` : ""}</div>
+  ${h.question_before ? `<div class="sm mut" style="margin-top:4px">访谈员问：${esc(h.question_before)}</div>` : ""}
+  <p style="margin:4px 0 0;white-space:pre-wrap">${esc(h.text)}</p>${h.interview_id ? `<a class="sm" href="#/i/${h.interview_id}">打开这场访谈 →</a>` : ""}</div>`;
+
+async function repoView() {
+  const my = renderSeq;
+  const [docs, projs] = await Promise.all([api("/repo/documents"), projects()]);
+  if (stale(my)) return;
+  const scope = `<option value="">全部我能看到的项目</option>${projs.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join("")}`;
+  shell(`${head("研究库", "搜索和提问整个公司做过的研究：访谈原话、已确认的洞察、导入的历史资料。你只能看到自己所在项目的内容；受访者只显示编号。", `<button class="p" id="imp">导入资料</button>`)}
+    <div class="card"><form id="qf"><label class="f"><span>输入关键词来搜索，或者直接问一个问题</span><input name="q" required maxlength="500" placeholder="例如：消费者为什么觉得价格太贵？"></label>
+      <div class="row"><label class="f" style="flex:1;margin:0"><span>范围</span><select name="project_id">${scope}</select></label>
+      <button class="p" id="ask" type="button">问 AI</button><button id="srch" type="submit">搜索原文</button></div></form></div>
+    <div id="res" aria-live="polite"></div>
+    <h2>导入的资料</h2>${docs.length ? `<div class="card scroll" style="padding:6px 10px"><table class="tbl rc"><thead><tr><th>标题</th><th>来源说明</th><th>范围</th><th>字数</th><th></th></tr></thead><tbody>
+      ${docs.map((d) => `<tr><td><b>${esc(d.title)}</b></td><td class="mut">${esc(d.source_note || "—")}</td><td>${d.project ? esc(d.project.name) : "全公司"}</td><td>${d.chars}</td><td class="acts"><button class="s warn" data-del="${d.id}">删除</button></td></tr>`).join("")}</tbody></table></div>`
+      : `<div class="card empty"><b>还没有导入的资料。</b><span>把以前的报告、笔记、桌面研究导入进来，就能和访谈原话一起被搜索和提问。</span></div>`}`, { active: "repo", title: "研究库" });
+  const res = $("#res"), qf = $("#qf");
+  const busy = (on, text) => { res.innerHTML = on ? `<p class="mut" role="status">${text}</p>` : ""; $("#ask").disabled = on; $("#srch").disabled = on; };
+  const val = () => Object.fromEntries(new FormData(qf));
+  qf.onsubmit = guard(async (e) => {
+    e.preventDefault(); const v = val(); busy(true, "搜索中…");
+    try {
+      const r = await api(`/repo/search?q=${encodeURIComponent(v.q)}${v.project_id ? `&project_id=${v.project_id}` : ""}&limit=20`);
+      res.innerHTML = r.hits.length ? `<h2>找到 ${r.hits.length} 条相关内容</h2>${r.hits.map(hitHtml).join("")}` : `<div class="card empty"><b>没有找到相关内容。</b><span>换几个关键词，或把范围改成全部项目。</span></div>`;
+    } finally { $("#ask").disabled = false; $("#srch").disabled = false; }
+  });
+  $("#ask").onclick = guard(async () => {
+    if (!qf.reportValidity()) return;
+    const v = val(); busy(true, "AI 正在阅读资料并回答，大约需要几秒…");
+    try {
+      const r = await api("/repo/ask", { method: "POST", body: { question: v.q, project_id: v.project_id || null } });
+      res.innerHTML = r.insufficient ? `<div class="note" role="status"><b>证据不足。</b> ${esc(r.message)}</div>`
+        : `<h2>回答</h2>${r.answer.map((c, i) => `<div class="card"><p style="margin:0 0 8px"><b>${i + 1}.</b> ${esc(c.text)}</p><details open><summary class="sm mut">依据（${c.evidence.length} 条原文，逐字来自资料库）</summary>${c.evidence.map(hitHtml).join("")}</details></div>`).join("")}
+          <p class="sm mut">AI 只能引用上面这些原文；结论是它的归纳，请以原文为准。</p>`;
+    } finally { $("#ask").disabled = false; $("#srch").disabled = false; }
+  });
+  $("#imp").onclick = () => {
+    const m = modal(`<h2>导入资料</h2><form id="f"><label class="f"><span>标题</span><input name="title" required maxlength="200"></label>
+      <label class="f"><span>来源说明（选填，谁写的、什么时候）</span><input name="source_note" maxlength="300"></label>
+      <label class="f"><span>谁能搜到</span><select name="project_id"><option value="">全公司的研究员和管理员</option>${projs.map((p) => `<option value="${p.id}">只有项目成员：${esc(p.name)}</option>`).join("")}</select></label>
+      <label class="f"><span>选一个文本文件（.txt / .md），或在下面直接粘贴文字</span><input type="file" id="file" accept=".txt,.md,text/plain,text/markdown"></label>
+      <label class="f"><span>内容</span><textarea name="text" rows="8" required maxlength="200000"></textarea></label>
+      <div class="row"><button class="p">导入</button><button type="button" id="c">取消</button></div></form>`);
+    $("#c", m).onclick = () => m.remove();
+    $("#file", m).onchange = async (e) => { const f = e.target.files[0]; if (!f) return; $("[name=text]", m).value = await f.text(); if (!$("[name=title]", m).value) $("[name=title]", m).value = f.name.replace(/\.[^.]+$/, ""); };
+    $("#f", m).onsubmit = guard(async (e) => {
+      e.preventDefault(); const b = Object.fromEntries(new FormData(e.target)); b.project_id = b.project_id || null;
+      await api("/repo/documents", { method: "POST", body: b }); m.remove(); toast("已导入"); render();
+    });
+  };
+  app.querySelectorAll("[data-del]").forEach((b) => b.onclick = guard(async () => { if (!confirm("删除后这份资料不会再被搜索到。继续？")) return; await api(`/repo/documents/${b.dataset.del}`, { method: "DELETE" }); toast("已删除"); render(); }));
 }
 
 async function membersView(p) {  // who works on this project (admins see every project; moderators and observers are assigned per interview)
