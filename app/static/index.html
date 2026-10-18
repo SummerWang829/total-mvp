@@ -438,6 +438,11 @@ async function studyView(p, sid) {
       ? `<form id="inv"><p class="sm mut">每个人得到一条专属链接（只显示这一次）。把链接发给对方，对方同意隐私说明后就可以开始，不需要摄像头和麦克风。</p>
         ${canInvite.map((x) => `<label class="chk"><input type="checkbox" name="pid" value="${x.id}"><span>${esc(x.name)}${x.country ? ` · ${esc(x.country)}` : ""}</span></label>`).join("")}<button class="p" style="margin-top:8px">生成邀请链接</button></form>`
       : `<p class="mut" style="margin:0">项目里没有可以邀请的新受访者。先到“受访者招募”添加。</p>`}</div>` : ""}
+    ${s.status === "published" ? `<div class="card"><h3>公开报名链接</h3>
+      <p class="sm mut">一条链接发给所有人（社群、邮件、广告都行）：打开的人只填一个昵称，就得到自己的专属访谈链接；名额满了自动停止。重新生成链接，旧链接立刻失效。</p>
+      ${s.open.enabled ? `<p style="margin:0 0 10px">已开启 · 已有 ${s.open.sessions} / ${s.open.cap} 人${s.open.full ? "（名额已满）" : ""}</p><div class="row"><button id="oln">重新生成链接</button><button class="s warn" id="olf">关闭公开链接</button></div>`
+        : `<form id="olform" class="row"><label class="f" style="flex:1;margin:0"><span>人数上限（含你邀请的）</span><input name="cap" type="number" min="1" max="1000" value="100"></label><button class="p">开启公开链接</button></form>`}</div>` : ""}
+    ${s.progress.invited ? `<p class="sm mut" id="prog">已开始 ${s.progress.started} · 已完成 ${s.progress.finished}${s.progress.completion_rate !== null ? `（完成率 ${Math.round(s.progress.completion_rate * 100)}%）` : ""} · 提前结束 ${s.progress.ended_early}${s.progress.median_minutes !== null ? ` · 完成者中位用时 ${s.progress.median_minutes} 分钟` : ""}</p>` : ""}
     ${s.sessions.length ? `<h2>受访者</h2><div class="card scroll" style="padding:6px 10px"><table class="tbl rc"><thead><tr><th>姓名</th><th>国家</th><th>进度</th><th></th></tr></thead><tbody>${s.sessions.map(sess).join("")}</tbody></table></div>` : ""}`,
     { active: "studies", p });
   const show = (r) => { const pr = $("#problem"); if (r && r.problem) { pr.textContent = r.problem; pr.hidden = false; } else { pr.hidden = true; } };
@@ -460,6 +465,13 @@ async function studyView(p, sid) {
       await api(`/studies/${sid}/close`, { method: "POST" }); toast("已关闭"); render();
     });
   }
+  const showOpen = (r) => { if (!r.open_path) { toast("已更新"); render(); return; }
+    const m = modal(`<h2>公开报名链接（只显示这一次）</h2><code class="copy">${esc(location.origin + r.open_path)}</code><p class="sm mut">把它发出去即可。重新生成会让旧链接失效。</p><div class="row" style="margin-top:12px"><button class="p" id="done2">我已复制</button></div>`);
+    $("#done2", m).onclick = () => { m.remove(); render(); }; };
+  const post = (enabled, cap) => api(`/studies/${sid}/open-link`, { method: "POST", body: { enabled, cap } }).then(showOpen);
+  const of = $("#olform"); if (of) of.onsubmit = guard(async (e) => { e.preventDefault(); await post(true, Number(new FormData(of).get("cap"))); });
+  const on = $("#oln"); if (on) on.onclick = guard(async () => { if (confirm("旧的公开链接会立刻失效。继续？")) await post(true, s.open.cap); });
+  const off = $("#olf"); if (off) off.onclick = guard(async () => { if (confirm("关闭后链接立刻失效，已经报名的人不受影响。继续？")) await post(false, s.open.cap); });
   const f = $("#inv");
   if (f) f.onsubmit = guard(async (e) => {
     e.preventDefault();

@@ -132,6 +132,8 @@ class AsyncStudy(Base):
     published_guide: Mapped[str] = mapped_column(Text, default="")  # the frozen guide (JSON) of the current version
     published_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     closed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    open_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)  # one public sign-up link for the study (only its hash is kept); None = no public link
+    open_cap: Mapped[int] = mapped_column(Integer, default=100)  # at most this many sessions in total (invited + signed up) while the public link is on
     created_by: Mapped[str] = mapped_column(String(32))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 

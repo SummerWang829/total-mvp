@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Study · 星桐</title><link rel="stylesheet" href="/app.css"></head>
+<body class="participant"><div class="pbar" id="logobar"></div><div class="pwrap" id="box"><p class="mut">…</p></div>
+<script src="/app.js"></script>
+<script src="/logo.js"></script>
+<script>$("#logobar").innerHTML = LOGO_SVG; brandPlay();</script>
+<script>
+// The public sign-up page of a study done alone: the page says who is asking and what it takes, the person may give a nickname (nothing else), and
+// gets their own personal link, which leads through the privacy notice to the written conversation.
+const s = new URLSearchParams(location.search).get("s") || "";
+const box = $("#box");
+const L = {
+  en: { h: "Take part in a study", by: "{o} would like to hear your views", topic: "Topic: {t}", how: "It is a written conversation with an AI interviewer. Do it any time that suits you; it takes about {m} minutes. No camera or microphone is needed, and you can pause and come back later.",
+        nick: "A nickname (optional)", nickHint: "We do not need your real name or contact details.", go: "Start", full: "This study has all the people it needs. Thank you for your interest!", bad: "This link is not valid", err: "Something went wrong. Please try again." },
+  zh: { h: "参加一项研究", by: "{o} 想听听你的看法", topic: "话题：{t}", how: "这是一场和 AI 访谈员的文字对话，任何方便的时间都可以做，大约 {m} 分钟。不需要摄像头和麦克风，中途可以暂停，之后再回来。",
+        nick: "昵称（选填）", nickHint: "我们不需要你的真实姓名和联系方式。", go: "开始", full: "这项研究已经招满了，谢谢你的关注！", bad: "这个链接无效", err: "出错了，请再试一次。" },
+};
+(async () => {
+  let info;
+  try { const r = await fetch(`/api/public/study/${encodeURIComponent(s)}`); if (!r.ok) throw new Error(); info = await r.json(); }
+  catch { box.innerHTML = `<h1>${L.en.bad} · ${L.zh.bad}</h1>`; return; }
+  const x = L[info.language] || L.en;
+  document.documentElement.lang = info.language === "zh" ? "zh-CN" : info.language;
+  document.title = x.h + " · 星桐";
+  if (info.full) { box.innerHTML = `<h1>${esc(x.h)}</h1><p>${esc(x.full)}</p>`; return; }
+  box.innerHTML = `<h1>${esc(x.h)}</h1><p class="mut">${esc(x.by.replace("{o}", info.org))}</p>
+    <div class="card">${info.topic ? `<p><b>${esc(x.topic.replace("{t}", info.topic))}</b></p>` : ""}<p style="margin:0">${esc(x.how.replace("{m}", info.duration_min))}</p></div>
+    <form id="f"><label class="f"><span>${esc(x.nick)}</span><input name="nickname" maxlength="40" autocomplete="nickname"></label><p class="sm mut" style="margin:0 0 12px">${esc(x.nickHint)}</p>
+    <p class="sm" id="err" role="alert" hidden></p><button class="p pbig" id="sgo">${esc(x.go)}</button></form>`;
+  $("#f").onsubmit = async (e) => {
+    e.preventDefault(); const b = $("#sgo"); b.disabled = true; $("#err").hidden = true;
+    try {
+      const r = await fetch(`/api/public/study/${encodeURIComponent(s)}/join`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nickname: new FormData(e.target).get("nickname") || "" }) });
+      const j = await r.json().catch(() => ({}));
+      if (r.status === 409) { box.innerHTML = `<h1>${esc(x.h)}</h1><p>${esc(x.full)}</p>`; return; }
+      if (!r.ok) throw new Error(j.detail || x.err);
+      location.href = j.invite_path;
+    } catch (err) { $("#err").textContent = err.message || x.err; $("#err").hidden = false; b.disabled = false; }
+  };
+})();
+</script></body></html>

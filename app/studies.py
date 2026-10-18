@@ -8,7 +8,7 @@ come back (the AI is saved after every turn and carries on). When the AI finishe
 import json
 import logging
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from . import ai_room, guide_text
@@ -140,3 +140,68 @@ def session_state(itv: Interview, sess: AiSession | None) -> str:
     if sess is not None:
         return "in_progress"
     return "opened" if itv.opened_at else "sent"
+
+
+# ---------- one public sign-up link per study ----------
+MAX_CAP = 1000
+DEFAULT_CAP = 100
+SELF_SIGNUP_ACTOR = "participant:signup"
+
+
+def set_open_link(db: Session, study: AsyncStudy, enabled: bool, cap: int, actor: str) -> str | None:
+    """Turn the public sign-up link on (a new link each time: the old one stops working) or off. Returns the new link token, shown once.
+
+    Raises:
+        StudyError: the study is not published, or the cap is out of range.
+    """
+    if enabled and study.status != "published":
+        raise StudyError(409, "请先发布研究，再开启公开链接")
+    if not 1 <= cap <= MAX_CAP:
+        raise StudyError(422, f"人数上限要在 1 到 {MAX_CAP} 之间")
+    token = new_secret_token() if enabled else None
+    study.open_hash, study.open_cap = (token_hash(token) if token else None), cap
+    audit(db, study.org_id, actor, "study.open_link_on" if enabled else "study.open_link_off", study.id, cap=cap)
+    return token
+
+
+def study_by_open_token(db: Session, token: str) -> AsyncStudy | None:
+    """The study a public sign-up link belongs to (None for a wrong, rotated or switched-off link)."""
+    return db.scalar(select(AsyncStudy).where(AsyncStudy.open_hash == token_hash(token), AsyncStudy.open_hash.isnot(None)))
+
+
+def session_count(db: Session, study_id: str) -> int:
+    return db.scalar(select(func.count()).select_from(Interview).where(Interview.study_id == study_id)) or 0
+
+
+def open_state(db: Session, study: AsyncStudy) -> dict:
+    """Whether the public link is on and has room (the participant page shows 'full' otherwise)."""
+    on = bool(study.open_hash) and study.status == "published"
+    return {"enabled": on, "cap": study.open_cap, "sessions": session_count(db, study.id), "full": on and session_count(db, study.id) >= study.open_cap}
+
+
+def sign_up(db: Session, study: AsyncStudy, nickname: str) -> tuple[Interview, str]:
+    """Someone opened the public link: make a participant (only the nickname they chose, or a number) and their personal session.
+
+    Raises:
+        StudyError: the link is off, the study is closed, or the study is full.
+    """
+    state = open_state(db, study)
+    if not state["enabled"]:
+        raise StudyError(404, "Invalid link / 链接无效")
+    if state["full"]:
+        raise StudyError(409, "This study is full, thank you for your interest / 名额已满，感谢你的关注")
+    n = state["sessions"] + 1
+    part = Participant(org_id=study.org_id, project_id=study.project_id, name=(nickname.strip()[:40] or f"自助受访者 {n}"), language=study.language)
+    db.add(part)
+    db.flush()
+    return invite(db, study, part, SELF_SIGNUP_ACTOR)
+
+
+def progress(db: Session, study: AsyncStudy) -> dict:
+    """Numbers for the researcher: how many started, finished, ended early, and how long finished conversations took."""
+    rows = db.execute(select(Interview, AiSession).outerjoin(AiSession, AiSession.interview_id == Interview.id).where(Interview.study_id == study.id)).all()
+    states = [session_state(i, s) for i, s in rows]
+    minutes = sorted((i.ended_at - i.started_at).total_seconds() / 60 for i, s in rows if s is not None and s.finished and i.started_at and i.ended_at)
+    started = len(rows) - states.count("sent") - states.count("opened")
+    return {"invited": len(rows), "started": started, "finished": states.count("finished"), "ended_early": states.count("ended_early"), "in_progress": states.count("in_progress"),
+            "completion_rate": round(states.count("finished") / started, 2) if started else None, "median_minutes": round(minutes[len(minutes) // 2], 1) if minutes else None}

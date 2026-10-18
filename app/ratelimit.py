@@ -27,6 +27,7 @@ LOGIN_IP = (10, 300)         # failures, seconds
 LOGIN_ACCOUNT = (5, 900)
 LINK_PROBES = (30, 60)
 REGISTER = (10, 3600)
+SIGNUP = (20, 3600)         # study sign-ups through a public link, per address per hour (always on: it stops a script filling a study)
 ASK = (40, 3600)           # library questions per person per hour (each one is a paid model call)
 FORGOT_IP = (5, 3600)       # "forgot password" requests per address per hour
 FORGOT_ACCOUNT = (3, 3600)  # and per account, so one inbox cannot be flooded
@@ -110,6 +111,14 @@ def forgot_allowed(email: str, ip: str) -> bool:
     return True
 
 
+def signup_allowed(ip: str) -> int:
+    """Count one sign-up through a public study link; returns 0 when allowed, otherwise the seconds to wait."""
+    if wait := blocked(f"signup:{ip}", SIGNUP):
+        return wait
+    record(f"signup:{ip}", SIGNUP[1])
+    return 0
+
+
 def ask_allowed(user_id: str) -> int:
     """Count one library question; returns 0 when allowed, otherwise the seconds to wait (always on: it limits cost, not guessing)."""
     if wait := blocked(f"ask:{user_id}", ASK):
@@ -128,7 +137,7 @@ async def middleware(request, call_next):  # noqa: ANN001 - Starlette middleware
     if not settings.rate_limit:
         return await call_next(request)
     path, ip = request.url.path, (request.client.host if request.client else "")
-    probing = path.startswith(("/api/public/join/", "/api/public/invite/"))
+    probing = path.startswith(("/api/public/join/", "/api/public/invite/", "/api/public/study/"))
     if probing and (wait := blocked(f"probe:{ip}", LINK_PROBES)):
         return too_many(wait)
     if path == "/api/auth/register" and request.method == "POST":

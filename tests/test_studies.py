@@ -251,3 +251,88 @@ def test_drafting_with_a_real_style_model_fills_the_prompt_and_accepts_its_json(
     with pytest.raises(study_draft.DraftError):
         study_draft.draft_guide(bad, "目标", "zh", 20)
     assert len(bad.calls) == study_draft.MAX_ATTEMPTS   # asked again once, then gave up
+
+
+# ---------- public sign-up link ----------
+def open_link(org, sid, enabled=True, cap=100, headers=None):
+    return org.c.post(f"/api/studies/{sid}/open-link", headers=headers or org.h(), json={"enabled": enabled, "cap": cap})
+
+
+def test_a_public_link_lets_people_sign_up_themselves_and_they_get_their_own_session(org):
+    pid, st = published(org)
+    r = open_link(org, st["id"]).json()
+    assert r["open_path"].startswith("/study.html?s=") and r["open"]["enabled"] is True
+    tok = r["open_path"].split("s=")[1]
+    info = org.c.get(f"/api/public/study/{tok}").json()
+    assert info["org"] == "Acme" and info["language"] == "zh" and info["duration_min"] == 20 and info["full"] is False and set(info) == {"org", "language", "topic", "duration_min", "full"}
+    assert "goal" not in str(info) and "护肤选购" not in str(info)   # nothing internal
+    j = org.c.post(f"/api/public/study/{tok}/join", json={"nickname": "小林"})
+    assert j.status_code == 201 and j.json()["invite_path"].startswith("/join.html?t=")
+    jt = j.json()["invite_path"].split("t=")[1]
+    assert org.c.get(f"/api/public/join/{jt}").json()["async"] is True
+    consent(org, jt)
+    assert org.c.post(f"/api/public/join/{jt}/async/start").status_code == 200
+    d = org.c.get(f"/api/studies/{st['id']}", headers=org.h()).json()
+    assert d["sessions"][0]["participant"]["name"] == "小林" and d["open"]["sessions"] == 1
+    anon = org.c.post(f"/api/public/study/{tok}/join", json={}).json()
+    assert anon["invite_path"]
+    assert [s["participant"]["name"] for s in org.c.get(f"/api/studies/{st['id']}", headers=org.h()).json()["sessions"]] == ["小林", "自助受访者 2"]
+
+
+def test_the_cap_stops_sign_ups_and_a_new_link_replaces_the_old_one(org):
+    pid, st = published(org)
+    tok = open_link(org, st["id"], cap=2).json()["open_path"].split("s=")[1]
+    for _ in range(2):
+        assert org.c.post(f"/api/public/study/{tok}/join", json={}).status_code == 201
+    full = org.c.post(f"/api/public/study/{tok}/join", json={})
+    assert full.status_code == 409 and org.c.get(f"/api/public/study/{tok}").json()["full"] is True
+    newer = open_link(org, st["id"], cap=5).json()["open_path"].split("s=")[1]
+    assert org.c.get(f"/api/public/study/{tok}").status_code == 404 and org.c.get(f"/api/public/study/{newer}").status_code == 200
+    assert org.c.post(f"/api/public/study/{newer}/join", json={}).status_code == 201
+
+
+def test_switching_the_link_off_or_closing_the_study_ends_sign_ups(org):
+    pid, st = published(org)
+    tok = open_link(org, st["id"]).json()["open_path"].split("s=")[1]
+    off = open_link(org, st["id"], enabled=False).json()
+    assert off["open_path"] is None and off["open"]["enabled"] is False
+    assert org.c.post(f"/api/public/study/{tok}/join", json={}).status_code == 404
+    tok = open_link(org, st["id"]).json()["open_path"].split("s=")[1]
+    org.c.post(f"/api/studies/{st['id']}/close", headers=org.h())
+    assert org.c.get(f"/api/public/study/{tok}").status_code == 404
+
+
+def test_the_public_link_needs_a_published_study_a_sane_cap_and_a_researcher_on_the_project(org):
+    pid, st = make_study(org)
+    assert open_link(org, st["id"]).status_code == 409
+    pid, st = published(org)
+    assert open_link(org, st["id"], cap=0).status_code == 422 and open_link(org, st["id"], cap=5000).status_code == 422
+    other = second_researcher(org)
+    assert open_link(org, st["id"], headers=other["h"]).status_code == 404
+    assert org.c.get("/api/public/study/not-a-token").status_code == 404
+    assert org.c.post("/api/public/study/not-a-token/join", json={}).status_code == 404
+
+
+def test_sign_ups_from_one_address_are_limited_per_hour(org):
+    from app import ratelimit
+    ratelimit.reset()
+    pid, st = published(org)
+    tok = open_link(org, st["id"], cap=100).json()["open_path"].split("s=")[1]
+    codes = [org.c.post(f"/api/public/study/{tok}/join", json={}).status_code for _ in range(22)]
+    assert codes[:20] == [201] * 20 and codes[20:] == [429, 429]
+    ratelimit.reset()
+
+
+def test_progress_numbers_count_started_finished_and_stopped_early(org):
+    pid, st, part, tok, iid = invited(org)
+    assert org.c.get(f"/api/studies/{st['id']}", headers=org.h()).json()["progress"] == {"invited": 1, "started": 0, "finished": 0, "ended_early": 0, "in_progress": 0, "completion_rate": None, "median_minutes": None}
+    consent(org, tok)
+    org.c.post(f"/api/public/join/{tok}/async/start")
+    say(org, tok, ANSWERS[0])
+    assert org.c.get(f"/api/studies/{st['id']}", headers=org.h()).json()["progress"]["in_progress"] == 1
+    for a in ANSWERS[1:]:
+        if chat(org, tok)["finished"]:
+            break
+        say(org, tok, a)
+    p = org.c.get(f"/api/studies/{st['id']}", headers=org.h()).json()["progress"]
+    assert p["finished"] == 1 and p["started"] == 1 and p["completion_rate"] == 1.0 and p["median_minutes"] is not None

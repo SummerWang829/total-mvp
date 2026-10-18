@@ -1,15 +1,15 @@
 """Studies done by participants on their own (app/studies.py): the researcher's side (create, AI draft, edit, publish, invite, close) and the one
 participant call that opens their session. The chat itself reuses the AI room's participant endpoints (app/routers/ai_room.py)."""
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import guide_text, studies, study_draft
+from .. import guide_text, ratelimit, studies, study_draft
 from ..audit import audit
 from ..db import get_db
-from ..deps import STAFF, Ctx, ensure_project, require_roles
-from ..models import AiSession, AsyncStudy, Interview, Participant, Project
+from ..deps import STAFF, Ctx, client_ip, ensure_project, require_roles
+from ..models import AiSession, AsyncStudy, Interview, Org, Participant, Project
 from ..moderator.providers import ChatFatalError, get_moderator_chat
 from .public import resolve_join  # noqa: PLC2701 — the same invite-token lookup as the rest of the participant flow
 
@@ -63,6 +63,8 @@ def study_out(db: Session, st: AsyncStudy, detail: bool = False) -> dict:
            "published_at": st.published_at.isoformat() if st.published_at else None, "counts": _counts(db, st.id)}
     if detail:
         out["outline_text"] = st.outline_text
+        out["progress"] = studies.progress(db, st)
+        out["open"] = studies.open_state(db, st)
         rows = db.execute(select(Interview, AiSession).outerjoin(AiSession, AiSession.interview_id == Interview.id)
                           .where(Interview.study_id == st.id).order_by(Interview.created_at)).all()
         out["sessions"] = [{"interview_id": i.id, "participant": {"id": i.participant.id, "name": i.participant.name, "country": i.participant.country},
@@ -190,3 +192,44 @@ def participant_start(token: str, db: Session = Depends(get_db)):
     db.commit()
     return {"ok": True, "language": j.itv.language}
 
+
+
+class OpenLinkBody(BaseModel):
+    enabled: bool
+    cap: int = studies.DEFAULT_CAP
+
+
+@router.post("/studies/{sid}/open-link")
+def open_link(sid: str, body: OpenLinkBody, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    """Turn the public sign-up link on (a new link replaces any earlier one; shown once) or off."""
+    st = _study(db, ctx, sid)
+    token = _run(db, studies.set_open_link, st, body.enabled, body.cap, ctx.actor)
+    db.commit()
+    return study_out(db, st, detail=True) | {"open_path": f"/study.html?s={token}" if token else None}
+
+
+class JoinBody(BaseModel):
+    nickname: str = Field(default="", max_length=40)
+
+
+@router.get("/public/study/{token}")
+def public_study(token: str, db: Session = Depends(get_db)):
+    """What the sign-up page shows: who is asking, the language, the topic (never the internal title or goal), and whether there is room."""
+    st = studies.study_by_open_token(db, token)
+    state = studies.open_state(db, st) if st else None
+    if not st or not state["enabled"]:
+        raise HTTPException(404, "Invalid link / 链接无效")
+    return {"org": db.get(Org, st.org_id).name, "language": st.language, "topic": st.participant_topic, "duration_min": st.duration_min, "full": state["full"]}
+
+
+@router.post("/public/study/{token}/join", status_code=201)
+def public_study_join(token: str, body: JoinBody, request: Request, db: Session = Depends(get_db)):
+    """Someone opens the public link and starts: they get their own personal link (then consent and the conversation, as for an invited person)."""
+    if wait := ratelimit.signup_allowed(client_ip(request)):
+        raise HTTPException(429, ratelimit.MESSAGE, headers={"Retry-After": str(wait)})
+    st = studies.study_by_open_token(db, token)
+    if not st:
+        raise HTTPException(404, "Invalid link / 链接无效")
+    itv, tok = _run(db, studies.sign_up, st, body.nickname)
+    db.commit()
+    return {"invite_path": f"/join.html?t={tok}"}
