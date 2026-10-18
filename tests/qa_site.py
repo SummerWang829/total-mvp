@@ -471,6 +471,9 @@ def wizard_section(br, D):
     ok(pg.locator(".snode").count() == 1 and "异步 AI 研究" in pg.inner_text(".starmap"), "[wizard] the star map has one node per chosen method")
     ok("异步研究" in pg.inner_text("nav.side") and "舆情监测" not in pg.inner_text("nav.side") and "场次与邀请" not in pg.inner_text("nav.side"), "[wizard] the menu shows only what the project uses")
     audit_page(pg, "star map/desktop", errs)
+    with pg.expect_download(timeout=15000) as dl:
+        pg.click("#rep")
+    ok(dl.value.suggested_filename.endswith(".docx"), "[wizard] the research report downloads as a Word file")
     pg.screenshot(path=os.path.join(ROOT, "qa_shots", "starmap_1280.png"), full_page=True)
     pg.click("#chm"); pg.wait_for_selector("input[name=methods][value=listening]")
     pg.locator("input[name=methods][value=listening]").check(); pg.click("#f button.p")
