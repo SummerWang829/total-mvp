@@ -261,6 +261,21 @@ def set_timeslots(iid: str, body: TimeSlots, ctx: Ctx = Depends(require_roles(*S
     return scheduling.staff_view(db, itv)
 
 
+@router.post("/interviews/{iid}/timeslots/{slot_id}/confirm")
+def confirm_timeslot(iid: str, slot_id: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    """The team fixes the session's time to this candidate time (for a focus group: after seeing who can make which)."""
+    itv = visible_interview(db, ctx, iid)
+    if itv.status == "ended":
+        raise HTTPException(409, "访谈已经结束")
+    try:
+        at = scheduling.confirm(db, itv, slot_id)
+    except ValueError:
+        raise HTTPException(404, "没有这个候选时间")
+    audit(db, ctx.org_id, ctx.actor, "timeslot.confirm", itv.id, at=at.isoformat())
+    db.commit()
+    return scheduling.staff_view(db, itv)
+
+
 @router.get("/interviews/{iid}/timeslots")
 def get_timeslots(iid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
     """The candidate times and which one the participant chose."""

@@ -334,6 +334,8 @@ class ChatMessage(Base):
     note: Mapped[str] = mapped_column(Text, default="")  # the AI's internal note (JSON), staff only
     operator: Mapped[str] = mapped_column(String(20), default="")
     phase: Mapped[str] = mapped_column(String(12), default="")
+    prompt_version: Mapped[str] = mapped_column(String(12), default="")  # the AI's lines: which prompt version and which model said it (traceability)
+    model: Mapped[str] = mapped_column(String(60), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
@@ -386,6 +388,16 @@ class TimeSlot(Base):
     org_id: Mapped[str] = mapped_column(String(32), index=True)
     interview_id: Mapped[str] = mapped_column(ForeignKey("interviews.id"), index=True)
     start_at: Mapped[datetime] = mapped_column(DateTime)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class SlotVote(Base):
+    """A focus-group participant says a candidate time suits them. The team confirms one time (the one most people can make) and it becomes the session's time."""
+    __tablename__ = "slot_votes"
+    slot_id: Mapped[str] = mapped_column(ForeignKey("time_slots.id"), primary_key=True)
+    participant_id: Mapped[str] = mapped_column(ForeignKey("participants.id"), primary_key=True)
+    interview_id: Mapped[str] = mapped_column(ForeignKey("interviews.id"), index=True)
+    org_id: Mapped[str] = mapped_column(String(32), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 

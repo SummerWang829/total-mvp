@@ -268,3 +268,15 @@ def test_the_ai_actions_are_in_the_audit_log(room):
     org.c.post(f"/api/interviews/{itv['id']}/ai/handback", headers=org.h("moderator"))
     actions = [a["action"] for a in org.c.get("/api/audit?limit=100", headers=H(org.admin)).json()]
     assert {"ai.start", "ai.takeover", "ai.handback"} <= set(actions)
+
+
+def test_every_line_of_the_ai_records_which_prompt_version_and_model_said_it_for_the_team_only(room):
+    org, itv = room
+    _say(org, itv, "Yes, ready.")
+    staff = _staff(org, itv)
+    ai = [m for m in staff["messages"] if m["sender"] == "ai"]
+    assert len(ai) >= 2 and all(m["prompt_version"].startswith("v0") and m["model"] for m in ai)
+    assert all(not m.get("prompt_version") for m in staff["messages"] if m["sender"] != "ai")
+    mine = _participant(org, itv)
+    assert "prompt_version" not in str(mine) and "model" not in " ".join(m for m in str(mine).split() if "model" in m)
+    assert "prompt_version" not in str(_staff(org, itv, role="observer"))

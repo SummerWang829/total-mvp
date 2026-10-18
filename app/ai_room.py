@@ -97,12 +97,13 @@ def _next_seq(db: Session, interview_id: str) -> int:
     return (db.scalar(select(func.max(ChatMessage.seq)).where(ChatMessage.interview_id == interview_id)) or 0) + 1
 
 
-def _add_message(db: Session, itv: Interview, sender: str, text: str, payload: ModeratorTurnPayload | None = None) -> ChatMessage:
+def _add_message(db: Session, itv: Interview, sender: str, text: str, payload: ModeratorTurnPayload | None = None, engine: ModeratorEngine | None = None) -> ChatMessage:
     """Store one chat line (the AI's lines also keep its internal note, operator and phase for the research team)."""
     plan = payload.plan if payload else None
     row = ChatMessage(org_id=itv.org_id, interview_id=itv.id, seq=_next_seq(db, itv.id), sender=sender, text=text,
                       note=payload.note.model_dump_json() if payload else "", operator=plan.operator.value if plan else "",
-                      phase=plan.decision.phase.value if plan else "")
+                      phase=plan.decision.phase.value if plan else "", prompt_version=getattr(engine, "_prompt_version", "") if engine else "",
+                      model=str(getattr(getattr(getattr(engine, "calls", None), "chat", None), "name", ""))[:60] if engine else "")
     db.add(row)
     db.flush()
     return row
@@ -111,7 +112,7 @@ def _add_message(db: Session, itv: Interview, sender: str, text: str, payload: M
 def _apply_payload(db: Session, itv: Interview, sess: AiSession, engine: ModeratorEngine, payload: ModeratorTurnPayload) -> None:
     """Store what the AI said, raise the alert if the engine asked for one, and note when the AI has finished."""
     if payload.spoken_response:
-        _add_message(db, itv, "ai", payload.spoken_response, payload)
+        _add_message(db, itv, "ai", payload.spoken_response, payload, engine)
     if payload.alert is not AlertLevel.NONE and ALERT_ORDER[payload.alert.value] >= ALERT_ORDER[sess.alert]:
         sess.alert, sess.alert_reason = payload.alert.value, payload.alert_reason[:300]
         audit(db, itv.org_id, "ai_moderator", "ai.alert", itv.id, level=payload.alert.value)
@@ -396,7 +397,7 @@ def state(db: Session, itv: Interview, after: int, view: str) -> dict:
     for r in rows:
         line = {"seq": r.seq, "sender": r.sender, "text": r.text, "at_ms": _at_ms(itv, r)}
         if view == "staff":
-            line.update(note=json.loads(r.note) if r.note else None, operator=r.operator, phase=r.phase)
+            line.update(note=json.loads(r.note) if r.note else None, operator=r.operator, phase=r.phase, prompt_version=r.prompt_version, model=r.model)
         out_rows.append(line)
     out = {"started": True, "control": sess.control, "finished": sess.finished, "messages": out_rows}
     if view == "staff":

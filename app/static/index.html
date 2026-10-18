@@ -939,9 +939,13 @@ async function loadTimeslotsCard(iid, canEdit) {
   const picked = (s) => data.chosen && data.chosen.slice(0, 16) === s.start_at.slice(0, 16);
   card.innerHTML = `<div class="row"><h3 style="margin:0">候选时间</h3><span class="sp"></span>${canEdit ? `<button class="s" id="tsed">${slots.length ? "编辑" : "提供候选时间"}</button>` : ""}</div>
     <p class="sm mut" style="margin:6px 0 0">提供几个候选时间，受访者在自己的时区里选一个，选定后写回场次时间。不提供就用你建场次时填的固定时间。</p>
-    ${slots.length ? `<ul class="ptlist">${slots.map((s) => `<li>${esc(new Date(s.start_at + "Z").toLocaleString())}${picked(s) ? ` <span class="tag ok">受访者已选</span>` : ""}</li>`).join("")}</ul>${data.chosen ? "" : `<p class="sm mut" style="margin:8px 0 0">受访者还没有选时间。</p>`}`
+    ${data.group && slots.length ? `<p class="sm" style="margin:8px 0 4px">座谈会：每位受访者勾选自己能来的时间，已有 <b>${data.voted}</b> / ${data.seats} 人选了。看谁能来，再确认一个。</p>
+      <ul class="ptlist">${slots.map((s) => `<li><b>${esc(new Date(s.start_at + "Z").toLocaleString())}</b> · ${s.votes} 人能来${data.best === s.id && !data.chosen ? ` <span class="tag ok">最多人能来</span>` : ""}${picked(s) ? ` <span class="tag ok">已确认</span>` : ""}
+        ${s.voters.length ? `<div class="sm mut">${esc(s.voters.join("、"))}</div>` : ""}${canEdit && !data.chosen ? `<button class="s" data-confirm="${s.id}">确认这个时间</button>` : ""}</li>`).join("")}</ul>`
+    : slots.length ? `<ul class="ptlist">${slots.map((s) => `<li>${esc(new Date(s.start_at + "Z").toLocaleString())}${picked(s) ? ` <span class="tag ok">受访者已选</span>` : ""}</li>`).join("")}</ul>${data.chosen ? "" : `<p class="sm mut" style="margin:8px 0 0">受访者还没有选时间。</p>`}`
       : `<p class="sm mut" style="margin:8px 0 0">还没有提供候选时间。</p>`}`;
   const b = $("#tsed", card); if (b) b.onclick = () => editTimeslots(iid, slots);
+  card.querySelectorAll("[data-confirm]").forEach((c) => c.onclick = guard(async () => { if (!confirm("确认后，时间就定下来了，所有受访者都不能再改。继续？")) return; await api(`/interviews/${iid}/timeslots/${c.dataset.confirm}/confirm`, { method: "POST" }); toast("已确认时间"); render(); }));
 }
 
 function editTimeslots(iid, slots) {

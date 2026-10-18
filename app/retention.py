@@ -13,7 +13,7 @@ from .audit import audit
 from .config import settings
 from .media import purge_cache
 from . import ai_room, screener
-from .models import (BackroomMessage, CaptionLine, Clip, CueCard, Evidence, Highlight, Insight, Interview, InterviewParticipant, Mention, Participant, PreTask, PreTaskAnswer, Project, RepoDocument, SegmentCode,
+from .models import (BackroomMessage, CaptionLine, Clip, CueCard, Evidence, Highlight, Insight, Interview, InterviewParticipant, Mention, Participant, SlotVote, PreTask, PreTaskAnswer, Project, RepoDocument, SegmentCode,
                      Recording, RecordingTrack, Reaction, ShareLink, StimulusMark, TimeSlot, TranscriptSegment, utcnow)
 
 PURGED = "[已按保留期删除]"
@@ -43,6 +43,7 @@ def purge_interview(db: Session, itv: Interview, reason: str, actor: str = "syst
     db.execute(delete(BackroomMessage).where(BackroomMessage.interview_id == itv.id))  # the team's private chat
     db.execute(delete(PreTaskAnswer).where(PreTaskAnswer.interview_id == itv.id))  # pre-interview answers are personal data
     db.execute(delete(PreTask).where(PreTask.interview_id == itv.id))
+    db.execute(delete(SlotVote).where(SlotVote.interview_id == itv.id))  # which times each participant could make
     db.execute(delete(TimeSlot).where(TimeSlot.interview_id == itv.id))  # candidate times (config)
     db.execute(delete(StimulusMark).where(StimulusMark.interview_id == itv.id))  # material marks are personal data
     db.execute(delete(CueCard).where(CueCard.interview_id == itv.id))  # cue cards may quote participants

@@ -9,7 +9,7 @@ from datetime import datetime
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from .models import Interview, TimeSlot, utcnow
+from .models import Interview, InterviewParticipant, SlotVote, TimeSlot, utcnow
 
 MAX_SLOTS = 6
 
@@ -70,15 +70,70 @@ def pick(db: Session, itv: Interview, slot_id: str) -> datetime:
     return slot.start_at
 
 
-def public_view(db: Session, itv: Interview) -> dict | None:
-    """What the participant's browser gets: the candidate times to choose from, or None when there is nothing to pick."""
+def vote(db: Session, itv: Interview, participant_id: str, slot_ids: list[str]) -> None:
+    """A focus-group participant marks every candidate time that suits them (replacing what they marked before).
+
+    Raises:
+        ValueError: the time is already confirmed, nothing was chosen, or a time is not one of this session's.
+    """
+    if itv.scheduled_at is not None:
+        raise ValueError("already confirmed")
+    valid = {s.id for s in slots(db, itv.id)}
+    chosen = list(dict.fromkeys(slot_ids))
+    if not chosen or any(i not in valid for i in chosen):
+        raise ValueError("unknown candidate time")
+    db.execute(delete(SlotVote).where(SlotVote.interview_id == itv.id, SlotVote.participant_id == participant_id))
+    for sid in chosen:
+        db.add(SlotVote(slot_id=sid, participant_id=participant_id, interview_id=itv.id, org_id=itv.org_id))
+    db.flush()
+
+
+def _votes(db: Session, interview_id: str) -> dict[str, list[str]]:
+    out: dict[str, list[str]] = {}
+    for slot_id, pid in db.execute(select(SlotVote.slot_id, SlotVote.participant_id).where(SlotVote.interview_id == interview_id)):
+        out.setdefault(slot_id, []).append(pid)
+    return out
+
+
+def confirm(db: Session, itv: Interview, slot_id: str) -> datetime:
+    """The team fixes the session's time to one of the candidate times (focus groups: the one most people can make; a depth interview: overriding the participant).
+
+    Raises:
+        ValueError: the time is not one of this session's candidates.
+    """
+    slot = db.get(TimeSlot, slot_id)
+    if not slot or slot.interview_id != itv.id:
+        raise ValueError("unknown candidate time")
+    itv.scheduled_at = slot.start_at
+    return slot.start_at
+
+
+def public_view(db: Session, itv: Interview, participant_id: str | None = None) -> dict | None:
+    """What the participant's browser gets: the candidate times to choose from, or None when there is nothing to pick.
+
+    A focus group votes: every time comes with how many people marked it and whether this participant did (never who)."""
     if not needs_pick(db, itv):
         return None
+    if itv.kind == "group":
+        votes = _votes(db, itv.id)
+        return {"group": True, "voted": any(participant_id in v for v in votes.values()),
+                "slots": [{"id": s.id, "start_at": s.start_at.isoformat(), "votes": len(votes.get(s.id, [])), "mine": participant_id in votes.get(s.id, [])} for s in slots(db, itv.id)]}
     return {"slots": [{"id": s.id, "start_at": s.start_at.isoformat()} for s in slots(db, itv.id)]}
 
 
 def staff_view(db: Session, itv: Interview) -> dict:
-    """The research team's view: the candidate times and which one the participant chose (if any)."""
+    """The research team's view: the candidate times and which one was chosen (if any). A focus group also shows who can make each time and the best one."""
     rows = slots(db, itv.id)
     chosen = itv.scheduled_at.isoformat() if (rows and itv.scheduled_at is not None) else None
-    return {"slots": [{"id": s.id, "start_at": s.start_at.isoformat()} for s in rows], "chosen": chosen}
+    out = {"slots": [{"id": s.id, "start_at": s.start_at.isoformat()} for s in rows], "chosen": chosen}
+    if itv.kind == "group":
+        votes = _votes(db, itv.id)
+        seat = {p.participant_id: p.seat for p in db.scalars(select(InterviewParticipant).where(InterviewParticipant.interview_id == itv.id))}
+        from .groups import speaker_label
+        for sl in out["slots"]:
+            who = sorted(votes.get(sl["id"], []), key=lambda pid: seat.get(pid, 99))
+            sl["votes"], sl["voters"] = len(who), [speaker_label(f"p{seat[p]}") for p in who if p in seat]
+        voted = {pid for v in votes.values() for pid in v}
+        best = max(out["slots"], key=lambda sl: (sl["votes"], -out["slots"].index(sl)), default=None)
+        out.update(group=True, seats=len(seat), voted=len(voted), best=best["id"] if best and best["votes"] else None)
+    return out

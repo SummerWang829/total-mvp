@@ -604,6 +604,37 @@ def segcode_section(br, D):
     ctx.close()
 
 
+def vote_section(br, D):
+    """Focus group candidate times: each participant ticks the times that suit them, the team sees who can make which and confirms one, and the participant's page moves on."""
+    adm, pid = D["tok"]["admin"], D["pid"]
+    ids = [call(f"/projects/{pid}/participants", {"name": n, "country": "SG", "language": "zh"}, adm)["id"] for n in ("投票甲", "投票乙")]
+    it = call(f"/projects/{pid}/interviews", {"kind": "group", "participant_ids": ids, "title": "投票座谈会", "language": "zh"}, adm)
+    iid = it["id"]
+    invs = sorted(it["group_invites"], key=lambda g: g["seat"])
+    starts = [time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(time.time() + 86400 * d)) for d in (3, 4, 5)]
+    call(f"/interviews/{iid}/timeslots", {"starts": starts}, adm, method="PUT")
+    slots = call(f"/interviews/{iid}/timeslots", token=adm)["slots"]
+    ctx, pg, errs = new_page(br, 390)
+    pg.goto(B + invs[0]["invite_path"]); pg.wait_for_selector("input[name=slot]")
+    ok(pg.locator("input[name=slot]").count() == 3, "[vote] a focus-group participant sees the candidate times as tick boxes")
+    audit_page(pg, "group vote/phone", errs)
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "group_vote_390.png"), full_page=True)
+    pg.locator("input[name=slot]").nth(0).check(); pg.locator("input[name=slot]").nth(1).check(); pg.click("#tf button.p")
+    ok(wait_until(lambda: "谢谢" in pg.inner_text("#tf") and pg.locator("input[name=slot]:checked").count() == 2, 8), "[vote] saving shows thanks and keeps the ticks")
+    call(f"/public/join/{invs[1]['invite_path'].split('t=')[1]}/slot", {"slot_ids": [slots[1]["id"]]})
+    ctx2, pg2, errs2 = new_page(br, 1280, token=adm)
+    pg2.goto(B + f"/#/i/{iid}"); pg2.wait_for_selector("#timeslotcard [data-confirm]")
+    ok("最多人能来" in pg2.inner_text("#timeslotcard") and "2 人能来" in pg2.inner_text("#timeslotcard"), "[vote] the team sees how many can make each time and which is best")
+    audit_page(pg2, "group vote staff/desktop", errs2)
+    pg2.on("dialog", lambda d: d.accept())
+    pg2.locator("#timeslotcard li", has_text="2 人能来").locator("[data-confirm]").click()
+    ok(wait_until(lambda: "已确认" in pg2.inner_text("#timeslotcard"), 8), "[vote] confirming fixes the time")
+    ctx2.close()
+    pg.reload(); pg.wait_for_selector("#accept", timeout=10000)
+    ok(pg.locator("input[name=slot]").count() == 0, "[vote] once confirmed the participant's page goes on to the invitation")
+    ctx.close()
+
+
 def main():
     tmp = tempfile.mkdtemp()
     env = {**os.environ, "DATABASE_URL": f"sqlite:///{tmp}/qa.db", "MEDIA_DIR": f"{tmp}/media", "LIVEKIT_URL": "", "ASR_PROVIDER": "mock", "LLM_PROVIDER": "mock", "ASR_API_KEY": "", "LLM_API_KEY": "",
@@ -1259,6 +1290,7 @@ def run():
         pool_section(br, D)
         admin_data_section(br, D)
         segcode_section(br, D)
+        vote_section(br, D)
 
         # ---------- C2. dialogs and expandable panels on the staff pages (both screen sizes) ----------
         for w, vp in ((1280, "desktop"), (390, "phone")):

@@ -15,7 +15,7 @@ const L = {
   en: { steps: ["Invitation", "Device test", "Privacy & consent", "Waiting room", "Interview"], stepOf: "Step {n} of {N}",
         pre: "Pre-interview questions", preTitle: "A few questions before we start", preGo: "Submit and continue",
         preIntro: "Please answer these before the interview — they help the moderator prepare. Your answers go only to the research team.",
-        pickTime: "Choose a time", pickGo: "Confirm this time", pickIntro: "Pick the time that suits you best. Times below are shown in your local time.",
+        pickTime: "Choose a time", pickGo: "Confirm this time", pickIntro: "Pick the time that suits you best. Times below are shown in your local time.", voteIntro: "Tick every time that suits you. The team will pick the time most people can make and let you know.", voteGo: "Save my choice", voteDone: "Thank you. We have your choice. This page updates by itself once the team has confirmed the time.", voteN: "{n} can make it",
         invite: "Interview invitation", by: "Invited by {o}", time: "Time: {t}", timeTbd: "Time: the research team will confirm it with you",
         how: "You can take part with your camera on, or with voice only. The camera can be switched off at any time. Please find a quiet place; earphones help.",
         next: "Next: test your device, read the privacy notice, then wait in the waiting room. About 5 minutes.", accept: "Accept and start", decline: "Not a good time? Just close this page. Nothing happens.",
@@ -33,7 +33,7 @@ const L = {
   zh: { steps: ["邀请", "设备检测", "隐私与同意", "候场室", "访谈室"], stepOf: "第 {n} 步 / 共 {N} 步",
         pre: "访谈前问题", preTitle: "开始前的几个问题", preGo: "提交并继续",
         preIntro: "请在访谈开始前回答以下问题，这能帮助主持人更好地准备。你的回答只会给到研究团队。",
-        pickTime: "选择访谈时间", pickGo: "确认这个时间", pickIntro: "请选择最方便你的时间。下面显示的是你本地时间。",
+        pickTime: "选择访谈时间", pickGo: "确认这个时间", pickIntro: "请选择最方便你的时间。下面显示的是你本地时间。", voteIntro: "请勾选所有你方便的时间。研究团队会选多数人能来的那个时间，并通知你。", voteGo: "保存我的选择", voteDone: "谢谢，已记下你的选择。研究团队确认时间后，这个页面会自动更新。", voteN: "{n} 人能来",
         invite: "访谈邀请", by: "由 {o} 邀请", time: "时间：{t}", timeTbd: "时间：研究团队会和你确认",
         how: "可以开摄像头视频参加，也可以只用语音参加，摄像头随时可以关闭。请找一个安静的地方，戴耳机效果更好。",
         next: "接下来：测试设备 → 阅读隐私说明 → 进入候场室，大约 5 分钟。", accept: "接受邀请，开始", decline: "暂时不方便？直接关闭本页即可，不会有任何影响。",
@@ -51,7 +51,7 @@ const L = {
   ms: { steps: ["Jemputan", "Ujian peranti", "Privasi & persetujuan", "Bilik menunggu", "Temu bual"], stepOf: "Langkah {n} daripada {N}",
         pre: "Soalan pra-temu bual", preTitle: "Beberapa soalan sebelum kita mula", preGo: "Hantar dan teruskan",
         preIntro: "Sila jawab soalan ini sebelum temu bual — ia membantu moderator bersedia. Jawapan anda hanya untuk pasukan penyelidik.",
-        pickTime: "Pilih masa", pickGo: "Sahkan masa ini", pickIntro: "Pilih masa yang paling sesuai untuk anda. Masa di bawah ditunjukkan mengikut waktu tempatan anda.",
+        pickTime: "Pilih masa", pickGo: "Sahkan masa ini", pickIntro: "Pilih masa yang paling sesuai untuk anda. Masa di bawah ditunjukkan mengikut waktu tempatan anda.", voteIntro: "Tandakan semua masa yang sesuai untuk anda. Pasukan akan memilih masa yang paling ramai boleh hadir dan memaklumkan anda.", voteGo: "Simpan pilihan saya", voteDone: "Terima kasih. Pilihan anda telah direkodkan. Halaman ini dikemas kini sendiri selepas pasukan mengesahkan masa.", voteN: "{n} boleh hadir",
         invite: "Jemputan temu bual", by: "Dijemput oleh {o}", time: "Masa: {t}", timeTbd: "Masa: pasukan penyelidik akan mengesahkannya dengan anda",
         how: "Anda boleh menyertai dengan kamera dihidupkan, atau dengan suara sahaja. Kamera boleh dimatikan pada bila-bila masa. Sila cari tempat yang senyap; fon telinga membantu.",
         next: "Seterusnya: uji peranti anda, baca notis privasi, kemudian tunggu di bilik menunggu. Kira-kira 5 minit.", accept: "Terima dan mula", decline: "Bukan masa yang sesuai? Tutup sahaja halaman ini. Tiada apa-apa akan berlaku.",
@@ -69,7 +69,7 @@ const L = {
   ta: { steps: ["அழைப்பு", "சாதனச் சோதனை", "தனியுரிமை & ஒப்புதல்", "காத்திருப்பு அறை", "நேர்காணல்"], stepOf: "படி {n} / {N}",
         pre: "நேர்காணலுக்கு முந்தைய கேள்விகள்", preTitle: "தொடங்கும் முன் சில கேள்விகள்", preGo: "சமர்ப்பித்துத் தொடரவும்",
         preIntro: "நேர்காணலுக்கு முன் இவற்றுக்குப் பதிலளியுங்கள் — இது நெறியாளர் தயாராக உதவும். உங்கள் பதில்கள் ஆய்வுக் குழுவுக்கு மட்டுமே.",
-        pickTime: "நேரத்தைத் தேர்ந்தெடுக்கவும்", pickGo: "இந்த நேரத்தை உறுதிப்படுத்து", pickIntro: "உங்களுக்கு வசதியான நேரத்தைத் தேர்ந்தெடுக்கவும். கீழே உள்ள நேரம் உங்கள் உள்ளூர் நேரத்தில் காட்டப்படுகிறது.",
+        pickTime: "நேரத்தைத் தேர்ந்தெடுக்கவும்", pickGo: "இந்த நேரத்தை உறுதிப்படுத்து", pickIntro: "உங்களுக்கு வசதியான நேரத்தைத் தேர்ந்தெடுக்கவும். கீழே உள்ள நேரம் உங்கள் உள்ளூர் நேரத்தில் காட்டப்படுகிறது.", voteIntro: "உங்களுக்கு ஏற்ற எல்லா நேரங்களையும் குறிக்கவும். அதிகமானோர் வரக்கூடிய நேரத்தை குழு தேர்ந்தெடுத்து உங்களுக்குத் தெரிவிக்கும்.", voteGo: "என் தேர்வைச் சேமி", voteDone: "நன்றி. உங்கள் தேர்வு பதிவாகிவிட்டது. குழு நேரத்தை உறுதிப்படுத்தியதும் இந்தப் பக்கம் தானாகப் புதுப்பிக்கப்படும்.", voteN: "{n} பேர் வரலாம்",
         invite: "நேர்காணல் அழைப்பு", by: "{o} அழைத்துள்ளது", time: "நேரம்: {t}", timeTbd: "நேரம்: ஆய்வுக் குழு உங்களுடன் உறுதிப்படுத்தும்",
         how: "கேமராவை இயக்கியோ, குரல் மட்டும் பயன்படுத்தியோ பங்கேற்கலாம். கேமராவை எப்போது வேண்டுமானாலும் அணைக்கலாம். அமைதியான இடத்தைத் தேர்ந்தெடுங்கள்; காதணி ஒலிபெருக்கி உதவும்.",
         next: "அடுத்து: உங்கள் சாதனத்தைச் சோதித்து, தனியுரிமை அறிவிப்பைப் படித்து, காத்திருப்பு அறையில் காத்திருங்கள். சுமார் 5 நிமிடங்கள்.", accept: "ஏற்றுக்கொண்டு தொடங்கு", decline: "இப்போது வசதியில்லையா? இந்தப் பக்கத்தை மூடிவிடுங்கள். எதுவும் நடக்காது.",
@@ -115,6 +115,27 @@ function frame(step, inner) {  // step bar: done = green, current = orange
 }
 
 // ---------- 0a. choose a time (only when the research team offered candidate times) ----------
+function voteStep() {  // a focus group: tick every time that suits you; the team confirms one, and this page moves on by itself
+  const T = info.timeslots, voted = T.voted;
+  frame(IX.invite, `<h1>${x.pickTime}</h1><p class="mut">${esc(x.by.replace("{o}", info.org))}</p>
+    <form class="card" id="tf">${T.slots.map((s) => `<label class="chk"><input type="checkbox" name="slot" value="${s.id}"${s.mine ? " checked" : ""}><span>${esc(new Date(s.start_at + "Z").toLocaleString())}<br><span class="sm mut">${esc(x.voteN.replace("{n}", s.votes))}</span></span></label>`).join("")}
+    <p class="mut sm" style="margin:6px 0 0">${esc(x.voteIntro)}</p>${voted ? `<p class="sm" role="status" style="margin:10px 0 0"><b>${esc(x.voteDone)}</b></p>` : ""}
+    <p class="sm" id="verr" role="alert" hidden style="color:#A8203E;margin:8px 0 0"></p><button class="p pbig" style="margin-top:14px">${x.voteGo}</button></form>`);
+  const f = $("#tf");
+  f.onsubmit = guard(async (e) => {
+    e.preventDefault();
+    const ids = [...f.querySelectorAll("input[name=slot]:checked")].map((c) => c.value);
+    if (!ids.length) { const er = $("#verr"); er.textContent = x.voteIntro; er.hidden = false; return; }
+    await pub("/slot", { method: "POST", body: { slot_ids: ids } });
+    info = await pub(""); voteStep();
+  });
+  clearInterval(voteTimer);
+  if (voted) voteTimer = setInterval(async () => {   // the team confirmed the time: move on to the invitation
+    try { const i2 = await pub(""); if (!i2.timeslots) { clearInterval(voteTimer); info = i2; inviteStep(); } } catch {}
+  }, 8000);
+}
+let voteTimer = null;
+
 function timeStep() {
   const slots = info.timeslots.slots;
   frame(IX.invite, `<h1>${x.pickTime}</h1><p class="mut">${esc(x.by.replace("{o}", info.org))}</p>
@@ -132,6 +153,7 @@ function timeStep() {
 
 // ---------- 0. invitation ----------
 function inviteStep() {
+  if (info.timeslots && info.timeslots.group) return voteStep();
   if (info.timeslots && info.timeslots.slots.length) return timeStep();  // a time must be chosen before anything else
   if (info.async) {
     const a = AL[info.consent.lang] || AL.en;
@@ -267,6 +289,7 @@ function waitStep() {
   document.title = x.invite + " · 星桐";
   pub("/opened", { method: "POST" }).catch(() => {});
   if (info.status === "ended") { frame(STEPS.length - 1, `<h1>${x.ended}</h1>`); return; }
+  if (info.timeslots && info.timeslots.group) return voteStep();
   if (info.timeslots && info.timeslots.slots.length) return timeStep();  // must choose a time first, whatever else is done
   if (info.consented) return afterConsent();
   if (info.device_ok) return consentStep();

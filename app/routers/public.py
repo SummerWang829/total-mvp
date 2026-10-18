@@ -63,7 +63,7 @@ def join_info(token: str, db: Session = Depends(get_db)):
             "status": itv.status, "can_enter_now": _window_ok(itv), "consented": consent is not None,
             "device_ok": seat.device_ok_at is not None, "async": itv.kind == "async",
             "consent": consent_for(itv.language, org.name, ai=itv.moderation == ModerationMode.AI.value, text_only=itv.kind == "async"),
-            "pretask": pretask.participant_view(db, itv.id, j.participant.id), "timeslots": scheduling.public_view(db, itv)}
+            "pretask": pretask.participant_view(db, itv.id, j.participant.id), "timeslots": scheduling.public_view(db, itv, j.participant.id)}
 
 
 @router.post("/join/{token}/opened", status_code=204)
@@ -131,22 +131,28 @@ def give_consent(token: str, body: ConsentBody, request: Request, db: Session = 
 
 
 class SlotBody(BaseModel):
-    slot_id: str
+    slot_id: str | None = None          # a depth interview: the one time the participant chooses
+    slot_ids: list[str] = []            # a focus group: every time that suits them
 
 
 @router.post("/join/{token}/slot")
 def pick_slot(token: str, body: SlotBody, request: Request, db: Session = Depends(get_db)):
-    """The participant chooses one of the candidate times; it becomes the interview's scheduled time."""
-    itv = _by_invite(db, token)
+    """A depth interview: the participant chooses one of the candidate times and it becomes the session's time.
+    A focus group: the participant marks every time that suits them; the team then confirms one."""
+    j = resolve_join(db, token)
+    itv = j.itv
     if itv.status == "ended":
         raise HTTPException(409, "The interview has ended / 访谈已结束")
     try:
-        scheduling.pick(db, itv, body.slot_id)
+        if itv.kind == "group":
+            scheduling.vote(db, itv, j.participant.id, body.slot_ids)
+        else:
+            scheduling.pick(db, itv, body.slot_id or "")
     except ValueError:
         raise HTTPException(409, "That time is no longer available / 该时间已不可选")
-    audit(db, itv.org_id, f"participant:{itv.participant_id}", "timeslot.pick", itv.id, ip=client_ip(request))
+    audit(db, itv.org_id, f"participant:{j.participant.id}", "timeslot.vote" if itv.kind == "group" else "timeslot.pick", itv.id, ip=client_ip(request))
     db.commit()
-    return {"scheduled_at": itv.scheduled_at.isoformat()}
+    return {"voted": True} if itv.kind == "group" else {"scheduled_at": itv.scheduled_at.isoformat()}
 
 
 class PreTaskBody(BaseModel):
@@ -179,7 +185,7 @@ def enter(token: str, request: Request, db: Session = Depends(get_db)):
     if part.screening != "eligible":
         raise HTTPException(403, "Not open in your region yet / 暂时不面向你所在的地区")
     if scheduling.needs_pick(db, itv):
-        raise HTTPException(409, "Please choose an interview time first / 请先选择访谈时间")
+        raise HTTPException(409, "The team will confirm the time soon / 研究团队会尽快确认时间" if itv.kind == "group" else "Please choose an interview time first / 请先选择访谈时间")
     if not db.scalar(select(Consent).where(Consent.interview_id == itv.id, Consent.participant_id == part.id)):
         raise HTTPException(403, "Please read and agree first / 请先阅读并同意")
     if not pretask.answered(db, itv.id, part.id):

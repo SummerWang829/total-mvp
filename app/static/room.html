@@ -319,7 +319,7 @@ function addLine(m) {
   if (m.note && role === "moderator") {  // why the AI asked this: for the research team only
     const det = document.createElement("details"), sm = document.createElement("summary"); sm.textContent = "AI 的思路";
     det.appendChild(sm);
-    [["目的", m.note.research_purpose], ["想了解", m.note.expected_information], ["追问逻辑", m.note.probe_logic], ["做法", [m.operator, m.phase].filter(Boolean).join(" · ")]]
+    [["目的", m.note.research_purpose], ["想了解", m.note.expected_information], ["追问逻辑", m.note.probe_logic], ["做法", [m.operator, m.phase].filter(Boolean).join(" · ")], ["模型与提示词", [m.model, m.prompt_version && `提示词 ${m.prompt_version}`].filter(Boolean).join(" · ")]]
       .filter(([, v]) => v).forEach(([k, v]) => { const li = document.createElement("div"); li.textContent = `${k}：${v}`; det.appendChild(li); });
     d.appendChild(det);
   }
