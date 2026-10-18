@@ -7,8 +7,8 @@ from .. import screener
 from ..audit import audit
 from ..config import settings
 from ..db import get_db
-from ..deps import STAFF, Ctx, current_ctx, require_roles
-from ..models import Interview, InterviewObserver, Participant, Project
+from ..deps import STAFF, Ctx, can_see_project, current_ctx, ensure_project, require_roles
+from ..models import Interview, InterviewObserver, Participant, Project, ProjectMember, User
 from ..models import utcnow
 from ..retention import erase_participant, purge_date
 
@@ -55,9 +55,11 @@ def participant_out(p: Participant, screener_count: int = 0) -> dict:
 
 
 def get_project(db: Session, ctx: Ctx, pid: str) -> Project:
+    """The project, or 404: another company's, or one this researcher is not a member of."""
     p = db.get(Project, pid)
     if not p or p.org_id != ctx.org_id:
         raise HTTPException(404, "项目不存在")
+    ensure_project(db, ctx, p.id)
     return p
 
 
@@ -67,6 +69,7 @@ def create_project(body: NewProject, ctx: Ctx = Depends(require_roles(*STAFF)), 
     p.market = p.market.upper()
     db.add(p)
     db.flush()  # assigns the id, so the audit row points at this project
+    db.add(ProjectMember(org_id=ctx.org_id, project_id=p.id, user_id=ctx.user.id, is_owner=True, added_by=ctx.user.id))  # the creator owns it
     audit(db, ctx.org_id, ctx.actor, "project.create", p.id)
     db.commit()
     return project_out(p)
@@ -83,6 +86,8 @@ def list_projects(ctx: Ctx = Depends(current_ctx), db: Session = Depends(get_db)
             mine = mine.where(Interview.id.in_(select(InterviewObserver.interview_id).where(InterviewObserver.user_id == ctx.user.id)))
         q = q.where(Project.id.in_(mine))
         return [project_out(p) for p in db.scalars(q)]
+    if ctx.user.role == "researcher":  # a researcher sees only the projects they belong to
+        q = q.where(Project.id.in_(select(ProjectMember.project_id).where(ProjectMember.user_id == ctx.user.id)))
     from .overview import project_summary  # staff project cards: participants, sessions, next session
     return [{**project_out(p), "summary": project_summary(db, p)} for p in db.scalars(q)]
 
@@ -146,6 +151,7 @@ def _own_participant(db: Session, ctx: Ctx, part_id: str) -> Participant:
     p = db.get(Participant, part_id)
     if not p or p.org_id != ctx.org_id:
         raise HTTPException(404, "受访者不存在")
+    ensure_project(db, ctx, p.project_id, "受访者不存在")
     return p
 
 
@@ -175,7 +181,93 @@ def put_screener(part_id: str, body: ScreenerBody, ctx: Ctx = Depends(require_ro
 
 @router.delete("/participants/{part_id}/data")
 def erase(part_id: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
-    p = db.get(Participant, part_id)
-    if not p or p.org_id != ctx.org_id:
-        raise HTTPException(404, "受访者不存在")
+    p = _own_participant(db, ctx, part_id)
     return {"purged_interviews": erase_participant(db, p, ctx.actor)}
+
+
+# ---------- who works on a project ----------
+def _can_manage(db: Session, ctx: Ctx, pid: str) -> bool:
+    """An admin, or a member marked as owner, may add and remove members."""
+    if ctx.user.role == "admin":
+        return True
+    return bool(db.scalar(select(ProjectMember.id).where(ProjectMember.project_id == pid, ProjectMember.user_id == ctx.user.id, ProjectMember.is_owner.is_(True))))
+
+
+def _members_out(db: Session, ctx: Ctx, pid: str) -> dict:
+    rows = db.execute(select(ProjectMember, User).join(User, User.id == ProjectMember.user_id).where(ProjectMember.project_id == pid)
+                      .order_by(ProjectMember.created_at)).all()
+    return {"can_manage": _can_manage(db, ctx, pid), "admins_see_all": True,
+            "members": [{"user_id": u.id, "name": u.name, "email": u.email, "role": u.role, "active": u.active, "is_owner": m.is_owner} for m, u in rows]}
+
+
+class NewMember(BaseModel):
+    user_id: str
+
+
+@router.get("/projects/{pid}/members")
+def list_members(pid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    """The researchers who work on this project (admins see every project without being listed)."""
+    proj = get_project(db, ctx, pid)
+    return _members_out(db, ctx, proj.id)
+
+
+@router.post("/projects/{pid}/members", status_code=201)
+def add_member(pid: str, body: NewMember, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    """Add a researcher of this company to the project (an admin or an owner of the project)."""
+    proj = get_project(db, ctx, pid)
+    if not _can_manage(db, ctx, proj.id):
+        raise HTTPException(403, "只有项目负责人或管理员能添加成员")
+    user = db.get(User, body.user_id)
+    if not user or user.org_id != ctx.org_id or not user.active:
+        raise HTTPException(404, "没有这位同事")
+    if user.role == "admin":
+        raise HTTPException(422, "管理员可以看到所有项目，不需要添加")
+    if user.role != "researcher":
+        raise HTTPException(422, "只有研究员可以加入项目；主持人和观察员是按场次指派的")
+    if not db.scalar(select(ProjectMember.id).where(ProjectMember.project_id == proj.id, ProjectMember.user_id == user.id)):
+        db.add(ProjectMember(org_id=ctx.org_id, project_id=proj.id, user_id=user.id, added_by=ctx.user.id))
+        audit(db, ctx.org_id, ctx.actor, "project.member.add", proj.id, user=user.id)
+        db.commit()
+    return _members_out(db, ctx, proj.id)
+
+
+@router.delete("/projects/{pid}/members/{uid}")
+def remove_member(pid: str, uid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    """Take a researcher off the project at once (an admin or an owner). The last owner can only be removed by an admin."""
+    proj = get_project(db, ctx, pid)
+    if not _can_manage(db, ctx, proj.id):
+        raise HTTPException(403, "只有项目负责人或管理员能移除成员")
+    m = db.scalar(select(ProjectMember).where(ProjectMember.project_id == proj.id, ProjectMember.user_id == uid))
+    if not m:
+        raise HTTPException(404, "这位同事不在项目里")
+    owners = db.scalars(select(ProjectMember).where(ProjectMember.project_id == proj.id, ProjectMember.is_owner.is_(True))).all()
+    if m.is_owner and len(owners) == 1 and ctx.user.role != "admin":
+        raise HTTPException(409, "这是最后一位项目负责人，请先指定另一位，或请管理员处理")
+    db.delete(m)
+    audit(db, ctx.org_id, ctx.actor, "project.member.remove", proj.id, user=uid)
+    db.commit()
+    if ctx.user.id == uid and not can_see_project(db, ctx, proj.id):
+        return {"can_manage": False, "admins_see_all": True, "members": [], "left": True}
+    return _members_out(db, ctx, proj.id)
+
+
+class OwnerBody(BaseModel):
+    is_owner: bool
+
+
+@router.put("/projects/{pid}/members/{uid}/owner")
+def set_owner(pid: str, uid: str, body: OwnerBody, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    """Make a member an owner of the project (may manage members), or take that away."""
+    proj = get_project(db, ctx, pid)
+    if not _can_manage(db, ctx, proj.id):
+        raise HTTPException(403, "只有项目负责人或管理员能设置负责人")
+    m = db.scalar(select(ProjectMember).where(ProjectMember.project_id == proj.id, ProjectMember.user_id == uid))
+    if not m:
+        raise HTTPException(404, "这位同事不在项目里")
+    if m.is_owner and not body.is_owner and ctx.user.role != "admin" and len(db.scalars(select(ProjectMember).where(
+            ProjectMember.project_id == proj.id, ProjectMember.is_owner.is_(True))).all()) == 1:
+        raise HTTPException(409, "至少要保留一位项目负责人")
+    m.is_owner = body.is_owner
+    audit(db, ctx.org_id, ctx.actor, "project.member.owner", proj.id, user=uid, owner=body.is_owner)
+    db.commit()
+    return _members_out(db, ctx, proj.id)

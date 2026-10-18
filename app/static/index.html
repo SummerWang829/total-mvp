@@ -21,7 +21,7 @@ function navHtml(active, p) {
   let h = `<a class="brand" href="#/projects" aria-label="星桐 TOTAL 首页">${LOGO_SVG}</a>${a("/projects", "全部项目", "projects", "▦")}`;
   if (p) {
     h += `<div class="sec">当前项目<b>${esc(p.name)}</b></div>`;
-    if (STAFF()) h += a(`/p/${p.id}/home`, "项目总览", "home", "◉");
+    if (STAFF()) h += a(`/p/${p.id}/home`, "项目总览", "home", "◉") + a(`/p/${p.id}/members`, "项目成员", "members", "◎");
     h += `<div class="sec">定性 · 深访</div>`;
     if (STAFF()) h += a(`/p/${p.id}/people`, "受访者招募", "people", "", true) + a(`/p/${p.id}/sessions`, "场次与邀请", "sessions", "", true);
     h += a(`/p/${p.id}/rooms`, "直播间", "rooms", "", true) + a(`/p/${p.id}/insights`, "洞察与片段", "insights", "", true);
@@ -95,6 +95,7 @@ async function render() {
       if (page === "rooms") return await roomsView(p);
       if (page === "insights") return await insightsListView(p);
       if (page === "analysis" && STAFF()) return await analysisView(p);
+      if (page === "members" && STAFF()) return await membersView(p);
       location.hash = `#/p/${p.id}/rooms`; return;
     }
     if (seg[1] === "i") return await interviewView(seg[2], seg[3] || "transcript");
@@ -363,6 +364,26 @@ async function insightsListView(p) {
 
 // ---------------- 编码与分析 ----------------
 // A codebook for the project; codes go on insights (by hand, or proposed by the model and accepted by a researcher). The grid counts accepted codes only.
+async function membersView(p) {  // who works on this project (admins see every project; moderators and observers are assigned per interview)
+  const my = renderSeq;
+  const [d, us] = await Promise.all([api(`/projects/${p.id}/members`), api("/users")]);
+  if (stale(my)) return;
+  const inProject = new Set(d.members.map((m) => m.user_id));
+  const candidates = us.filter((u) => u.role === "researcher" && u.active && !inProject.has(u.id));
+  const row = (m) => `<tr><td><b>${esc(m.name)}</b>${m.user_id === ME.id ? ' <span class="tag">我</span>' : ""}${m.active ? "" : ' <span class="tag">已停用</span>'}</td><td class="mut">${esc(m.email)}</td>
+      <td>${m.is_owner ? '<span class="tag ok">项目负责人</span>' : '<span class="tag">成员</span>'}</td>
+      <td class="acts">${d.can_manage ? `<button class="s" data-owner="${m.user_id}" data-to="${m.is_owner ? 0 : 1}">${m.is_owner ? "取消负责人" : "设为负责人"}</button> <button class="s warn" data-rm="${m.user_id}">移出项目</button>` : ""}</td></tr>`;
+  shell(`${head("项目成员", "只有加入这个项目的研究员才能看到它。管理员可以看到所有项目；主持人和观察员（客户）按场次指派，不在这里设置。")}
+    <div class="card scroll" style="padding:6px 10px"><table class="tbl rc"><thead><tr><th>姓名</th><th>邮箱</th><th>身份</th><th>操作</th></tr></thead><tbody>${d.members.map(row).join("")}</tbody></table></div>
+    ${d.can_manage ? `<div class="card"><h3>添加成员</h3>${candidates.length ? `<form id="addm" class="row"><label class="f" style="flex:1;margin:0"><span>选择研究员</span><select name="user_id" required>${candidates.map((u) => `<option value="${u.id}">${esc(u.name)}（${esc(u.email)}）</option>`).join("")}</select></label><button class="p">添加</button></form>`
+      : `<p class="mut">公司里没有可以添加的研究员了。新同事请管理员在“团队”里邀请，角色选“研究员”。</p>`}</div>`
+      : `<div class="note">只有项目负责人或管理员能添加和移出成员。</div>`}`, { active: "members", p });
+  const redo = guard(async (path, opts) => { const r = await api(path, opts); if (r.left) { toast("你已离开这个项目"); location.hash = "#/projects"; return; } toast("已更新"); render(); });
+  const f = $("#addm"); if (f) f.onsubmit = (e) => { e.preventDefault(); redo(`/projects/${p.id}/members`, { method: "POST", body: { user_id: new FormData(f).get("user_id") } }); };
+  app.querySelectorAll("[data-rm]").forEach((b) => b.onclick = () => { if (confirm("移出后，这位同事马上看不到这个项目的任何内容。继续？")) redo(`/projects/${p.id}/members/${b.dataset.rm}`, { method: "DELETE" }); });
+  app.querySelectorAll("[data-owner]").forEach((b) => b.onclick = () => redo(`/projects/${p.id}/members/${b.dataset.owner}/owner`, { method: "PUT", body: { is_owner: b.dataset.to === "1" } }));
+}
+
 async function analysisView(p) {
   const my = renderSeq;
   const d = await api(`/projects/${p.id}/analysis`);

@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from ..audit import audit
 from ..db import get_db
-from ..deps import STAFF, Ctx, require_roles
+from ..deps import STAFF, Ctx, ensure_project, require_roles, visible_interview
 from ..models import Code, Insight, InsightCode, Interview, Participant
 from ..providers import get_llm
 from .projects import get_project
@@ -34,6 +34,7 @@ def _code(db: Session, ctx: Ctx, code_id: str) -> Code:
     c = db.get(Code, code_id)
     if not c or c.org_id != ctx.org_id:
         raise HTTPException(404, "没有这个编码")
+    ensure_project(db, ctx, c.project_id, "没有这个编码")
     return c
 
 
@@ -72,6 +73,7 @@ def _insight_in_org(db: Session, ctx: Ctx, insight_id: str) -> Insight:
     ins = db.get(Insight, insight_id)
     if not ins or ins.org_id != ctx.org_id:
         raise HTTPException(404, "洞察不存在")
+    visible_interview(db, ctx, ins.interview_id)
     return ins
 
 

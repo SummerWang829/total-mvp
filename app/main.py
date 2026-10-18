@@ -6,9 +6,9 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from starlette.responses import Response
 
-from . import loopwatch, ratelimit
+from . import loopwatch, project_members, ratelimit
 from .config import settings
-from .db import Base, engine, ensure_columns
+from .db import Base, SessionLocal, engine, ensure_columns
 from .recording import start_worker
 from .routers import ai_room, analysis, auth, concept, cues, group_metrics, interviews, signals, overview, projects, public
 
@@ -16,6 +16,8 @@ from .routers import ai_room, analysis, auth, concept, cues, group_metrics, inte
 async def lifespan(_app):
     Base.metadata.create_all(engine)  # dev convenience; use Alembic migrations in production
     ensure_columns()  # a model that gained a column keeps an existing database working
+    with SessionLocal() as db:
+        project_members.backfill(db)  # nobody loses the access they had before project membership existed
     if settings.loop_watch_s > 0:
         loopwatch.start(settings.loop_watch_s)  # names whatever blocks the event loop in the log
     if settings.run_worker:

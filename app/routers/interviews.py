@@ -14,7 +14,7 @@ from ..config import settings
 from ..db import get_db
 from ..moderator.compliance import ai_moderation_blocker
 from ..moderator.constants import ModerationMode
-from ..deps import STAFF, Ctx, current_ctx, require_roles, visible_interview
+from ..deps import STAFF, Ctx, current_ctx, ensure_project, require_roles, visible_interview
 from ..evidence import check_evidence, quote_matches
 from ..livekit import build_room_token, delete_room, url_for_client
 from ..models import (AuditLog, Clip, InsightCode, Consent, Evidence, Insight, Interview, InterviewObserver, Participant, Project,
@@ -192,6 +192,8 @@ def list_interviews(pid: str, ctx: Ctx = Depends(current_ctx), db: Session = Dep
     proj = db.get(Project, pid)
     if not proj or proj.org_id != ctx.org_id:
         raise HTTPException(404, "项目不存在")
+    if ctx.user.role in STAFF:
+        ensure_project(db, ctx, proj.id)
     rows = db.scalars(select(Interview).where(Interview.project_id == pid).order_by(Interview.scheduled_at.desc().nullslast(), Interview.created_at.desc())).all()
     out = []
     for itv in rows:
@@ -622,6 +624,7 @@ def patch_segment(seg_id: str, body: SegPatch, ctx: Ctx = Depends(require_roles(
     seg = db.get(TranscriptSegment, seg_id)
     if not seg or seg.org_id != ctx.org_id:
         raise HTTPException(404, "片段不存在")
+    visible_interview(db, ctx, seg.interview_id)  # only the project's own team
     if body.text_orig is not None:
         seg.text_orig = body.text_orig
     if body.text_zh is not None:
@@ -822,6 +825,7 @@ def share_clip(clip_id: str, body: NewShare, ctx: Ctx = Depends(require_roles(*S
     clip = db.get(Clip, clip_id)
     if not clip or clip.org_id != ctx.org_id:
         raise HTTPException(404, "片段不存在")
+    visible_interview(db, ctx, clip.interview_id)
     token = new_secret_token()
     sl = ShareLink(org_id=ctx.org_id, clip_id=clip.id, token_hash=token_hash(token), created_by=ctx.user.id,
                    watermark=body.watermark or f"星桐 · {ctx.user.email}", expires_at=utcnow() + timedelta(hours=body.expires_hours))
@@ -836,6 +840,7 @@ def list_shares(clip_id: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Ses
     clip = db.get(Clip, clip_id)
     if not clip or clip.org_id != ctx.org_id:
         raise HTTPException(404, "片段不存在")
+    visible_interview(db, ctx, clip.interview_id)
     return [{"id": s.id, "expires_at": s.expires_at.isoformat(), "revoked": s.revoked_at is not None, "views": s.views, "watermark": s.watermark}
             for s in db.scalars(select(ShareLink).where(ShareLink.clip_id == clip.id))]
 
@@ -845,6 +850,8 @@ def revoke_share(share_id: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: S
     sl = db.get(ShareLink, share_id)
     if not sl or sl.org_id != ctx.org_id:
         raise HTTPException(404, "分享链接不存在")
+    shared = db.get(Clip, sl.clip_id)
+    visible_interview(db, ctx, shared.interview_id)
     sl.revoked_at = utcnow()
     audit(db, ctx.org_id, ctx.actor, "share.revoke", sl.id)
     db.commit()

@@ -550,3 +550,19 @@ class Reaction(Base):
     at_ms: Mapped[int] = mapped_column(Integer, default=0)
     stimulus_key: Mapped[str] = mapped_column(String(40), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class ProjectMember(Base):
+    """A research-team member who may work on one project. Admins see every project; a researcher sees only the projects they were added to.
+
+    (Moderators and client observers are not project members: they are assigned to single interviews.)
+    """
+    __tablename__ = "project_members"
+    __table_args__ = (UniqueConstraint("project_id", "user_id"),)
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
+    org_id: Mapped[str] = mapped_column(String(32), index=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    is_owner: Mapped[bool] = mapped_column(Boolean, default=False)  # may add and remove members (an admin always may)
+    added_by: Mapped[str] = mapped_column(String(32), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

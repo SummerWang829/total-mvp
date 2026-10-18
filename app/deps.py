@@ -6,7 +6,9 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from .db import get_db
-from .models import Interview, InterviewObserver, User
+from sqlalchemy import select
+
+from .models import Interview, InterviewObserver, ProjectMember, User
 from .security import decode_access_token
 
 bearer = HTTPBearer(auto_error=False)
@@ -52,6 +54,22 @@ def require_roles(*roles: str):
     return dep
 
 
+def can_see_project(db: Session, ctx: Ctx, project_id: str) -> bool:
+    """Admins see every project of their company; a researcher only the projects they are a member of (everyone else is assigned per interview)."""
+    role = ctx.user.role
+    if role == "admin":
+        return True
+    if role == "researcher":
+        return db.scalar(select(ProjectMember.id).where(ProjectMember.project_id == project_id, ProjectMember.user_id == ctx.user.id)) is not None
+    return False
+
+
+def ensure_project(db: Session, ctx: Ctx, project_id: str, what: str = "项目不存在") -> None:
+    """404 (not 403) when this person has no access to the project: they must not learn that it exists."""
+    if not can_see_project(db, ctx, project_id):
+        raise HTTPException(404, what)
+
+
 def visible_interview(db: Session, ctx: Ctx, interview_id: str) -> Interview:
     """Tenant + assignment scoping. Returns 404 (not 403) for anything the caller must not know exists."""
     itv = db.get(Interview, interview_id)
@@ -59,6 +77,7 @@ def visible_interview(db: Session, ctx: Ctx, interview_id: str) -> Interview:
         raise HTTPException(404, "访谈不存在")
     role = ctx.user.role
     if role in STAFF:
+        ensure_project(db, ctx, itv.project_id, "访谈不存在")
         return itv
     if role == "moderator" and itv.moderator_id == ctx.user.id:
         return itv

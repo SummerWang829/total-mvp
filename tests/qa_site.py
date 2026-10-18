@@ -237,6 +237,38 @@ def group_section(br, D):
     ctx.close()
 
 
+def members_section(br, D):
+    """Project membership: a second researcher sees nothing of the project until the owner adds them, and loses it the moment they are removed."""
+    adm, rs = D["tok"]["admin"], D["tok"]["researcher"]
+    pid = call("/projects", {"name": "成员测试项目", "market": "SG", "language": "en"}, rs)["id"]   # created by the researcher, who is therefore its owner
+    other = call("/users", {"name": "第二位研究员", "email": "second@acme.com", "password": "password123", "role": "researcher"}, adm)
+    otok = call("/auth/login", {"email": "second@acme.com", "password": "password123"})["token"]
+    ok(pid not in [p["id"] for p in call("/projects", token=otok)], "[members] a researcher who is not on the project does not see it in the list")
+    ctx, pg, errs = new_page(br, 1280, token=otok)
+    pg.goto(B + f"/#/p/{pid}/home"); pg.wait_for_selector("main")
+    ok("找不到这个项目" in pg.inner_text("main"), "[members] opening the project anyway says it cannot be found")
+    ctx.close()
+    ctx, pg, errs = new_page(br, 1280, token=rs)
+    pg.on("dialog", lambda d: d.accept())
+    pg.goto(B + f"/#/p/{pid}/members"); pg.wait_for_selector("#addm")
+    ok(pg.locator("table.tbl tbody tr").count() == 1 and "项目负责人" in pg.inner_text("table.tbl"), "[members] the creator is listed as the project owner")
+    pg.select_option("#addm select", value=other["id"]); pg.click("#addm button")
+    ok(wait_until(lambda: pg.locator("table.tbl tbody tr").count() == 2, 8), "[members] adding the second researcher lists them")
+    ok(pid in [p["id"] for p in call("/projects", token=otok)], "[members] the added researcher now sees the project")
+    pg.locator(f'[data-owner="{other["id"]}"]').click()
+    ok(wait_until(lambda: pg.locator("table.tbl tbody tr", has_text="第二位研究员").locator(".tag.ok").count() == 1, 8), "[members] a member can be made an owner")
+    audit_page(pg, "members page/desktop", errs)
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "project_members_1280.png"), full_page=True)
+    pg.locator(f'[data-rm="{other["id"]}"]').click()
+    ok(wait_until(lambda: pg.locator("table.tbl tbody tr").count() == 1, 8), "[members] removing a member takes them off the list")
+    ok(pid not in [p["id"] for p in call("/projects", token=otok)], "[members] and the removed researcher loses the project at once")
+    ctx.close()
+    ctx, pg, errs = new_page(br, 1280, token=otok)
+    pg.goto(B + f"/#/p/{pid}/members"); pg.wait_for_selector("main")
+    ok("找不到这个项目" in pg.inner_text("main"), "[members] a removed researcher cannot open the members page either")
+    ctx.close()
+
+
 def main():
     tmp = tempfile.mkdtemp()
     env = {**os.environ, "DATABASE_URL": f"sqlite:///{tmp}/qa.db", "MEDIA_DIR": f"{tmp}/media", "LIVEKIT_URL": "", "ASR_PROVIDER": "mock", "LLM_PROVIDER": "mock", "ASR_API_KEY": "", "LLM_API_KEY": "",
@@ -264,6 +296,7 @@ def seed():
         ids[role] = u["id"]
         tok[role] = call("/auth/login", {"email": f"{role}@acme.com", "password": "password123"})["token"]
     pid = call("/projects", {"name": "新加坡护肤品牌进入研究", "brief": "了解新加坡消费者如何选购海外护肤品牌", "market": "SG", "language": "en"}, adm)["id"]
+    call(f"/projects/{pid}/members", {"user_id": ids["researcher"]}, adm)  # the researcher works on this project (membership)
     mk = lambda name, country="SG", lang="en": call(f"/projects/{pid}/participants", {"name": name, "country": country, "language": lang}, adm)
     people = {"en": mk("Wei Ling"), "zh": mk("陈美玲", lang="zh"), "ms": mk("Nur Aisyah", lang="ms"), "ta": mk("Kavitha", lang="ta"), "id": mk("Siti", "ID")}
     itv = {}
@@ -589,7 +622,7 @@ def run():
     D = seed()
     mi, pid = D["main"]["id"], D["pid"]
     proj = [f"#/p/{pid}/rooms", f"#/p/{pid}/insights"]
-    staff_routes = [f"#/projects", f"#/p/{pid}/home", f"#/p/{pid}/people", f"#/p/{pid}/sessions", f"#/p/{pid}/analysis"] + proj + [f"#/i/{mi}", f"#/i/{mi}/insights", f"#/i/{mi}/clips"]
+    staff_routes = [f"#/projects", f"#/p/{pid}/home", f"#/p/{pid}/people", f"#/p/{pid}/sessions", f"#/p/{pid}/analysis", f"#/p/{pid}/members"] + proj + [f"#/i/{mi}", f"#/i/{mi}/insights", f"#/i/{mi}/clips"]
     role_routes = {
         "demo_admin": ["#/projects", f"#/p/{D['demo_pid']}/home", "#/demo"],
         "admin": staff_routes + ["#/team", "#/audit"],
@@ -865,6 +898,7 @@ def run():
         timeslot_section(br, D)
         marks_section(br, D)
         group_section(br, D)
+        members_section(br, D)
 
         # ---------- C2. dialogs and expandable panels on the staff pages (both screen sizes) ----------
         for w, vp in ((1280, "desktop"), (390, "phone")):
