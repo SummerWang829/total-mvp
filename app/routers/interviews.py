@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from .. import ai_room, concept, content_rules, export, groups, pretask, scheduling
+from .. import ai_room, concept, content_rules, export, groups, jobs, pretask, scheduling
 from ..audit import audit
 from ..config import settings
 from ..db import get_db
@@ -607,9 +607,12 @@ def transcript_ingest(iid: str, body: TranscriptIn, ctx: Ctx = Depends(require_r
     return {"segments": len(body.segments)}
 
 
-@router.post("/interviews/{iid}/transcribe")
-def transcribe(iid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
-    itv = visible_interview(db, ctx, iid)
+def do_transcribe(db: Session, itv: Interview, actor: str) -> dict:
+    """Transcribe the interview's recording and store the lines (the caller commits). Used by the request and by the background job.
+
+    Raises:
+        HTTPException: nothing to transcribe yet, or the transcription service failed (502 may pass on a retry).
+    """
     rec = db.scalar(select(Recording).where(Recording.interview_id == itv.id, Recording.status.in_(("ready", "processing"))).order_by(Recording.started_at.desc()))
     if not rec:
         raise HTTPException(409, "没有可转写的录制")
@@ -617,9 +620,19 @@ def transcribe(iid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session 
         raise HTTPException(409, "录像还在合成中，请稍等几十秒再试")
     segs = build_segments(db, itv, rec)
     _ingest(db, itv, segs)
-    audit(db, ctx.org_id, ctx.actor, "transcript.transcribe", itv.id, n=len(segs), provider=settings.asr_provider)
-    db.commit()
+    audit(db, itv.org_id, actor, "transcript.transcribe", itv.id, n=len(segs), provider=settings.asr_provider)
     return {"segments": len(segs)}
+
+
+@router.post("/interviews/{iid}/transcribe")
+def transcribe(iid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    itv = visible_interview(db, ctx, iid)
+    out = do_transcribe(db, itv, ctx.actor)
+    db.commit()
+    return out
+
+
+jobs.register("transcribe", lambda db, itv, job: do_transcribe(db, itv, f"job:{job.id}"))
 
 
 @router.get("/interviews/{iid}/transcript")

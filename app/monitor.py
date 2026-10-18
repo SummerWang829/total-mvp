@@ -102,8 +102,25 @@ def check_listening() -> Check:
     return Check("舆情来源", "ok", f"{len(rows)} 个启用的来源，{len(failing)} 个最近出错")
 
 
+JOB_FAILED_WINDOW_H = 24
+JOB_STUCK_MIN = 20
+
+
+def check_jobs() -> Check:
+    """Background jobs (transcribing, analysing): failures in the last day and jobs that wait far too long (the worker is not running)."""
+    from datetime import timedelta
+    from .models import Job, utcnow
+    try:
+        with SessionLocal() as db:
+            failed = db.scalar(select(func.count()).select_from(Job).where(Job.status == "failed", Job.finished_at > utcnow() - timedelta(hours=JOB_FAILED_WINDOW_H))) or 0
+            waiting = db.scalar(select(func.count()).select_from(Job).where(Job.status.in_(("queued", "running")), Job.created_at < utcnow() - timedelta(minutes=JOB_STUCK_MIN))) or 0
+    except Exception as e:  # noqa: BLE001
+        return Check("后台任务", "warn", f"查不了：{type(e).__name__}")
+    return Check("后台任务", "warn" if failed or waiting else "ok", f"最近 {JOB_FAILED_WINDOW_H} 小时失败 {failed} 个，排队或运行超过 {JOB_STUCK_MIN} 分钟的 {waiting} 个")
+
+
 def run_checks() -> list[Check]:
-    return [check_database(), check_disk(), check_backup(), check_mail(), check_video(), check_listening()]
+    return [check_database(), check_disk(), check_backup(), check_mail(), check_video(), check_listening(), check_jobs()]
 
 
 def _load() -> dict:

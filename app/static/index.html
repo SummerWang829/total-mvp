@@ -1105,6 +1105,18 @@ async function interviewView(iid, tab) {
   return insightsTab(iid, staff, my);
 }
 
+// A long task runs in the background: start it, then ask every 2 s how it is going (resolves with the result, throws the job's plain message if it failed).
+async function runJob(iid, kind) {
+  let j = await api(`/interviews/${iid}/jobs`, { method: "POST", body: { kind } });
+  for (let n = 0; n < 300 && (j.status === "queued" || j.status === "running"); n++) {
+    await new Promise((r) => setTimeout(r, 2000));
+    j = await api(`/jobs/${j.id}`);
+  }
+  if (j.status === "failed") throw new Error(j.error || "任务失败");
+  if (j.status !== "done") throw new Error("任务还没有完成，请稍后刷新查看");
+  return j.result || {};
+}
+
 // ---------------- 座谈会分歧地图：谁在哪个议题上站哪一边、谁改变了想法 ----------------
 const STANCE_TAG = { pro: "ok", con: "bad", unsure: "live" };
 async function disagreeTab(iid, it, my) {
@@ -1126,7 +1138,7 @@ async function disagreeTab(iid, it, my) {
       ${v.dissent.map((d) => `<p style="margin:4px 0"><span class="tag live">少数派</span> <b>${esc(d.topic)}</b>：${esc(d.who)} 一人${d.stance_zh}：${quote(d.claim)}</p>`).join("")}${!v.consensus.length && !v.dissent.length ? `<p class="mut" style="margin:0">没有明显的共识或少数派。</p>` : ""}</div>`}`;
   $("#danalyze").onclick = guard(async () => {
     const b = $("#danalyze"); b.disabled = true; b.textContent = "AI 正在读转写，请稍等…";
-    try { const r = await api(`/interviews/${iid}/disagreement/analyze`, { method: "POST" }); toast(`找到 ${r.claims} 条立场`); render(); } finally { b.disabled = false; }
+    try { const r = await runJob(iid, "disagreement"); toast(`找到 ${r.claims} 条立场`); render(); } finally { b.disabled = false; }
   });
   const ex = $("#dexport"); if (ex) ex.onclick = guard(async () => {
     const r = await fetch(`/api/interviews/${iid}/disagreement/export`, { headers: { Authorization: "Bearer " + store.get("tt_token") } });
@@ -1217,7 +1229,7 @@ async function transcriptTab(iid, it, staff, my) {
     if (segs.length && !confirm("现在的转写会被字幕生成的内容替换。继续吗？")) return;
     await api(`/interviews/${iid}/transcript/from-captions`, { method: "POST" }); toast("已用实时字幕生成转写"); render();
   });
-  const b = $("#tr"); if (b) b.onclick = guard(async () => { b.disabled = true; try { await api(`/interviews/${iid}/transcribe`, { method: "POST" }); toast("转写完成"); render(); } finally { b.disabled = false; } });
+  const b = $("#tr"); if (b) b.onclick = guard(async () => { b.disabled = true; const t0 = b.textContent; b.textContent = "转写中，请稍等…"; try { await runJob(iid, "transcribe"); toast("转写完成"); render(); } finally { b.disabled = false; b.textContent = t0; } });
   const pv = $("#pv");
   if (pv) {
     const r = await api(`/interviews/${iid}/recordings/${play.id}/play`, { method: "POST" });

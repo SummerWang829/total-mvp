@@ -13,7 +13,7 @@ from .audit import audit
 from .config import settings
 from .media import purge_cache
 from . import ai_room, screener
-from .models import (BackroomMessage, CaptionLine, Clip, CueCard, Evidence, Highlight, Insight, Claim, Interview, InterviewParticipant, Mention, Participant, PersuasionEvent, SlotVote, PreTask, PreTaskAnswer, Project, RepoDocument, SegmentCode,
+from .models import (BackroomMessage, CaptionLine, Clip, CueCard, Evidence, Highlight, Insight, Claim, Interview, InterviewParticipant, Job, Mention, Participant, PersuasionEvent, SlotVote, PreTask, PreTaskAnswer, Project, RepoDocument, SegmentCode,
                      Recording, RecordingTrack, Reaction, ReelItem, ShareLink, StimulusMark, TimeSlot, TranscriptSegment, utcnow)
 
 PURGED = "[已按保留期删除]"
@@ -51,6 +51,7 @@ def purge_interview(db: Session, itv: Interview, reason: str, actor: str = "syst
     db.execute(delete(CueCard).where(CueCard.interview_id == itv.id))  # cue cards may quote participants
     db.execute(delete(Reaction).where(Reaction.interview_id == itv.id))  # emoji reactions belong to the participant
     db.execute(delete(InterviewParticipant).where(InterviewParticipant.interview_id == itv.id))  # focus-group seats (per-participant journey)
+    db.execute(delete(Job).where(Job.interview_id == itv.id))  # background-job history of this interview
     clip_ids = [c.id for c in db.scalars(select(Clip).where(Clip.interview_id == itv.id))]
     if clip_ids:
         db.execute(update(ShareLink).where(ShareLink.clip_id.in_(clip_ids)).values(revoked_at=utcnow()))

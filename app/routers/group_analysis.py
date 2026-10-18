@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
-from .. import docx_writer, group_analysis
+from .. import docx_writer, group_analysis, jobs
 from ..audit import audit
 from ..db import get_db
 from ..deps import STAFF, Ctx, require_roles, visible_interview
@@ -28,6 +28,21 @@ def analyze(iid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = D
     audit(db, ctx.org_id, ctx.actor, "disagreement.analyze", itv.id, **out)
     db.commit()
     return out | group_analysis.view(db, itv)
+
+
+def _job(db: Session, itv, job) -> dict:
+    """The background-job form of the analysis (same work, failures become the job's message)."""
+    try:
+        out = group_analysis.analyze(db, itv, get_llm())
+    except group_analysis.AnalysisError as e:
+        raise HTTPException(e.status, e.message) from e
+    except (httpx.HTTPError, ValueError, KeyError, TypeError) as e:
+        raise HTTPException(502, "AI 暂时无法分析，请稍后再试") from e
+    audit(db, itv.org_id, f"job:{job.id}", "disagreement.analyze", itv.id, **out)
+    return out
+
+
+jobs.register("disagreement", _job)
 
 
 @router.get("/interviews/{iid}/disagreement")

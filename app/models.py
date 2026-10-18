@@ -294,6 +294,24 @@ class ShareLink(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
+class Job(Base):
+    """A long task run in the background (transcribe, analyse...): queued -> running -> done | failed, retried with a back-off when the failure may pass (app/jobs.py)."""
+    __tablename__ = "jobs"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
+    org_id: Mapped[str] = mapped_column(String(32), index=True)
+    interview_id: Mapped[str | None] = mapped_column(String(32), index=True, nullable=True)
+    kind: Mapped[str] = mapped_column(String(40))
+    status: Mapped[str] = mapped_column(String(12), default="queued", index=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    run_after: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    result: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    error: Mapped[str] = mapped_column(String(300), default="")
+    created_by: Mapped[str] = mapped_column(String(32), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
 class Reel(Base):
     """A highlight reel: a titled, ordered set of a project's clips (app/reels.py)."""
     __tablename__ = "reels"
