@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from starlette.responses import Response
 
-from . import loopwatch, project_members, ratelimit
+from . import loopwatch, mailer, project_members, ratelimit
 from .config import settings
 from .db import Base, SessionLocal, engine, ensure_columns
 from .recording import start_worker
@@ -20,6 +20,7 @@ async def lifespan(_app):
         project_members.backfill(db)  # nobody loses the access they had before project membership existed
     if settings.loop_watch_s > 0:
         loopwatch.start(settings.loop_watch_s)  # names whatever blocks the event loop in the log
+    mailer.start_worker()  # sends the account emails waiting in the outbox (does nothing without MAIL_HOST)
     if settings.run_worker:
         start_worker()  # mixes uploaded recordings once an interview recording stops
     yield

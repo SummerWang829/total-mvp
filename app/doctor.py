@@ -150,6 +150,11 @@ def main() -> int:
     else:
         line("warn", "实时字幕：没配置（TENCENT_ASR_APPID / TENCENT_ASR_SECRET_ID / TENCENT_ASR_SECRET_KEY），字幕栏会提示“未开启”")
     line("ok" if settings.rate_limit else "warn", "限流：已开启（登录失败、乱猜链接、注册洪水）" if settings.rate_limit else "限流：没开（RATE_LIMIT=1 才开启）；线上必须开")
+    from . import mailer
+    if mailer.configured():
+        line("ok", f"账号邮件：已配置（{settings.mail_host}，发件人 {settings.mail_from}）；发件箱待发 {mailer.pending_count()} 封")
+    else:
+        line("warn", "账号邮件：没配置（MAIL_HOST / MAIL_FROM / PUBLIC_BASE_URL），忘记密码不可用，邀请和重置链接要手动发给对方")
     check_backup()
     check_offsite()
     if settings.allow_signup and os.path.exists("/.dockerenv"):

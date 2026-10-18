@@ -40,6 +40,13 @@ class Settings:
     join_early_min: int = int(os.getenv("JOIN_EARLY_MIN", "15"))
     join_late_min: int = int(os.getenv("JOIN_LATE_MIN", "360"))
 
+    mail_host: str = os.getenv("MAIL_HOST", "")  # SMTP server of the mail-sending service; empty = no account emails (links are handed over by hand)
+    mail_port: int = int(os.getenv("MAIL_PORT", "587"))
+    mail_user: str = os.getenv("MAIL_USER", "")
+    mail_password: str = os.getenv("MAIL_PASSWORD", "")
+    mail_from: str = os.getenv("MAIL_FROM", "")  # e.g. 星桐 <no-reply@morningstarsystem.tech>; the domain must carry the service's SPF/DKIM records
+    mail_security: str = os.getenv("MAIL_SECURITY", "starttls")  # starttls | ssl | none
+    public_base_url: str = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")  # the address links in emails point to, e.g. https://deepresearch.morningstarsystem.tech
     rate_limit: bool = os.getenv("RATE_LIMIT", "") == "1"  # failed-login and link-probing limits (app/ratelimit.py); on in the deployed image
     cos_bucket: str = os.getenv("COS_BUCKET", "")      # off-site copy of the database backups (Tencent COS); empty = off
     cos_region: str = os.getenv("COS_REGION", "ap-singapore")

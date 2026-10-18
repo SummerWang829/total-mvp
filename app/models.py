@@ -469,6 +469,23 @@ class UserInvite(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
+class EmailOutbox(Base):
+    """An account email waiting to go out (or tried and failed). The text holds a one-time link, so it is wiped as soon as the mail is sent or given up."""
+    __tablename__ = "email_outbox"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
+    org_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    kind: Mapped[str] = mapped_column(String(20))  # join | reset | forgot
+    to_email: Mapped[str] = mapped_column(String(200))
+    subject: Mapped[str] = mapped_column(String(200))
+    body: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(10), default="pending", index=True)  # pending | sent | failed
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    next_try: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    last_error: Mapped[str] = mapped_column(String(300), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
 class Code(Base):
     """A coding label (a theme tag) in a project's codebook. Applied to insights; kept after the retention period together with the insights."""
     __tablename__ = "codes"

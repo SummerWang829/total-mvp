@@ -5,7 +5,7 @@ from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import ratelimit
+from .. import mailer, ratelimit
 from ..audit import audit
 from ..config import settings
 from ..db import get_db
@@ -100,6 +100,7 @@ def create_user(body: NewUser, ctx: Ctx = Depends(require_roles("admin")), db: S
 
 # ---------- changing members: role, active, one-time links ----------
 INVITE_DAYS = 7
+FORGOT_HOURS = 1  # a link asked for by the account owner themselves lives shorter than one an admin hands out
 EMAIL = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
 
 
@@ -143,6 +144,11 @@ def patch_user(uid: str, body: Patch, ctx: Ctx = Depends(require_roles("admin"))
 class InviteIn(BaseModel):
     email: str = Field(pattern=EMAIL)
     role: str
+    send_email: bool = False
+
+
+class ForgotIn(BaseModel):
+    email: str = Field(max_length=200)
 
 
 def _make_invite(db: Session, ctx: Ctx, kind: str, email: str, role: str, user_id: str | None = None) -> tuple[UserInvite, str]:
@@ -154,6 +160,50 @@ def _make_invite(db: Session, ctx: Ctx, kind: str, email: str, role: str, user_i
     audit(db, ctx.org_id, ctx.actor, f"user.{kind}_link", inv.id, role=role)
     db.commit()
     return inv, token
+
+
+def _email_link(db: Session, inv: UserInvite, token: str, hours: int | None = None) -> None:
+    """Queue the email carrying this link (the caller commits). Raises RuntimeError when account emails are not configured."""
+    kind = inv.kind
+    body = mailer.body_for(kind, db.get(Org, inv.org_id).name, mailer.link_for(token), days=INVITE_DAYS, hours=hours)
+    mailer.queue(db, inv.email, kind, body, inv.org_id)
+
+
+def _need_mail() -> None:
+    if not mailer.configured():
+        raise HTTPException(409, "还没有开通发信服务，请改为复制链接发给对方")
+
+
+@router.get("/mail/status")
+def mail_status(ctx: Ctx = Depends(require_roles("admin"))):
+    """Whether links can be emailed (the team page shows the "send by email" choice only then)."""
+    return {"configured": mailer.configured()}
+
+
+@router.post("/auth/forgot", status_code=202)
+def forgot(body: ForgotIn, request: Request, db: Session = Depends(get_db)):
+    """Always the same answer, whether or not the address has an account (no way to find out who is registered).
+
+    A real, active account gets an email with a one-hour, one-time link; anything else gets nothing. Asking too often is dropped quietly.
+    """
+    ip, email = client_ip(request), body.email.strip().lower()
+    answer = {"ok": True}
+    if not mailer.configured() or not ratelimit.forgot_allowed(email, ip):
+        return answer
+    u = db.scalar(select(User).where(User.email == email))
+    if not u or not u.active:
+        return answer
+    for old in db.scalars(select(UserInvite).where(UserInvite.user_id == u.id, UserInvite.kind == "reset", UserInvite.used_at.is_(None), UserInvite.created_by == f"self:{u.id}")).all():
+        db.delete(old)  # one live "forgot" link per account
+    token = new_secret_token()
+    inv = UserInvite(org_id=u.org_id, kind="reset", email=u.email, role=u.role, user_id=u.id, token_hash=token_hash(token), created_by=f"self:{u.id}",
+                     expires_at=utcnow() + timedelta(hours=FORGOT_HOURS))
+    db.add(inv)
+    db.flush()
+    _email_link(db, inv, token, hours=FORGOT_HOURS)
+    audit(db, u.org_id, f"user:{u.id}", "user.forgot_password", u.id)
+    db.commit()
+    return answer
 
 
 def invite_out(inv: UserInvite, token: str | None = None) -> dict:
@@ -170,7 +220,20 @@ def create_invite(body: InviteIn, ctx: Ctx = Depends(require_roles("admin")), db
     email = body.email.lower()
     if db.scalar(select(User).where(User.email == email)):
         raise HTTPException(409, "这个邮箱已经是成员了")
-    return invite_out(*_make_invite(db, ctx, "join", email, body.role))
+    if body.send_email:
+        _need_mail()
+    inv, token = _make_invite(db, ctx, "join", email, body.role)
+    return _maybe_emailed(db, inv, token, body.send_email)
+
+
+def _maybe_emailed(db: Session, inv: UserInvite, token: str, send: bool) -> dict:
+    """The link as the admin sees it; with send=True it is also queued by email and flagged "emailed"."""
+    out = invite_out(inv, token)
+    if send:
+        _email_link(db, inv, token)
+        audit(db, inv.org_id, "system", "user.link_emailed", inv.id)
+        db.commit()
+    return out | {"emailed": send}
 
 
 @router.get("/users/invites")
@@ -190,9 +253,12 @@ def revoke_invite(iid: str, ctx: Ctx = Depends(require_roles("admin")), db: Sess
 
 
 @router.post("/users/{uid}/reset-link", status_code=201)
-def reset_link(uid: str, ctx: Ctx = Depends(require_roles("admin")), db: Session = Depends(get_db)):
+def reset_link(uid: str, send_email: bool = False, ctx: Ctx = Depends(require_roles("admin")), db: Session = Depends(get_db)):
     u = _member(db, ctx, uid)
-    return invite_out(*_make_invite(db, ctx, "reset", u.email, u.role, u.id))
+    if send_email:
+        _need_mail()
+    inv, token = _make_invite(db, ctx, "reset", u.email, u.role, u.id)
+    return _maybe_emailed(db, inv, token, send_email)
 
 
 # ---------- the public side of those links ----------

@@ -27,6 +27,8 @@ LOGIN_IP = (10, 300)         # failures, seconds
 LOGIN_ACCOUNT = (5, 900)
 LINK_PROBES = (30, 60)
 REGISTER = (10, 3600)
+FORGOT_IP = (5, 3600)       # "forgot password" requests per address per hour
+FORGOT_ACCOUNT = (3, 3600)  # and per account, so one inbox cannot be flooded
 MAX_KEYS = 20000             # counters kept; when over, the quietest are dropped so memory cannot be filled by random keys
 MESSAGE = "尝试次数太多，请稍后再试 / Too many attempts, please try again later"
 
@@ -94,6 +96,17 @@ def login_ok(email: str) -> None:
     """A right password: the account's failures are forgotten (the address's are not: one good account must not wash away a guesser)."""
     if settings.rate_limit:
         clear(f"login-acct:{email.lower()}")
+
+
+def forgot_allowed(email: str, ip: str) -> bool:
+    """Count one "forgot password" request; False when this address or this account has asked too often (the caller then quietly does nothing)."""
+    if not settings.rate_limit:
+        return True
+    if blocked(f"forgot-ip:{ip}", FORGOT_IP) or blocked(f"forgot-acct:{email.lower()}", FORGOT_ACCOUNT):
+        return False
+    record(f"forgot-ip:{ip}", FORGOT_IP[1])
+    record(f"forgot-acct:{email.lower()}", FORGOT_ACCOUNT[1])
+    return True
 
 
 def too_many(seconds: int) -> JSONResponse:

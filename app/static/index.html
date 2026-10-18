@@ -110,19 +110,34 @@ async function render() {
 function loginView() {
   let mode = "login";
   const draw = () => {
+    if (mode === "forgot") return drawForgot();
     app.innerHTML = `<div class="login"><div class="box"><div class="logo">${LOGO_SVG}</div>
       <form class="card" id="f"><h2>${mode === "login" ? "登录" : "创建组织"}</h2><p class="mut sm">真人深访：招募、视频访谈、转写，以及带原文回链的洞察。</p>
       ${mode === "reg" ? `<label class="f"><span>组织名称</span><input name="org_name" required></label><label class="f"><span>你的姓名</span><input name="name" required></label>` : ""}
       <label class="f"><span>邮箱</span><input name="email" type="email" required autocomplete="username"></label>
       <label class="f"><span>密码（至少 8 位）</span><input name="password" type="password" minlength="8" required autocomplete="${mode === "login" ? "current-password" : "new-password"}"></label>
-      <div class="row"><button class="p">${mode === "login" ? "登录" : "创建并进入"}</button><span class="sp"></span><button type="button" class="lnk" id="sw">${mode === "login" ? "创建新组织" : "已有账号，去登录"}</button></div></form></div></div>`;
+      <div class="row"><button class="p">${mode === "login" ? "登录" : "创建并进入"}</button><span class="sp"></span>${mode === "login" ? `<button type="button" class="lnk" id="fg">忘记密码</button> ` : ""}<button type="button" class="lnk" id="sw">${mode === "login" ? "创建新组织" : "已有账号，去登录"}</button></div></form></div></div>`;
     if (!window._brandShown) { window._brandShown = true; brandPlay(); }
     $("#sw").onclick = () => { mode = mode === "login" ? "reg" : "login"; draw(); };
+    if ($("#fg")) $("#fg").onclick = () => { mode = "forgot"; draw(); };
     $("#f").onsubmit = guard(async (e) => {
       e.preventDefault();
       const body = Object.fromEntries(new FormData(e.target));
       const r = await api(mode === "login" ? "/auth/login" : "/auth/register", { method: "POST", body, auth: false });
       store.set("tt_token", r.token); ME = null; PROJECTS = null; window._brandShown = false; location.hash = "#/projects"; render();
+    });
+  };
+  const drawForgot = () => {  // the answer is always the same, so nobody can find out who has an account
+    app.innerHTML = `<div class="login"><div class="box"><div class="logo">${LOGO_SVG}</div>
+      <form class="card" id="f"><h2>忘记密码</h2><p class="mut sm">填写你的登录邮箱。如果它对应一个账号，我们会发一封带重设链接的邮件（1 小时内有效）。</p>
+      <label class="f"><span>邮箱</span><input name="email" type="email" required autocomplete="username"></label>
+      <p class="sm" id="done" role="status" hidden>如果这个邮箱对应一个账号，邮件已经在路上了。几分钟内没收到，请看垃圾邮件箱，或联系你们公司的管理员。</p>
+      <div class="row"><button class="p" id="fgo">发送重设邮件</button><span class="sp"></span><button type="button" class="lnk" id="bk">返回登录</button></div></form></div></div>`;
+    $("#bk").onclick = () => { mode = "login"; draw(); };
+    $("#f").onsubmit = guard(async (e) => {
+      e.preventDefault();
+      await api("/auth/forgot", { method: "POST", body: Object.fromEntries(new FormData(e.target)), auth: false });
+      $("#done").hidden = false; $("#fgo").disabled = true;
     });
   };
   draw();
@@ -682,24 +697,26 @@ async function clipsTab(iid, staff, my) {
 // ---------------- 设置 ----------------
 async function teamView() {
   if (ME.role !== "admin") { location.hash = "#/projects"; return; }
-  const [us, invs] = await Promise.all([api("/users"), api("/users/invites")]);
+  const [us, invs, mailSt] = await Promise.all([api("/users"), api("/users/invites"), api("/mail/status")]);
+  const MAIL = mailSt.configured;
   const roleOpts = (cur) => ["researcher", "moderator", "observer", "admin"].map((r) => `<option value="${r}"${r === cur ? " selected" : ""}>${ROLE[r]}</option>`).join("");
   const row = (u) => u.id === ME.id
     ? `<tr><td><b>${esc(u.name)}</b> <span class="tag">我</span></td><td class="mut">${esc(u.email)}</td><td><span class="tag">${ROLE[u.role]}</span></td><td></td></tr>`
     : `<tr><td><b>${esc(u.name)}</b>${u.active ? "" : ' <span class="tag">已停用</span>'}</td><td class="mut">${esc(u.email)}</td>
         <td><select data-role="${u.id}" aria-label="${esc(u.name)}的角色">${roleOpts(u.role)}</select></td>
-        <td><button data-reset="${u.id}">重置密码链接</button> <button data-act="${u.id}" data-to="${u.active ? 0 : 1}">${u.active ? "停用" : "启用"}</button></td></tr>`;
+        <td><button data-reset="${u.id}">重置密码链接</button> ${MAIL ? `<button data-resetmail="${u.id}">邮件发重置链接</button> ` : ""}<button data-act="${u.id}" data-to="${u.active ? 0 : 1}">${u.active ? "停用" : "启用"}</button></td></tr>`;
   shell(`${head("团队", "成员和角色。观察员（客户）只能隐身旁听被指派的场次，只看已通过的洞察，看不到受访者姓名。", `<button class="p" id="ni">邀请成员</button> <button id="nu">直接添加</button>`)}
     <div class="card scroll" style="padding:6px 10px"><table class="tbl rc"><thead><tr><th>姓名</th><th>邮箱</th><th>角色</th><th>操作</th></tr></thead><tbody>${us.map(row).join("")}</tbody></table></div>
     ${invs.length ? `<h2>等待加入（链接 7 天有效）</h2><div class="card scroll" style="padding:6px 10px"><table class="tbl rc"><thead><tr><th>邮箱</th><th>角色</th><th>类型</th><th></th></tr></thead><tbody>${invs.map((i) => `<tr><td>${esc(i.email)}</td><td><span class="tag">${ROLE[i.role]}</span></td><td class="mut">${i.kind === "join" ? "新成员" : "重置密码"}</td><td><button data-rv="${i.id}">作废</button></td></tr>`).join("")}</tbody></table></div>` : ""}`, { active: "team", title: "团队" });
-  const showLink = (r, what) => modal(`<h2>${what}</h2><code class="copy">${esc(location.origin + r.invite_path)}</code><p class="sm mut" style="margin:8px 0 0">把链接发给 ${esc(r.email)}（7 天内有效，只能用一次）。这个链接只显示这一次。</p>`);
+  const showLink = (r, what) => modal(`<h2>${what}</h2>${r.emailed ? `<p class="sm" role="status">已经发邮件给 ${esc(r.email)}（几分钟内到达，可能进垃圾邮件箱）。</p>` : ""}<code class="copy">${esc(location.origin + r.invite_path)}</code><p class="sm mut" style="margin:8px 0 0">${r.emailed ? "也可以把这条链接直接发给" : "把链接发给"} ${esc(r.email)}（7 天内有效，只能用一次）。这个链接只显示这一次。</p>`);
   $("#ni").onclick = () => {
     const m = modal(`<h2>邀请成员</h2><form id="f"><label class="f"><span>邮箱</span><input name="email" type="email" required></label>
       <label class="f"><span>角色</span><select name="role">${roleOpts("researcher")}</select></label>
-      <p class="sm mut">会生成一条一次性链接，你发给对方；对方自己填姓名和密码，你不用知道密码。</p>
-      <div class="row"><button class="p">生成链接</button><button type="button" id="c">取消</button></div></form>`);
+      <p class="sm mut">会生成一条一次性链接；对方自己填姓名和密码，你不用知道密码。</p>
+      ${MAIL ? `<label class="chk"><input type="checkbox" name="send_email" checked><span>同时用邮件发给对方</span></label>` : `<p class="sm mut">还没有开通发信服务，链接需要你复制后自己发给对方。</p>`}
+      <div class="row"><button class="p">${MAIL ? "发送邀请" : "生成链接"}</button><button type="button" id="c">取消</button></div></form>`);
     $("#c", m).onclick = () => m.remove();
-    $("#f", m).onsubmit = guard(async (e) => { e.preventDefault(); const r = await api("/users/invites", { method: "POST", body: Object.fromEntries(new FormData(e.target)) }); m.remove(); showLink(r, "邀请链接"); });
+    $("#f", m).onsubmit = guard(async (e) => { e.preventDefault(); const fd = Object.fromEntries(new FormData(e.target)); fd.send_email = !!fd.send_email; const r = await api("/users/invites", { method: "POST", body: fd }); m.remove(); showLink(r, "邀请链接"); });
   };
   $("#nu").onclick = () => {
     const m = modal(`<h2>直接添加成员</h2><form id="f"><label class="f"><span>姓名</span><input name="name" required></label><label class="f"><span>邮箱</span><input name="email" type="email" required></label>
@@ -712,6 +729,7 @@ async function teamView() {
   document.querySelectorAll("[data-role]").forEach((el) => el.onchange = guard(async () => { try { await api(`/users/${el.dataset.role}`, { method: "PATCH", body: { role: el.value } }); } finally { render(); } }));
   document.querySelectorAll("[data-act]").forEach((b) => b.onclick = guard(async () => { await api(`/users/${b.dataset.act}`, { method: "PATCH", body: { active: b.dataset.to === "1" } }); render(); }));
   document.querySelectorAll("[data-reset]").forEach((b) => b.onclick = guard(async () => showLink(await api(`/users/${b.dataset.reset}/reset-link`, { method: "POST" }), "重置密码链接")));
+  document.querySelectorAll("[data-resetmail]").forEach((b) => b.onclick = guard(async () => showLink(await api(`/users/${b.dataset.resetmail}/reset-link?send_email=true`, { method: "POST" }), "重置密码链接")));
   document.querySelectorAll("[data-rv]").forEach((b) => b.onclick = guard(async () => { await api(`/users/invites/${b.dataset.rv}`, { method: "DELETE" }); render(); }));
 }
 
