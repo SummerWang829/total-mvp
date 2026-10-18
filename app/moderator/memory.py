@@ -82,6 +82,17 @@ class ConversationMemory:
         self._pending_whispers: list[Whisper] = []
         self.whisper_log: list[Whisper] = []
 
+    def __getstate__(self) -> dict:
+        """The lock cannot be saved; it is made again when the memory is loaded."""
+        with self._lock:
+            state = dict(self.__dict__)
+        state.pop("_lock")
+        return state
+
+    def __setstate__(self, state: dict) -> None:
+        self.__dict__.update(state)
+        self._lock = threading.RLock()
+
     def add_turn(self, speaker: Speaker, text: str, at_s: float) -> DialogueTurn:
         """Append a line.
 

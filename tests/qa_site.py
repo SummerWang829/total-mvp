@@ -269,6 +269,66 @@ def members_section(br, D):
     ctx.close()
 
 
+def studies_section(br, D):
+    """A study done alone: the researcher writes the goal, the AI drafts, the researcher publishes and invites; the participant consents and chats on a phone, leaves and comes back."""
+    adm, rs, pid = D["tok"]["admin"], D["tok"]["researcher"], D["pid"]
+    call(f"/projects/{pid}/participants", {"name": "异步受访者", "country": "SG", "language": "zh"}, adm)
+    ctx, pg, errs = new_page(br, 1280, token=rs)
+    pg.on("dialog", lambda d: d.accept())
+    pg.goto(B + f"/#/p/{pid}/studies"); pg.wait_for_selector("#nf")
+    ok("异步研究" in pg.inner_text("nav.side"), "[studies] the project menu has the asynchronous studies page")
+    audit_page(pg, "studies list/desktop", errs)
+    pg.fill("[name=title]", "QA 异步研究"); pg.fill("[name=goal]", "了解消费者如何选购护肤品"); pg.select_option("[name=language]", "zh"); pg.click("#nf button")
+    pg.wait_for_selector("#outline")
+    ok(pg.input_value("#outline") == "", "[studies] a new study starts with an empty outline")
+    pg.click("#draft")
+    ok(wait_until(lambda: "## 暖场" in pg.input_value("#outline"), 15), "[studies] the AI drafts an outline into the editor")
+    audit_page(pg, "study detail/desktop", errs)
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "study_detail_1280.png"), full_page=True)
+    pg.fill("#outline", "随便写点什么"); pg.click("#save")
+    ok(wait_until(lambda: pg.is_visible("#problem"), 8), "[studies] a broken outline is saved but the problem is shown")
+    pg.click("#draft")
+    ok(wait_until(lambda: "## 暖场" in pg.input_value("#outline"), 15), "[studies] drafting again replaces the broken text")
+    pg.click("#publish"); pg.wait_for_selector("#inv", timeout=15000)
+    ok("第 1 版" in pg.inner_text("main"), "[studies] publishing freezes version 1")
+    pg.locator("#inv input[name=pid]").first.check(); pg.click("#inv button")
+    pg.wait_for_selector("code.copy")
+    link = pg.inner_text("code.copy").strip()
+    pg.click("#done")
+    sid = pg.url.split("/studies/")[1].split("?")[0]
+    ok("/join.html?t=" in link, "[studies] an invitation link is produced")
+    ok(wait_until(lambda: pg.locator("table.tbl tbody tr").count() == 1 and "已发送" in pg.inner_text("table.tbl"), 8), "[studies] the participant appears as invited")
+    ctx2, pg2, errs2 = new_page(br, 390)
+    pg2.goto(link); pg2.wait_for_selector("#accept")
+    ok(pg2.locator(".psteps i").count() == 3, "[studies] the participant flow has three steps (no device test, no waiting room)")
+    audit_page(pg2, "study invitation/phone", errs2)
+    pg2.click("#accept"); pg2.wait_for_selector("form#f")
+    ok("文字对话" in pg2.inner_text("#box") and "AI" in pg2.inner_text("#box"), "[studies] the consent text says it is a written conversation with an AI")
+    audit_page(pg2, "study consent/phone", errs2)
+    pg2.select_option("[name=country]", "SG")
+    boxes = pg2.locator("input[type=checkbox]")
+    for i in range(boxes.count()):
+        boxes.nth(i).check()
+    pg2.click("form button"); pg2.wait_for_selector("#cin:not([disabled])", timeout=20000)
+    ok(wait_until(lambda: pg2.locator(".chat .m").count() >= 1, 8) and "AI" in pg2.inner_text(".chat .m"), "[studies] the AI opens the conversation and says it is an AI")
+    audit_page(pg2, "study chat/phone", errs2)
+    pg2.fill("#cin", "好的，我准备好了。"); pg2.click("#csend")
+    ok(wait_until(lambda: pg2.locator(".chat .m.me").count() == 1 and pg2.locator(".chat .m").count() >= 3, 20), "[studies] the participant's answer is followed by the AI's reply")
+    pg2.fill("#cin", "我平时会先看成分，因为皮肤比较敏感。"); pg2.click("#csend")
+    ok(wait_until(lambda: pg2.locator(".chat .m").count() >= 5, 20), "[studies] the conversation goes on")
+    n = pg2.locator(".chat .m").count()
+    pg2.screenshot(path=os.path.join(ROOT, "qa_shots", "study_chat_390.png"), full_page=True)
+    pg2.goto(B + "/"); pg2.goto(link)   # leaves and comes back with the same link
+    pg2.wait_for_selector("#cin", timeout=20000)
+    ok(wait_until(lambda: pg2.locator(".chat .m").count() == n, 10), "[studies] coming back shows the same conversation, it does not start over")
+    ctx2.close()
+    pg.goto(B + f"/#/p/{pid}/studies/{sid}"); pg.reload(); pg.wait_for_selector("table.tbl")
+    ok(wait_until(lambda: "进行中" in pg.inner_text("table.tbl"), 8), "[studies] the researcher sees the session as in progress")
+    pg.click("#close")
+    ok(wait_until(lambda: "提前结束" in pg.inner_text("table.tbl"), 8), "[studies] closing ends the unfinished session")
+    ctx.close()
+
+
 def main():
     tmp = tempfile.mkdtemp()
     env = {**os.environ, "DATABASE_URL": f"sqlite:///{tmp}/qa.db", "MEDIA_DIR": f"{tmp}/media", "LIVEKIT_URL": "", "ASR_PROVIDER": "mock", "LLM_PROVIDER": "mock", "ASR_API_KEY": "", "LLM_API_KEY": "",
@@ -622,7 +682,7 @@ def run():
     D = seed()
     mi, pid = D["main"]["id"], D["pid"]
     proj = [f"#/p/{pid}/rooms", f"#/p/{pid}/insights"]
-    staff_routes = [f"#/projects", f"#/p/{pid}/home", f"#/p/{pid}/people", f"#/p/{pid}/sessions", f"#/p/{pid}/analysis", f"#/p/{pid}/members"] + proj + [f"#/i/{mi}", f"#/i/{mi}/insights", f"#/i/{mi}/clips"]
+    staff_routes = [f"#/projects", f"#/p/{pid}/home", f"#/p/{pid}/people", f"#/p/{pid}/sessions", f"#/p/{pid}/analysis", f"#/p/{pid}/members", f"#/p/{pid}/studies"] + proj + [f"#/i/{mi}", f"#/i/{mi}/insights", f"#/i/{mi}/clips"]
     role_routes = {
         "demo_admin": ["#/projects", f"#/p/{D['demo_pid']}/home", "#/demo"],
         "admin": staff_routes + ["#/team", "#/audit"],
@@ -905,6 +965,7 @@ def run():
         marks_section(br, D)
         group_section(br, D)
         members_section(br, D)
+        studies_section(br, D)
 
         # ---------- C2. dialogs and expandable panels on the staff pages (both screen sizes) ----------
         for w, vp in ((1280, "desktop"), (390, "phone")):

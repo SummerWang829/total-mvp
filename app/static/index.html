@@ -21,7 +21,7 @@ function navHtml(active, p) {
   let h = `<a class="brand" href="#/projects" aria-label="星桐 TOTAL 首页">${LOGO_SVG}</a>${a("/projects", "全部项目", "projects", "▦")}`;
   if (p) {
     h += `<div class="sec">当前项目<b>${esc(p.name)}</b></div>`;
-    if (STAFF()) h += a(`/p/${p.id}/home`, "项目总览", "home", "◉") + a(`/p/${p.id}/members`, "项目成员", "members", "◎");
+    if (STAFF()) h += a(`/p/${p.id}/home`, "项目总览", "home", "◉") + a(`/p/${p.id}/members`, "项目成员", "members", "◎") + a(`/p/${p.id}/studies`, "异步研究", "studies", "✦");
     h += `<div class="sec">定性 · 深访</div>`;
     if (STAFF()) h += a(`/p/${p.id}/people`, "受访者招募", "people", "", true) + a(`/p/${p.id}/sessions`, "场次与邀请", "sessions", "", true);
     h += a(`/p/${p.id}/rooms`, "直播间", "rooms", "", true) + a(`/p/${p.id}/insights`, "洞察与片段", "insights", "", true);
@@ -96,6 +96,7 @@ async function render() {
       if (page === "insights") return await insightsListView(p);
       if (page === "analysis" && STAFF()) return await analysisView(p);
       if (page === "members" && STAFF()) return await membersView(p);
+      if (page === "studies" && STAFF()) return seg[4] ? await studyView(p, seg[4]) : await studiesView(p);
       location.hash = `#/p/${p.id}/rooms`; return;
     }
     if (seg[1] === "i") return await interviewView(seg[2], seg[3] || "transcript");
@@ -379,6 +380,97 @@ async function insightsListView(p) {
 
 // ---------------- 编码与分析 ----------------
 // A codebook for the project; codes go on insights (by hand, or proposed by the model and accepted by a researcher). The grid counts accepted codes only.
+// ---------------- 异步研究：受访者自己随时完成的 AI 访谈 ----------------
+const STUDY_STATE = { sent: ["已发送", ""], opened: ["已打开链接", ""], in_progress: ["进行中", "live"], finished: ["已完成", "ok"], ended_early: ["提前结束", ""] };
+const STUDY_STATUS = { draft: ["草稿", ""], published: ["已发布", "ok"], closed: ["已关闭", ""] };
+async function studiesView(p) {
+  const my = renderSeq;
+  const list = await api(`/projects/${p.id}/studies`);
+  if (stale(my)) return;
+  const row = (s) => `<tr><td><a href="#/p/${p.id}/studies/${s.id}"><b>${esc(s.title)}</b></a></td><td>${esc(LANGS[s.language] || s.language)}</td><td>${s.duration_min} 分钟</td>
+      <td><span class="tag ${STUDY_STATUS[s.status][1]}">${STUDY_STATUS[s.status][0]}${s.version ? ` · 第 ${s.version} 版` : ""}</span></td>
+      <td>${s.counts.invited} 人 · 进行中 ${s.counts.in_progress} · 已完成 ${s.counts.finished}</td></tr>`;
+  shell(`${head("异步研究", "受访者在方便的时候，自己和 AI 访谈员完成一场文字访谈。你只需要写研究目标、审核提纲、发链接。")}
+    ${list.length ? `<div class="card scroll" style="padding:6px 10px"><table class="tbl rc"><thead><tr><th>研究</th><th>语言</th><th>时长</th><th>状态</th><th>受访者</th></tr></thead><tbody>${list.map(row).join("")}</tbody></table></div>`
+      : `<div class="card empty"><b>还没有异步研究。</b><span>在下面写下研究目标，AI 会起草提纲，你修改后发布。</span></div>`}
+    <div class="card"><h3>新建异步研究</h3><form id="nf">
+      <label class="f"><span>研究名称</span><input name="title" required maxlength="200"></label>
+      <label class="f"><span>研究目标（只给 AI 和团队看，不会念给受访者）</span><textarea name="goal" rows="3" required maxlength="1000" placeholder="例如：了解新加坡 25–35 岁女性如何挑选护肤品，以及哪些信息最影响她们的决定"></textarea></label>
+      <div class="row"><label class="f" style="flex:1"><span>访谈语言</span><select name="language">${["zh", "en"].map((k) => `<option value="${k}"${k === (p.language === "en" ? "en" : "zh") ? " selected" : ""}>${LANGS[k]}</option>`).join("")}</select></label>
+        <label class="f" style="flex:1"><span>大约时长</span><select name="duration_min">${[10, 15, 20, 30, 45, 60].map((n) => `<option value="${n}"${n === 20 ? " selected" : ""}>${n} 分钟</option>`).join("")}</select></label></div>
+      <label class="f"><span>告诉受访者的话题（选填，18 字以内，别写品牌名）</span><input name="participant_topic" maxlength="18"></label>
+      <button class="p">创建并起草提纲</button></form></div>`, { active: "studies", p });
+  $("#nf").onsubmit = guard(async (e) => {
+    e.preventDefault();
+    const b = Object.fromEntries(new FormData(e.target)); b.duration_min = Number(b.duration_min);
+    const s = await api(`/projects/${p.id}/studies`, { method: "POST", body: b });
+    location.hash = `#/p/${p.id}/studies/${s.id}`;
+  });
+}
+
+async function studyView(p, sid) {
+  const my = renderSeq;
+  const [s, parts] = await Promise.all([api(`/studies/${sid}`), api(`/projects/${p.id}/participants`)]);
+  if (stale(my)) return;
+  const invitedIds = new Set(s.sessions.map((x) => x.participant.id));
+  const canInvite = parts.filter((x) => x.screening === "eligible" && !x.anonymized && !invitedIds.has(x.id));
+  const closed = s.status === "closed";
+  const [stName, stCls] = STUDY_STATUS[s.status];
+  const sess = (x) => { const [n, c] = STUDY_STATE[x.state]; return `<tr><td><b>${esc(x.participant.name)}</b></td><td>${esc(x.participant.country || "—")}</td><td><span class="tag ${c}">${n}</span>${x.alert !== "none" ? ` <span class="tag bad" title="${esc(x.alert_reason)}">需要查看</span>` : ""}</td>
+      <td class="acts"><a class="btn s" href="#/i/${x.interview_id}">${x.state === "in_progress" ? "查看对话" : "打开记录"}</a></td></tr>`; };
+  shell(`${head(esc(s.title), `<a href="#/p/${p.id}/studies">← 全部异步研究</a> · <span class="tag ${stCls}">${stName}${s.version ? ` · 第 ${s.version} 版` : ""}</span> · ${esc(LANGS[s.language])} · ${s.duration_min} 分钟`,
+      closed ? "" : `<button class="s warn" id="close">关闭研究</button>`)}
+    <div class="card"><h3>研究目标</h3><p style="margin:0;white-space:pre-wrap">${esc(s.goal)}</p></div>
+    <div class="card"><h3>提纲${s.drafted_by ? ` <span class="tag">AI 起草 · ${esc(s.drafted_by)}</span>` : ""}</h3>
+      <p class="sm mut">发布后会冻结成一个版本：之后开始的访谈都按这一版提问。修改后再发布，会生成下一版；已经开始的访谈不受影响。</p>
+      <label class="f"><span>提纲文字（可直接修改）</span><textarea id="outline" rows="18" ${closed ? "disabled" : ""} style="font-family:ui-monospace,Consolas,monospace;font-size:14px">${esc(s.outline_text)}</textarea></label>
+      <p class="sm" id="problem" role="alert" hidden style="color:#A8203E"></p>
+      <details class="sm mut"><summary>提纲怎么写</summary><pre style="white-space:pre-wrap;margin:6px 0">## 暖场
+- 一个轻松的开场问题
+## 话题: 话题名称
+- 一个开放式的问题（一句话只问一件事）
+* 了解: 这个话题必须弄清楚的一点
+## 禁谈
+- 不要谈的内容</pre></details>
+      ${closed ? "" : `<div class="row"><button id="draft">${s.outline_text ? "让 AI 重新起草" : "让 AI 起草"}</button><button id="save">保存</button><span class="sp"></span><button class="p" id="publish">${s.version ? `发布第 ${s.version + 1} 版` : "发布"}</button></div>`}</div>
+    ${s.status === "published" ? `<div class="card"><h3>邀请受访者</h3>${canInvite.length
+      ? `<form id="inv"><p class="sm mut">每个人得到一条专属链接（只显示这一次）。把链接发给对方，对方同意隐私说明后就可以开始，不需要摄像头和麦克风。</p>
+        ${canInvite.map((x) => `<label class="chk"><input type="checkbox" name="pid" value="${x.id}"><span>${esc(x.name)}${x.country ? ` · ${esc(x.country)}` : ""}</span></label>`).join("")}<button class="p" style="margin-top:8px">生成邀请链接</button></form>`
+      : `<p class="mut" style="margin:0">项目里没有可以邀请的新受访者。先到“受访者招募”添加。</p>`}</div>` : ""}
+    ${s.sessions.length ? `<h2>受访者</h2><div class="card scroll" style="padding:6px 10px"><table class="tbl rc"><thead><tr><th>姓名</th><th>国家</th><th>进度</th><th></th></tr></thead><tbody>${s.sessions.map(sess).join("")}</tbody></table></div>` : ""}`,
+    { active: "studies", p });
+  const show = (r) => { const pr = $("#problem"); if (r && r.problem) { pr.textContent = r.problem; pr.hidden = false; } else { pr.hidden = true; } };
+  const text = () => $("#outline").value;
+  if (!closed) {
+    $("#save").onclick = guard(async () => { const r = await api(`/studies/${sid}/outline`, { method: "PUT", body: { text: text() } }); show(r); toast(r.problem ? "已保存，但提纲还有问题" : "已保存"); });
+    $("#draft").onclick = guard(async () => {
+      if (text().trim() && !confirm("AI 起草会替换编辑框里的内容。继续？")) return;
+      const b = $("#draft"); b.disabled = true; b.textContent = "AI 正在起草，请稍等…";
+      try { await api(`/studies/${sid}/draft`, { method: "POST" }); toast("已起草，请检查并修改"); render(); } finally { b.disabled = false; }
+    });
+    $("#publish").onclick = guard(async () => {
+      const saved = await api(`/studies/${sid}/outline`, { method: "PUT", body: { text: text() } });
+      show(saved); if (saved.problem) { toast("提纲还有问题，先改好再发布", true); return; }
+      if (!confirm("发布后，之后开始的访谈都按这一版提问。确定发布？")) return;
+      await api(`/studies/${sid}/publish`, { method: "POST" }); toast("已发布"); render();
+    });
+    $("#close").onclick = guard(async () => {
+      if (!confirm("关闭后链接失效，还没完成的访谈会就此结束（已说的内容保留）。确定关闭？")) return;
+      await api(`/studies/${sid}/close`, { method: "POST" }); toast("已关闭"); render();
+    });
+  }
+  const f = $("#inv");
+  if (f) f.onsubmit = guard(async (e) => {
+    e.preventDefault();
+    const ids = [...f.querySelectorAll("input[name=pid]:checked")].map((i) => i.value);
+    if (!ids.length) { toast("请先勾选受访者", true); return; }
+    const r = await api(`/studies/${sid}/invites`, { method: "POST", body: { participant_ids: ids } });
+    const m = modal(`<h2>邀请链接（只显示这一次）</h2>${r.invites.map((i) => `<p style="margin:10px 0 2px"><b>${esc(i.name)}</b></p><code class="copy">${esc(location.origin + i.invite_path)}</code>`).join("")}
+      ${r.skipped.length ? `<p class="sm mut">没有生成：${r.skipped.map((x) => `${esc(x.name)}（${esc(x.why)}）`).join("、")}</p>` : ""}<div class="row" style="margin-top:12px"><button class="p" id="done">我已复制</button></div>`);
+    $("#done", m).onclick = () => { m.remove(); render(); };
+  });
+}
+
 async function membersView(p) {  // who works on this project (admins see every project; moderators and observers are assigned per interview)
   const my = renderSeq;
   const [d, us] = await Promise.all([api(`/projects/${p.id}/members`), api("/users")]);

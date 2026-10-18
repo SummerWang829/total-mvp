@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Interview · 星桐</title><link rel="stylesheet" href="/app.css">
+<style>
+.awrap{max-width:680px;margin:0 auto;padding:18px 16px 40px}
+.awrap .chat .log{max-height:none;min-height:240px;height:min(56vh,520px)}
+.awrap h1{font-size:22px;margin:0 0 6px}
+.awrap .sub{margin:0 0 14px;color:#51675D;font-size:15px}
+.awrap .chat form textarea{min-height:56px}
+</style></head>
+<body class="participant"><div class="pbar" id="logobar"></div>
+<div class="awrap stage t-light" id="box"><p class="mut">…</p></div>
+<script src="/app.js"></script>
+<script src="/logo.js"></script>
+<script>$("#logobar").innerHTML = LOGO_SVG;</script>
+<script>
+// A study done alone, at any time: a written conversation with the AI moderator. The link is the credential; the conversation is saved after
+// every turn, so closing this page and coming back later (even after the server restarted) carries on where it stopped.
+const t = new URLSearchParams(location.search).get("t") || "";
+const box = $("#box");
+const L = {
+  en: { title: "Your interview", sub: "Reply in your own words, in your own time. You can close this page and come back with the same link: your conversation is saved.", ai: "AI interviewer", you: "You",
+        ph: "Type your answer here…", send: "Send", typing: "The interviewer is replying…", done: "The conversation is finished. Thank you very much!", err: "Could not send. Please try again.",
+        human: "The research team will continue with you. You can close this page; they will be in touch.", bad: "This link is not valid", closed: "This study is over. Thank you!", consent: "Please agree to the privacy notice first.", back: "Back to the invitation" },
+  zh: { title: "你的访谈", sub: "用你自己的话、按你自己的节奏回答就好。可以随时关掉页面，用同一个链接回来继续，对话已自动保存。", ai: "AI 访谈员", you: "你",
+        ph: "在这里输入你的回答…", send: "发送", typing: "访谈员正在回复…", done: "对话已经结束，非常感谢！", err: "没有发送成功，请再试一次。",
+        human: "研究团队会接着和你联系。你可以先关闭页面。", bad: "这个链接无效", closed: "这项研究已经结束，谢谢！", consent: "请先同意隐私说明。", back: "回到邀请页" },
+  ms: { title: "Temu bual anda", sub: "Jawab dengan kata-kata anda sendiri, mengikut rentak anda. Anda boleh menutup halaman ini dan kembali dengan pautan yang sama: perbualan anda disimpan.", ai: "Penemu bual AI", you: "Anda",
+        ph: "Taip jawapan anda di sini…", send: "Hantar", typing: "Penemu bual sedang membalas…", done: "Perbualan telah tamat. Terima kasih banyak!", err: "Tidak dapat menghantar. Sila cuba lagi.",
+        human: "Pasukan penyelidik akan meneruskan bersama anda. Anda boleh menutup halaman ini.", bad: "Pautan ini tidak sah", closed: "Kajian ini telah tamat. Terima kasih!", consent: "Sila bersetuju dengan notis privasi dahulu.", back: "Kembali ke jemputan" },
+  ta: { title: "உங்கள் நேர்காணல்", sub: "உங்கள் சொந்த வார்த்தைகளில், உங்கள் வேகத்தில் பதிலளிக்கவும். இந்தப் பக்கத்தை மூடிவிட்டு அதே இணைப்பில் திரும்பலாம்: உங்கள் உரையாடல் சேமிக்கப்படுகிறது.", ai: "AI நேர்காணலர்", you: "நீங்கள்",
+        ph: "உங்கள் பதிலை இங்கே தட்டச்சு செய்யவும்…", send: "அனுப்பு", typing: "நேர்காணலர் பதிலளிக்கிறார்…", done: "உரையாடல் முடிந்தது. மிக்க நன்றி!", err: "அனுப்ப முடியவில்லை. மீண்டும் முயலவும்.",
+        human: "ஆய்வுக் குழு தொடர்ந்து உங்களுடன் தொடர்புகொள்ளும். இந்தப் பக்கத்தை மூடலாம்.", bad: "இந்த இணைப்பு செல்லாது", closed: "இந்த ஆய்வு முடிந்தது. நன்றி!", consent: "முதலில் தனியுரிமை அறிவிப்பை ஏற்கவும்.", back: "அழைப்புக்குத் திரும்பு" },
+};
+let x = L.en, after = 0, sending = false, finished = false, control = "ai";
+const api2 = (path, opt = {}) => fetch(`/api/public/join/${encodeURIComponent(t)}${path}`, { headers: { "Content-Type": "application/json" }, ...opt });
+
+function bad(msg, withBack) {
+  box.innerHTML = `<h1>${esc(msg)}</h1>${withBack ? `<p><a class="btn" href="/join.html?t=${encodeURIComponent(t)}">${esc(x.back)}</a></p>` : ""}`;
+}
+function line(m) {
+  const log = $("#clog"), d = document.createElement("div");
+  d.className = "m" + (m.sender === "participant" ? " me" : "");
+  const w = document.createElement("span"); w.className = "who"; w.textContent = m.sender === "participant" ? x.you : x.ai; d.appendChild(w);
+  d.appendChild(document.createTextNode(m.text));
+  const stick = log.scrollTop + log.clientHeight >= log.scrollHeight - 40;
+  log.appendChild(d); if (stick) log.scrollTop = log.scrollHeight;
+}
+function paint() {
+  const off = finished || control === "human" || sending;
+  $("#cin").disabled = off; $("#csend").disabled = off;
+  $("#cnote").textContent = sending ? x.typing : finished ? x.done : control === "human" ? x.human : "";
+}
+async function poll() {
+  let st;
+  try { const r = await api2(`/chat?after=${after}`); if (!r.ok) return; st = await r.json(); } catch { return; }
+  (st.messages || []).forEach((m) => { line(m); after = Math.max(after, m.seq); });
+  finished = !!st.finished; control = st.control || "ai"; paint();
+}
+function build() {
+  document.title = x.title + " · 星桐";
+  box.innerHTML = `<h1>${esc(x.title)}</h1><p class="sub">${esc(x.sub)}</p>
+    <div class="rpan chat"><div class="log" id="clog" role="log" aria-live="polite" tabindex="0"></div><p class="closed" id="cnote" role="status"></p>
+    <form id="cform"><textarea id="cin" rows="2" maxlength="2000" aria-label="${esc(x.ph)}" placeholder="${esc(x.ph)}" disabled></textarea><button class="p" id="csend" type="submit" disabled>${esc(x.send)}</button></form></div>`;
+  $("#cform").onsubmit = async (e) => {
+    e.preventDefault();
+    const ta = $("#cin"), text = ta.value.trim(); if (!text || sending) return;
+    sending = true; paint();
+    try {
+      const r = await api2("/chat", { method: "POST", body: JSON.stringify({ text }) });
+      if (!r.ok) throw new Error(String(r.status));
+      ta.value = "";
+    } catch { $("#cnote").textContent = x.err; }
+    sending = false; await poll(); if (!finished && control === "ai") $("#cin").focus();
+  };
+  $("#cin").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); $("#cform").requestSubmit(); } });
+}
+(async () => {
+  let info;
+  try { const r = await api2(""); if (!r.ok) throw new Error(); info = await r.json(); } catch { bad(`${L.en.bad} · ${L.zh.bad}`); return; }
+  x = L[info.consent.lang] || L.en;
+  document.documentElement.lang = info.consent.lang === "zh" ? "zh-CN" : info.consent.lang;
+  if (!info.async) return bad(x.bad);
+  if (info.status === "ended") return bad(x.closed);
+  if (!info.consented) return bad(x.consent, true);
+  const s = await api2("/async/start", { method: "POST" });
+  if (!s.ok) { const j = await s.json().catch(() => ({})); return bad(s.status === 409 ? x.closed : j.detail || x.bad, s.status === 403); }
+  build(); await poll();
+  setInterval(() => { if (!sending && !finished) poll(); }, 8000);   // (a human may have taken the session over; the AI's own reply comes back with the send)
+})();
+</script></body></html>

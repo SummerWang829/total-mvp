@@ -112,3 +112,17 @@ def parse_guide_text(text: str) -> dict:
         first = e.errors()[0]
         where = ".".join(str(x) for x in first["loc"]) or "提纲"
         raise GuideTextError(f"提纲不完整：{where} — {first['msg']}") from e
+
+
+def guide_to_text(guide: dict) -> str:
+    """The outline text of a guide (the reverse of :func:`parse_guide_text`), so a drafted guide can be shown and edited as plain text."""
+    out = [f"目标: {guide['research_goal']}", f"受访者话题: {guide.get('participant_topic', '')}", f"语言: {guide['language']}", f"时长: {int(guide['duration_min'])}", "", "## 暖场"]
+    out += [f"- {q}" for q in guide["warmup_questions"]]
+    for t in guide["topics"]:
+        out += ["", f"## 话题: {t['title']}"] + [f"- {q}" for q in t["questions"]] + [f"* 了解: {m['text']}" for m in t.get("must_cover", [])]
+    for st in guide.get("stimuli", []):
+        out += ["", f"## 素材: {st['id']} | {st['description']}"] + [f"- {q}" for q in st["questions"]]
+    for title, key in (("假设", "hypotheses"), ("禁谈", "forbidden_topics"), ("品牌", "client_brand_names"), ("产品事实", "product_facts")):
+        if guide.get(key):
+            out += ["", f"## {title}"] + [f"- {v}" for v in guide[key]]
+    return "\n".join(out) + "\n"

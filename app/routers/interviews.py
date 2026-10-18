@@ -70,7 +70,7 @@ def interview_out(itv: Interview, ctx: Ctx, invite_token: str | None = None, db:
         "moderator_id": itv.moderator_id, "observer_ids": [o.user_id for o in itv.observers],
         "participant": {"id": itv.participant.id, "name": itv.participant.name, "country": itv.participant.country} if sees_name
         else {"name": "受访者"},
-        "purged": itv.purged_at is not None, "moderation": itv.moderation, "kind": itv.kind,
+        "purged": itv.purged_at is not None, "moderation": itv.moderation, "kind": itv.kind, "study_id": itv.study_id,
     }
     if groups.is_group(itv):  # a group has no single participant; show the headcount, and (staff only) the roster
         n = len(itv.group_participants)

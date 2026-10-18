@@ -2,7 +2,7 @@ import threading
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, LargeBinary, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
@@ -101,12 +101,39 @@ class Interview(Base):
     admitted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     held_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     moderation: Mapped[str] = mapped_column(String(10), default="human")  # app.moderator.constants.ModerationMode; "ai": the consent text discloses it
-    kind: Mapped[str] = mapped_column(String(10), default="depth")  # depth (1:1) | group (focus group, up to 10 participants); see app/groups.py
+    kind: Mapped[str] = mapped_column(String(10), default="depth")  # depth (1:1) | group (focus group, up to 10 participants; see app/groups.py) | async (a study done alone, any time; see app/studies.py)
+    study_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)  # kind "async": the study this session belongs to
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
     participant: Mapped[Participant] = relationship(lazy="joined")
     observers: Mapped[list["InterviewObserver"]] = relationship(cascade="all, delete-orphan", lazy="selectin")
     group_participants: Mapped[list["InterviewParticipant"]] = relationship(cascade="all, delete-orphan", lazy="selectin")
+
+
+class AsyncStudy(Base):
+    """A study that participants complete on their own, at any time, in a text conversation with the AI moderator (app/studies.py).
+
+    The researcher writes the goal, the AI drafts the outline, the researcher edits and publishes it: publishing freezes a numbered version
+    (`published_guide`) that every session started afterwards follows word for word, so all participants are asked the same prepared questions.
+    """
+    __tablename__ = "async_studies"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
+    org_id: Mapped[str] = mapped_column(ForeignKey("orgs.id"), index=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
+    title: Mapped[str] = mapped_column(String(200))
+    goal: Mapped[str] = mapped_column(Text)  # internal research goal: never read out to participants
+    participant_topic: Mapped[str] = mapped_column(String(20), default="")  # what the AI tells participants the topic is
+    language: Mapped[str] = mapped_column(String(10), default="en")
+    duration_min: Mapped[int] = mapped_column(Integer, default=20)
+    outline_text: Mapped[str] = mapped_column(Text, default="")  # the editable outline (app/guide_text.py format)
+    drafted_by: Mapped[str] = mapped_column(String(60), default="")  # which model wrote the draft (empty: written by hand)
+    status: Mapped[str] = mapped_column(String(10), default="draft", index=True)  # draft | published | closed
+    version: Mapped[int] = mapped_column(Integer, default=0)  # 0 until first published; +1 at every publish
+    published_guide: Mapped[str] = mapped_column(Text, default="")  # the frozen guide (JSON) of the current version
+    published_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_by: Mapped[str] = mapped_column(String(32))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
 class InterviewObserver(Base):
@@ -281,6 +308,7 @@ class AiSession(Base):
     alert_reason: Mapped[str] = mapped_column(String(300), default="")
     finished: Mapped[bool] = mapped_column(Boolean, default=False)  # the AI said its closing statement: the participant can no longer type
     strikes: Mapped[int] = mapped_column(Integer, default=0)  # chat messages with abusive or hateful words (app/content_rules); the AI ends the chat politely at the limit
+    snapshot: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)  # the engine, saved after each turn of a study done at the participant's own pace (app/moderator/snapshot.py)
     started_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 

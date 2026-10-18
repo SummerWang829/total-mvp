@@ -224,4 +224,4 @@ def test_the_consent_tells_every_participant_that_pace_pauses_volume_and_emoji_a
 
     for ai in (False, True):
         c = consent_for(lang, "Acme", ai=ai)
-        assert SIGNALS_TEXTS[lang] in c["text"] and c["version"] == "2026-10-draft-6"
+        assert SIGNALS_TEXTS[lang] in c["text"] and c["version"] == "2026-10-draft-7"

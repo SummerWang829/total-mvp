@@ -50,6 +50,7 @@ class ModeratorEngine:
         profile: the participant's screening answers ("question → answer"), given to the model as background every turn.
         background_memory: read facts out of each answer and refresh the summary in a background thread, so the reply never waits for them
             (the real rooms and evaluations; off in unit tests, whose scripted models count calls in order).
+        written: a written study done alone (no audio or video): the opening says the conversation is saved as text and can be resumed.
 
     Raises:
         ValueError: unsupported language, or the fixed intro breaks a red line (e.g. participant_topic too long).
@@ -57,13 +58,15 @@ class ModeratorEngine:
 
     def __init__(self, guide: InterviewGuide, chat: ModeratorChatProvider, prompts: PromptSet | None = None,
                  config: PacingConfig | None = None, clock: Clock | None = None, seed: int | None = None,
-                 profile: list[str] | None = None, background_memory: bool = False) -> None:
+                 profile: list[str] | None = None, background_memory: bool = False, written: bool = False) -> None:
         self.guide = guide
         self.texts: LanguageTemplates = templates_for(guide.language)
         self.clock = clock or SystemClock()
         self.fsm = InterviewStateMachine(guide, config, self.clock)
         self.memory = ConversationMemory(profile=profile)
-        self.calls = ModelCaller(chat, prompts or load_prompts(), seed)
+        prompts = prompts or load_prompts()
+        self.calls = ModelCaller(chat, prompts, seed)
+        self._prompt_version, self._seed = prompts.version, seed
         self.control = ControlMode.AI
         self.turn_log: list[ModeratorTurnPayload] = []
         self._last_was_followup = False
@@ -71,11 +74,24 @@ class ModeratorEngine:
         self._summary_retry_at = 0
         self.background_memory = background_memory
         self._memory_thread: threading.Thread | None = None
-        self._intro = self.texts.intro.format(topic=guide.participant_topic or self.texts.default_topic)
+        self._intro = (self.texts.intro_written if written else self.texts.intro).format(topic=guide.participant_topic or self.texts.default_topic)
         if found := check_utterance(self._intro, self._gate(is_first_turn=True)):
             raise ValueError(f"the fixed intro breaks a red line: {found[0].red_line.value} {found[0].detail}")
         self._check_fixed_sentences()
         self._check_prepared_questions()
+
+    def __getstate__(self) -> dict:
+        """What is saved when an engine is stored (app/moderator/snapshot.py): everything except the model connection, the memory thread and the
+        log of past turns (the chat log has them). `rebind` puts the model connection back."""
+        state = dict(self.__dict__)
+        state.update(calls=None, _memory_thread=None, turn_log=[])
+        return state
+
+    def rebind(self, chat: ModeratorChatProvider) -> None:
+        """Reconnect a loaded engine to a chat model, with the prompt version it was started with, and let its clock carry on from now."""
+        self.calls = ModelCaller(chat, load_prompts(self._prompt_version), self._seed)
+        if hasattr(self.clock, "resume"):
+            self.clock.resume()
 
     def _check_fixed_sentences(self) -> None:
         """The fixed answers are said word for word, so they must pass every red line themselves (H13 above all).

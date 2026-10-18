@@ -9,7 +9,19 @@ import hashlib
 from .config import settings
 from .moderator.compliance import moderator_runs_locally
 
-VERSION = "2026-10-draft-6"  # draft-6: how things are said (pace, pauses, volume) and emoji are noted; draft-5: the AI also reads the screening answers; draft-4: AI-moderator disclosure (AI interviews only)
+VERSION = "2026-10-draft-7"  # draft-7: studies done alone, in text, at any time have their own paragraph; draft-6: how things are said (pace, pauses, volume) and emoji are noted; draft-5: the AI also reads the screening answers; draft-4: AI-moderator disclosure (AI interviews only)
+
+# A study done alone: replaces the picture of a live video call that the base text gives.
+TEXT_ONLY_TEXTS = {
+    "en": "This study is a written conversation that you complete on your own, at any time that suits you. No video or sound is recorded: what you type is the record. "
+          "Nobody watches live; the research team reads the conversation afterwards. In what follows, \"recording\" means your typed answers, and \"observers\" means team members who read them later.",
+    "zh": "这项研究是一场文字对话，由您自己在方便的时间完成。不录像、不录音，您输入的文字就是记录。没有人在现场旁观，研究团队会在事后阅读这场对话。"
+          "下文中的“录制”指您输入的文字，“观察员”指事后阅读这些文字的团队成员。",
+    "ms": "Kajian ini ialah perbualan bertulis yang anda selesaikan sendiri pada bila-bila masa yang sesuai. Tiada video atau bunyi dirakam: apa yang anda taip ialah rekod. "
+          "Tiada sesiapa menonton secara langsung; pasukan penyelidik membaca perbualan itu kemudian. Di bawah, \"rakaman\" bermaksud jawapan yang anda taip, dan \"pemerhati\" bermaksud ahli pasukan yang membacanya kemudian.",
+    "ta": "இந்த ஆய்வு நீங்களே, உங்களுக்கு வசதியான நேரத்தில் முடிக்கும் எழுத்து உரையாடல். வீடியோவோ ஒலியோ பதிவு செய்யப்படாது: நீங்கள் தட்டச்சு செய்வதே பதிவு. "
+          "யாரும் நேரலையில் பார்ப்பதில்லை; ஆய்வுக் குழு பின்னர் உரையாடலைப் படிக்கும். கீழே “பதிவு” என்பது நீங்கள் தட்டச்சு செய்த பதில்கள், “பார்வையாளர்கள்” என்பது அவற்றைப் பின்னர் படிக்கும் குழு உறுப்பினர்கள்.",
+}
 
 # How things are said, and emoji: stated in every interview (the live captions are always on). Numbers and the participant's own emoji only.
 SIGNALS_TEXTS = {
@@ -116,13 +128,14 @@ def _ai_disclosure(lang: str) -> str:
     return AI_TEXTS[lang] + sep + AI_PROFILE[lang] + sep + where + sep
 
 
-def consent_for(lang: str, org_name: str, ai: bool = False) -> dict:
+def consent_for(lang: str, org_name: str, ai: bool = False, text_only: bool = False) -> dict:
     """The consent text a participant agrees to, and the checkbox labels.
 
     Args:
         lang: interview language; anything outside en/zh/ms/ta falls back to English.
         org_name: the client organisation named in the text.
         ai: True for an AI-moderated interview: the AI disclosure comes first and an extra "ai" checkbox is required.
+        text_only: a study done alone, in writing, at any time (no video or sound; the team reads the conversation afterwards): says so first.
 
     Returns:
         {"version", "lang", "text", "labels", "ai", "sha256"}; sha256 is stored with the consent so the exact text can be proven later.
@@ -131,6 +144,8 @@ def consent_for(lang: str, org_name: str, ai: bool = False) -> dict:
     text = TEXTS[l].format(org=org_name, dpo=settings.dpo_email)
     text = text + ("" if l == "zh" else " ") + SIGNALS_TEXTS[l]
     labels = dict(LABELS[l])
+    if text_only:
+        text = TEXT_ONLY_TEXTS[l] + (" " if l != "zh" else "") + text
     if ai:
         text = _ai_disclosure(l) + text
         labels = {"ai": AI_LABELS[l], **labels}

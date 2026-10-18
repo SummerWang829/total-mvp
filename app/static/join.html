@@ -86,15 +86,23 @@ const L = {
         bad: "தவறான இணைப்பு", badp: "இந்த அழைப்பு இணைப்பு இல்லை அல்லது காலாவதியாகிவிட்டது. உங்களை அழைத்தவரிடம் புதிய இணைப்பைக் கேளுங்கள்." },
 };
 const pub = (path, opt = {}) => api(`/public/join/${encodeURIComponent(t)}${path}`, { auth: false, ...opt });
+const AL = {  // a study done alone, in writing, at any time: no device test, no waiting room
+  en: { step: "Your interview", how: "This is a written conversation with an AI interviewer. Do it at any time that suits you; it usually takes 15 to 30 minutes. No camera or microphone is needed, and you can pause and come back with this same link.", accept: "Accept and continue" },
+  zh: { step: "开始访谈", how: "这是一场和 AI 访谈员的文字对话，可以在任何方便的时间完成，通常需要 15 到 30 分钟。不需要摄像头和麦克风，中途可以暂停，用同一个链接回来继续。", accept: "接受并继续" },
+  ms: { step: "Temu bual anda", how: "Ini ialah perbualan bertulis dengan penemu bual AI. Lakukan pada bila-bila masa yang sesuai; biasanya mengambil masa 15 hingga 30 minit. Tiada kamera atau mikrofon diperlukan, dan anda boleh berhenti seketika dan kembali dengan pautan yang sama.", accept: "Terima dan teruskan" },
+  ta: { step: "உங்கள் நேர்காணல்", how: "இது AI நேர்காணலருடன் எழுத்து உரையாடல். உங்களுக்கு வசதியான எந்த நேரத்திலும் செய்யலாம்; பொதுவாக 15 முதல் 30 நிமிடங்கள் ஆகும். கேமரா அல்லது மைக்ரோஃபோன் தேவையில்லை; இடையில் நிறுத்தி அதே இணைப்பில் திரும்பலாம்.", accept: "ஏற்றுத் தொடரவும்" },
+};
 let info, x, STEPS = [], IX = {};
 
 function buildFlow() {  // the pre-task step only exists when the research team configured questions (opt-in per interview)
+  if (info.async) { STEPS = [x.steps[0], x.steps[2], (AL[info.consent.lang] || AL.en).step]; IX = { invite: 0, consent: 1 }; return; }
   const hasPre = !!(info.pretask && info.pretask.questions.length);
   STEPS = hasPre ? [x.steps[0], x.steps[1], x.steps[2], x.pre, x.steps[3], x.steps[4]] : x.steps.slice();
   IX = hasPre ? { invite: 0, device: 1, consent: 2, pre: 3, wait: 4 } : { invite: 0, device: 1, consent: 2, wait: 3 };
 }
 
 function afterConsent() {  // consent done: fill in the pre-task if there is one, otherwise go straight to the waiting room
+  if (info.async) { location.href = `/async.html?t=${encodeURIComponent(t)}`; return; }  // a study done alone: straight into the written conversation
   if (IX.pre !== undefined && !(info.pretask && info.pretask.done)) return preStep();
   waitStep();
 }
@@ -125,6 +133,13 @@ function timeStep() {
 // ---------- 0. invitation ----------
 function inviteStep() {
   if (info.timeslots && info.timeslots.slots.length) return timeStep();  // a time must be chosen before anything else
+  if (info.async) {
+    const a = AL[info.consent.lang] || AL.en;
+    frame(IX.invite, `<h1>${x.invite}</h1><p class="mut">${esc(x.by.replace("{o}", info.org))}</p><div class="card"><p>${esc(a.how)}</p></div>
+      <button class="p pbig" id="accept">${esc(a.accept)}</button><p class="sm mut" style="margin-top:12px">${x.decline}</p>`);
+    $("#accept").onclick = () => consentStep();
+    return;
+  }
   const when = info.scheduled_at ? new Date(info.scheduled_at + "Z").toLocaleString() : "";
   frame(IX.invite, `<h1>${x.invite}</h1><p class="mut">${esc(x.by.replace("{o}", info.org))}</p>
     <div class="card"><p><b>${esc(when ? x.time.replace("{t}", when) : x.timeTbd)}</b></p><p>${esc(x.how)}</p><p class="mut" style="margin:0">${esc(x.next)}</p></div>

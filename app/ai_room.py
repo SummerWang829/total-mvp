@@ -21,9 +21,12 @@ from .models import AiSession, ChatMessage, Interview, Reaction, RoomState, Stim
 from .moderator.compliance import ai_moderation_blocker
 from .moderator.constants import AlertLevel, ModerationMode, Phase
 from .moderator.engine import EngineStateError, ModeratorEngine
+from .moderator.clock import ActiveClock
 from .moderator.knowledge import InterviewGuide
 from .moderator.providers import ModeratorChatProvider, get_moderator_chat
 from .moderator.schemas import ModeratorTurnPayload
+from .moderator.snapshot import SnapshotError
+from .moderator import snapshot
 
 log = logging.getLogger(__name__)
 
@@ -36,6 +39,7 @@ STAFF_SENDERS = ("ai", "participant", "moderator", "whisper")
 PARTICIPANT_SENDERS = ("ai", "participant", "moderator")
 SPEAKER_OF = {"ai": "ai_moderator", "moderator": "moderator", "participant": "participant"}
 ALERT_ORDER = {AlertLevel.NONE.value: 0, AlertLevel.YELLOW.value: 1, AlertLevel.RED.value: 2}
+ASYNC_KIND = "async"  # Interview.kind of a study done alone, any time (app/studies.py)
 MSG_ENGINE_LOST = "AI 主持服务已重启，上下文丢失，已自动交给主持人。请接管访谈（AI 不会从头重来）"
 
 _ENGINES: dict[str, ModeratorEngine] = {}
@@ -114,6 +118,20 @@ def _apply_payload(db: Session, itv: Interview, sess: AiSession, engine: Moderat
     if engine.fsm.phase is Phase.ENDED:
         sess.finished = True
     _sync_stimulus(db, itv, engine)
+    if itv.kind == ASYNC_KIND:
+        _keep_or_finish_async(db, itv, sess, engine)
+
+
+def _keep_or_finish_async(db: Session, itv: Interview, sess: AiSession, engine: ModeratorEngine) -> None:
+    """A study done at the participant's own pace: save the AI after every turn so they can leave and come back (or the server can restart);
+    when the AI has said its closing words, close the session and turn the chat into a transcript."""
+    if sess.finished:
+        sess.snapshot = None
+        itv.status, itv.ended_at = "ended", utcnow()
+        db.flush()
+        finalize(db, itv)
+    else:
+        sess.snapshot = snapshot.dump(engine)
 
 
 def _sync_stimulus(db: Session, itv: Interview, engine: ModeratorEngine) -> None:
@@ -155,7 +173,7 @@ def start(db: Session, itv: Interview, guide: dict | None, actor: str) -> AiSess
     if itv.moderation != ModerationMode.AI.value:
         raise AiRoomError(409, "这场访谈不是 AI 主持")
     if itv.status != "live":
-        raise AiRoomError(409, "请先点“开始访谈”，再启动 AI 主持")
+        raise AiRoomError(409, "请先点“开始访谈”，再启动 AI 主持")  # (a study done alone is set live by app/studies.begin before this)
     if _session(db, itv.id):
         raise AiRoomError(409, "AI 主持已经启动")
     if why := ai_moderation_blocker():
@@ -165,7 +183,8 @@ def start(db: Session, itv: Interview, guide: dict | None, actor: str) -> AiSess
     except ValueError as e:
         raise AiRoomError(422, f"提纲不合格：{str(e)[:200]}") from e
     engine = ModeratorEngine(the_guide, _chat_model(), profile=screener.profile_lines(db, itv.participant_id),
-                             background_memory=True)  # facts and the summary are read while the participant waits for nothing
+                             background_memory=True, clock=ActiveClock() if itv.kind == ASYNC_KIND else None,
+                             written=itv.kind == ASYNC_KIND)  # facts and the summary are read while the participant waits for nothing
     sess = AiSession(interview_id=itv.id, org_id=itv.org_id, guide_json=the_guide.model_dump_json())
     db.add(sess)
     with _lock(itv.id):
@@ -178,6 +197,13 @@ def start(db: Session, itv: Interview, guide: dict | None, actor: str) -> AiSess
 def _engine(db: Session, itv: Interview, sess: AiSession) -> ModeratorEngine | None:
     """The live engine, or None after a server restart (then the human takes over, with a red alert)."""
     engine = _ENGINES.get(itv.id)
+    if engine is None and sess.snapshot and not sess.finished:  # a study done alone: carry on from the saved state
+        try:
+            engine = _ENGINES[itv.id] = snapshot.load(sess.snapshot, _chat_model())
+            log.info("AI moderator for interview %s restored from its saved state", itv.id)
+            return engine
+        except SnapshotError:
+            log.error("saved AI moderator for interview %s cannot be loaded", itv.id)
     if engine is None and sess.control == "ai" and not sess.finished:
         sess.control, sess.alert, sess.alert_reason = "human", AlertLevel.RED.value, MSG_ENGINE_LOST
         log.error("AI moderator engine for interview %s is gone (server restart): handed to the human", itv.id)

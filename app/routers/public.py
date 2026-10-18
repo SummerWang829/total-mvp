@@ -61,7 +61,8 @@ def join_info(token: str, db: Session = Depends(get_db)):
     consent = db.scalar(select(Consent).where(Consent.interview_id == itv.id, Consent.participant_id == j.participant.id))
     return {"org": org.name, "scheduled_at": itv.scheduled_at.isoformat() if itv.scheduled_at else None,
             "status": itv.status, "can_enter_now": _window_ok(itv), "consented": consent is not None,
-            "device_ok": seat.device_ok_at is not None, "consent": consent_for(itv.language, org.name, ai=itv.moderation == ModerationMode.AI.value),
+            "device_ok": seat.device_ok_at is not None, "async": itv.kind == "async",
+            "consent": consent_for(itv.language, org.name, ai=itv.moderation == ModerationMode.AI.value, text_only=itv.kind == "async"),
             "pretask": pretask.participant_view(db, itv.id, j.participant.id), "timeslots": scheduling.public_view(db, itv)}
 
 
@@ -120,7 +121,7 @@ def give_consent(token: str, body: ConsentBody, request: Request, db: Session = 
     if ai and ai_moderation_blocker():  # never let anyone agree to a text that cannot name who receives their words
         raise HTTPException(409, MSG_AI_INTERVIEW_NOT_READY)
     org = db.get(Org, itv.org_id)
-    c = consent_for(itv.language, org.name, ai=ai)
+    c = consent_for(itv.language, org.name, ai=ai, text_only=itv.kind == "async")
     part.country = country
     db.add(Consent(org_id=itv.org_id, interview_id=itv.id, participant_id=part.id, version=c["version"], text_sha256=c["sha256"],
                    recording=True, observers=True, cross_border=True, ai_moderation=ai, country=country, ip=client_ip(request)))
