@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from .. import quant, ratelimit, recruit
 from ..audit import audit
 from ..db import get_db
-from ..deps import STAFF, Ctx, require_roles
+from ..deps import READERS, STAFF, Ctx, require_roles
 from ..models import IngestKey, Project, QuantSurvey, RecruitSettings, utcnow
 from .projects import _can_manage, get_project
 
@@ -33,9 +33,9 @@ def survey_out(s: QuantSurvey) -> dict:
 
 # ---------- the project's page ----------
 @router.get("/projects/{pid}/quant")
-def overview(pid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+def overview(pid: str, ctx: Ctx = Depends(require_roles(*READERS)), db: Session = Depends(get_db)):
     proj = get_project(db, ctx, pid)
-    keys = db.scalars(select(IngestKey).where(IngestKey.project_id == proj.id).order_by(IngestKey.created_at)).all()
+    keys = db.scalars(select(IngestKey).where(IngestKey.project_id == proj.id).order_by(IngestKey.created_at)).all() if ctx.user.role != "viewer" else []   # a client does not see the keys
     surveys = db.scalars(select(QuantSurvey).where(QuantSurvey.project_id == proj.id).order_by(QuantSurvey.updated_at.desc())).all()
     return {"can_manage": _can_manage(db, ctx, proj.id),
             "keys": [{"id": k.id, "name": k.name, "prefix": k.prefix, "created_at": k.created_at.isoformat(), "last_used_at": k.last_used_at.isoformat() if k.last_used_at else None,

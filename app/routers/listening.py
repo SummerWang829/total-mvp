@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from ..audit import audit
 from ..db import get_db
-from ..deps import STAFF, Ctx, ensure_project, require_roles
+from ..deps import READERS, STAFF, Ctx, ensure_project, require_roles
 from ..listening import service
 from ..listening.connectors import KINDS, ConfigError, validate_config
 from ..models import ListeningSource, Mention, Project
@@ -57,7 +57,7 @@ def source_out(s: ListeningSource, mentions: int = 0) -> dict:
 
 
 @router.get("/projects/{pid}/listening")
-def overview(pid: str, days: int = Query(30, ge=1, le=365), ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+def overview(pid: str, days: int = Query(30, ge=1, le=365), ctx: Ctx = Depends(require_roles(*READERS)), db: Session = Depends(get_db)):
     _project(db, ctx, pid)
     counts = dict(db.execute(select(Mention.source_id, func.count()).where(Mention.project_id == pid).group_by(Mention.source_id)).all())
     rows = db.scalars(select(ListeningSource).where(ListeningSource.project_id == pid).order_by(ListeningSource.created_at)).all()
@@ -122,7 +122,7 @@ def run_now(sid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = D
 
 @router.get("/projects/{pid}/listening/mentions")
 def mentions(pid: str, sentiment: str = "", topic: str = "", lang: str = "", q: str = Query("", max_length=200), source_id: str = "", days: int = Query(30, ge=1, le=365),
-             limit: int = Query(30, ge=1, le=MAX_PAGE), offset: int = Query(0, ge=0), ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+             limit: int = Query(30, ge=1, le=MAX_PAGE), offset: int = Query(0, ge=0), ctx: Ctx = Depends(require_roles(*READERS)), db: Session = Depends(get_db)):
     _project(db, ctx, pid)
     since = service.utcnow() - service.timedelta(days=days)
     stamp = func.coalesce(Mention.posted_at, Mention.fetched_at)
@@ -138,7 +138,11 @@ def mentions(pid: str, sentiment: str = "", topic: str = "", lang: str = "", q: 
     rows = db.scalars(select(Mention).where(*cond).order_by(stamp.desc()).limit(500)).all()
     if topic:
         rows = [m for m in rows if topic in (m.topics or [])]
-    return {"total": len(rows), "mentions": [service.mention_out(m) for m in rows[offset:offset + limit]]}
+    shown = [service.mention_out(m) for m in rows[offset:offset + limit]]
+    if ctx.user.role == "viewer":   # a client reads what was said, not who (not even the hash)
+        for m in shown:
+            m["author"] = None
+    return {"total": len(rows), "mentions": shown}
 
 
 @router.post("/projects/{pid}/listening/takedown")

@@ -51,8 +51,8 @@ def _close(a: set[str], b: set[str]) -> bool:
     return common >= 1 and common / min(len(a), len(b)) >= MIN_OVERLAP
 
 
-def gather(db: Session, project: Project) -> list[Item]:
-    """Every item the project's sources offer."""
+def gather(db: Session, project: Project, include_notes: bool = True) -> list[Item]:
+    """Every item the project's sources offer (a client does not get the team's internal notes)."""
     out: list[Item] = []
     rows = db.execute(select(Insight, Interview).join(Interview, Interview.id == Insight.interview_id)
                       .where(Interview.project_id == project.id, Interview.purged_at.is_(None), Insight.status == "approved")).all()
@@ -71,7 +71,8 @@ def gather(db: Session, project: Project) -> list[Item]:
             total = sum(r["count"] for r in q.get("results") or []) or 1
             summary = f"{s.title}：{top['option']} {round(top['count'] / total * 100)}%（{s.respondents} 份回答）" if top else (f"{s.title}：平均 {q['mean']}（{s.respondents} 份回答）" if q.get("mean") is not None else s.title)
             out.append(Item("survey", q["text"], summary, s.id, None, s.respondents))
-    out += [Item("note", n.theme, n.text, n.id, None, 1) for n in db.scalars(select(PoolNote).where(PoolNote.project_id == project.id).order_by(PoolNote.created_at))]
+    if include_notes:
+        out += [Item("note", n.theme, n.text, n.id, None, 1) for n in db.scalars(select(PoolNote).where(PoolNote.project_id == project.id).order_by(PoolNote.created_at))]
     return out
 
 

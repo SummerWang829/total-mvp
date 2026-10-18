@@ -14,7 +14,7 @@ from ..models import Org, User, UserInvite, utcnow
 from ..security import create_access_token, hash_password, new_secret_token, token_hash, verify_password
 
 router = APIRouter(prefix="/api", tags=["auth"])
-ROLES = {"admin", "researcher", "moderator", "observer"}
+ROLES = {"admin", "researcher", "moderator", "observer", "recruiter", "viewer"}
 
 
 class Register(BaseModel):

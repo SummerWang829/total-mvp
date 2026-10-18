@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from .. import recruit
 from ..audit import audit
 from ..db import get_db
-from ..deps import STAFF, Ctx, require_roles
+from ..deps import RECRUITERS, STAFF, Ctx, require_roles
 from ..models import Participant, Project, RecruitSettings, utcnow
 from .interviews import NewInterview, create_interview
 from .projects import _own_participant, get_project, participant_out
@@ -59,7 +59,7 @@ def _overview(db: Session, proj: Project) -> dict:
 
 
 @router.post("/projects/{pid}/participants/import")
-def import_participants(pid: str, body: ImportBody, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+def import_participants(pid: str, body: ImportBody, ctx: Ctx = Depends(require_roles(*RECRUITERS)), db: Session = Depends(get_db)):
     """Add people from a spreadsheet (CSV, UTF-8). With dry_run nothing is stored: it only says what would happen."""
     proj = get_project(db, ctx, pid)
     try:
@@ -77,7 +77,7 @@ def import_participants(pid: str, body: ImportBody, ctx: Ctx = Depends(require_r
 
 
 @router.get("/projects/{pid}/recruiting")
-def recruiting(pid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+def recruiting(pid: str, ctx: Ctx = Depends(require_roles(*RECRUITERS)), db: Session = Depends(get_db)):
     proj = get_project(db, ctx, pid)
     out = _overview(db, proj)
     db.commit()
@@ -85,7 +85,7 @@ def recruiting(pid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session 
 
 
 @router.put("/projects/{pid}/recruiting/rules")
-def put_rules(pid: str, body: RulesBody, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+def put_rules(pid: str, body: RulesBody, ctx: Ctx = Depends(require_roles(*RECRUITERS)), db: Session = Depends(get_db)):
     """Save the eligibility rules (a new version) and evaluate everyone with them straight away."""
     proj = get_project(db, ctx, pid)
     try:
@@ -101,7 +101,7 @@ def put_rules(pid: str, body: RulesBody, ctx: Ctx = Depends(require_roles(*STAFF
 
 
 @router.post("/projects/{pid}/recruiting/apply")
-def apply_now(pid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+def apply_now(pid: str, ctx: Ctx = Depends(require_roles(*RECRUITERS)), db: Session = Depends(get_db)):
     """Evaluate everyone again with the current rules (after answers changed)."""
     proj = get_project(db, ctx, pid)
     s = _settings(db, proj)
@@ -111,7 +111,7 @@ def apply_now(pid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session =
 
 
 @router.put("/projects/{pid}/recruiting/quotas")
-def put_quotas(pid: str, body: QuotasBody, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+def put_quotas(pid: str, body: QuotasBody, ctx: Ctx = Depends(require_roles(*RECRUITERS)), db: Session = Depends(get_db)):
     proj = get_project(db, ctx, pid)
     try:
         quotas = recruit.validate_quotas(body.quotas)
@@ -125,7 +125,7 @@ def put_quotas(pid: str, body: QuotasBody, ctx: Ctx = Depends(require_roles(*STA
 
 
 @router.put("/participants/{part_id}/tags")
-def put_tags(part_id: str, body: TagsBody, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+def put_tags(part_id: str, body: TagsBody, ctx: Ctx = Depends(require_roles(*RECRUITERS)), db: Session = Depends(get_db)):
     p = _own_participant(db, ctx, part_id)
     p.tags = recruit.clean_tags(body.tags)
     audit(db, ctx.org_id, ctx.actor, "participant.tags", p.id, count=len(p.tags))

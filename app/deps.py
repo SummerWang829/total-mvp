@@ -13,6 +13,12 @@ from .security import decode_access_token
 
 bearer = HTTPBearer(auto_error=False)
 STAFF = ("admin", "researcher")
+# People who belong to a project as members (the project's own list decides what they may open): researchers do everything,
+# a recruiter only recruits, a viewer (the client) only reads the conclusions.
+MEMBER_ROLES = ("researcher", "recruiter", "viewer")
+READERS = ("admin", "researcher", "viewer")        # may read a project's findings, report, monitoring and survey results
+RECRUITERS = ("admin", "researcher", "recruiter")  # may work with the project's people: import, screen, tag, quotas
+ANY_PROJECT_ROLE = ("admin", "researcher", "recruiter", "viewer")
 
 
 @dataclass
@@ -59,7 +65,7 @@ def can_see_project(db: Session, ctx: Ctx, project_id: str) -> bool:
     role = ctx.user.role
     if role == "admin":
         return True
-    if role == "researcher":
+    if role in MEMBER_ROLES:
         return db.scalar(select(ProjectMember.id).where(ProjectMember.project_id == project_id, ProjectMember.user_id == ctx.user.id)) is not None
     return False
 

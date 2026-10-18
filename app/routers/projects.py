@@ -8,7 +8,7 @@ from .. import methods as methods_mod
 from ..audit import audit
 from ..config import settings
 from ..db import get_db
-from ..deps import STAFF, Ctx, can_see_project, current_ctx, ensure_project, require_roles
+from ..deps import ANY_PROJECT_ROLE, MEMBER_ROLES, RECRUITERS, STAFF, Ctx, can_see_project, current_ctx, ensure_project, require_roles
 from ..models import Interview, InterviewObserver, Participant, Project, ProjectMember, User
 from ..models import utcnow
 from ..retention import erase_participant, purge_date
@@ -96,6 +96,9 @@ def create_project(body: NewProject, ctx: Ctx = Depends(require_roles(*STAFF)), 
 @router.get("/projects")
 def list_projects(ctx: Ctx = Depends(current_ctx), db: Session = Depends(get_db)):
     q = select(Project).where(Project.org_id == ctx.org_id).order_by(Project.created_at.desc())
+    if ctx.user.role in ("recruiter", "viewer"):  # recruiters and viewers see the projects they were added to, without the staff cards
+        q = q.where(Project.id.in_(select(ProjectMember.project_id).where(ProjectMember.user_id == ctx.user.id)))
+        return [project_out(p) for p in db.scalars(q)]
     if ctx.user.role not in STAFF:  # moderators / observers only see projects they are assigned to
         mine = select(Interview.project_id).where(Interview.org_id == ctx.org_id)
         if ctx.user.role == "moderator":
@@ -111,7 +114,7 @@ def list_projects(ctx: Ctx = Depends(current_ctx), db: Session = Depends(get_db)
 
 
 @router.get("/projects/{pid}")
-def project_detail(pid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+def project_detail(pid: str, ctx: Ctx = Depends(require_roles(*ANY_PROJECT_ROLE)), db: Session = Depends(get_db)):
     return project_out(get_project(db, ctx, pid))
 
 
@@ -139,7 +142,7 @@ def reopen_project(pid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Sess
 
 
 @router.post("/projects/{pid}/participants", status_code=201)
-def add_participant(pid: str, body: NewParticipant, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+def add_participant(pid: str, body: NewParticipant, ctx: Ctx = Depends(require_roles(*RECRUITERS)), db: Session = Depends(get_db)):
     proj = get_project(db, ctx, pid)
     try:
         answers = screener.parse_text(body.screener_text)
@@ -158,7 +161,7 @@ def add_participant(pid: str, body: NewParticipant, ctx: Ctx = Depends(require_r
 
 
 @router.get("/projects/{pid}/participants")
-def list_participants(pid: str, tag: str = "", country: str = "", language: str = "", screen: str = "", ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+def list_participants(pid: str, tag: str = "", country: str = "", language: str = "", screen: str = "", ctx: Ctx = Depends(require_roles(*RECRUITERS)), db: Session = Depends(get_db)):
     """The project's people; optionally only those with a tag, a country, a language, or a screening result (qualified / disqualified / review)."""
     proj = get_project(db, ctx, pid)
     people = db.scalars(select(Participant).where(Participant.project_id == proj.id).order_by(Participant.created_at)).all()
@@ -177,7 +180,7 @@ def _own_participant(db: Session, ctx: Ctx, part_id: str) -> Participant:
 
 
 @router.get("/participants/{part_id}/screener")
-def get_screener(part_id: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+def get_screener(part_id: str, ctx: Ctx = Depends(require_roles(*RECRUITERS)), db: Session = Depends(get_db)):
     """The participant's screening answers (research team only; clients and observers never see them)."""
     p = _own_participant(db, ctx, part_id)
     items = screener.items_for(db, p.id)
@@ -185,7 +188,7 @@ def get_screener(part_id: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Se
 
 
 @router.put("/participants/{part_id}/screener")
-def put_screener(part_id: str, body: ScreenerBody, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+def put_screener(part_id: str, body: ScreenerBody, ctx: Ctx = Depends(require_roles(*RECRUITERS)), db: Session = Depends(get_db)):
     """Replace the participant's screening answers with the pasted lines ("question：answer", one per line)."""
     p = _own_participant(db, ctx, part_id)
     if p.anonymized_at:
@@ -249,7 +252,7 @@ def list_members(pid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Sessio
 
 @router.post("/projects/{pid}/members", status_code=201)
 def add_member(pid: str, body: NewMember, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
-    """Add a researcher of this company to the project (an admin or an owner of the project)."""
+    """Add a researcher, recruiter or viewer of this company to the project (an admin or an owner of the project)."""
     proj = get_project(db, ctx, pid)
     if not _can_manage(db, ctx, proj.id):
         raise HTTPException(403, "只有项目负责人或管理员能添加成员")
@@ -258,8 +261,8 @@ def add_member(pid: str, body: NewMember, ctx: Ctx = Depends(require_roles(*STAF
         raise HTTPException(404, "没有这位同事")
     if user.role == "admin":
         raise HTTPException(422, "管理员可以看到所有项目，不需要添加")
-    if user.role != "researcher":
-        raise HTTPException(422, "只有研究员可以加入项目；主持人和观察员是按场次指派的")
+    if user.role not in MEMBER_ROLES:
+        raise HTTPException(422, "只有研究员、招募员和客户（只读）可以加入项目；主持人和观察员是按场次指派的")
     if not db.scalar(select(ProjectMember.id).where(ProjectMember.project_id == proj.id, ProjectMember.user_id == user.id)):
         db.add(ProjectMember(org_id=ctx.org_id, project_id=proj.id, user_id=user.id, added_by=ctx.user.id))
         audit(db, ctx.org_id, ctx.actor, "project.member.add", proj.id, user=user.id)

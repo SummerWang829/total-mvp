@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from .. import pool
 from ..audit import audit
 from ..db import get_db
-from ..deps import STAFF, Ctx, require_roles
+from ..deps import READERS, STAFF, Ctx, require_roles
 from ..models import PoolNote
 from .projects import get_project
 
@@ -19,12 +19,18 @@ class NoteBody(BaseModel):
 
 
 @router.get("/projects/{pid}/pool")
-def get_pool(pid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+def get_pool(pid: str, ctx: Ctx = Depends(require_roles(*READERS)), db: Session = Depends(get_db)):
     proj = get_project(db, ctx, pid)
-    items = pool.gather(db, proj)
+    client = ctx.user.role == "viewer"
+    items = pool.gather(db, proj, include_notes=not client)   # a client does not see the team's internal notes, nor links into interviews it cannot open
     findings = pool.group(items)
     counts = {k: sum(1 for i in items if i.kind == k) for k in pool.KINDS}
-    return {"counts": counts, "triangulated": sum(len(f.kinds) >= 2 for f in findings), "findings": [pool.finding_out(f) for f in findings]}
+    out = [pool.finding_out(f) for f in findings]
+    if client:
+        for f in out:
+            for i in f["items"]:
+                i["interview_id"] = None
+    return {"counts": counts, "triangulated": sum(len(f.kinds) >= 2 for f in findings), "findings": out}
 
 
 @router.post("/projects/{pid}/pool/notes", status_code=201)

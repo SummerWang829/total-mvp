@@ -504,6 +504,10 @@ def quant_section(br, D):
     ok(json.loads(urllib.request.urlopen(req).read())["created"] is True, "[quant] the platform can push results with the key")
     pg.reload(); pg.wait_for_selector(".qrow2")
     ok("64%" in pg.inner_text("main") and "品牌认知问卷" in pg.inner_text("main"), "[quant] the page shows the pushed results as percentages")
+    c2, g2, e2 = new_page(br, 1280, token=D["tok"]["viewer"])
+    g2.goto(B + f"/#/p/{pid}/quant"); g2.wait_for_selector(".qrow2")
+    ok(g2.locator("#kf, #impq, [data-ds], [data-rk]").count() == 0 and "xtk_" not in g2.inner_text("main"), "[roles] a viewer sees the survey results without keys or editing")
+    audit_page(g2, "quant results (viewer)/desktop", e2); c2.close()
     audit_page(pg, "quant results/desktop", errs)
     pg.screenshot(path=os.path.join(ROOT, "qa_shots", "quant_1280.png"), full_page=True)
     pg.click("#impq"); pg.wait_for_selector("[name=csv]")
@@ -567,12 +571,13 @@ def seed():
     adm = r["token"]
     tok = {"admin": adm}
     ids = {}
-    for role, name in (("researcher", "李研究"), ("moderator", "小周"), ("observer", "客户张")):
+    for role, name in (("researcher", "李研究"), ("moderator", "小周"), ("observer", "客户张"), ("recruiter", "招募员王"), ("viewer", "客户刘")):
         u = call("/users", {"name": name, "email": f"{role}@acme.com", "password": "password123", "role": role}, adm)
         ids[role] = u["id"]
         tok[role] = call("/auth/login", {"email": f"{role}@acme.com", "password": "password123"})["token"]
     pid = call("/projects", {"name": "新加坡护肤品牌进入研究", "brief": "了解新加坡消费者如何选购海外护肤品牌", "market": "SG", "language": "en"}, adm)["id"]
-    call(f"/projects/{pid}/members", {"user_id": ids["researcher"]}, adm)  # the researcher works on this project (membership)
+    for who in ("researcher", "recruiter", "viewer"):   # these work on / read this project (membership)
+        call(f"/projects/{pid}/members", {"user_id": ids[who]}, adm)
     mk = lambda name, country="SG", lang="en": call(f"/projects/{pid}/participants", {"name": name, "country": country, "language": lang}, adm)
     people = {"en": mk("Wei Ling"), "zh": mk("陈美玲", lang="zh"), "ms": mk("Nur Aisyah", lang="ms"), "ta": mk("Kavitha", lang="ta"), "id": mk("Siti", "ID")}
     itv = {}
@@ -905,6 +910,8 @@ def run():
         "researcher": staff_routes,
         "moderator": ["#/projects", f"#/p/{pid}"] + proj + [f"#/i/{mi}", f"#/i/{mi}/insights"],
         "observer": ["#/projects", f"#/p/{pid}"] + proj + [f"#/i/{mi}", f"#/i/{mi}/insights", f"#/i/{mi}/clips"],
+        "recruiter": ["#/projects", f"#/p/{pid}", f"#/p/{pid}/people"],
+        "viewer": ["#/projects", f"#/p/{pid}", f"#/p/{pid}/pool", f"#/p/{pid}/listening"],
     }
     public_pages = {
         "join-en": f"/join.html?t={D['itv']['en']['invite_token']}", "join-zh": f"/join.html?t={D['itv']['zh']['invite_token']}",
@@ -1055,6 +1062,13 @@ def run():
         ok(see("moderator", "#/projects", "#np") == 0, "moderator must not see 'new project'")
         ok(see("observer", f"#/i/{mi}/insights", "#gen") == 0, "observer must not see 'generate insights'")
         ok(see("observer", f"#/i/{mi}", "#inv, #rot") == 0, "observer must never see the invite link")
+        ok(see("viewer", "#/projects", "#np") == 0 and see("recruiter", "#/projects", "#np") == 0, "a viewer and a recruiter must not see 'new project'")
+        ok(see("viewer", f"#/p/{pid}/pool", "#nf, .pick, #imp2") == 0 and see("viewer", f"#/p/{pid}/pool", "#rep") == 1, "[roles] a viewer reads the pool, cannot add notes, and can download the report")
+        ok(see("viewer", f"#/p/{pid}/listening", "#addsrc, [data-run], [data-tog], [data-del], [data-dm], [data-au]") == 0, "[roles] a viewer cannot change or take down monitoring content")
+        ok(see("recruiter", f"#/p/{pid}/people", "#batch, [data-inv], [data-erase]") == 0 and see("recruiter", f"#/p/{pid}/people", "#imp2") == 1, "[roles] a recruiter can import and screen but not invite or erase")
+        for role, other in (("viewer", f"#/p/{pid}/people"), ("viewer", f"#/p/{pid}/sessions"), ("recruiter", f"#/p/{pid}/pool"), ("recruiter", f"#/p/{pid}/insights")):
+            c, g, e = new_page(br, 1280, token=D["tok"][role]); g.goto(B + "/" + other); g.wait_for_selector("main"); g.wait_for_timeout(400)
+            ok(("/pool" in g.url) if role == "viewer" else ("/people" in g.url), f"[roles] a {role} opening {other.split('/')[-1]} is sent back to their own page"); c.close()
         ok(see("observer", f"#/i/{mi}/clips", "[data-sh]") == 0, "observer must not see 'share link'")
         ok(see("researcher", "#/team", "#nu") == 0 and see("researcher", "#/team", "text=添加成员") == 0, "researcher must not manage the team")
         ok(see("admin", "#/team", "#nu") == 1, "admin should manage the team")

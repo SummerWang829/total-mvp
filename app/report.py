@@ -40,8 +40,8 @@ def _quotes(db: Session, insight_id: str, code: str) -> list[str]:
     return out
 
 
-def build(db: Session, project: Project, now: datetime) -> list[tuple]:
-    """The report as blocks (see app/docx_writer.py)."""
+def build(db: Session, project: Project, now: datetime, client: bool = False) -> list[tuple]:
+    """The report as blocks (see app/docx_writer.py). For a client (viewer) the team's internal notes are left out."""
     used = methods_mod.of(project)
     its = db.scalars(select(Interview).where(Interview.project_id == project.id, Interview.purged_at.is_(None))).all()
     people = db.scalars(select(Participant).where(Participant.project_id == project.id, Participant.anonymized_at.is_(None))).all()
@@ -52,7 +52,7 @@ def build(db: Session, project: Project, now: datetime) -> list[tuple]:
     async_done = sum(1 for i in asyncs if sess.get(i.id) and sess[i.id].finished)
     mentions = db.scalars(select(Mention).where(Mention.project_id == project.id)).all()
     surveys = db.scalars(select(QuantSurvey).where(QuantSurvey.project_id == project.id).order_by(QuantSurvey.title)).all()
-    items = pool.gather(db, project)
+    items = pool.gather(db, project, include_notes=not client)
     findings = pool.group(items)
 
     blocks: list[tuple] = [("title", project.name), ("subtitle", f"研究报告 · {now.strftime('%Y-%m-%d')} · {project.market} · {', '.join(methods_mod.LABELS[m] for m in used)}")]
