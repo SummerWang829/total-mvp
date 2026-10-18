@@ -236,3 +236,18 @@ def test_staff_can_watch_a_study_session_in_the_usual_room_views(org):
     assert staff["started"] and any(m["sender"] == "participant" for m in staff["messages"])
     itv = org.c.get(f"/api/interviews/{iid}", headers=org.h()).json()
     assert itv["kind"] == "async" and itv["study_id"] == st["id"]
+
+
+def test_drafting_with_a_real_style_model_fills_the_prompt_and_accepts_its_json(org):
+    """The offline draft skips the prompt; this runs the model path with a fake model (a formatting slip once made every real draft fail)."""
+    from app import study_draft
+    from app.moderator.providers import MockModeratorChat
+    chat = MockModeratorChat(lambda messages: study_draft.mock_draft("g", "zh", 20))
+    guide = study_draft.draft_guide(chat, "了解如何选购护肤品", "zh", 20)
+    system = chat.calls[0][0]["content"]
+    assert "zh" in system and "{language}" not in system and "{minutes}" not in system and "20 minutes" in system
+    assert guide.language == "zh" and len(guide.topics) == 3
+    bad = MockModeratorChat([{"nonsense": True}])
+    with pytest.raises(study_draft.DraftError):
+        study_draft.draft_guide(bad, "目标", "zh", 20)
+    assert len(bad.calls) == study_draft.MAX_ATTEMPTS   # asked again once, then gave up

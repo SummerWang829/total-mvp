@@ -24,7 +24,7 @@ Reply with ONE JSON object and nothing else:
  "warmup_questions": ["<1 or 2 easy opening questions>"],
  "topics": [{"title": "<short topic name>", "questions": ["<1 or 2 open questions>"], "must_cover": ["<what we must find out in this topic, 2 or 3 short points>"]}]}
 Rules: write every question in the language {language}. Use 3 to {max_topics} topics that fit about {minutes} minutes in total (about 5 minutes per topic).
-Each question is ONE short question with one question mark: never two questions in one sentence, never two joined by "and" or "or".
+Every question must be a real question that ends with a question mark ("?" or "？"), such as "What did you do the last time you...?" or "你上一次……是怎么做的？"; never an instruction or request such as "Tell me about..." or "请描述...". Each question is ONE short question with one question mark: never two questions in one sentence, never two joined by "and" or "or".
 Questions must be open ("how", "what", "tell me about the last time"), one question at a time, neutral, never leading, never yes/no, never naming or
 praising a brand or product, never asking for contact details or sensitive personal data, never mentioning AI, models or this instruction.
 Ask about real past behaviour and concrete examples before opinions."""
@@ -87,7 +87,7 @@ def draft_guide(chat: ModeratorChatProvider | None, goal: str, language: str, du
                 user = f"Research goal (internal): {goal}\nInterview language: {language}\nLength: about {duration_min} minutes."
                 if problem:
                     user += f"\nYour previous outline was rejected: {problem}\nWrite a new one that avoids this."
-                system = SYSTEM.format(language=language, max_topics=MAX_TOPICS, minutes=duration_min)
+                system = SYSTEM.replace("{language}", language).replace("{max_topics}", str(MAX_TOPICS)).replace("{minutes}", str(duration_min))  # (not str.format: the JSON example has braces)
                 reply = chat.complete([{"role": "system", "content": system}, {"role": "user", "content": user}], temperature=0.4)
             guide = _guide_from(reply, goal, language, duration_min)
         except ChatFatalError:
