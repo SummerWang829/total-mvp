@@ -74,6 +74,7 @@ class Participant(Base):
     language: Mapped[str] = mapped_column(String(10), default="")
     screening: Mapped[str] = mapped_column(String(20), default="eligible")  # eligible | blocked_region (= region not open)
     anonymized_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    external_id: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)  # the id in an outside survey tool (app/quant.py)
     tags: Mapped[list] = mapped_column(JSON, default=list)  # free labels for filtering and quotas (app/recruit.py)
     screen_result: Mapped[str] = mapped_column(String(14), default="")  # "" (rules not run) | qualified | disqualified | review
     screen_reason: Mapped[str] = mapped_column(String(300), default="")
@@ -516,6 +517,49 @@ class RepoDocument(Base):
     text: Mapped[str] = mapped_column(Text)
     created_by: Mapped[str] = mapped_column(String(32))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class PoolNote(Base):
+    """A note the team adds to the insight pool (a hypothesis, something from outside the data); it joins the finding with the same theme (app/pool.py)."""
+    __tablename__ = "pool_notes"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
+    org_id: Mapped[str] = mapped_column(ForeignKey("orgs.id"), index=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
+    theme: Mapped[str] = mapped_column(String(200))
+    text: Mapped[str] = mapped_column(Text)
+    created_by: Mapped[str] = mapped_column(String(32))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class IngestKey(Base):
+    """A key that lets an outside survey platform push people and results into ONE project (only its hash is kept; shown once when made)."""
+    __tablename__ = "ingest_keys"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
+    org_id: Mapped[str] = mapped_column(ForeignKey("orgs.id"), index=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
+    name: Mapped[str] = mapped_column(String(100))
+    prefix: Mapped[str] = mapped_column(String(12))  # the first characters, to recognise the key by
+    key_hash: Mapped[str] = mapped_column(String(64), index=True)
+    created_by: Mapped[str] = mapped_column(String(32))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class QuantSurvey(Base):
+    """Aggregated results of a survey (pushed by the platform or imported from a spreadsheet): questions with option counts or a mean."""
+    __tablename__ = "quant_surveys"
+    __table_args__ = (UniqueConstraint("project_id", "external_id"),)
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
+    org_id: Mapped[str] = mapped_column(ForeignKey("orgs.id"), index=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
+    external_id: Mapped[str] = mapped_column(String(100))
+    title: Mapped[str] = mapped_column(String(200))
+    respondents: Mapped[int] = mapped_column(Integer, default=0)
+    questions: Mapped[list] = mapped_column(JSON, default=list)
+    source: Mapped[str] = mapped_column(String(8), default="api")  # api | csv
+    received_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
 class RecruitSettings(Base):

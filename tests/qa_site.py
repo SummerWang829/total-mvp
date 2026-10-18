@@ -459,7 +459,7 @@ def wizard_section(br, D):
     ok("第 1 步" in pg.inner_text("#wzstep"), "[wizard] it starts at step 1")
     pg.fill("[name=name]", "向导测试项目"); audit_page(pg, "wizard step 1/desktop", errs); pg.click("#wnext")
     pg.wait_for_selector("input[name=methods]")
-    ok("第 2 步" in pg.inner_text("#wzstep") and pg.locator("input[name=methods]").count() == 4, "[wizard] step 2 offers the four methods")
+    ok("第 2 步" in pg.inner_text("#wzstep") and pg.locator("input[name=methods]").count() == 5, "[wizard] step 2 offers the five methods")
     pg.locator("input[name=methods][value=async]").check(); pg.locator("input[name=methods][value=depth]").uncheck(); pg.locator("input[name=methods][value=async]").check()
     audit_page(pg, "wizard step 2/desktop", errs); pg.click("#wnext")
     pg.wait_for_selector("#wzstep:has-text('第 3 步')")
@@ -479,6 +479,66 @@ def wizard_section(br, D):
     ctx, pg, errs = new_page(br, 390, token=rs)
     pg.goto(B + "/#/projects"); pg.wait_for_selector("#np"); pg.click("#np"); pg.wait_for_selector("#wf")
     audit_page(pg, "wizard/phone", errs)
+    ctx.close()
+
+
+def quant_section(br, D):
+    """Quantitative results: the owner makes a key, an outside platform pushes a survey with it, the page shows bars; a spreadsheet can be imported; the key can be revoked."""
+    adm, pid = D["tok"]["admin"], D["pid"]
+    call(f"/projects/{pid}/methods", {"methods": ["depth", "group", "async", "listening", "quant"]}, adm, method="PUT")
+    ctx, pg, errs = new_page(br, 1280, token=adm)
+    pg.on("dialog", lambda d: d.accept())
+    pg.goto(B + f"/#/p/{pid}/quant"); pg.wait_for_selector("#kf")
+    ok("定量结果" in pg.inner_text("nav.side"), "[quant] the menu has the results page once the method is on")
+    audit_page(pg, "quant empty/desktop", errs)
+    pg.fill("#kf [name=name]", "问卷平台"); pg.click("#kf button.p"); pg.wait_for_selector("code.copy")
+    key = pg.inner_text("code.copy").strip()
+    ok(key.startswith("xtk_"), "[quant] a key is made and shown once")
+    pg.click("#done")
+    req = urllib.request.Request(B + "/api/ingest/surveys", data=json.dumps({"survey_id": "S1", "title": "品牌认知问卷", "respondents": 500, "questions": [
+        {"text": "你听说过 Acme 吗？", "type": "single", "results": [{"option": "听说过", "count": 320}, {"option": "没听说过", "count": 180}]}]}).encode(),
+        headers={"Authorization": "Bearer " + key, "Content-Type": "application/json"}, method="POST")
+    ok(json.loads(urllib.request.urlopen(req).read())["created"] is True, "[quant] the platform can push results with the key")
+    pg.reload(); pg.wait_for_selector(".qrow2")
+    ok("64%" in pg.inner_text("main") and "品牌认知问卷" in pg.inner_text("main"), "[quant] the page shows the pushed results as percentages")
+    audit_page(pg, "quant results/desktop", errs)
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "quant_1280.png"), full_page=True)
+    pg.click("#impq"); pg.wait_for_selector("[name=csv]")
+    pg.fill("[name=title]", "手工导入"); pg.fill("[name=csv]", "题目,选项,人数" + chr(10) + "渠道,线上,300" + chr(10) + "渠道,线下,100" + chr(10))
+    pg.click("#f button.p")
+    ok(wait_until(lambda: "手工导入" in pg.inner_text("main") and "75%" in pg.inner_text("main"), 10), "[quant] an imported spreadsheet shows up")
+    pg.click("[data-rk]")
+    ok(wait_until(lambda: "已撤销" in pg.inner_text("main"), 8), "[quant] a key can be revoked")
+    ctx.close()
+    ctx, pg, errs = new_page(br, 390, token=adm)
+    pg.goto(B + f"/#/p/{pid}/quant"); pg.wait_for_selector(".qrow2")
+    audit_page(pg, "quant/phone", errs)
+    ctx.close()
+
+
+def pool_section(br, D):
+    """The insight pool: findings from interviews, public opinion and surveys side by side; a theme in two kinds of source is marked as confirmed; a note joins its theme."""
+    rs, adm, pid = D["tok"]["researcher"], D["tok"]["admin"], D["pid"]
+    ctx, pg, errs = new_page(br, 1280, token=rs)
+    pg.on("dialog", lambda d: d.accept())
+    pg.goto(B + f"/#/p/{pid}/pool"); pg.wait_for_selector("#nf")
+    ok("洞察池" in pg.inner_text("nav.side"), "[pool] the menu has the insight pool")
+    ok(pg.locator(".card", has_text="已印证的发现").count() >= 1, "[pool] the summary counts confirmed findings")
+    audit_page(pg, "pool/desktop", errs)
+    pg.fill("#nf [name=theme]", "价格"); pg.fill("#nf [name=text]", "假设：折扣会放大价格敏感"); pg.click("#nf button.p")
+    ok(wait_until(lambda: "假设：折扣会放大价格敏感" in pg.inner_text("main"), 8), "[pool] a note is added to the pool")
+    ok(wait_until(lambda: pg.locator(".tag", has_text="已印证").count() >= 1, 8), "[pool] a theme backed by two kinds of source is marked as confirmed")
+    audit_page(pg, "pool with notes/desktop", errs)
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "pool_1280.png"), full_page=True)
+    pg.locator("#tri").check()
+    ok(wait_until(lambda: pg.locator(".tag", has_text="已印证").count() >= 1 and pg.locator("main .card h3").count() >= 2, 8), "[pool] the filter keeps only confirmed findings")
+    pg.locator("#tri").uncheck()
+    pg.locator("[data-dn]").first.click()
+    ok(wait_until(lambda: "假设：折扣会放大价格敏感" not in pg.inner_text("main"), 8), "[pool] a note can be deleted")
+    ctx.close()
+    ctx, pg, errs = new_page(br, 390, token=rs)
+    pg.goto(B + f"/#/p/{pid}/pool"); pg.wait_for_selector("#nf")
+    audit_page(pg, "pool/phone", errs)
     ctx.close()
 
 
@@ -835,7 +895,7 @@ def run():
     D = seed()
     mi, pid = D["main"]["id"], D["pid"]
     proj = [f"#/p/{pid}/rooms", f"#/p/{pid}/insights"]
-    staff_routes = [f"#/projects", f"#/p/{pid}/home", f"#/p/{pid}/people", f"#/p/{pid}/sessions", f"#/p/{pid}/analysis", f"#/p/{pid}/members", f"#/p/{pid}/studies", f"#/p/{pid}/listening", "#/repo"] + proj + [f"#/i/{mi}", f"#/i/{mi}/insights", f"#/i/{mi}/clips"]
+    staff_routes = [f"#/projects", f"#/p/{pid}/home", f"#/p/{pid}/people", f"#/p/{pid}/sessions", f"#/p/{pid}/analysis", f"#/p/{pid}/members", f"#/p/{pid}/studies", f"#/p/{pid}/listening", f"#/p/{pid}/pool", "#/repo"] + proj + [f"#/i/{mi}", f"#/i/{mi}/insights", f"#/i/{mi}/clips"]
     role_routes = {
         "demo_admin": ["#/projects", f"#/p/{D['demo_pid']}/home", "#/demo"],
         "admin": staff_routes + ["#/team", "#/audit"],
@@ -1123,6 +1183,8 @@ def run():
         listening_section(br, D)
         recruit_section(br, D)
         wizard_section(br, D)
+        quant_section(br, D)
+        pool_section(br, D)
 
         # ---------- C2. dialogs and expandable panels on the staff pages (both screen sizes) ----------
         for w, vp in ((1280, "desktop"), (390, "phone")):

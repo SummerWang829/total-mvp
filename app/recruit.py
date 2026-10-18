@@ -236,6 +236,7 @@ def evaluate(rules: list[dict], p: Participant, answers: list[tuple[str, str]]) 
 
 def apply_rules(db: Session, project_id: str, rules: list[dict], version: int) -> dict:
     """Evaluate every participant of the project and store the result with the rule version. The caller commits. Returns the counts."""
+    db.flush()  # (sessions here do not flush by themselves: people and answers added a moment ago must be seen)
     people = db.scalars(select(Participant).where(Participant.project_id == project_id, Participant.anonymized_at.is_(None))).all()
     by_person: dict[str, list[tuple[str, str]]] = {}
     for a in db.scalars(select(ScreenerAnswer).where(ScreenerAnswer.participant_id.in_([p.id for p in people]) if people else ScreenerAnswer.id == "")):

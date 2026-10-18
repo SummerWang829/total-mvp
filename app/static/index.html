@@ -22,7 +22,7 @@ function navHtml(active, p) {
   if (p) {
     h += `<div class="sec">当前项目<b>${esc(p.name)}</b></div>`;
     const M = p.methods || ["depth", "group", "async", "listening"], live = M.includes("depth") || M.includes("group");
-    if (STAFF()) h += a(`/p/${p.id}/home`, "项目总览", "home", "◉") + a(`/p/${p.id}/members`, "项目成员", "members", "◎") + (M.includes("async") ? a(`/p/${p.id}/studies`, "异步研究", "studies", "✦") : "") + (M.includes("listening") ? a(`/p/${p.id}/listening`, "舆情监测", "listening", "◔") : "");
+    if (STAFF()) h += a(`/p/${p.id}/home`, "项目总览", "home", "◉") + a(`/p/${p.id}/members`, "项目成员", "members", "◎") + a(`/p/${p.id}/pool`, "洞察池", "pool", "◈") + (M.includes("async") ? a(`/p/${p.id}/studies`, "异步研究", "studies", "✦") : "") + (M.includes("listening") ? a(`/p/${p.id}/listening`, "舆情监测", "listening", "◔") : "") + (M.includes("quant") ? a(`/p/${p.id}/quant`, "定量结果", "quant", "▤") : "");
     h += `<div class="sec">定性 · 深访</div>`;
     if (STAFF()) h += a(`/p/${p.id}/people`, "受访者招募", "people", "", true) + (live ? a(`/p/${p.id}/sessions`, "场次与邀请", "sessions", "", true) : "");
     h += (live ? a(`/p/${p.id}/rooms`, "直播间", "rooms", "", true) : "") + a(`/p/${p.id}/insights`, "洞察与片段", "insights", "", true);
@@ -98,6 +98,8 @@ async function render() {
       if (page === "analysis" && STAFF()) return await analysisView(p);
       if (page === "members" && STAFF()) return await membersView(p);
       if (page === "listening" && STAFF()) return await listeningView(p);
+      if (page === "quant" && STAFF()) return await quantView(p);
+      if (page === "pool" && STAFF()) return await poolView(p);
       if (page === "studies" && STAFF()) return seg[4] ? await studyView(p, seg[4]) : await studiesView(p);
       location.hash = `#/p/${p.id}/rooms`; return;
     }
@@ -183,8 +185,9 @@ const METHOD_INFO = {
   group: ["座谈会", "最多 10 人同场，发言公平仪表盘和副主持提示卡。"],
   async: ["异步 AI 研究", "受访者随时自己和 AI 访谈员完成一场文字访谈，一条公开链接就能招人。"],
   listening: ["舆情监测", "采集新闻、App 评论和公开网页上的声音，自动打情感和话题标签。"],
+  quant: ["定量结果", "接入外部问卷平台：推送通过甄别的人和问卷结果，和访谈放在一起看。"],
 };
-const METHOD_ORDER = ["depth", "group", "async", "listening"];
+const METHOD_ORDER = ["depth", "group", "async", "listening", "quant"];
 async function projectWizard() {
   const users = (await api("/users")).filter((u) => u.role === "researcher" && u.active && u.id !== ME.id);
   const W = { name: "", market: "SG", language: "en", brief: "", methods: ["depth"], members: [] };
@@ -226,7 +229,7 @@ async function projectWizard() {
 }
 
 function starmapHtml(p, nodes) {
-  const ic = { depth: "◉", group: "◍", async: "✦", listening: "◔" };
+  const ic = { depth: "◉", group: "◍", async: "✦", listening: "◔", quant: "▤" };
   return `<div class="starmap" role="list" aria-label="研究方法进度">${nodes.map((n) => `<a class="snode card${n.started ? "" : " idle"}" role="listitem" href="#/p/${p.id}/${n.page}" data-m="${n.key}"><div class="sm mut"><span aria-hidden="true">${ic[n.key] || "◆"}</span> ${esc(n.title)}</div>
     <div class="big">${n.big}<span class="sm mut" style="font-size:14px;font-weight:400"> ${esc(n.unit)}</span></div><div class="sm">${esc(n.sub)}</div><div class="sm mut" style="margin-top:6px">下一步：${esc(n.next)}</div></a>`).join("")}</div>`;
 }
@@ -775,6 +778,67 @@ async function listeningView(p) {
       await api(`/projects/${p.id}/listening/sources`, { method: "POST", body: { kind: fd.kind, name: fd.name, config } }); m.remove(); toast("已添加"); render();
     });
   };
+}
+
+// ---------------- 定量结果：问卷平台推送或手工导入 ----------------
+async function quantView(p) {
+  const my = renderSeq;
+  const o = await api(`/projects/${p.id}/quant`);
+  if (stale(my)) return;
+  const origin = location.origin;
+  const bars = (q, n) => q.type === "open" ? `<p class="mut sm" style="margin:4px 0 0">开放题，没有数值结果</p>` : `${q.mean !== null ? `<p class="sm" style="margin:4px 0">平均分 <b>${q.mean}</b></p>` : ""}${q.results.map((r) => { const tot = q.results.reduce((a, x) => a + x.count, 0) || 1, pct = Math.round((r.count / tot) * 100);
+    return `<div class="qrow2"><span>${esc(r.option)}</span><div class="qbar" role="img" aria-label="${esc(r.option)} ${pct}%"><i style="width:${pct}%"></i></div><span class="sm mut">${pct}% · ${r.count}</span></div>`; }).join("")}`;
+  const survey = (s) => `<div class="card"><div class="row"><h3 style="margin:0">${esc(s.title)}</h3><span class="sp"></span><span class="tag">${s.source === "api" ? "平台推送" : "手工导入"}</span><button class="s warn" data-ds="${s.id}">删除</button></div>
+    <p class="sm mut" style="margin:4px 0 8px">${s.respondents} 份有效回答 · 更新于 ${esc(new Date(s.updated_at + "Z").toLocaleString())}</p>${s.questions.map((q, i) => `<div style="margin:10px 0"><b>${i + 1}. ${esc(q.text)}</b>${bars(q, i)}</div>`).join("")}</div>`;
+  shell(`${head("定量结果", "外部问卷平台把通过甄别的人和问卷结果推送进来（或你手工导入表格），和访谈放在同一个项目里对照着看。", `<button class="p" id="impq">导入结果表格</button>`)}
+    <div class="card"><h3 style="margin-top:0">接入问卷平台</h3>
+      <p class="sm mut">给问卷平台一把密钥（只显示一次），它用 <code>Authorization: Bearer 密钥</code> 调用下面的接口：</p>
+      <pre class="sm" style="white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-all;margin:0 0 8px">POST ${origin}/api/ingest/participants   通过甄别的人（external_id、name、country、language、tags、answers）
+POST ${origin}/api/ingest/surveys        问卷的汇总结果（survey_id、title、respondents、questions）
+GET  ${origin}/api/ingest/ping           检查密钥</pre>
+      ${o.keys.length ? `<table class="tbl rc"><thead><tr><th>名称</th><th>密钥开头</th><th>最近使用</th><th></th></tr></thead><tbody>${o.keys.map((k) => `<tr><td><b>${esc(k.name)}</b>${k.revoked ? ' <span class="tag">已撤销</span>' : ""}</td><td><code>${esc(k.prefix)}…</code></td><td class="mut">${k.last_used_at ? esc(new Date(k.last_used_at + "Z").toLocaleString()) : "还没用过"}</td>
+        <td class="acts">${o.can_manage && !k.revoked ? `<button class="s warn" data-rk="${k.id}">撤销</button>` : ""}</td></tr>`).join("")}</tbody></table>` : `<p class="mut sm">还没有密钥。</p>`}
+      ${o.can_manage ? `<form id="kf" class="row" style="margin-top:8px"><label class="f" style="margin:0;flex:1"><span>密钥名称（例如“问卷平台”）</span><input name="name" required maxlength="100"></label><button class="p">创建密钥</button></form>` : `<p class="sm mut">只有项目负责人或管理员能创建、撤销密钥。</p>`}</div>
+    <h2>问卷结果</h2>${o.surveys.length ? o.surveys.map(survey).join("") : `<div class="card empty"><b>还没有问卷结果。</b><span>让问卷平台推送，或点右上角“导入结果表格”（三列：题目、选项、人数）。</span></div>`}`, { active: "quant", p });
+  const kf = $("#kf"); if (kf) kf.onsubmit = guard(async (e) => {
+    e.preventDefault(); const r = await api(`/projects/${p.id}/quant/keys`, { method: "POST", body: { name: new FormData(kf).get("name") } });
+    const m = modal(`<h2>密钥（只显示这一次）</h2><code class="copy">${esc(r.key)}</code><p class="sm mut">复制给问卷平台。丢了只能撤销再建新的。</p><div class="row" style="margin-top:12px"><button class="p" id="done">我已复制</button></div>`);
+    $("#done", m).onclick = () => { m.remove(); render(); };
+  });
+  app.querySelectorAll("[data-rk]").forEach((b) => b.onclick = guard(async () => { if (!confirm("撤销后用这把密钥的平台马上不能再推送。继续？")) return; await api(`/projects/${p.id}/quant/keys/${b.dataset.rk}`, { method: "DELETE" }); toast("已撤销"); render(); }));
+  app.querySelectorAll("[data-ds]").forEach((b) => b.onclick = guard(async () => { if (!confirm("删除这份问卷结果？")) return; await api(`/quant/surveys/${b.dataset.ds}`, { method: "DELETE" }); toast("已删除"); render(); }));
+  $("#impq").onclick = () => {
+    const m = modal(`<h2>导入问卷结果</h2><form id="f"><p class="sm mut">表格三列：题目、选项、人数（第一行是表头）。同名问卷再导入会替换旧结果。</p>
+      <label class="f"><span>问卷名称</span><input name="title" required maxlength="200"></label><label class="f"><span>有效回答人数</span><input name="respondents" type="number" min="0" value="0"></label>
+      <label class="f"><span>选择文件（.csv）</span><input type="file" id="qfile" accept=".csv,.txt,text/csv"></label>
+      <label class="f"><span>或粘贴内容</span><textarea name="csv" rows="8" required placeholder="题目,选项,人数&#10;你听说过 Acme 吗？,听说过,320"></textarea></label>
+      <div class="row"><button class="p">导入</button><button type="button" id="c">取消</button></div></form>`);
+    $("#c", m).onclick = () => m.remove();
+    $("#qfile", m).onchange = async (e) => { const f = e.target.files[0]; if (f) $("[name=csv]", m).value = await f.text(); };
+    $("#f", m).onsubmit = guard(async (e) => { e.preventDefault(); const fd = Object.fromEntries(new FormData(e.target)); fd.respondents = Number(fd.respondents || 0); await api(`/projects/${p.id}/quant/surveys/import`, { method: "POST", body: fd }); m.remove(); toast("已导入"); render(); });
+  };
+}
+
+// ---------------- 洞察池：各种方法的发现放在一起对照 ----------------
+const POOL_KIND = { interview: ["访谈", ""], sentiment: ["舆情", "live"], survey: ["问卷", "ok"], note: ["笔记", ""] };
+async function poolView(p) {
+  const my = renderSeq;
+  const o = await api(`/projects/${p.id}/pool`);
+  if (stale(my)) return;
+  const only = sessionStorage.getItem("pooltri") === "1";
+  const fs = o.findings.filter((f) => !only || f.triangulated);
+  const card = (f) => `<div class="card"><div class="row" style="align-items:flex-start"><h3 style="margin:0;flex:1">${esc(f.theme)}</h3>${f.kinds.map((k) => `<span class="tag ${POOL_KIND[k][1]}">${POOL_KIND[k][0]}</span>`).join(" ")}${f.triangulated ? ` <span class="tag ok" title="至少两种来源都说到了这件事">已印证</span>` : ""}</div>
+    <ul class="feed" style="margin:8px 0 0">${f.items.map((i) => `<li><span class="tag ${POOL_KIND[i.kind][1]}">${POOL_KIND[i.kind][0]}</span><span>${esc(i.text)}${i.interview_id ? ` <a class="sm" href="#/i/${i.interview_id}">打开访谈 →</a>` : ""}${i.kind === "note" ? ` <button class="s warn" data-dn="${i.ref}">删除</button>` : ""}</span></li>`).join("")}</ul></div>`;
+  shell(`${head("洞察池", "访谈里研究员确认过的洞察、公开渠道上的话题、问卷结果和团队自己的笔记，按主题放在一起。被两种以上来源都说到的，标为“已印证”。")}
+    <div class="grid"><div class="card"><div class="sm mut">访谈洞察</div><div class="big">${o.counts.interview}</div></div><div class="card"><div class="sm mut">舆情话题</div><div class="big">${o.counts.sentiment}</div></div>
+      <div class="card"><div class="sm mut">问卷题目</div><div class="big">${o.counts.survey}</div></div><div class="card"><div class="sm mut">已印证的发现</div><div class="big">${o.triangulated}</div></div></div>
+    <label class="chk"><input type="checkbox" id="tri"${only ? " checked" : ""}><span>只看被多种来源印证的</span></label>
+    ${fs.length ? fs.map(card).join("") : `<div class="card empty"><b>${only ? "还没有被多种来源印证的发现。" : "洞察池还是空的。"}</b><span>在“洞察与片段”里通过洞察、在“舆情监测”里运行来源、或接入问卷结果，它们会自动出现在这里。</span></div>`}
+    <div class="card"><h3 style="margin-top:0">加一条笔记</h3><form id="nf" class="row" style="align-items:flex-end;flex-wrap:wrap"><label class="f" style="margin:0;flex:1 1 160px"><span>主题（和上面同样的词会自动并在一起）</span><input name="theme" required maxlength="200"></label>
+      <label class="f" style="margin:0;flex:2 1 260px"><span>内容</span><input name="text" required maxlength="2000"></label><button class="p">添加</button></form></div>`, { active: "pool", p });
+  $("#tri").onchange = (e) => { sessionStorage.setItem("pooltri", e.target.checked ? "1" : "0"); render(); };
+  $("#nf").onsubmit = guard(async (e) => { e.preventDefault(); await api(`/projects/${p.id}/pool/notes`, { method: "POST", body: Object.fromEntries(new FormData(e.target)) }); toast("已添加"); render(); });
+  app.querySelectorAll("[data-dn]").forEach((b) => b.onclick = guard(async () => { if (!confirm("删除这条笔记？")) return; await api(`/pool/notes/${b.dataset.dn}`, { method: "DELETE" }); render(); }));
 }
 
 async function membersView(p) {  // who works on this project (admins see every project; moderators and observers are assigned per interview)

@@ -6,15 +6,16 @@ was switched off is kept, it is just not shown.
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .models import AiSession, AsyncStudy, Interview, ListeningSource, Mention, Project
+from .models import AiSession, AsyncStudy, Interview, ListeningSource, Mention, Project, QuantSurvey
 
-METHODS = ("depth", "group", "async", "listening")
-LABELS = {"depth": "深访（一对一）", "group": "座谈会", "async": "异步 AI 研究", "listening": "舆情监测"}
+METHODS = ("depth", "group", "async", "listening", "quant")
+LABELS = {"depth": "深访（一对一）", "group": "座谈会", "async": "异步 AI 研究", "listening": "舆情监测", "quant": "定量结果"}
 BLURBS = {"depth": "和受访者一对一视频访谈，可以由真人或 AI 主持，实时字幕、录制、转写、洞察。",
           "group": "最多 10 人的座谈会，发言公平仪表盘和副主持提示卡。",
           "async": "受访者随时自己和 AI 访谈员完成一场文字访谈，一条公开链接就能招人。",
-          "listening": "采集新闻、App 评论和公开网页上的声音，自动打情感和话题标签。"}
-DEFAULT = METHODS
+          "listening": "采集新闻、App 评论和公开网页上的声音，自动打情感和话题标签。",
+          "quant": "接入外部问卷平台：推送通过甄别的人和问卷结果，和访谈放在一起看。"}
+DEFAULT = ("depth", "group", "async", "listening")  # what a project made without choosing gets, and what older projects have (quant is opt-in)
 
 
 class MethodsError(ValueError):
@@ -70,4 +71,8 @@ def starmap(db: Session, project: Project) -> list[dict]:
             neg = db.scalar(select(func.count()).select_from(Mention).where(Mention.project_id == project.id, Mention.sentiment == "neg")) or 0
             nodes.append({"key": m, "title": LABELS[m], "big": total, "unit": "条内容", "sub": (f"{sources} 个来源，负面 {round(neg / total * 100)}%" if total else f"{sources} 个来源"),
                           "page": "listening", "started": bool(sources), "next": "添加第一个来源" if not sources else "运行来源，看看大家在说什么" if not total else "看话题和负面内容"})
+        elif m == "quant":
+            rows = db.scalars(select(QuantSurvey).where(QuantSurvey.project_id == project.id)).all()
+            nodes.append({"key": m, "title": LABELS[m], "big": len(rows), "unit": "份问卷结果", "sub": (f"共 {sum(r.respondents for r in rows)} 份有效回答" if rows else "还没有数据"),
+                          "page": "quant", "started": bool(rows), "next": "创建密钥，让问卷平台推送，或导入结果表格" if not rows else "把结果和访谈洞察对照着看"})
     return nodes
