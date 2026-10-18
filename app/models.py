@@ -294,6 +294,40 @@ class ShareLink(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
+class Reel(Base):
+    """A highlight reel: a titled, ordered set of a project's clips (app/reels.py)."""
+    __tablename__ = "reels"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
+    org_id: Mapped[str] = mapped_column(String(32), index=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
+    title: Mapped[str] = mapped_column(String(200))
+    note: Mapped[str] = mapped_column(Text, default="")
+    created_by: Mapped[str] = mapped_column(String(32), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class ReelItem(Base):
+    __tablename__ = "reel_items"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
+    reel_id: Mapped[str] = mapped_column(ForeignKey("reels.id"), index=True)
+    clip_id: Mapped[str] = mapped_column(ForeignKey("clips.id"), index=True)
+    position: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class ReelShare(Base):
+    __tablename__ = "reel_shares"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
+    org_id: Mapped[str] = mapped_column(String(32), index=True)
+    reel_id: Mapped[str] = mapped_column(String(32), index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    watermark: Mapped[str] = mapped_column(String(200))
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    views: Mapped[int] = mapped_column(Integer, default=0)
+    created_by: Mapped[str] = mapped_column(String(32), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class AuditLog(Base):
     __tablename__ = "audit_logs"
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)

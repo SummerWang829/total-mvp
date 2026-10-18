@@ -14,7 +14,7 @@ from .config import settings
 from .media import purge_cache
 from . import ai_room, screener
 from .models import (BackroomMessage, CaptionLine, Clip, CueCard, Evidence, Highlight, Insight, Claim, Interview, InterviewParticipant, Mention, Participant, PersuasionEvent, SlotVote, PreTask, PreTaskAnswer, Project, RepoDocument, SegmentCode,
-                     Recording, RecordingTrack, Reaction, ShareLink, StimulusMark, TimeSlot, TranscriptSegment, utcnow)
+                     Recording, RecordingTrack, Reaction, ReelItem, ShareLink, StimulusMark, TimeSlot, TranscriptSegment, utcnow)
 
 PURGED = "[已按保留期删除]"
 
@@ -54,6 +54,7 @@ def purge_interview(db: Session, itv: Interview, reason: str, actor: str = "syst
     clip_ids = [c.id for c in db.scalars(select(Clip).where(Clip.interview_id == itv.id))]
     if clip_ids:
         db.execute(update(ShareLink).where(ShareLink.clip_id.in_(clip_ids)).values(revoked_at=utcnow()))
+        db.execute(delete(ReelItem).where(ReelItem.clip_id.in_(clip_ids)))  # highlight reels simply lose these clips
         db.execute(delete(Clip).where(Clip.id.in_(clip_ids)))
     itv.purged_at = utcnow()
     audit(db, itv.org_id, actor, "interview.purge", itv.id, reason=reason)

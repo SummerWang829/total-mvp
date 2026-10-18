@@ -665,6 +665,37 @@ def gmap_section(br, D):
     ctx.close()
 
 
+def reel_section(br, D):
+    """Highlight reels on the insights page: build one from clips, reorder, share it (link shown once), revoke the link; the shared page lists the clips."""
+    rs, pid = D["tok"]["researcher"], D["pid"]
+    ctx, pg, errs = new_page(br, 1280, token=rs)
+    pg.on("dialog", lambda d: d.accept())
+    pg.goto(B + f"/#/p/{pid}/insights"); pg.wait_for_selector("#rnew")
+    ok("精华集锦" in pg.inner_text("#reels"), "[reel] the insights page lists the reels")
+    pg.click("#rnew"); pg.wait_for_selector("#rt")
+    pg.fill("#rt", "界面做的集锦")
+    pg.locator("[data-add]").first.click()
+    ok(pg.locator("[data-rm]").count() == 1, "[reel] adding a clip puts it in the chosen list")
+    audit_page(pg, "reel editor/desktop", errs)
+    pg.click("#rsave")
+    ok(wait_until(lambda: "界面做的集锦" in pg.inner_text("#reels"), 8), "[reel] saving adds the reel to the list")
+    pg.locator("[data-re]").first.click(); pg.wait_for_selector("#rshare")
+    pg.click("#rshare"); pg.wait_for_selector("#rshares input[readonly]")
+    link = pg.input_value("#rshares input[readonly]")
+    ok("/reel.html?t=" in link, "[reel] sharing shows the link once")
+    pg.reload(); pg.wait_for_selector("#rnew"); pg.locator("[data-re]").first.click(); pg.wait_for_selector("[data-rv]")
+    pg.locator("[data-rv]").first.click()
+    ok(wait_until(lambda: pg.locator("#rshares .tag", has_text="已撤销").count() >= 1, 8), "[reel] a link can be revoked")
+    ctx.close()
+    ctx, pg, errs = new_page(br, 390)
+    pg.goto(B + D["reel_share"]["path"]); pg.wait_for_selector("video.rv")
+    ok("精华集锦" in pg.inner_text("#box") and pg.locator("video.rv").count() == 1, "[reel] the shared page shows the title and the clips")
+    errs[:] = [e for e in errs if "Failed to load resource" not in e]       # the seeded recording has no media file (same as the single-clip share page)
+    audit_page(pg, "reel shared/phone", errs)
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "reel_390.png"), full_page=True)
+    ctx.close()
+
+
 def main():
     tmp = tempfile.mkdtemp()
     env = {**os.environ, "DATABASE_URL": f"sqlite:///{tmp}/qa.db", "MEDIA_DIR": f"{tmp}/media", "LIVEKIT_URL": "", "ASR_PROVIDER": "mock", "LLM_PROVIDER": "mock", "ASR_API_KEY": "", "LLM_API_KEY": "",
@@ -717,6 +748,8 @@ def seed():
     call(f"/insights/{gen['created'][0]['id']}/approve", {}, adm)
     clip = call(f"/interviews/{main_i['id']}/clips", {"evidence_id": gen["created"][0]["evidence"][0]["id"]}, adm)
     share = call(f"/clips/{clip['id']}/share", {}, adm)
+    reel = call(f"/projects/{pid}/reels", {"title": "精华集锦", "note": "给客户看的三个片段", "clip_ids": [clip["id"]]}, adm)
+    reel_share = call(f"/reels/{reel['id']}/share", {}, adm)
     # a second organisation: the demo company (every account @demo.test) is the only one allowed to clear its data
     dadm = call("/auth/register", {"org_name": "演示公司", "name": "管理员", "email": "admin@demo.test", "password": "demo12345"})["token"]
     dpid = call("/projects", {"name": "演示项目", "market": "SG", "language": "en"}, dadm)["id"]
@@ -727,7 +760,7 @@ def seed():
     call(f"/projects/{pid}/codes/suggest", {}, adm)  # one accepted code below, the rest stay suggestions
     inv = call("/users/invites", {"email": "newbie@acme.com", "role": "researcher"}, adm)
     rst = call(f"/users/{ids['moderator']}/reset-link", {}, adm)
-    return dict(inv=inv["invite_path"], rst=rst["invite_path"], tok=tok, pid=pid, itv=itv, main=main_i, share=share, ids=ids, people=people, demo_pid=dpid)
+    return dict(inv=inv["invite_path"], rst=rst["invite_path"], tok=tok, pid=pid, itv=itv, main=main_i, share=share, reel_share=reel_share, ids=ids, people=people, demo_pid=dpid)
 
 
 def concept_room_section(br, D):
@@ -1033,6 +1066,7 @@ def run():
         "join-en": f"/join.html?t={D['itv']['en']['invite_token']}", "join-zh": f"/join.html?t={D['itv']['zh']['invite_token']}",
         "join-ms": f"/join.html?t={D['itv']['ms']['invite_token']}", "join-ta": f"/join.html?t={D['itv']['ta']['invite_token']}",
         "invite-join": D["inv"], "invite-reset": D["rst"], "invite-invalid": "/invite.html?t=nope", "join-invalid": "/join.html?t=nope", "share": D["share"]["path"], "share-invalid": "/share.html?t=nope",
+        "reel": D["reel_share"]["path"], "reel-invalid": "/reel.html?t=nope",
     }
     with sync_playwright() as p:
         br = p.chromium.launch()
@@ -1322,6 +1356,7 @@ def run():
         segcode_section(br, D)
         vote_section(br, D)
         gmap_section(br, D)
+        reel_section(br, D)
 
         # ---------- C2. dialogs and expandable panels on the staff pages (both screen sizes) ----------
         for w, vp in ((1280, "desktop"), (390, "phone")):

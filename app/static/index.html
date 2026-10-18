@@ -560,13 +560,66 @@ async function insightsListView(p) {
     ${its.length ? `<div class="card scroll" style="padding:6px 10px"><table class="tbl rc"><thead><tr><th>受访者</th><th>场次</th><th>状态</th><th class="num">洞察</th><th class="num">已通过</th><th class="num">片段</th><th></th></tr></thead><tbody>
       ${its.map((i, n) => { const [t, c] = STATUS[i.status] || [i.status, ""]; const k = counts[n]; return `<tr><td><b>${esc(i.participant.name)}</b></td><td>${esc(i.title)}</td><td><span class="tag ${c}">${t}</span></td>
         <td class="num">${k.ins}${k.review ? ` <span class="tag bad">${k.review} 条需复核</span>` : ""}</td><td class="num">${k.ok}</td><td class="num">${k.clips}</td><td class="acts"><a class="btn s" href="#/i/${i.id}">查看详情</a></td></tr>`; }).join("")}</tbody></table></div>`
-      : `<div class="card empty"><b>还没有场次。</b><span>访谈结束并转写后，每场的洞察和片段会列在这里。</span></div>`}`, { active: "insights", p });
+      : `<div class="card empty"><b>还没有场次。</b><span>访谈结束并转写后，每场的洞察和片段会列在这里。</span></div>`}
+    ${!STAFF() ? "" : `<div class="group"><h2>集锦</h2></div><div id="reels"></div>`}`, { active: "insights", p });
+  if ($("#reels")) reelsSection(p, my);
   const dl = (fmt) => guard(async () => {  // a download needs the login header, so fetch it and hand the browser a file
     const r = await fetch(`/api/projects/${p.id}/insights/export?format=${fmt}`, { headers: { Authorization: "Bearer " + store.get("tt_token") } });
     if (!r.ok) throw new Error("导出失败，请稍后再试");
     const a = document.createElement("a"); a.href = URL.createObjectURL(await r.blob()); a.download = `${p.name}-洞察.${fmt}`; document.body.appendChild(a); a.click(); a.remove();
   });
   if ($("#xw")) { $("#xw").onclick = dl("docx"); $("#xc").onclick = dl("csv"); }
+}
+
+// ---------------- 集锦：把多个片段按顺序编成一条，一个链接分享 ----------------
+async function reelsSection(p, my) {
+  const list = await api(`/projects/${p.id}/reels`);
+  if (stale(my) || !$("#reels")) return;
+  $("#reels").innerHTML = `<div class="card"><div class="row"><span class="mut sm">把几个片段按顺序编成一条，用一个链接分享；每段都带水印、限时、不能下载。</span><span class="sp"></span><button class="p" id="rnew">新建集锦</button></div>
+    ${list.length ? `<table class="tbl rc" style="margin-top:8px"><thead><tr><th>名称</th><th class="num">片段</th><th></th></tr></thead><tbody>${list.map((r) => `<tr><td data-l="名称"><b>${esc(r.title)}</b></td><td class="num" data-l="片段">${r.clips}</td><td class="acts"><button class="s" data-re="${r.id}">编辑与分享</button></td></tr>`).join("")}</tbody></table>`
+      : `<p class="mut" style="margin:10px 0 0">还没有集锦。先在场次详情里把洞察剪成片段，再回来编排。</p>`}</div>`;
+  $("#rnew").onclick = () => reelEditor(p, null, my);
+  app.querySelectorAll("[data-re]").forEach((b) => b.onclick = guard(async () => reelEditor(p, await api(`/reels/${b.dataset.re}`), my)));
+}
+async function reelEditor(p, reel, my) {
+  const clips = await api(`/projects/${p.id}/clips`);
+  let order = reel ? reel.items.map((x) => x.id) : [];
+  const byId = Object.fromEntries(clips.map((c) => [c.id, c]));
+  const m = modal(`<h2>${reel ? "编辑集锦" : "新建集锦"}</h2>
+    <label>名称<input id="rt" maxlength="200" value="${esc(reel ? reel.title : "")}"></label>
+    <label>说明（给看的人，可不填）<textarea id="rn" maxlength="1000" rows="2">${esc(reel ? reel.note : "")}</textarea></label>
+    <h3 style="margin:10px 0 4px">已选片段（按播放顺序）</h3><div id="rsel"></div>
+    <h3 style="margin:10px 0 4px">可选片段</h3><div id="rpool"></div>
+    <div class="row" style="margin-top:10px"><button class="p" id="rsave">保存</button><button type="button" id="rc">关闭</button><span class="sp"></span>${reel ? `<button class="s" id="rshare">生成分享链接</button> <button class="s warn" id="rdel">删除集锦</button>` : ""}</div>
+    <div id="rshares">${reel ? sharesHtml(reel) : ""}</div>`);
+  const draw = () => {
+    $("#rsel", m).innerHTML = order.length ? order.map((id, n) => `<div class="hit row"><span><b>${n + 1}.</b> ${esc(byId[id].title)} <span class="mut sm">${esc(byId[id].who)}</span></span><span class="sp"></span>
+        <button class="s" data-up="${n}" aria-label="上移">上移</button><button class="s" data-dn="${n}" aria-label="下移">下移</button><button class="s warn" data-rm="${n}" aria-label="移除">移除</button></div>`).join("") : `<p class="mut sm">还没有选。</p>`;
+    const rest = clips.filter((c) => !order.includes(c.id));
+    $("#rpool", m).innerHTML = rest.length ? rest.map((c) => `<div class="hit row"><span>${esc(c.title)} <span class="mut sm">${esc(c.who)}</span></span><span class="sp"></span><button class="s" data-add="${c.id}">加入</button></div>`).join("") : `<p class="mut sm">没有更多片段了。</p>`;
+    m.querySelectorAll("[data-up]").forEach((b) => b.onclick = () => { const n = +b.dataset.up; if (n > 0) { [order[n - 1], order[n]] = [order[n], order[n - 1]]; draw(); } });
+    m.querySelectorAll("[data-dn]").forEach((b) => b.onclick = () => { const n = +b.dataset.dn; if (n < order.length - 1) { [order[n + 1], order[n]] = [order[n], order[n + 1]]; draw(); } });
+    m.querySelectorAll("[data-rm]").forEach((b) => b.onclick = () => { order.splice(+b.dataset.rm, 1); draw(); });
+    m.querySelectorAll("[data-add]").forEach((b) => b.onclick = () => { order.push(b.dataset.add); draw(); });
+  };
+  draw();
+  $("#rc", m).onclick = () => m.remove();
+  $("#rsave", m).onclick = guard(async () => {
+    const body = { title: $("#rt", m).value.trim(), note: $("#rn", m).value.trim(), clip_ids: order };
+    if (reel) await api(`/reels/${reel.id}`, { method: "PUT", body }); else await api(`/projects/${p.id}/reels`, { method: "POST", body });
+    m.remove(); toast("已保存"); reelsSection(p, my);
+  });
+  if (reel) {
+    $("#rdel", m).onclick = guard(async () => { if (!confirm("删除这个集锦？已发出的链接会立刻失效，片段本身不受影响。")) return; await api(`/reels/${reel.id}`, { method: "DELETE" }); m.remove(); toast("已删除"); reelsSection(p, my); });
+    $("#rshare", m).onclick = guard(async () => {
+      const s = await api(`/reels/${reel.id}/share`, { method: "POST", body: { expires_hours: 72 } });
+      $("#rshares", m).insertAdjacentHTML("afterbegin", `<div class="card" style="margin-top:8px"><b>新链接（只显示这一次）</b><input readonly value="${esc(location.origin + s.path)}" aria-label="分享链接" onclick="this.select()"><p class="sm mut" style="margin:4px 0 0">72 小时后失效，水印：${esc(s.watermark)}</p></div>`);
+    });
+    m.querySelectorAll("[data-rv]").forEach((b) => b.onclick = guard(async () => { await api(`/reel-shares/${b.dataset.rv}`, { method: "DELETE" }); b.replaceWith(Object.assign(document.createElement("span"), { className: "tag", textContent: "已撤销" })); }));
+  }
+}
+function sharesHtml(reel) {
+  return reel.shares.length ? `<h3 style="margin:10px 0 4px">已发出的链接</h3>${reel.shares.map((s) => `<div class="hit row"><span class="sm">到 ${esc(new Date(s.expires_at + "Z").toLocaleString())} · 看过 ${s.views} 次</span><span class="sp"></span>${s.revoked ? `<span class="tag">已撤销</span>` : `<button class="s warn" data-rv="${s.id}">撤销</button>`}</div>`).join("")}` : "";
 }
 
 // ---------------- 编码与分析 ----------------

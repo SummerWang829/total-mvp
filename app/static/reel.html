@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>访谈集锦 · 星桐</title><link rel="stylesheet" href="/app.css"></head>
+<body class="participant"><div class="pbar" id="logobar"></div><div class="pwrap" style="max-width:760px" id="box"><p class="mut">加载中…</p></div>
+<script src="/app.js"></script>
+<script src="/logo.js"></script>
+<script>$("#logobar").innerHTML = LOGO_SVG; brandPlay();</script>
+<script>
+const t = new URLSearchParams(location.search).get("t") || "";
+(async () => {
+  const box = $("#box");
+  let v;
+  try { v = await api(`/public/reel/${encodeURIComponent(t)}`, { auth: false }); }
+  catch { box.innerHTML = `<h1>链接无效或已过期</h1><p class="mut">请联系分享给你的人。</p>`; return; }
+  const wm = Array.from({ length: 18 }, () => `<span>${esc(v.watermark)}</span>`).join("");
+  const item = (it, n) => `<section class="card" style="margin:14px 0"><h2 style="margin:0 0 6px">${n + 1}. ${esc(it.title)}</h2>${it.theme ? `<p class="mut" style="margin:0">${esc(it.theme)}</p>` : ""}
+    ${it.playback ? `<div class="tile" style="margin:10px 0"><video class="rv" data-n="${n}" controls controlsList="nodownload noremoteplayback" disablepictureinpicture playsinline preload="metadata" src="${esc(it.playback.url)}#t=${it.playback.start_ms / 1000},${it.playback.end_ms / 1000}"></video><div class="wm" aria-hidden="true">${wm}</div></div>`
+      : `<div class="card empty">视频还没有准备好</div>`}
+    ${it.quote ? `<div class="quote">“${esc(it.quote)}”</div>` : ""}</section>`;
+  box.innerHTML = `<h1>${esc(v.title)}</h1>${v.note ? `<p>${esc(v.note)}</p>` : ""}${v.items.map(item).join("")}
+    <p class="sm mut">本链接到 ${esc(new Date(v.expires_at + "Z").toLocaleString())} 失效。请勿转发。</p>`;
+  const vids = Array.from(document.querySelectorAll("video.rv"));
+  vids.forEach((vid, i) => {
+    vid.addEventListener("contextmenu", (e) => e.preventDefault());
+    vid.addEventListener("error", () => { vid.closest(".tile").insertAdjacentHTML("beforeend", `<div class="tnote">视频暂时无法播放</div>`); });
+    vid.addEventListener("timeupdate", () => {            // the cut ends at its end time: move on to the next clip
+      const end = parseFloat((vid.src.split("#t=")[1] || "").split(",")[1]);
+      if (end && vid.currentTime >= end - 0.15 && !vid.paused) { vid.pause(); const nx = vids[i + 1]; if (nx) { nx.scrollIntoView({ block: "center", behavior: "smooth" }); nx.play().catch(() => {}); } }
+    });
+  });
+})();
+</script></body></html>
