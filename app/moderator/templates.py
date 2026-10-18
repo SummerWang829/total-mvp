@@ -17,6 +17,10 @@ class LanguageTemplates(BaseModel):
 
     intro: str
     ai_answer: str          # prefix when the participant asks whether they talk to a person
+    model_answer: str       # prefix when they ask what model / company the AI is: nothing is revealed, nothing is denied
+    contact_reminder: str   # prefix when a message held a phone number, e-mail or account name (it has been hidden)
+    conduct_reminder: str   # prefix when a message held abusive or hateful words (they have been hidden)
+    conduct_end: str        # the closing statement after repeated abuse: no question
     stop: str
     crisis: str
     wrapup: str
@@ -34,6 +38,10 @@ TEMPLATES: dict[str, LanguageTemplates] = {
         intro=("您好，我是本次访谈的 AI 主持人，不是真人。今天想听听您在{topic}方面的真实经历和想法，没有对错之分。"
                "访谈会录音录像并转成文字，只用于研究。您可以随时要求停止。我们现在可以开始吗？"),
         ai_answer="我是 AI 主持人，不是真人，研究团队的同事能看到我们的对话。",
+        model_answer="至于我背后用的是什么技术，我这边不方便透露。",
+        contact_reminder="为了保护您的隐私，请不要在这里留下联系方式，我已经帮您隐藏了。需要联系的话，研究团队会另外安排。",
+        conduct_reminder="我们还是用互相尊重的方式交流吧，刚才那些用词我已经隐藏了。",
+        conduct_end="因为对话里多次出现不合适的用语，我们先在这里结束本次访谈。谢谢您的时间。",
         stop="好的，我们就到这里。非常感谢您抽时间参与，祝您一切顺利。",
         crisis=("听到这些我很担心您，我们先暂停访谈。如果您现在有危险，请立即拨打 995。"
                 "您也可以随时拨打新加坡援人协会 24 小时热线 1767。我已经通知研究团队的同事。"),
@@ -53,6 +61,10 @@ TEMPLATES: dict[str, LanguageTemplates] = {
                "and views on {topic}; there are no right or wrong answers. The session is recorded and transcribed for research only. "
                "You can ask to stop at any time. Shall we begin?"),
         ai_answer="I'm an AI interviewer, not a real person, and our research team can see this conversation.",
+        model_answer="I'm not able to share what technology I run on.",
+        contact_reminder="To protect your privacy, please do not leave contact details here; I have hidden them. If we need to reach you, our research team will arrange it separately.",
+        conduct_reminder="Let's keep our conversation respectful; I have hidden the words from your last message.",
+        conduct_end="Because inappropriate language came up several times, we will end the interview here. Thank you for your time.",
         stop="Of course, we'll stop here. Thank you very much for your time, and all the best.",
         crisis=("I'm concerned to hear this, so let's pause the interview. If you are in danger right now, please call 995. "
                 "You can also call the Samaritans of Singapore any time on 1767. I have let our research team know."),

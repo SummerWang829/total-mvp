@@ -16,7 +16,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from .. import concept, groups, marks
+from .. import concept, content_rules, groups, marks
 from ..asr_live import token_out
 from ..audit import audit
 from ..db import SessionLocal, get_db
@@ -172,7 +172,8 @@ class CaptionIn(BaseModel):
 
 
 def _store_caption(db: Session, itv: Interview, speaker: str, body: CaptionIn) -> None:
-    text = body.text.strip()
+    checked = content_rules.check(body.text, itv.language)  # contact details and abusive words never reach the record or the team's screen
+    text = checked.text.strip()
     if not text:
         return
     if not body.final:
@@ -184,7 +185,8 @@ def _store_caption(db: Session, itv: Interview, speaker: str, body: CaptionIn) -
             seq = (db.scalar(select(func.max(CaptionLine.seq)).where(CaptionLine.interview_id == itv.id)) or 0) + 1
             if seq > MAX_LINES_PER_INTERVIEW:
                 raise HTTPException(429, "字幕条数已达上限")
-            line = CaptionLine(org_id=itv.org_id, interview_id=itv.id, seq=seq, speaker=speaker, text=text, at_ms=at_ms(itv), dur_ms=body.dur_ms)
+            line = CaptionLine(org_id=itv.org_id, interview_id=itv.id, seq=seq, speaker=speaker, text=text, at_ms=at_ms(itv), dur_ms=body.dur_ms,
+                               flags=",".join(sorted(checked.flags)))
             db.add(line)
             try:
                 db.commit()

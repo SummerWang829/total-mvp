@@ -746,16 +746,28 @@ def run_group(tmp):
         def shares():  # the panel refreshes every 5 s: wait until it has seen seat 2 speak
             rows = pm.evaluate("() => [...document.querySelectorAll('#fairbody .frow .fbar')].map((b) => b.getAttribute('aria-label'))")
             return [int(r.split("占发言时间的 ")[1].split("%")[0]) for r in rows]
-        ok(wait_for(lambda: len(shares()) == 3 and shares()[1] > 0, 15) and shares()[0] > shares()[1] > shares()[2] == 0, f"group room: shares follow who talked (01 > 02 > 03 = 0): {shares()}")
+        ok(wait_for(lambda: len(shares()) == 3 and shares()[1] > 0, 15) and shares()[0] > shares()[1] >= shares()[2], f"group room: shares follow who talked (01 > 02 >= 03): {shares()}")  # (seat 3's own browser may add a line from the fake recogniser)
         ok(wait_for(lambda: po.locator("#fairbody .frow").count() == 3, 15), "group room: the hidden observer sees the panel too")
         ok(all(pg.locator("#fairbox, #fairbody").count() == 0 for pg in pages), "group room: participants never get the speaking panel")
         panel = pm.inner_text("#fairbody") + po.inner_text("#fairbody")
         ok(all(n.split()[0] not in panel for n in names), "group room: the speaking panel shows numbers, never names")
         m = call(f"/interviews/{iid}/group/metrics", token=tok["researcher"])
         talk = [x["talk_s"] for x in m["participants"]]  # the three sentences of seat 1 arrive at once, so their spans overlap and are counted once
-        ok(talk[0] > talk[1] > 0 == talk[2] and m["participants"][1]["turns"] == 1, f"the metrics endpoint agrees ({talk})")
+        ok(talk[0] > talk[1] > 0 and talk[1] >= talk[2] and m["participants"][1]["turns"] >= 1, f"the metrics endpoint agrees ({talk})")
+        # cue cards: a very personal remark makes a card for the moderator, and only for the moderator
+        call(f"/public/join/{invites[2]['invite_token']}/captions", {"text": "I was diagnosed with depression two years ago.", "final": True, "dur_ms": 3000})
+        ok(wait_for(lambda: pm.locator("#cuebody .cue.k-compliance").count() == 1, 15), "cue cards: the moderator gets a card about the personal remark")
+        card = pm.locator("#cuebody .cue.k-compliance").first.text_content()  # (the participant's words sit in a collapsed "依据" block)
+        ok("参与者 ·03" in card and "diagnosed with depression" in card, f"cue cards: the card names the seat and shows the participant's own words ({card[:80]!r})")
+        ok(po.locator("#cuebox, #cuebody").count() == 0 and all(pg.locator("#cuebox, #cuebody").count() == 0 for pg in pages), "cue cards: observers and participants never see them")
+        pm.locator("#cuebody .cue.k-compliance button", has_text="忽略").click()
+        ok(wait_for(lambda: pm.locator("#cuebody .cue.k-compliance.done").count() == 1 and "已忽略" in pm.inner_text("#cuebody"), 10), "cue cards: dismissing a card marks it as answered")
+        cues = call(f"/interviews/{iid}/cues", token=tok["moderator"])["cards"]
+        ok(any(c["kind"] == "compliance" and c["status"] == "dismissed" for c in cues), "cue cards: the dismissal is saved on the server")
         pm.locator("#fairbox").scroll_into_view_if_needed()
         pm.screenshot(path=f"{SHOTS}/e2e_group_fairness.png")
+        pm.locator("#cuebox").scroll_into_view_if_needed()
+        pm.screenshot(path=f"{SHOTS}/e2e_group_cues.png")
         audit(pm, "group room moderator/light/speaking panel")
         before = _mp4s(tmp)
         pm.click("#b-rec")

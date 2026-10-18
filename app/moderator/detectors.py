@@ -29,6 +29,31 @@ _ASKS_AI = [
 ]
 
 
+# Questions about WHAT the AI is made of or who made it, and attempts to read its instructions. The answer is a fixed sentence, never the model's.
+_ASKS_MODEL = [
+    r"\b(?:what|which)\s+(?:model|llm|ai|language model|technology|tech|engine|software)\s+(?:are|is|do|does|did)\b", r"\bwhat\s+are\s+you\s+(?:built|based|running|powered|trained)\b",
+    r"\b(?:which|what)\s+(?:company|firm|vendor|lab)\b.{0,30}\b(?:you|your|made|built|behind|owns?)\b", r"\bwho\s+(?:made|built|created|trained|developed|owns|programmed)\s+you\b",
+    r"\bare\s+you\s+(?:chat\s*gpt|gpt[\s-]?\d*|openai|claude|anthropic|gemini|bard|deepseek|llama|mistral|qwen|copilot|alexa|siri|kimi|ernie|doubao|hunyuan)\b",
+    r"\b(?:powered|built|based|running)\s+(?:on|by|with)\b.{0,25}\b(?:gpt|llm|model|openai|claude|gemini|deepseek|llama)\b",
+    r"\b(?:your|the system)\s+(?:system\s+)?(?:prompt|instructions|rules|guidelines)\b", r"\bignore\s+(?:all\s+|any\s+)?(?:your\s+|the\s+)?(?:previous|prior|above|earlier)\s+(?:instructions|prompts?|rules)\b",
+    r"\b(?:reveal|show|print|repeat|tell me)\s+(?:me\s+)?(?:your|the system)\s+(?:system\s+)?(?:prompt|instructions)\b", r"\bjailbreak\b", r"\bpretend\s+(?:to be|you are)\b",
+    r"[你您]\s*(?:是|用的是|基于|背后是|底层是)\s*(?:什么|哪个|哪家|啥|哪一个)\s*(?:大?语言)?(?:模型|大模型|AI|ai|公司|技术|引擎|产品)",
+    r"[你您]\s*(?:是)?\s*基于\s*(?:什么|哪个|哪家|哪一个)", r"[你您]\s*(?:用|使用|采用|跑)\s*(?:的)?\s*(?:是)?\s*(?:什么|哪个|哪家|哪一个)\s*(?:模型|大模型|技术|AI|ai|引擎)",
+    r"(?:哪家|哪个|什么)\s*公司\s*(?:的|做的|开发的|出品|研发的|训练的)", r"谁\s*(?:开发|做|造|创造|训练|研发|设计)\s*了?\s*[你您]", r"[你您]\s*(?:是|背后是)\s*谁\s*(?:开发|做|造|训练|研发)的",
+    r"[你您]\s*(?:是|是不是|用的是)\s*(?:chat\s*gpt|gpt|openai|claude|gemini|deepseek|豆包|kimi|通义|千问|文心|混元|智谱|讯飞|星火|元宝|copilot)", r"(?:大)?语言模型", r"底层\s*(?:模型|技术)",
+    r"(?:你的|你们的|你)\s*(?:系统)?\s*(?:提示词|指令|设定|规则|prompt)", r"忽略\s*(?:你)?\s*(?:之前|以上|上面|先前|前面)\s*(?:的)?\s*(?:所有)?\s*(?:指令|提示|规则|设定)",
+    r"(?:把|将)\s*(?:你的)?\s*(?:系统)?\s*(?:提示词|指令|设定)\s*(?:发|告诉|给|输出|说)", r"假装\s*(?:你)?\s*是", r"越狱",
+]
+
+
+def detect_asks_model(text: str) -> bool:
+    """The participant asks what model, company or technology the AI is, who made it, or tries to read or override its instructions.
+
+    Answered with a fixed sentence (templates.model_answer): the AI is honest that it is an AI (red line H3) and says nothing else about itself.
+    """
+    return _matches(_ASKS_MODEL, text)
+
+
 _MENTIONS_AI = [r"\bAI\b", r"\bbot\b", r"robot", r"machine", r"artificial", r"\breal (?:person|human)\b", r"\bhuman\b", r"\bperson\b",
                 r"人工智能", r"机器", r"真人", r"AI", r"真的人", r"活人"]
 

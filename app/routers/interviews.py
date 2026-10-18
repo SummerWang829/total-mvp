@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from .. import ai_room, concept, export, groups, pretask, scheduling
+from .. import ai_room, concept, content_rules, export, groups, pretask, scheduling
 from ..audit import audit
 from ..config import settings
 from ..db import get_db
@@ -573,6 +573,9 @@ def _ingest(db: Session, itv: Interview, segs: list[dict]) -> None:
             raise HTTPException(422, f"片段 #{s['idx']} 的发言人无效")
         if s["end_ms"] < s["start_ms"]:
             raise HTTPException(422, f"片段 #{s['idx']} 结束时间早于开始时间")
+        for key in ("text_orig", "text_zh"):  # contact details and abusive words never stay in a transcript, whoever or whatever produced it
+            if s.get(key):
+                s[key] = content_rules.check(s[key], itv.language).text
         db.add(TranscriptSegment(org_id=itv.org_id, interview_id=itv.id, **s))
 
 

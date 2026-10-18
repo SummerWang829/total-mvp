@@ -16,7 +16,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from .audit import audit
-from . import screener
+from . import content_rules, screener
 from .models import AiSession, ChatMessage, Interview, RoomState, Stimulus, TranscriptSegment, utcnow
 from .moderator.compliance import ai_moderation_blocker
 from .moderator.constants import AlertLevel, ModerationMode, Phase
@@ -198,17 +198,42 @@ def participant_says(db: Session, itv: Interview, text: str) -> None:
         raise AiRoomError(409, "访谈不在进行中")
     if sess.finished:
         raise AiRoomError(409, "访谈已经结束，不能再发送")
+    checked = content_rules.check(text, itv.language)  # contact details and abusive words are hidden before anything is stored or sent to the model
+    text = checked.text
     with _lock(itv.id):
         engine = _engine(db, itv, sess)
         _add_message(db, itv, "participant", text)
+        if checked.conduct:
+            sess.strikes += 1
+        _tell_the_team(db, itv, sess, checked)
         if engine is None:
             return
         try:
-            payload = engine.handle_participant(text)
+            if checked.conduct or content_rules.constants.CONTACT in checked.flags:
+                kind = "conduct" if checked.conduct else "contact"
+                ending = checked.conduct and sess.strikes >= content_rules.STRIKES_BEFORE_ENDING
+                payload = engine.moderation_reply(text, kind, ending)  # a fixed reminder, never the model's words
+            else:
+                payload = engine.handle_participant(text)
         except EngineStateError:
             sess.finished = True
             return
         _apply_payload(db, itv, sess, engine, payload)
+
+
+def _tell_the_team(db: Session, itv: Interview, sess: AiSession, checked: content_rules.Checked) -> None:
+    """Raise an alert for the team when the rule library hid something (red for hate and threats, yellow otherwise), without the words themselves."""
+    if checked.clean:
+        return
+    if checked.severe:
+        level, reason = AlertLevel.RED, "受访者说了歧视或威胁性的话（已被遮住，记录里没有原词），建议立即查看，必要时接管或结束"
+    elif checked.conduct:
+        level, reason = AlertLevel.YELLOW, f"受访者说了不文明的用语（已被遮住），这是第 {sess.strikes} 次；到 {content_rules.STRIKES_BEFORE_ENDING} 次 AI 会礼貌地结束访谈"
+    else:
+        level, reason = AlertLevel.YELLOW, "受访者想留下联系方式（已被遮住，没有发给 AI 模型）"
+    if ALERT_ORDER[level.value] >= ALERT_ORDER[sess.alert]:
+        sess.alert, sess.alert_reason = level.value, reason
+    audit(db, itv.org_id, "content_rules", "content.hidden", itv.id, flags=",".join(sorted(checked.flags)))
 
 
 def takeover(db: Session, itv: Interview, actor: str) -> None:

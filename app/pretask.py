@@ -10,6 +10,7 @@ import json
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from . import content_rules
 from .models import PreTask, PreTaskAnswer
 
 MAX_QUESTIONS = 10
@@ -108,6 +109,7 @@ def save_answers(db: Session, pt: PreTask, participant_id: str, answers: dict[st
         ValueError: a required question has no answer, or an answer is longer than ``MAX_ANSWER``.
     """
     qs = _questions(pt)
+    answers = {k: content_rules.check(v or "").text for k, v in answers.items()}  # contact details and abusive words are hidden in what is stored
     for q in qs:
         text = (answers.get(q["key"]) or "").strip()
         if q["required"] and not text:

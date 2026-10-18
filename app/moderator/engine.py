@@ -12,7 +12,7 @@ import time
 from .clock import Clock, SystemClock
 from .constants import (ALERT_SERVICE_UNAVAILABLE, DRY_ANSWER_MAX_CHARS, DRY_ANSWER_MAX_WORDS, MAX_REGENERATIONS, NEW_FACTS_PER_TURN, RED_ALERT_AFTER_FAILED_TURNS, REMEMBER_MIN_CHARS, SUMMARY_RETRY_AFTER_TURNS, AlertLevel, ControlMode, EndReason, PacingAction, Phase,
                         QualityRule, ResponseCategory, Speaker, TransitionReason)
-from .detectors import detect_asks_if_ai, detect_crisis, detect_mentions_ai, detect_ready, detect_stop
+from .detectors import detect_asks_if_ai, detect_asks_model, detect_crisis, detect_mentions_ai, detect_ready, detect_stop
 from .fsm import FOLLOWUP_PHASES, InterviewStateMachine, PacingDecision, TurnUpdate
 from .guardrails import GuardrailContext, check_utterance
 from .knowledge import InterviewGuide
@@ -74,7 +74,20 @@ class ModeratorEngine:
         self._intro = self.texts.intro.format(topic=guide.participant_topic or self.texts.default_topic)
         if found := check_utterance(self._intro, self._gate(is_first_turn=True)):
             raise ValueError(f"the fixed intro breaks a red line: {found[0].red_line.value} {found[0].detail}")
+        self._check_fixed_sentences()
         self._check_prepared_questions()
+
+    def _check_fixed_sentences(self) -> None:
+        """The fixed answers are said word for word, so they must pass every red line themselves (H13 above all).
+
+        Raises:
+            ValueError: a fixed sentence breaks a red line (fix app/moderator/templates.py).
+        """
+        sep = "" if self.guide.language == "zh" else " "
+        for sentence, asked_ai in ((self.texts.ai_answer + sep + self.texts.model_answer, True), (self.texts.model_answer, False),
+                                   (self.texts.contact_reminder, False), (self.texts.conduct_reminder, False), (self.texts.conduct_end, False)):
+            if found := check_utterance(sentence, self._gate(asked_ai=asked_ai, is_statement=True)):
+                raise ValueError(f"a fixed sentence breaks a red line: {found[0].red_line.value} {found[0].detail}")
 
     def _check_prepared_questions(self) -> None:
         """Prepared questions are said word for word as the safe fallback, so each must pass every red line itself.
@@ -170,6 +183,8 @@ class ModeratorEngine:
             return self._end_with(EndReason.CRISIS, None, asks_ai)
         if detect_stop(text):
             return self._end_with(EndReason.PARTICIPANT_STOPPED, None, asks_ai)
+        if detect_asks_model(text):
+            return self._answer_about_the_ai(text)  # what the AI is made of is never the model's to say: a fixed sentence, then the interview goes on
         if not self.background_memory:
             self._refresh_summary()
         analysis = self._analyze(text)
@@ -261,15 +276,71 @@ class ModeratorEngine:
         self._last_was_followup = False
         gate = self._gate(asked_ai=asks_ai)
         prefix = self.texts.ai_answer + ("" if self.guide.language == "zh" else " ") if asks_ai else ""
-        candidates = [prefix + q for q in (self._fallback_question(plan.decision), self.texts.followup, *self.texts.alt_followups)]
-        clean = [c for c in candidates if not check_utterance(c, gate)]
-        if not clean:
-            raise RuntimeError("the fixed fallback sentence breaks a red line: fix app/moderator/templates.py")
-        sentence = next((c for c in clean if not self._repeat_violations(c)), clean[0])  # a fresh sentence if there is one
+        sentence = self._safe_sentence(plan.decision, prefix, gate)
         red = self._failed_turns_in_row >= RED_ALERT_AFTER_FAILED_TURNS
         reason = (f"AI 连续 {self._failed_turns_in_row} 轮没通过红线检查，建议接管" if red else "AI 这一轮没通过红线检查，已改用安全兜底句")
         return self._say(sentence, analysis, plan, attempts=len(rejected), rejected=rejected, rejected_drafts=rejected_drafts, used_fallback=True,
                          alert=AlertLevel.RED if red else AlertLevel.YELLOW, alert_reason=reason)
+
+    def _safe_sentence(self, decision: PacingDecision, prefix: str, gate: GuardrailContext) -> str:
+        """A fixed, checked sentence (the prefix, then the question the state machine wants or a neutral follow-up), a fresh one if there is one.
+
+        Raises:
+            RuntimeError: every fixed sentence breaks a red line (fix app/moderator/templates.py).
+        """
+        candidates = [prefix + q for q in (self._fallback_question(decision), self.texts.followup, *self.texts.alt_followups)]
+        clean = [c for c in candidates if not check_utterance(c, gate)]
+        if not clean:
+            raise RuntimeError("the fixed fallback sentence breaks a red line: fix app/moderator/templates.py")
+        return next((c for c in clean if not self._repeat_violations(c)), clean[0])
+
+    def _answer_about_the_ai(self, text: str) -> ModeratorTurnPayload:
+        """The participant asked what model, company or technology the AI is, or tried to read its instructions (red line H13).
+
+        The answer is fixed: it says honestly that this is an AI (H3), that nothing more will be shared, and goes back to the interview.
+        No model is called, so nothing about the model can leak, and the turn counts as an ordinary neutral turn for the pacing.
+        """
+        analysis = RespondentInputAnalysis(saturation=self.fsm.snapshot().saturation)
+        decision = self._decide(analysis, text)
+        if decision.action is PacingAction.END:
+            return self._say(self._with_ai_answer(self.texts.closing, True), analysis=analysis, plan=None, is_statement=True)
+        sep = "" if self.guide.language == "zh" else " "
+        prefix = self.texts.ai_answer + sep + self.texts.model_answer + sep
+        self._last_was_followup = False
+        return self._say(self._safe_sentence(decision, prefix, self._gate(asked_ai=True)), analysis=analysis, plan=None)
+
+    def moderation_reply(self, text: str, kind: str, ending: bool = False) -> ModeratorTurnPayload:
+        """A message in which the rule library hid contact details or abusive / hateful words (``text`` is the already hidden version).
+
+        The reply is fixed, never the model's: a short reminder and then the interview goes on; or, when ``ending``, a polite closing statement.
+        The model is not called, so nothing in the message can steer it, and the turn counts as a neutral turn for the pacing.
+
+        Args:
+            text: what the participant typed, with the hidden parts already replaced.
+            kind: "contact" or "conduct".
+            ending: the interview ends here (repeated abuse or hate).
+
+        Raises:
+            EngineStateError: not opened yet, or already ended.
+            ValueError: blank text.
+        """
+        if not self.fsm.started or self.fsm.phase is Phase.ENDED:
+            raise EngineStateError("interview is not running")
+        started = time.monotonic()
+        self.memory.add_turn(Speaker.PARTICIPANT, text, self._now())
+        if self.control is ControlMode.HUMAN:
+            return self._record(ModeratorTurnPayload(analysis=None, plan=None, spoken_response=None))  # H11: silent while a human is in control
+        if ending:
+            self.fsm.stop(EndReason.CONDUCT)
+            payload = self._say(self.texts.conduct_end, None, None, is_statement=True)
+        else:
+            analysis = RespondentInputAnalysis(saturation=self.fsm.snapshot().saturation)
+            decision = self._decide(analysis, text)
+            sep = "" if self.guide.language == "zh" else " "
+            prefix = (self.texts.contact_reminder if kind == "contact" else self.texts.conduct_reminder) + sep
+            self._last_was_followup = False
+            payload = self._say(self._safe_sentence(decision, prefix, self._gate()), analysis=analysis, plan=None)
+        return self._record(payload.model_copy(update={"latency_s": time.monotonic() - started}))
 
     def _fallback_question(self, decision: PacingDecision) -> str:
         """The prepared question, missed item or wrap-up question the state machine asked for; else a neutral follow-up."""
@@ -361,9 +432,9 @@ class ModeratorEngine:
             return [Violation(red_line=QualityRule.Q1_REPEAT, detail="repeats an earlier question")]
         return []
 
-    def _gate(self, is_first_turn: bool = False, asked_ai: bool = False) -> GuardrailContext:
+    def _gate(self, is_first_turn: bool = False, asked_ai: bool = False, is_statement: bool = False) -> GuardrailContext:
         """Facts for the red-line gate."""
-        return GuardrailContext(guide=self.guide, is_first_turn=is_first_turn, participant_asked_ai=asked_ai, control=self.control)
+        return GuardrailContext(guide=self.guide, is_first_turn=is_first_turn, is_statement=is_statement, participant_asked_ai=asked_ai, control=self.control)
 
     def _switch(self, to: ControlMode) -> None:
         """Change who speaks for the team, through the single control gate.

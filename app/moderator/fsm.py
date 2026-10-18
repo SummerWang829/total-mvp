@@ -316,7 +316,8 @@ class InterviewStateMachine:
             InterviewStateError: not started, or already ended.
         """
         self._require_running()
-        why = {EndReason.CRISIS: TransitionReason.CRISIS, EndReason.PARTICIPANT_STOPPED: TransitionReason.PARTICIPANT_STOPPED}.get(
+        why = {EndReason.CRISIS: TransitionReason.CRISIS, EndReason.PARTICIPANT_STOPPED: TransitionReason.PARTICIPANT_STOPPED,
+               EndReason.CONDUCT: TransitionReason.PARTICIPANT_STOPPED}.get(
             reason, TransitionReason.WRAPUP_ANSWERED)
         return self._end(reason, why)
 

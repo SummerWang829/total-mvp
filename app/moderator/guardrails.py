@@ -240,12 +240,27 @@ def check_length(text: str, ctx: GuardrailContext) -> list[Violation]:
     return []
 
 
+# H13: names of models, vendors and technologies, and phrases that describe how the AI is built. The AI is "an AI interviewer" and nothing more.
+_MODEL_IDENTITY = [
+    r"\b(?:open\s*ai|chat\s*gpt|gpt[\s-]?\d*[a-z]*|anthropic|claude|gemini|bard|deep\s*seek|llama|mistral|qwen|copilot|kimi|moonshot|ernie|doubao|hunyuan|glm|minimax|baichuan|cohere|grok|perplexity)\b",
+    r"\b(?:large\s+)?language\s+model\b", r"\bllm\b", r"\btrained\s+(?:by|on)\b", r"\b(?:developed|created|built|made|powered)\s+by\b", r"\bsystem\s+prompt\b",
+    r"深度求索|通义|千问|文心|混元|智谱|讯飞|星火|豆包|月之暗面|元宝|(?:大)?语言模型|大模型|底层模型|系统提示词",
+]
+
+
+def check_model_identity(text: str, ctx: GuardrailContext) -> list[Violation]:
+    """H13: the AI never says which model, company or technology it is, nor what its instructions are (it may only say it is an AI, H3)."""
+    if hit := _matched_text(_MODEL_IDENTITY, text):
+        return _v(RedLine.H13_MODEL_IDENTITY, f"names or describes what it is built on: {hit}")
+    return []
+
+
 CHECKS: list[tuple[RedLine, Callable[[str, GuardrailContext], list[Violation]]]] = [
     (RedLine.H1_ONE_QUESTION, check_one_question), (RedLine.H2_LEADING, check_leading), (RedLine.H3_AI_DISCLOSURE, check_ai_disclosure),
     (RedLine.H4_PERSONAL_DATA, check_personal_data), (RedLine.H5_STOP_OR_CRISIS, check_stop_or_crisis), (RedLine.H6_LANGUAGE, check_language),
     (RedLine.H7_EVALUATIVE, check_evaluative), (RedLine.H8_CONFIDENTIAL, check_confidential), (RedLine.H9_ADVICE, check_advice),
     (RedLine.H10_FORBIDDEN_TOPIC, check_forbidden_topics), (RedLine.H11_SILENT_AFTER_TAKEOVER, check_silent_after_takeover),
-    (RedLine.H12_TOO_LONG, check_length),
+    (RedLine.H12_TOO_LONG, check_length), (RedLine.H13_MODEL_IDENTITY, check_model_identity),
 ]
 
 

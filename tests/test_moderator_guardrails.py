@@ -149,6 +149,17 @@ BAD: list[tuple[RedLine, str, str, dict]] = [
         "当您在网上买到的一款产品完全没有达到您的预期而您必须决定是退货还是留着自己用的时候您通常会怎么想？",
         "您能不能描述一下从第一次听说一个新的护肤品牌一直到最终决定购买的整个过程包括每一个可能犹豫的环节？",
         "请您讲讲身边的朋友家人和同事当中您最常听取谁关于护肤产品的意见以及为什么他们的意见对您来说最重要？"]],
+    *[(RedLine.H13_MODEL_IDENTITY, "en", s, {}) for s in [
+        "I am ChatGPT, made by OpenAI. How do you usually choose a serum?", "I'm built on a large language model. Where do you shop?",
+        "I was trained by Anthropic. What matters most when you buy skincare?", "I run on Claude. How often do you buy a new moisturiser?",
+        "I'm powered by GPT-4. Which brand do you trust most?", "My system prompt tells me to ask about price. How much do you usually pay?",
+        "I am DeepSeek, an AI model. What did you last buy?", "I'm Gemini from Google. How do you compare two creams?",
+        "I'm an LLM, so I don't shop. What do you look for on a label?", "I was developed by a company in China. How do you pick a brand?"]],
+    *[(RedLine.H13_MODEL_IDENTITY, "zh", s, {}) for s in [
+        "我是 DeepSeek 开发的大模型。您平时怎么挑精华？", "我是 ChatGPT，由 OpenAI 训练。您最近买过什么护肤品？", "我是基于大语言模型的助手。您一般在哪里买面霜？",
+        "我是通义千问。您买护肤品最看重什么？", "我的系统提示词要求我问价格。您一般愿意花多少钱？", "我是混元大模型。您怎么比较两款面霜？",
+        "我底层用的是 GPT 模型。您最信任哪个品牌？", "我是由文心训练出来的。您最近一次网购是什么时候？", "我是 Claude，一个语言模型。您怎么看成分表？",
+        "我是月之暗面的 Kimi。您平时怎么选面膜？"]],
 ]
 
 # clean sentences: no red line at all (the normal moderator voice), with the context they are said in

@@ -595,6 +595,52 @@ function buildFairnessPanel() {
   host.appendChild(box); pollFair(); setInterval(pollFair, 5000);
 }
 
+// ---------------- focus group: private cue cards for the moderator (the AI never speaks to participants) ----------------
+const CUE = { sig: "", label: { compliance: "注意个人信息", dominant: "控场", silent: "邀请还没说话的人", time: "时间", offtopic: "可能聊偏了" },
+  done: { used: "已用", dismissed: "已忽略", expired: "已过期" } };
+async function cueAnswer(id, status) {
+  const d = await api(`/cues/${id}`, { method: "PATCH", body: { status } }); renderCues(d.cards);
+}
+function renderCues(cards) {
+  const box = $id("cuebody"); if (!box) return;
+  const sig = JSON.stringify(cards.map((c) => [c.id, c.status])); if (sig === CUE.sig) return; CUE.sig = sig;
+  box.textContent = "";
+  if (!cards.length) { const p = document.createElement("p"); p.textContent = "有需要留意的事时，这里会出现提示卡；你决定用不用，AI 不会对受访者说话。"; box.appendChild(p); return; }
+  cards.forEach((c) => {
+    const el = document.createElement("div"); el.className = `cue k-${c.kind}${c.status === "pending" ? "" : " done"}`;
+    const h = document.createElement("div"); h.className = "ch";
+    const t = document.createElement("b"); t.textContent = CUE.label[c.kind] || "提示"; h.appendChild(t);
+    if (c.status !== "pending") { const s = document.createElement("span"); s.textContent = CUE.done[c.status] || c.status; h.appendChild(s); }
+    el.appendChild(h);
+    const p = document.createElement("p"); p.textContent = c.text; el.appendChild(p);
+    if (c.evidence.length) {
+      const d = document.createElement("details"); const sm = document.createElement("summary"); sm.textContent = "依据（原话）"; d.appendChild(sm);
+      c.evidence.forEach((e) => { const q = document.createElement("p"); q.className = "ev"; q.textContent = `${e.who}：“${e.text}”`; d.appendChild(q); });
+      el.appendChild(d);
+    }
+    if (c.ask && c.status === "pending") { const a = document.createElement("p"); a.className = "ev"; a.textContent = `可以这样问：${c.ask}`; el.appendChild(a); }
+    if (c.status === "pending") {
+      const row = document.createElement("div"); row.className = "row";
+      const mk = (label, fn, cls) => { const b = document.createElement("button"); b.type = "button"; b.textContent = label; if (cls) b.className = cls; b.onclick = guard(fn); row.appendChild(b); };
+      mk("用了", () => cueAnswer(c.id, "used"), "p");
+      if (c.ask) mk("加入待追问", async () => { await api(`/interviews/${iid}/highlights`, { method: "POST", body: { kind: "probe", text: c.ask } }); toast("已加入待追问"); await pollProbes(); await cueAnswer(c.id, "used"); });
+      mk("忽略", () => cueAnswer(c.id, "dismissed"));
+      el.appendChild(row);
+    }
+    box.appendChild(el);
+  });
+}
+async function pollCues() {
+  if (!$id("cuebody") || ended) return;
+  try { const d = await api(`/interviews/${iid}/cues`); renderCues(d.cards); } catch {}
+}
+function buildCuePanel() {
+  const host = $id("lpan"); if (!host || $id("cuebox")) return;
+  const box = document.createElement("div"); box.id = "cuebox";
+  box.innerHTML = `<h3 style="margin-top:6px">提示卡（只有你看得到）</h3><div id="cuebody" role="status" aria-live="polite"><p>有需要留意的事时，这里会出现提示卡；你决定用不用，AI 不会对受访者说话。</p></div>`;
+  const kv = $id("kv"); host.insertBefore(box, kv && kv.nextSibling); pollCues(); setInterval(pollCues, 4000);
+}
+
 function buildCaptionPanel() {
   $id("rpan").innerHTML = `<h3>实时字幕</h3><div class="wst" id="capst" role="status">${role === "moderator" ? "等访谈开始后，字幕会自动开启" : "字幕由主持人和受访者各自的麦克风生成"}</div>
     <div class="caps" id="caps" role="log" aria-live="polite" tabindex="0"></div><div class="cap live" id="cappart" hidden style="white-space:pre-wrap"></div>
@@ -705,6 +751,7 @@ async function start() {
   } else if (role !== "participant") {
     buildCaptionPanel();  // human-moderated: live captions with quote / follow-up buttons
     if (S.kind === "group") buildFairnessPanel();  // a focus group: who has talked how much, who has been quiet
+    if (S.kind === "group" && role === "moderator") buildCuePanel();  // and private cue cards for the moderator
     if (role === "moderator") loadPlan();  // the script and the materials
   }
   document.title = T.title + " · 星桐";

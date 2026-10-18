@@ -446,3 +446,15 @@ main.enter .pbar6 i{animation:grow 1s var(--ease) .15s both}@keyframes grow{from
 .fair .fcurve{width:100%;height:auto;max-height:90px;border:1px solid var(--f-line);border-radius:8px}
 .fair .fcurve .line{fill:none;stroke:var(--f-ink);stroke-width:2}
 .fair .fcurve .guide{stroke:var(--f-hi);stroke-width:1;stroke-dasharray:4 3}
+
+/* cue cards for the moderator of a focus group */
+.cue{border:1px solid var(--r-line);border-left:4px solid var(--r-h);border-radius:10px;padding:8px 10px;display:flex;flex-direction:column;gap:6px;margin:0 0 8px;background:var(--r-bg)}
+.cue.k-compliance{border-left-color:#B3261E}
+.cue.done{border-left-color:var(--r-line)}
+.cue .ch{display:flex;justify-content:space-between;gap:8px;font-size:13.5px;color:var(--r-ink)}
+.cue .ch span{color:var(--r-mut);font-weight:600}
+.cue p{margin:0;font-size:14px;color:var(--r-ink)}
+.cue .ev{font-size:14px;color:var(--r-mut)}
+.cue summary{font-size:14px;color:var(--r-mut);cursor:pointer}
+.cue .row{display:flex;gap:6px;flex-wrap:wrap}
+.cue .row button{flex:1 1 auto;min-height:36px;font-size:13.5px}

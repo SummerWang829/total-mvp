@@ -280,6 +280,7 @@ class AiSession(Base):
     alert: Mapped[str] = mapped_column(String(10), default="none")  # none | yellow | red, shown to staff only
     alert_reason: Mapped[str] = mapped_column(String(300), default="")
     finished: Mapped[bool] = mapped_column(Boolean, default=False)  # the AI said its closing statement: the participant can no longer type
+    strikes: Mapped[int] = mapped_column(Integer, default=0)  # chat messages with abusive or hateful words (app/content_rules); the AI ends the chat politely at the limit
     started_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
@@ -410,6 +411,7 @@ class CaptionLine(Base):
     at_ms: Mapped[int] = mapped_column(Integer, default=0)  # milliseconds since the interview started (when the sentence ENDED), taken from OUR clock
     dur_ms: Mapped[int] = mapped_column(Integer, default=0)  # how long the sentence took to say, as measured by the recogniser (0 = unknown)
     text_zh: Mapped[str] = mapped_column(Text, default="")  # Chinese translation for non-Chinese interviews, filled in a moment after the sentence arrives
+    flags: Mapped[str] = mapped_column(String(40), default="")  # what app/content_rules hid in this sentence: contact, abuse, hate, threat, sexual (comma separated)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
@@ -498,3 +500,28 @@ class ScreenerAnswer(Base):
     question: Mapped[str] = mapped_column(String(300))
     answer: Mapped[str] = mapped_column(String(1000))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class CueCard(Base):
+    """A private suggestion for the moderator of a focus group (a "cue card"): who to invite, who talks too much, time, off topic, care with personal data.
+
+    The AI never speaks to participants; the moderator decides (used / dismissed). Evidence is stored as caption sequence numbers and the text is
+    copied from the caption lines by the server when shown. Cards may quote a participant's own screening answer, so they are for the team's
+    operating roles only (not for client observers). Personal data: purged with the interview (``app/retention.py``).
+    """
+    __tablename__ = "cue_cards"
+    __table_args__ = (UniqueConstraint("interview_id", "dedupe_key"),)
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
+    org_id: Mapped[str] = mapped_column(String(32), index=True)
+    interview_id: Mapped[str] = mapped_column(ForeignKey("interviews.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(20))  # compliance | dominant | silent | time | offtopic
+    seat: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    text: Mapped[str] = mapped_column(Text)
+    ask: Mapped[str] = mapped_column(Text, default="")  # a question the moderator could use as it stands (optional)
+    evidence: Mapped[str] = mapped_column(Text, default="[]")  # JSON list of caption seq numbers
+    priority: Mapped[int] = mapped_column(Integer, default=0)
+    dedupe_key: Mapped[str] = mapped_column(String(80))
+    status: Mapped[str] = mapped_column(String(10), default="pending")  # pending | used | dismissed | expired
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    handled_by: Mapped[str] = mapped_column(String(32), default="")
+    handled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
