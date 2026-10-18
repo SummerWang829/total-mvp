@@ -31,6 +31,7 @@ window.__pcs = [];
 if (window.RTCPeerConnection) { const Native = window.RTCPeerConnection; window.RTCPeerConnection = function (...a) { const pc = new Native(...a); window.__pcs.push(pc); return pc; }; window.RTCPeerConnection.prototype = Native.prototype; Object.setPrototypeOf(window.RTCPeerConnection, Native); }
 </script>
 <script src="/app.js"></script>
+<script src="/fairness.js"></script>
 <script src="/logo.js"></script>
 <script>document.getElementById("logo").innerHTML = LOGO_SVG;</script>
 <script>
@@ -582,6 +583,18 @@ async function pollProbes() {
     box.appendChild(row);
   });
 }
+// ---------------- focus group: who has spoken how much (team only; numbers, never names) ----------------
+async function pollFair() {
+  const box = $id("fairbody"); if (!box || ended) return;
+  try { const d = await api(`/interviews/${iid}/group/metrics`); window.renderFairness(box, d); } catch {}
+}
+function buildFairnessPanel() {
+  const host = $id("lpan"); if (!host || $id("fairbox")) return;
+  const box = document.createElement("div"); box.id = "fairbox";
+  box.innerHTML = `<h3 style="margin-top:6px">发言情况（只有团队看得到）</h3><div id="fairbody" aria-live="off"><p>访谈开始、有人说话后，这里显示每个人的发言占比。</p></div>`;
+  host.appendChild(box); pollFair(); setInterval(pollFair, 5000);
+}
+
 function buildCaptionPanel() {
   $id("rpan").innerHTML = `<h3>实时字幕</h3><div class="wst" id="capst" role="status">${role === "moderator" ? "等访谈开始后，字幕会自动开启" : "字幕由主持人和受访者各自的麦克风生成"}</div>
     <div class="caps" id="caps" role="log" aria-live="polite" tabindex="0"></div><div class="cap live" id="cappart" hidden style="white-space:pre-wrap"></div>
@@ -691,6 +704,7 @@ async function start() {
     if (role === "participant") buildParticipantChat(); else buildAiPanel();
   } else if (role !== "participant") {
     buildCaptionPanel();  // human-moderated: live captions with quote / follow-up buttons
+    if (S.kind === "group") buildFairnessPanel();  // a focus group: who has talked how much, who has been quiet
     if (role === "moderator") loadPlan();  // the script and the materials
   }
   document.title = T.title + " · 星桐";

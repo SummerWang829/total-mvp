@@ -63,8 +63,9 @@ def test_the_moderator_talking_over_a_participant_is_counted_for_the_moderator()
 
 
 def test_a_short_overlap_is_not_an_interruption():
-    assert overlaps([S("p1", 20, 10), Sentence("p2", LONG, 30_500, 11_000)]) == []  # p2 starts at 19.5: 0.5 s of overlap, under the 0.8 s limit
-    assert len(overlaps([S("p1", 20, 10), Sentence("p2", LONG, 30_000, 11_000)])) == 1  # starts at 19: 1 s
+    assert overlaps([S("p1", 20, 10), Sentence("p2", LONG, 30_500, 11_000)]) == []  # p2 starts at 19.5: 0.5 s of overlap
+    assert overlaps([S("p1", 20, 10), Sentence("p2", LONG, 30_000, 11_000)]) == []  # starts at 19: 1 s, still within the delay between two recognisers
+    assert len(overlaps([S("p1", 20, 10), Sentence("p2", LONG, 29_000, 11_000)])) == 1  # starts at 18: 2 s of real talking over each other
 
 
 def test_nobody_is_judged_too_early():

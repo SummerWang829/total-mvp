@@ -4,7 +4,8 @@ MODERATOR_KEY = "moderator"
 
 # --- what counts as one turn / one overlap ---
 TURN_GAP_MS = 3000            # two sentences of the same speaker less than this apart are one turn
-OVERLAP_MIN_MS = 800          # two people talking at once for at least this long is an interruption
+OVERLAP_MIN_MS = 1500         # two people talking at once for at least this long is an interruption. A sentence starts "end minus length", and the two
+                              # browsers' recognisers answer with different delays, so back-to-back speakers can look 1 s apart in time: stay above that
 UNKNOWN_DURATION_CHARS_PER_S = 4.0   # Chinese; when the recogniser gave no duration the sentence length stands in for it
 UNKNOWN_DURATION_WORDS_PER_S = 2.5   # other languages
 MIN_SENTENCE_MS = 600         # a sentence is never shorter than this

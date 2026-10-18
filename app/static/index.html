@@ -4,6 +4,7 @@
 <body>
 <div id="app"></div>
 <script src="/app.js"></script>
+<script src="/fairness.js"></script>
 <script src="/logo.js"></script>
 <script>
 let ME = null, PROJECTS = null, DEMO_ORG = false;
@@ -491,7 +492,7 @@ async function interviewView(iid, tab) {
   const invite = sessionStorage.getItem("invite_" + iid);
   const room = (as, cls) => `<a class="btn ${cls}" href="/room.html?i=${iid}&as=${as}" target="_blank" rel="noopener">${as === "observer" ? "隐身观察" : "进入房间（主持）"}</a>`;
   const canRoom = it.status !== "ended" && !it.purged;
-  const tabs = [["transcript", "转写"], ["insights", "洞察"], ["clips", "片段"], ...(staff ? [["highlights", "引用与追问"]] : [])];
+  const tabs = [["transcript", "转写"], ["insights", "洞察"], ["clips", "片段"], ...(staff ? [["highlights", "引用与追问"]] : []), ...(it.kind === "group" ? [["fairness", "发言情况"]] : [])];
   shell(`<a class="back" href="#/p/${it.project_id}/insights">← 洞察与片段</a>
     <div class="head"><div><h1>${esc(it.title)}</h1><p class="lead" style="margin:6px 0 0">${it.kind === "group" ? "座谈会" : "受访者"}：${esc(it.participant.name)}${it.participant.country ? " · " + esc(it.participant.country) : ""} · 访谈语言 ${esc(LANGS[it.language] || it.language)} · <span class="tag ${c}">${t}</span>${it.kind === "group" ? ` <span class="tag o">座谈会</span>` : ""}${it.moderation === "ai" ? ` <span class="tag o">AI 主持</span>` : ""}${it.invite_state ? ` <span class="tag ${(INVITE[it.invite_state] || [])[1] || ""}">${(INVITE[it.invite_state] || [it.invite_state])[0]}</span>` : ""}</p></div><span class="sp"></span>
       <div class="row">${canRoom ? (ME.role === "observer" ? room("observer", "") : staff ? room("moderator", "p") + room("observer", "") : room("moderator", "p")) : ""}</div></div>
@@ -512,6 +513,7 @@ async function interviewView(iid, tab) {
   if (tab === "transcript") return transcriptTab(iid, it, staff, my);
   if (tab === "clips") return clipsTab(iid, staff, my);
   if (tab === "highlights" && staff) return highlightsTab(iid, my);
+  if (tab === "fairness" && it.kind === "group") return fairnessTab(iid, my);
   return insightsTab(iid, staff, my);
 }
 
@@ -576,6 +578,13 @@ async function transcriptTab(iid, it, staff, my) {
 }
 
 const MATERIAL = { ad_film: "广告片", concept_a: "概念 A", concept_b: "概念 B", ad_film_2: "备用广告片" };
+async function fairnessTab(iid, my) {  // a focus group: who talked how much, who stayed quiet, who talked over whom (from the live captions)
+  const d = await api(`/interviews/${iid}/group/metrics`);
+  if (stale(my) || !$("#tab")) return;
+  $("#tab").innerHTML = `<div class="card"><h3>发言情况</h3><p class="sm mut">按实时字幕估算每个人说了多久、说了几次、谁被打断。只显示编号，不显示姓名。</p><div id="fairhost"></div></div>`;
+  window.renderFairness($("#fairhost"), d, { series: true });
+}
+
 async function highlightsTab(iid, my) {  // quotes and follow-ups marked in the room, plus the live-caption record (may contain recognition errors)
   const [hs, caps] = await Promise.all([api(`/interviews/${iid}/highlights`), api(`/interviews/${iid}/captions?after=0`)]);
   if (stale(my) || !$("#tab")) return;

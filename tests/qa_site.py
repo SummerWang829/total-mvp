@@ -217,6 +217,17 @@ def group_section(br, D):
     pg.goto(B + f"/#/i/{iid}/highlights"); pg.wait_for_selector(".quote")
     ok("参与者 ·02" in pg.inner_text("#tab") and "p2" not in pg.inner_text("#tab") and "我先说成分。" in pg.inner_text("#tab"),
        "[group] captions and quotes name the seat, not the raw key")
+    pg.goto(B + f"/#/i/{iid}/fairness"); pg.wait_for_selector(".fair .frow")
+    panel = pg.inner_text("#fairhost")  # (the roster card above it shows names to the team; the panel itself must not)
+    ok(pg.locator(".fair .frow").count() == 3 and "公平指数" in panel and "p2" not in panel and not any(n in panel for n in ("座谈甲", "座谈乙", "座谈丙")),
+       "[group] the speaking tab lists three numbered seats and shows no names")
+    audit_page(pg, "group speaking tab/desktop", errs)
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "group_fairness_1280.png"), full_page=True)
+    ctx.close()
+    ctx, pg, errs = new_page(br, 390, token=adm)
+    pg.goto(B + f"/#/i/{iid}/fairness"); pg.wait_for_selector(".fair .frow")
+    audit_page(pg, "group speaking tab/phone", errs)
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "group_fairness_390.png"), full_page=True)
     ctx.close()
 
 
@@ -922,7 +933,7 @@ def run():
 def report():
     lines = [f"# QA report\n", f"- checks passed: **{PASSES}**", f"- failures: **{len(FAILS)}**\n"]
     lines += [f"- ❌ {f}" for f in FAILS]
-    open(os.path.join(ROOT, "qa_report.md"), "w").write("\n".join(lines) + "\n")
+    open(os.path.join(ROOT, "qa_report.md"), "w", encoding="utf-8").write("\n".join(lines) + "\n")
     print(f"\nQA: {PASSES} checks passed, {len(FAILS)} failed  (report: qa_report.md, screenshots: qa_shots/)")
     for f in FAILS[:60]:
         print(" -", f)

@@ -420,3 +420,29 @@ main.enter .pbar6 i{animation:grow 1s var(--ease) .15s both}@keyframes grow{from
 .chip.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}.chip.on button{color:var(--bg)}
 .chip.sug{border-style:dashed;background:var(--surface)}
 .chips select{min-height:36px;font-size:14px}
+
+/* speaking-fairness panel (focus groups): room (live) and interview page (review) */
+.fair{--f-ink:var(--r-ink,var(--ink));--f-line:var(--r-line,var(--line));--f-mut:var(--r-mut,var(--mut));--f-hi:var(--r-h,#B84900);display:flex;flex-direction:column;gap:10px;min-width:0;color:var(--f-ink)}
+.fair .ftop{display:flex;align-items:baseline;gap:8px;font-size:14px}
+.fair .ftop b{font-size:22px;line-height:1}
+.fair .fword{font-weight:700;color:var(--f-hi)}
+.fair .fhints{list-style:none;margin:0;padding:8px 10px;border:1px solid var(--f-hi);border-radius:10px;display:flex;flex-direction:column;gap:4px;font-size:14px}
+.fair .fhints li::before{content:"! ";font-weight:700;color:var(--f-hi)}
+.fair .frows{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+.fair .frow{display:grid;grid-template-columns:1fr auto;gap:4px 8px;align-items:center;padding-bottom:8px;border-bottom:1px dashed var(--f-line)}
+.fair .fh{display:flex;justify-content:space-between;gap:8px;font-size:14px;grid-column:1 / -1}
+.fair .fst{font-weight:600;font-size:13.5px}
+.fair .s-high .fst,.fair .s-silent .fst{color:var(--f-hi)}
+.fair .fbar{position:relative;height:10px;border-radius:6px;background:var(--f-line);overflow:visible;grid-column:1 / -1}
+.fair .fbar i{display:block;height:100%;border-radius:6px;background:var(--f-ink);min-width:2px}
+.fair .s-high .fbar i{background:var(--f-hi)}
+.fair .s-quiet .fbar i,.fair .s-silent .fbar i{background:var(--f-mut)}
+.fair .fbar u{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--f-hi);text-decoration:none}
+.fair .fm{display:flex;justify-content:space-between;gap:8px;font-size:13px;color:var(--f-mut);grid-column:1 / -1;flex-wrap:wrap}
+.fair .fspark{display:flex;align-items:flex-end;gap:2px;height:18px;grid-column:1 / -1}
+.fair .fspark i{display:block;width:8px;background:var(--f-mut);border-radius:2px 2px 0 0;opacity:.7}
+.fair .fnote{font-size:13px;color:var(--f-mut);margin:0}
+.fair h4{font-size:13.5px;margin:4px 0 0;color:var(--f-ink)}
+.fair .fcurve{width:100%;height:auto;max-height:90px;border:1px solid var(--f-line);border-radius:8px}
+.fair .fcurve .line{fill:none;stroke:var(--f-ink);stroke-width:2}
+.fair .fcurve .guide{stroke:var(--f-hi);stroke-width:1;stroke-dasharray:4 3}

@@ -737,6 +737,26 @@ def run_group(tmp):
         ok(wait_for(lambda: "参与者 ·01" in pm.inner_text("#caps") and "I look at the ingredients first." in pm.inner_text("#caps"), 12), "live captions name the seat")
         ok("p1" not in pm.inner_text("#caps"), "live captions do not show the raw speaker key")
         pm.screenshot(path=f"{SHOTS}/e2e_group_captions.png")
+        # the speaking-fairness panel: seat 1 talks a lot, seat 2 a little, seat 3 not at all
+        for text, ms in (("I read every label before I buy anything, even in a hurry.", 6000), ("Price matters less to me than the texture and the smell.", 5000)):
+            call(f"/public/join/{invites[0]['invite_token']}/captions", {"text": text, "final": True, "dur_ms": ms})
+        call(f"/public/join/{invites[1]['invite_token']}/captions", {"text": "I usually ask my sister first.", "final": True, "dur_ms": 2000})
+        ok(wait_for(lambda: pm.locator("#fairbody .frow").count() == 3, 15), "group room: the moderator sees a speaking row for each of the three seats")
+        ok(wait_for(lambda: "参与者 ·01" in pm.inner_text("#fairbody") and "公平指数" in pm.inner_text("#fairbody"), 10), "group room: the panel names the seats and shows the fairness index")
+        def shares():  # the panel refreshes every 5 s: wait until it has seen seat 2 speak
+            rows = pm.evaluate("() => [...document.querySelectorAll('#fairbody .frow .fbar')].map((b) => b.getAttribute('aria-label'))")
+            return [int(r.split("占发言时间的 ")[1].split("%")[0]) for r in rows]
+        ok(wait_for(lambda: len(shares()) == 3 and shares()[1] > 0, 15) and shares()[0] > shares()[1] > shares()[2] == 0, f"group room: shares follow who talked (01 > 02 > 03 = 0): {shares()}")
+        ok(wait_for(lambda: po.locator("#fairbody .frow").count() == 3, 15), "group room: the hidden observer sees the panel too")
+        ok(all(pg.locator("#fairbox, #fairbody").count() == 0 for pg in pages), "group room: participants never get the speaking panel")
+        panel = pm.inner_text("#fairbody") + po.inner_text("#fairbody")
+        ok(all(n.split()[0] not in panel for n in names), "group room: the speaking panel shows numbers, never names")
+        m = call(f"/interviews/{iid}/group/metrics", token=tok["researcher"])
+        talk = [x["talk_s"] for x in m["participants"]]  # the three sentences of seat 1 arrive at once, so their spans overlap and are counted once
+        ok(talk[0] > talk[1] > 0 == talk[2] and m["participants"][1]["turns"] == 1, f"the metrics endpoint agrees ({talk})")
+        pm.locator("#fairbox").scroll_into_view_if_needed()
+        pm.screenshot(path=f"{SHOTS}/e2e_group_fairness.png")
+        audit(pm, "group room moderator/light/speaking panel")
         before = _mp4s(tmp)
         pm.click("#b-rec")
         ok(wait_for(lambda: all(p.is_visible("#recdot") for p in pages), 15), "every participant sees the recording indicator")
