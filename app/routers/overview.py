@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
+from .. import methods
 from ..audit import audit
 from ..db import get_db
 from ..deps import STAFF, Ctx, require_roles
@@ -110,7 +111,7 @@ def overview(pid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = 
         if activity and {k: v for k, v in activity[-1].items() if k != "at"} == {k: v for k, v in item.items() if k != "at"}:
             continue
         activity.append(item)
-    return {"summary": s, "next": next_step(s, p.closed_at is not None), "activity": activity[:12]}
+    return {"summary": s, "next": next_step(s, p.closed_at is not None), "activity": activity[:12], "starmap": methods.starmap(db, p), "methods": methods.of(p)}
 
 
 @router.post("/admin/demo/reset")

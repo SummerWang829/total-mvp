@@ -58,6 +58,7 @@ class Project(Base):
     market: Mapped[str] = mapped_column(String(2), default="")  # ISO-3166 alpha-2 of target market
     language: Mapped[str] = mapped_column(String(10), default="en")  # interview language
     closed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # retention clock starts here
+    methods: Mapped[str] = mapped_column(String(100), default="depth,group,async,listening")  # the research methods this project uses (app/methods.py), comma separated
     created_by: Mapped[str] = mapped_column(String(32))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 

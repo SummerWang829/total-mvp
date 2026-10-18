@@ -21,10 +21,11 @@ function navHtml(active, p) {
   let h = `<a class="brand" href="#/projects" aria-label="星桐 TOTAL 首页">${LOGO_SVG}</a>${a("/projects", "全部项目", "projects", "▦")}${STAFF() ? a("/repo", "研究库", "repo", "◈") : ""}`;
   if (p) {
     h += `<div class="sec">当前项目<b>${esc(p.name)}</b></div>`;
-    if (STAFF()) h += a(`/p/${p.id}/home`, "项目总览", "home", "◉") + a(`/p/${p.id}/members`, "项目成员", "members", "◎") + a(`/p/${p.id}/studies`, "异步研究", "studies", "✦") + a(`/p/${p.id}/listening`, "舆情监测", "listening", "◔");
+    const M = p.methods || ["depth", "group", "async", "listening"], live = M.includes("depth") || M.includes("group");
+    if (STAFF()) h += a(`/p/${p.id}/home`, "项目总览", "home", "◉") + a(`/p/${p.id}/members`, "项目成员", "members", "◎") + (M.includes("async") ? a(`/p/${p.id}/studies`, "异步研究", "studies", "✦") : "") + (M.includes("listening") ? a(`/p/${p.id}/listening`, "舆情监测", "listening", "◔") : "");
     h += `<div class="sec">定性 · 深访</div>`;
-    if (STAFF()) h += a(`/p/${p.id}/people`, "受访者招募", "people", "", true) + a(`/p/${p.id}/sessions`, "场次与邀请", "sessions", "", true);
-    h += a(`/p/${p.id}/rooms`, "直播间", "rooms", "", true) + a(`/p/${p.id}/insights`, "洞察与片段", "insights", "", true);
+    if (STAFF()) h += a(`/p/${p.id}/people`, "受访者招募", "people", "", true) + (live ? a(`/p/${p.id}/sessions`, "场次与邀请", "sessions", "", true) : "");
+    h += (live ? a(`/p/${p.id}/rooms`, "直播间", "rooms", "", true) : "") + a(`/p/${p.id}/insights`, "洞察与片段", "insights", "", true);
     if (STAFF()) h += a(`/p/${p.id}/analysis`, "编码与分析", "analysis", "", true);
   }
   if (ME.role === "admin") h += `<div class="sec">设置</div>${a("/team", "团队", "team", "◎")}${a("/audit", "审计日志", "audit", "≡")}${DEMO_ORG ? a("/demo", "演示数据", "demo", "↺") : ""}`;
@@ -173,31 +174,85 @@ async function projectsView() {
   };
   if ($("#pq")) { $("#pq").oninput = () => { sessionStorage.setItem("pq", $("#pq").value); apply(); }; apply(); }
   app.querySelectorAll("[data-pf]").forEach((b) => b.onclick = () => { sessionStorage.setItem("pf", b.dataset.pf); app.querySelectorAll("[data-pf]").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); apply(); });
-  if (canMake) $("#np").onclick = () => {
-    const m = modal(`<h2>新建项目</h2><form id="f"><label class="f"><span>项目名称</span><input name="name" required></label>
-      <label class="f"><span>目标市场</span><select name="market">${openCountryOpts("SG")}</select></label>
-      <label class="f"><span>访谈语言</span><select name="language">${langOpts("en")}</select></label>
-      <label class="f"><span>研究背景（选填）</span><textarea name="brief" rows="3"></textarea></label><div class="row"><button class="p">创建</button><button type="button" id="c">取消</button></div></form>`);
-    $("#c", m).onclick = () => m.remove();
-    $("#f", m).onsubmit = guard(async (e) => { e.preventDefault(); const p = await api("/projects", { method: "POST", body: Object.fromEntries(new FormData(e.target)) }); m.remove(); await projects(true); location.hash = `#/p/${p.id}/home`; });
-  };
+  if (canMake) $("#np").onclick = guard(() => projectWizard());
 }
 
+// ---------------- 立项向导：基本信息 → 研究方法 → 团队 → 确认 ----------------
+const METHOD_INFO = {
+  depth: ["深访（一对一）", "和受访者一对一视频访谈，可由真人或 AI 主持，实时字幕、录制、转写、洞察。"],
+  group: ["座谈会", "最多 10 人同场，发言公平仪表盘和副主持提示卡。"],
+  async: ["异步 AI 研究", "受访者随时自己和 AI 访谈员完成一场文字访谈，一条公开链接就能招人。"],
+  listening: ["舆情监测", "采集新闻、App 评论和公开网页上的声音，自动打情感和话题标签。"],
+};
+const METHOD_ORDER = ["depth", "group", "async", "listening"];
+async function projectWizard() {
+  const users = (await api("/users")).filter((u) => u.role === "researcher" && u.active && u.id !== ME.id);
+  const W = { name: "", market: "SG", language: "en", brief: "", methods: ["depth"], members: [] };
+  let step = 0;
+  const m = modal(`<div id="wz"></div>`);
+  const draw = () => {
+    const names = ["基本信息", "研究方法", "团队", "确认"];
+    const head = `<h2>新建项目</h2><p class="sm mut" id="wzstep" style="margin:0 0 10px">第 ${step + 1} 步 / 共 ${names.length} 步 · ${names[step]}</p>`;
+    let body = "";
+    if (step === 0) body = `<label class="f"><span>项目名称</span><input name="name" required value="${esc(W.name)}"></label>
+      <label class="f"><span>目标市场</span><select name="market">${openCountryOpts(W.market)}</select></label>
+      <label class="f"><span>访谈语言</span><select name="language">${langOpts(W.language)}</select></label>
+      <label class="f"><span>研究背景（选填）</span><textarea name="brief" rows="3">${esc(W.brief)}</textarea></label>`;
+    else if (step === 1) body = `<p class="sm mut">这个项目要用哪些方法？可以多选，以后随时在项目总览里调整。</p>${METHOD_ORDER.map((k) => `<label class="chk"><input type="checkbox" name="methods" value="${k}"${W.methods.includes(k) ? " checked" : ""}><span><b>${METHOD_INFO[k][0]}</b><br><span class="sm mut">${METHOD_INFO[k][1]}</span></span></label>`).join("")}`;
+    else if (step === 2) body = `<p class="sm mut">你会自动成为项目负责人。还有谁要一起做这个项目？（只有项目成员的研究员能看到它；管理员始终能看到所有项目。）</p>
+      ${users.length ? users.map((u) => `<label class="chk"><input type="checkbox" name="members" value="${u.id}"${W.members.includes(u.id) ? " checked" : ""}><span>${esc(u.name)} <span class="sm mut">${esc(u.email)}</span></span></label>`).join("") : `<p class="mut">公司里还没有其他研究员，可以以后在“项目成员”里添加。</p>`}`;
+    else body = `<div class="card" style="margin:0 0 10px"><p style="margin:0"><b>${esc(W.name)}</b></p><p class="sm mut" style="margin:4px 0 0">${esc(W.market)} · ${esc(LANGS[W.language] || W.language)}${W.brief ? ` · ${esc(W.brief.slice(0, 60))}` : ""}</p></div>
+      <p class="sm" style="margin:0 0 6px"><b>研究方法：</b>${W.methods.map((k) => METHOD_INFO[k][0]).join("、")}</p><p class="sm" style="margin:0"><b>团队：</b>你（负责人）${W.members.length ? ` + ${W.members.map((id) => esc((users.find((u) => u.id === id) || {}).name || "")).join("、")}` : ""}</p>`;
+    $("#wz", m).innerHTML = `${head}<form id="wf">${body}<p class="sm" id="wzerr" role="alert" hidden style="color:#A8203E"></p>
+      <div class="row">${step > 0 ? `<button type="button" id="wback">上一步</button>` : `<button type="button" id="wcancel">取消</button>`}<span class="sp"></span><button class="p" id="wnext">${step === names.length - 1 ? "创建项目" : "下一步"}</button></div></form>`;
+    const err = (t) => { const e = $("#wzerr", m); e.textContent = t; e.hidden = false; };
+    if (step > 0) $("#wback", m).onclick = () => { read(); step -= 1; draw(); }; else $("#wcancel", m).onclick = () => m.remove();
+    $("#wf", m).onsubmit = guard(async (e) => {
+      e.preventDefault(); read();
+      if (step === 0 && !W.name.trim()) return err("请填写项目名称");
+      if (step === 1 && !W.methods.length) return err("请至少选择一种研究方法");
+      if (step < names.length - 1) { step += 1; draw(); return; }
+      const p = await api("/projects", { method: "POST", body: { name: W.name.trim(), market: W.market, language: W.language, brief: W.brief, methods: W.methods, member_ids: W.members } });
+      m.remove(); await projects(true); location.hash = `#/p/${p.id}/home`;
+    });
+  };
+  const read = () => {
+    const f = $("#wf", m); if (!f) return; const fd = new FormData(f);
+    if (step === 0) { W.name = fd.get("name") || ""; W.market = fd.get("market"); W.language = fd.get("language"); W.brief = fd.get("brief") || ""; }
+    if (step === 1) W.methods = METHOD_ORDER.filter((k) => fd.getAll("methods").includes(k));
+    if (step === 2) W.members = fd.getAll("members");
+  };
+  draw();
+}
+
+function starmapHtml(p, nodes) {
+  const ic = { depth: "◉", group: "◍", async: "✦", listening: "◔" };
+  return `<div class="starmap" role="list" aria-label="研究方法进度">${nodes.map((n) => `<a class="snode card${n.started ? "" : " idle"}" role="listitem" href="#/p/${p.id}/${n.page}" data-m="${n.key}"><div class="sm mut"><span aria-hidden="true">${ic[n.key] || "◆"}</span> ${esc(n.title)}</div>
+    <div class="big">${n.big}<span class="sm mut" style="font-size:14px;font-weight:400"> ${esc(n.unit)}</span></div><div class="sm">${esc(n.sub)}</div><div class="sm mut" style="margin-top:6px">下一步：${esc(n.next)}</div></a>`).join("")}</div>`;
+}
 // ---------------- 项目总览：整体进度 + 分项进度 + 下一步 + 最近动态 ----------------
 const PAGE_NAME = { people: "去受访者招募", sessions: "去场次与邀请", rooms: "去直播间", insights: "去洞察与片段" };
 async function homeView(p) {
   const o = await api(`/projects/${p.id}/overview`), s = o.summary;
   const pct = (a, b) => (b ? Math.round((a / b) * 100) : 0);
   const meter = (label, a, b, cls = "") => `<div class="meter"><dt>${label}</dt><dd class="pbar6 ${cls}" role="img" aria-label="${label} ${a} / ${b}"><i style="width:${pct(a, b)}%"></i></dd><dd>${a} / ${b}</dd></div>`;
-  shell(`${head("项目总览", "这个项目做到哪一步了，下一步该做什么。")}
-    <div class="hero">
+  shell(`${head("项目总览", "这个项目用了哪些研究方法、各做到哪一步、下一步做什么。", `<button class="s" id="chm">调整研究方法</button>`)}
+    ${starmapHtml(p, o.starmap)}
+    ${o.methods.includes("depth") || o.methods.includes("group") ? `<div class="hero">
       <div class="card"><div class="hero-k">已完成的深访</div><div class="hero-n"><b>${s.done}</b><span>/ ${s.sessions} 场</span></div>
         <dl class="meters">${meter("受访者到场", s.done, s.sessions)}${meter("已转写", s.transcribed, s.ended)}${meter("洞察已通过", s.approved, s.insights, "o")}</dl>
         <p class="sm mut" style="margin:14px 0 0">受访者 ${s.participants} 人 · 进行中 ${s.live} 场 · 待开始 ${s.upcoming} 场${s.next_at ? ` · 下一场 ${when(s.next_at)}` : ""}</p></div>
       <div class="card next"><div class="hero-k">下一步</div><p id="nextstep">${esc(o.next.text)}</p><div><a class="btn p" href="#/p/${p.id}/${o.next.page}">${PAGE_NAME[o.next.page]}</a></div></div>
-    </div>
+    </div>` : ""}
     <div class="card"><h2>最近动态</h2>${o.activity.length ? `<ul class="feed">${o.activity.map((a) => `<li><time>${when(a.at.replace(/Z$/, ""))}</time><span><b>${esc(a.who)}</b> ${esc(a.what)}${a.session ? ` <span class="mut">· ${esc(a.session)}</span>` : ""}</span></li>`).join("")}</ul>`
       : `<p class="mut" style="margin:0">还没有动态。添加受访者、发出邀请后，这里会按时间列出每一步。</p>`}</div>`, { active: "home", p });
+  $("#chm").onclick = () => {
+    const m = modal(`<h2>调整研究方法</h2><form id="f"><p class="sm mut">关掉的方法只是从菜单和总览里隐藏，数据都还在，随时可以再打开。只有项目负责人和管理员能改。</p>
+      ${METHOD_ORDER.map((k) => `<label class="chk"><input type="checkbox" name="methods" value="${k}"${o.methods.includes(k) ? " checked" : ""}><span><b>${METHOD_INFO[k][0]}</b><br><span class="sm mut">${METHOD_INFO[k][1]}</span></span></label>`).join("")}
+      <div class="row"><button class="p">保存</button><button type="button" id="c">取消</button></div></form>`);
+    $("#c", m).onclick = () => m.remove();
+    $("#f", m).onsubmit = guard(async (e) => { e.preventDefault(); await api(`/projects/${p.id}/methods`, { method: "PUT", body: { methods: new FormData(e.target).getAll("methods") } }); m.remove(); await projects(true); toast("已保存"); render(); });
+  };
 }
 
 // ---------------- 受访者招募 ----------------

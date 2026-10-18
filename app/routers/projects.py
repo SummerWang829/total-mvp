@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import screener
+from .. import methods as methods_mod
 from ..audit import audit
 from ..config import settings
 from ..db import get_db
@@ -26,7 +27,13 @@ class NewProject(BaseModel):
     brief: str = ""
     market: str = Field(default="SG", max_length=2)
     language: str = Field(default="en", max_length=10)
+    methods: list[str] = Field(default_factory=lambda: list(methods_mod.DEFAULT))
+    member_ids: list[str] = Field(default_factory=list, max_length=50)  # researchers to add besides the creator
     _l = field_validator("language")(_lang)
+
+
+class MethodsBody(BaseModel):
+    methods: list[str]
 
 
 class NewParticipant(BaseModel):
@@ -46,7 +53,7 @@ def project_out(p: Project) -> dict:
     pd = purge_date(p)
     return {"id": p.id, "name": p.name, "brief": p.brief, "market": p.market, "language": p.language, "created_at": p.created_at.isoformat(),
             "closed_at": p.closed_at.isoformat() if p.closed_at else None, "purge_at": pd.isoformat() if pd else None,
-            "retention_days": settings.retention_days}
+            "retention_days": settings.retention_days, "methods": methods_mod.of(p)}
 
 
 def participant_out(p: Participant, screener_count: int = 0) -> dict:
@@ -66,12 +73,22 @@ def get_project(db: Session, ctx: Ctx, pid: str) -> Project:
 
 @router.post("/projects", status_code=201)
 def create_project(body: NewProject, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
-    p = Project(org_id=ctx.org_id, created_by=ctx.user.id, **body.model_dump(), )
+    try:
+        chosen = methods_mod.clean(body.methods)
+    except methods_mod.MethodsError as e:
+        raise HTTPException(422, str(e)) from e
+    others = [u for u in dict.fromkeys(body.member_ids) if u != ctx.user.id]
+    users = {u.id: u for u in db.scalars(select(User).where(User.org_id == ctx.org_id, User.id.in_(others)))} if others else {}
+    if any(u not in users or users[u].role != "researcher" or not users[u].active for u in others):
+        raise HTTPException(422, "只能把本公司在职的研究员加进项目")
+    p = Project(org_id=ctx.org_id, created_by=ctx.user.id, **body.model_dump(exclude={"methods", "member_ids"}), methods=methods_mod.store(chosen))
     p.market = p.market.upper()
     db.add(p)
     db.flush()  # assigns the id, so the audit row points at this project
     db.add(ProjectMember(org_id=ctx.org_id, project_id=p.id, user_id=ctx.user.id, is_owner=True, added_by=ctx.user.id))  # the creator owns it
-    audit(db, ctx.org_id, ctx.actor, "project.create", p.id)
+    for uid_ in others:
+        db.add(ProjectMember(org_id=ctx.org_id, project_id=p.id, user_id=uid_, is_owner=False, added_by=ctx.user.id))
+    audit(db, ctx.org_id, ctx.actor, "project.create", p.id, methods=",".join(chosen), members=len(others) + 1)
     db.commit()
     return project_out(p)
 
@@ -187,6 +204,21 @@ def put_screener(part_id: str, body: ScreenerBody, ctx: Ctx = Depends(require_ro
 def erase(part_id: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
     p = _own_participant(db, ctx, part_id)
     return {"purged_interviews": erase_participant(db, p, ctx.actor)}
+
+
+@router.put("/projects/{pid}/methods")
+def put_methods(pid: str, body: MethodsBody, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    """Change which research methods the project uses (project owners and admins). Data of a method switched off is kept, only hidden."""
+    proj = get_project(db, ctx, pid)
+    if not _can_manage(db, ctx, pid):
+        raise HTTPException(403, "只有项目负责人或管理员能调整研究方法")
+    try:
+        proj.methods = methods_mod.store(methods_mod.clean(body.methods))
+    except methods_mod.MethodsError as e:
+        raise HTTPException(422, str(e)) from e
+    audit(db, ctx.org_id, ctx.actor, "project.methods", proj.id, methods=proj.methods)
+    db.commit()
+    return project_out(proj)
 
 
 # ---------- who works on a project ----------

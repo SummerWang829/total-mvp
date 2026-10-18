@@ -449,6 +449,39 @@ def recruit_section(br, D):
     ctx.close()
 
 
+def wizard_section(br, D):
+    """The new-project wizard: details, methods, team, confirm; the menu and the star map follow the chosen methods; methods can be changed later."""
+    rs = D["tok"]["researcher"]
+    ctx, pg, errs = new_page(br, 1280, token=rs)
+    pg.on("dialog", lambda d: d.accept())
+    pg.goto(B + "/#/projects"); pg.wait_for_selector("#np")
+    pg.click("#np"); pg.wait_for_selector("#wf")
+    ok("第 1 步" in pg.inner_text("#wzstep"), "[wizard] it starts at step 1")
+    pg.fill("[name=name]", "向导测试项目"); audit_page(pg, "wizard step 1/desktop", errs); pg.click("#wnext")
+    pg.wait_for_selector("input[name=methods]")
+    ok("第 2 步" in pg.inner_text("#wzstep") and pg.locator("input[name=methods]").count() == 4, "[wizard] step 2 offers the four methods")
+    pg.locator("input[name=methods][value=async]").check(); pg.locator("input[name=methods][value=depth]").uncheck(); pg.locator("input[name=methods][value=async]").check()
+    audit_page(pg, "wizard step 2/desktop", errs); pg.click("#wnext")
+    pg.wait_for_selector("#wzstep:has-text('第 3 步')")
+    audit_page(pg, "wizard step 3/desktop", errs); pg.click("#wnext")
+    pg.wait_for_selector("#wzstep:has-text('第 4 步')")
+    ok("异步 AI 研究" in pg.inner_text("#wf") and "深访" not in pg.inner_text("#wf"), "[wizard] the last step summarises the chosen methods")
+    audit_page(pg, "wizard step 4/desktop", errs)
+    pg.click("#wnext"); pg.wait_for_selector(".starmap", timeout=15000)
+    ok(pg.locator(".snode").count() == 1 and "异步 AI 研究" in pg.inner_text(".starmap"), "[wizard] the star map has one node per chosen method")
+    ok("异步研究" in pg.inner_text("nav.side") and "舆情监测" not in pg.inner_text("nav.side") and "场次与邀请" not in pg.inner_text("nav.side"), "[wizard] the menu shows only what the project uses")
+    audit_page(pg, "star map/desktop", errs)
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "starmap_1280.png"), full_page=True)
+    pg.click("#chm"); pg.wait_for_selector("input[name=methods][value=listening]")
+    pg.locator("input[name=methods][value=listening]").check(); pg.click("#f button.p")
+    ok(wait_until(lambda: pg.locator(".snode").count() == 2 and "舆情监测" in pg.inner_text("nav.side"), 10), "[wizard] switching a method on adds it to the map and the menu")
+    ctx.close()
+    ctx, pg, errs = new_page(br, 390, token=rs)
+    pg.goto(B + "/#/projects"); pg.wait_for_selector("#np"); pg.click("#np"); pg.wait_for_selector("#wf")
+    audit_page(pg, "wizard/phone", errs)
+    ctx.close()
+
+
 def main():
     tmp = tempfile.mkdtemp()
     env = {**os.environ, "DATABASE_URL": f"sqlite:///{tmp}/qa.db", "MEDIA_DIR": f"{tmp}/media", "LIVEKIT_URL": "", "ASR_PROVIDER": "mock", "LLM_PROVIDER": "mock", "ASR_API_KEY": "", "LLM_API_KEY": "",
@@ -1089,6 +1122,7 @@ def run():
         repo_section(br, D)
         listening_section(br, D)
         recruit_section(br, D)
+        wizard_section(br, D)
 
         # ---------- C2. dialogs and expandable panels on the staff pages (both screen sizes) ----------
         for w, vp in ((1280, "desktop"), (390, "phone")):
