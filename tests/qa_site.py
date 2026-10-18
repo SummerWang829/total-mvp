@@ -635,6 +635,36 @@ def vote_section(br, D):
     ctx.close()
 
 
+def gmap_section(br, D):
+    """The disagreement map of a focus group: analyse the transcript, see the stances, open one with its verbatim quote and confirm it, export to Word."""
+    adm, pid = D["tok"]["admin"], D["pid"]
+    ids = [call(f"/projects/{pid}/participants", {"name": n, "country": "SG", "language": "zh"}, adm)["id"] for n in ("地图甲", "地图乙", "地图丙")]
+    iid = call(f"/projects/{pid}/interviews", {"kind": "group", "participant_ids": ids, "title": "分歧地图座谈会", "language": "zh"}, adm)["id"]
+    lines = [("p1", "我喜欢这个香味，很放心。"), ("p2", "我不喜欢这个香味，香精会让我过敏。"), ("p3", "我觉得价格太贵了。"), ("p1", "价格不错，我推荐。")]
+    call(f"/interviews/{iid}/transcript", {"segments": [{"idx": i, "speaker": sp, "start_ms": i * 5000, "end_ms": i * 5000 + 4000, "text_orig": tx} for i, (sp, tx) in enumerate(lines)]}, adm)
+    ctx, pg, errs = new_page(br, 1280, token=adm)
+    pg.on("dialog", lambda d: d.accept())
+    pg.goto(B + f"/#/i/{iid}/disagree"); pg.wait_for_selector("#danalyze")
+    ok(pg.locator(".tabs a", has_text="分歧地图").count() == 1 and "还没有分析" in pg.inner_text("#tab"), "[gmap] a focus group has the map tab, empty at first")
+    audit_page(pg, "disagreement empty/desktop", errs)
+    pg.click("#danalyze"); pg.wait_for_selector("#dmatrix", timeout=15000)
+    ok(pg.locator("#dmatrix .dcell").count() >= 4 and "香味" in pg.inner_text("#dmatrix") and "价格" in pg.inner_text("#dmatrix"), "[gmap] the matrix lists topics with each person's stance")
+    audit_page(pg, "disagreement/desktop", errs)
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "disagreement_1280.png"), full_page=True)
+    pg.locator(".dcell").first.click(); pg.wait_for_selector("#cacc")
+    ok("我喜欢这个香味" in pg.inner_text(".modal") and "建议" in pg.inner_text(".modal"), "[gmap] opening a stance shows the verbatim quote and that it is only a suggestion")
+    pg.click("#cacc")
+    ok(wait_until(lambda: pg.locator(".dcell", has_text="✓").count() == 1, 8), "[gmap] confirming a stance marks it")
+    with pg.expect_download(timeout=15000) as dl:
+        pg.click("#dexport")
+    ok(dl.value.suggested_filename.endswith(".docx"), "[gmap] the map exports as a Word file")
+    ctx.close()
+    ctx, pg, errs = new_page(br, 390, token=adm)
+    pg.goto(B + f"/#/i/{iid}/disagree"); pg.wait_for_selector("#dmatrix")
+    audit_page(pg, "disagreement/phone", errs)
+    ctx.close()
+
+
 def main():
     tmp = tempfile.mkdtemp()
     env = {**os.environ, "DATABASE_URL": f"sqlite:///{tmp}/qa.db", "MEDIA_DIR": f"{tmp}/media", "LIVEKIT_URL": "", "ASR_PROVIDER": "mock", "LLM_PROVIDER": "mock", "ASR_API_KEY": "", "LLM_API_KEY": "",
@@ -1291,6 +1321,7 @@ def run():
         admin_data_section(br, D)
         segcode_section(br, D)
         vote_section(br, D)
+        gmap_section(br, D)
 
         # ---------- C2. dialogs and expandable panels on the staff pages (both screen sizes) ----------
         for w, vp in ((1280, "desktop"), (390, "phone")):

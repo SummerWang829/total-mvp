@@ -1025,7 +1025,7 @@ async function interviewView(iid, tab) {
   const invite = sessionStorage.getItem("invite_" + iid);
   const room = (as, cls) => `<a class="btn ${cls}" href="/room.html?i=${iid}&as=${as}" target="_blank" rel="noopener">${as === "observer" ? "隐身观察" : "进入房间（主持）"}</a>`;
   const canRoom = it.status !== "ended" && !it.purged;
-  const tabs = [["transcript", "转写"], ["insights", "洞察"], ["clips", "片段"], ...(staff ? [["highlights", "引用与追问"], ["signals", "情绪信号"]] : []), ...(it.kind === "group" ? [["fairness", "发言情况"]] : [])];
+  const tabs = [["transcript", "转写"], ["insights", "洞察"], ["clips", "片段"], ...(staff ? [["highlights", "引用与追问"], ["signals", "情绪信号"]] : []), ...(it.kind === "group" ? [["fairness", "发言情况"], ...(staff ? [["disagree", "分歧地图"]] : [])] : [])];
   shell(`<a class="back" href="#/p/${it.project_id}/insights">← 洞察与片段</a>
     <div class="head"><div><h1>${esc(it.title)}</h1><p class="lead" style="margin:6px 0 0">${it.kind === "group" ? "座谈会" : "受访者"}：${esc(it.participant.name)}${it.participant.country ? " · " + esc(it.participant.country) : ""} · 访谈语言 ${esc(LANGS[it.language] || it.language)} · <span class="tag ${c}">${t}</span>${it.kind === "group" ? ` <span class="tag o">座谈会</span>` : ""}${it.moderation === "ai" ? ` <span class="tag o">AI 主持</span>` : ""}${it.invite_state ? ` <span class="tag ${(INVITE[it.invite_state] || [])[1] || ""}">${(INVITE[it.invite_state] || [it.invite_state])[0]}</span>` : ""}</p></div><span class="sp"></span>
       <div class="row">${canRoom ? (ME.role === "observer" ? room("observer", "") : staff ? room("moderator", "p") + room("observer", "") : room("moderator", "p")) : ""}</div></div>
@@ -1047,8 +1047,51 @@ async function interviewView(iid, tab) {
   if (tab === "clips") return clipsTab(iid, staff, my);
   if (tab === "highlights" && staff) return highlightsTab(iid, my);
   if (tab === "fairness" && it.kind === "group") return fairnessTab(iid, my);
+  if (tab === "disagree" && it.kind === "group" && staff) return disagreeTab(iid, it, my);
   if (tab === "signals" && staff) return signalsTab(iid, my);
   return insightsTab(iid, staff, my);
+}
+
+// ---------------- 座谈会分歧地图：谁在哪个议题上站哪一边、谁改变了想法 ----------------
+const STANCE_TAG = { pro: "ok", con: "bad", unsure: "live" };
+async function disagreeTab(iid, it, my) {
+  const v = await api(`/interviews/${iid}/disagreement`);
+  if (stale(my) || !$("#tab")) return;
+  const quote = (c) => c.quotes.length ? `“${esc(c.quotes[0].text)}”` : esc(c.reason);
+  const status = (c) => c.status === "accepted" ? ` <span class="tag ok">已确认</span>` : ` <span class="tag">建议</span>`;
+  const cellHtml = (cs) => cs.map((c) => `<button class="s dcell st-${c.stance}" data-claim="${c.id}">${c.stance_zh}${c.status === "accepted" ? " ✓" : ""}</button>`).join(" ") || `<span class="mut">—</span>`;
+  const byClaim = {}; v.matrix.forEach((m) => Object.values(m.cells).forEach((cs) => cs.forEach((c) => { byClaim[c.id] = c; })));
+  $("#tab").innerHTML = `<div class="card"><div class="row"><h3 style="margin:0">分歧地图</h3><span class="sp"></span><button class="p" id="danalyze">${v.analysed ? "重新分析" : "让 AI 分析转写"}</button>${v.analysed ? ` <button class="s" id="dexport">导出 Word</button>` : ""}</div>
+      <p class="sm mut" style="margin:6px 0 0">AI 读逐字稿，找出每个人在各个议题上的立场（赞成 / 反对 / 犹豫），引文都是转写里的原话。标“建议”的是 AI 的判断，点开确认或排除后才算数。需要先有转写。</p></div>
+    ${!v.analysed ? `<div class="card empty"><b>还没有分析。</b><span>座谈会结束并转写后，点“让 AI 分析转写”。</span></div>` : `
+    <div class="card scroll" style="padding:6px 10px"><h3 style="margin:8px 0">立场矩阵</h3><table class="tbl rc" id="dmatrix"><thead><tr><th>议题</th>${v.speakers.map((s) => `<th>${esc(s.label)}</th>`).join("")}</tr></thead><tbody>
+      ${v.matrix.map((m) => `<tr><td data-l="议题"><b>${esc(m.topic)}</b></td>${v.speakers.map((s) => `<td data-l="${esc(s.label)}">${cellHtml(m.cells[s.key] || [])}</td>`).join("")}</tr>`).join("")}</tbody></table></div>
+    <div class="card"><h3 style="margin-top:0">正面分歧</h3>${v.conflicts.length ? v.conflicts.map((c) => `<div class="hit"><b>${esc(c.topic)}</b><div class="sm"><b class="st-pro">赞成</b> ${esc(c.a.speaker)}：${quote(c.a)}</div><div class="sm"><b class="st-con">反对</b> ${esc(c.b.speaker)}：${quote(c.b)}</div></div>`).join("") : `<p class="mut" style="margin:0">没有发现两个人在同一议题上正面相反。</p>`}</div>
+    <div class="card"><h3 style="margin-top:0">立场的变化</h3>${v.shifts.length ? v.shifts.map((e) => `<div class="hit"><b>${esc(e.speaker)}</b> 在“${esc(e.topic)}”上从 <b>${e.from}</b> 变为 <b>${e.to}</b>${e.needs_review ? ` <span class="tag live" title="没有找到明显的触发发言">待复核</span>` : ""}${e.status === "accepted" ? ` <span class="tag ok">已确认</span>` : ` <span class="tag">建议</span>`}
+      ${e.trigger ? `<div class="sm mut">此前 ${esc(e.trigger.speaker)} 说：${quote(e.trigger)}</div>` : ""}${e.status === "accepted" ? "" : `<div class="row" style="margin-top:6px"><button class="s" data-pa="${e.id}">确认</button><button class="s warn" data-pr="${e.id}">排除</button></div>`}</div>`).join("") : `<p class="mut" style="margin:0">没有发现立场变化。</p>`}</div>
+    <div class="card"><h3 style="margin-top:0">共识与少数派</h3>${v.consensus.map((c) => `<p style="margin:4px 0"><span class="tag ok">共识</span> <b>${esc(c.topic)}</b>：${esc(c.speakers.join("、"))} 都${c.stance_zh}</p>`).join("")}
+      ${v.dissent.map((d) => `<p style="margin:4px 0"><span class="tag live">少数派</span> <b>${esc(d.topic)}</b>：${esc(d.who)} 一人${d.stance_zh}：${quote(d.claim)}</p>`).join("")}${!v.consensus.length && !v.dissent.length ? `<p class="mut" style="margin:0">没有明显的共识或少数派。</p>` : ""}</div>`}`;
+  $("#danalyze").onclick = guard(async () => {
+    const b = $("#danalyze"); b.disabled = true; b.textContent = "AI 正在读转写，请稍等…";
+    try { const r = await api(`/interviews/${iid}/disagreement/analyze`, { method: "POST" }); toast(`找到 ${r.claims} 条立场`); render(); } finally { b.disabled = false; }
+  });
+  const ex = $("#dexport"); if (ex) ex.onclick = guard(async () => {
+    const r = await fetch(`/api/interviews/${iid}/disagreement/export`, { headers: { Authorization: "Bearer " + store.get("tt_token") } });
+    if (!r.ok) throw new Error("导出失败，请稍后再试");
+    const a = document.createElement("a"); a.href = URL.createObjectURL(await r.blob()); a.download = `${it.title}-分歧地图.docx`; document.body.appendChild(a); a.click(); a.remove();
+  });
+  app.querySelectorAll("[data-claim]").forEach((b) => b.onclick = () => {
+    const c = byClaim[b.dataset.claim];
+    const m = modal(`<h2>${esc(c.speaker)} · ${esc(c.topic)}</h2><p><span class="tag ${STANCE_TAG[c.stance]}">${c.stance_zh}</span>${status(c)}</p>${c.reason ? `<p class="sm mut">AI 的概括：${esc(c.reason)}</p>` : ""}
+      ${c.quotes.map((q) => `<blockquote style="margin:8px 0;padding-left:10px;border-left:3px solid var(--line2)">“${esc(q.text)}”<div class="sm mut">${fmt(q.at_ms)}</div></blockquote>`).join("")}
+      <div class="row">${c.status === "accepted" ? "" : `<button class="p" id="cacc">确认这条立场</button>`}<button class="s warn" id="crej">排除</button><button type="button" id="c">关闭</button></div>`);
+    $("#c", m).onclick = () => m.remove();
+    const act = (a) => guard(async () => { await api(`/claims/${c.id}/${a}`, { method: "POST" }); m.remove(); toast(a === "accept" ? "已确认" : "已排除"); render(); });
+    const acc = $("#cacc", m); if (acc) acc.onclick = act("accept");
+    $("#crej", m).onclick = act("reject");
+  });
+  app.querySelectorAll("[data-pa]").forEach((b) => b.onclick = guard(async () => { await api(`/persuasion/${b.dataset.pa}/accept`, { method: "POST" }); render(); }));
+  app.querySelectorAll("[data-pr]").forEach((b) => b.onclick = guard(async () => { await api(`/persuasion/${b.dataset.pr}/reject`, { method: "POST" }); render(); }));
 }
 
 const REC_ST = { recording: ["录制中", "live"], processing: ["合成中", "o"], ready: ["已就绪", "ok"], failed: ["失败", "bad"], deleted: ["已清除", ""] };

@@ -391,6 +391,37 @@ class TimeSlot(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
+class Claim(Base):
+    """What a focus-group participant said about a topic: a stance with the transcript lines it rests on (app/group_analysis.py). A suggestion until a researcher accepts it."""
+    __tablename__ = "claims"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
+    org_id: Mapped[str] = mapped_column(String(32), index=True)
+    interview_id: Mapped[str] = mapped_column(ForeignKey("interviews.id"), index=True)
+    speaker: Mapped[str] = mapped_column(String(8))  # seat key: p1, p2...
+    topic: Mapped[str] = mapped_column(String(60))
+    stance: Mapped[str] = mapped_column(String(8))  # pro | con | unsure
+    reason: Mapped[str] = mapped_column(String(200), default="")
+    line_ids: Mapped[list] = mapped_column(JSON, default=list)  # transcript segment ids; the quotes are copied from them, never taken from the model
+    status: Mapped[str] = mapped_column(String(10), default="suggested")  # suggested | accepted | rejected
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class PersuasionEvent(Base):
+    """Someone's stance on a topic changed during the discussion, with the claim of another person that may have caused it. A suggestion until accepted."""
+    __tablename__ = "persuasion_events"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
+    org_id: Mapped[str] = mapped_column(String(32), index=True)
+    interview_id: Mapped[str] = mapped_column(ForeignKey("interviews.id"), index=True)
+    speaker: Mapped[str] = mapped_column(String(8))
+    topic: Mapped[str] = mapped_column(String(60))
+    from_stance: Mapped[str] = mapped_column(String(8))
+    to_stance: Mapped[str] = mapped_column(String(8))
+    trigger_claim_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    confidence: Mapped[float] = mapped_column(Float, default=0.3)
+    status: Mapped[str] = mapped_column(String(10), default="suggested")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class SlotVote(Base):
     """A focus-group participant says a candidate time suits them. The team confirms one time (the one most people can make) and it becomes the session's time."""
     __tablename__ = "slot_votes"

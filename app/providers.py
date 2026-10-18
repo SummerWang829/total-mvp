@@ -97,6 +97,7 @@ def get_asr() -> ASR:
 class LLM(Protocol):
     def insights(self, segments: list[dict]) -> list[dict]: ...
     def translate(self, texts: list[str]) -> list[str]: ...  # into Chinese; same length and order; "" where it cannot
+    def extract_claims(self, lines: list[dict]) -> list[dict]: ...  # focus group: numbered lines -> [{"speaker","topic","stance": pro|con|unsure,"reason","lines":[numbers]}]
     def classify_mentions(self, items: list[dict]) -> list[dict]: ...  # public posts: [{"n","text"}] -> [{"n","sentiment": neg|neu|pos,"topics":[short names]}]
     def answer(self, question: str, sources: list[dict]) -> dict: ...  # research library: {"claims": [{"text", "evidence": [source numbers]}], "insufficient": bool}
     def suggest_codes(self, statements: list[str], codebook: list[str]) -> list[list[str]]: ...  # per statement: 1-3 short code names (reuse the codebook where it fits)
@@ -110,6 +111,24 @@ class MockLLM:
 
     def translate(self, texts: list[str]) -> list[str]:
         return ["" for _ in texts]
+
+    _CLAIM_TOPICS = {"香味": ("香味", "香精", "fragrance", "scent"), "价格": ("价格", "太贵", "便宜", "price"), "包装": ("包装", "packaging"), "功效": ("功效", "效果", "有效", "work")}
+    _CLAIM_CON = ("不喜欢", "过敏", "讨厌", "太贵", "不放心", "不好", "难用", "dislike", "hate", "expensive", "allerg")
+    _CLAIM_PRO = ("喜欢", "放心", "不错", "推荐", "便宜", "love", "great", "like")
+    _CLAIM_UNSURE = ("不确定", "也许", "说不好", "maybe", "not sure")
+
+    def extract_claims(self, lines: list[dict]) -> list[dict]:
+        """Offline stand-in: keywords for the topic and the stance of each participant line. Says nothing about real reading quality."""
+        out = []
+        for ln in lines:
+            if not (ln["speaker"].startswith("p") and ln["speaker"][1:].isdigit()):
+                continue
+            t = ln["text"].lower()
+            topic = next((name for name, words in self._CLAIM_TOPICS.items() if any(w in t for w in words)), None)
+            stance = "unsure" if any(w in t for w in self._CLAIM_UNSURE) else "con" if any(w in t for w in self._CLAIM_CON) else "pro" if any(w in t for w in self._CLAIM_PRO) else None
+            if topic and stance:
+                out.append({"speaker": ln["speaker"], "topic": topic, "stance": stance, "reason": ln["text"][:60], "lines": [ln["n"]]})
+        return out
 
     _POS = ("love", "great", "good", "easy", "fair", "saved", "喜欢", "满意", "推荐", "方便", "不错", "省")
     _NEG = ("slow", "cold", "never", "disappoint", "crash", "bug", "expensive", "refund", "慢", "凉", "失望", "闪退", "贵", "差", "退款", "没回复")
@@ -170,6 +189,15 @@ class OpenAICompatLLM:
                 got = [(self._translate_batch([t]) or [""])[0] for t in batch]
             out += got
         return out
+
+    def extract_claims(self, lines: list[dict]) -> list[dict]:
+        """Ask the model for the positions people took, citing line numbers only. The reply is untrusted: app/group_analysis.py checks every claim against the transcript."""
+        prompt = ("你是座谈会分析员。下面是一场座谈会的逐字稿，每行有编号、说话人（p1、p2……是受访者，moderator 是主持人）和内容。找出每位受访者对各个议题明确表达的立场："
+                  "stance 只能是 pro（赞成/喜欢/支持）、con（反对/不喜欢/担心）、unsure（犹豫/不确定）；topic 用 2 到 6 个字的议题名，同一议题全场用同一个名字；reason 用一句话概括理由。"
+                  "lines 只写支持这条立场的行编号（数字），不要抄写原话，行必须是该受访者本人说的。同一个人立场改变时，前后各写一条。不要推测性格或情绪。"
+                  '只输出 JSON：{"claims":[{"speaker":"p1","topic":str,"stance":"pro|con|unsure","reason":str,"lines":[int,...]}]}\n\n' + json.dumps(lines, ensure_ascii=False))
+        got = self._chat(prompt).get("claims", [])
+        return [c for c in got if isinstance(c, dict)] if isinstance(got, list) else []
 
     def classify_mentions(self, items: list[dict]) -> list[dict]:
         """Ask the model for the sentiment (neg / neu / pos) and 1-3 short topic names of each public post. The reply is untrusted: callers check it."""

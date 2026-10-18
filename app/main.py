@@ -11,7 +11,7 @@ from .listening import service as listening_service
 from .config import settings
 from .db import Base, SessionLocal, engine, ensure_columns
 from .recording import start_worker
-from .routers import admin_data, ai_room, analysis, auth, concept, cues, group_metrics, interviews, listening, pool, quant, recruit, report, signals, studies, repo, overview, projects, public
+from .routers import admin_data, ai_room, group_analysis as group_analysis_router, analysis, auth, concept, cues, group_metrics, interviews, listening, pool, quant, recruit, report, signals, studies, repo, overview, projects, public
 
 @asynccontextmanager
 async def lifespan(_app):
@@ -29,7 +29,7 @@ async def lifespan(_app):
 
 
 app = FastAPI(title="星桐 TOTAL MVP", version="0.1.0", lifespan=lifespan)
-for r in (auth.router, projects.router, interviews.router, overview.router, public.router, ai_room.router, concept.router, analysis.router, group_metrics.router, cues.router, signals.router, studies.router, repo.router, listening.router, recruit.router, quant.router, pool.router, report.router, admin_data.router):
+for r in (auth.router, projects.router, interviews.router, overview.router, public.router, ai_room.router, concept.router, analysis.router, group_metrics.router, cues.router, signals.router, studies.router, repo.router, listening.router, recruit.router, quant.router, pool.router, report.router, admin_data.router, group_analysis_router.router):
     app.include_router(r)
 app.middleware("http")(ratelimit.middleware)  # no-op unless RATE_LIMIT=1
 if settings.loop_watch_s > 0:

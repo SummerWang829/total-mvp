@@ -490,3 +490,4 @@ main.enter .pbar6 i{animation:grow 1s var(--ease) .15s both}@keyframes grow{from
 .starmap{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin:0 0 16px}
 .snode{display:block;color:inherit;text-decoration:none}.snode:hover{border-color:var(--orange)}.snode.idle{background:var(--wash,#F4F7F5)}
 .qrow2{display:grid;grid-template-columns:minmax(80px,200px) 1fr auto;gap:10px;align-items:center;margin:4px 0}
+.st-pro{color:#1F7A55;font-weight:700}.st-con{color:#B3223F;font-weight:700}.st-unsure{color:#8A3600;font-weight:700}
