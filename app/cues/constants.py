@@ -10,6 +10,7 @@ class Kind(str, Enum):
     SILENT = "silent"
     TIME = "time"
     OFFTOPIC = "offtopic"
+    SIGNAL = "signal"   # how the last answer was said (long pause, slow, quiet, strongly negative), against the speaker's own habits
 
 
 class Status(str, Enum):
@@ -21,7 +22,7 @@ class Status(str, Enum):
     EXPIRED = "expired"
 
 
-PRIORITY = {Kind.COMPLIANCE: 90, Kind.DOMINANT: 70, Kind.SILENT: 60, Kind.TIME: 40, Kind.OFFTOPIC: 30}
+PRIORITY = {Kind.COMPLIANCE: 90, Kind.DOMINANT: 70, Kind.SILENT: 60, Kind.SIGNAL: 50, Kind.TIME: 40, Kind.OFFTOPIC: 30}
 
 # --- the cards must never become noise ---
 MIN_GAP_S = 45                 # at most one new card every 45 seconds (a card about personal data may come after MIN_GAP_COMPLIANCE_S)
@@ -29,7 +30,7 @@ MIN_GAP_COMPLIANCE_S = 10
 MAX_PENDING = 3                # while three cards wait unanswered, no new one is made
 EXPIRE_S = 300                 # an unanswered card goes away after five minutes
 QUIET_AFTER_MODERATOR_S = 8    # no card in the seconds right after the moderator spoke (he or she is mid-question); personal-data cards ignore this
-COOLDOWN_S = {Kind.COMPLIANCE: 0, Kind.DOMINANT: 300, Kind.SILENT: 300, Kind.TIME: 180, Kind.OFFTOPIC: 300}   # same kind again, at the earliest
+COOLDOWN_S = {Kind.COMPLIANCE: 0, Kind.DOMINANT: 300, Kind.SILENT: 300, Kind.SIGNAL: 240, Kind.TIME: 180, Kind.OFFTOPIC: 300}   # same kind again, at the earliest
 SEAT_COOLDOWN_S = 300          # the same person is named by a card at most once in five minutes
 NOISY_MIN_HANDLED = 3          # a kind the moderator mostly dismisses (at least this many answered, this share dismissed) waits twice as long
 NOISY_DISMISS_SHARE = 0.75
@@ -41,6 +42,9 @@ EVIDENCE_CHARS = 200
 OVERRUN_SHARE = 0.20           # a section is "over" when it has used this much more than planned ...
 OVERRUN_MIN_S = 60             # ... and at least this many seconds more
 TOTAL_OVERRUN_SHARE = 0.15
+
+# --- how it was said ---
+SIGNAL_MAX_AGE_S = 45          # only an answer given in the last 45 seconds is worth a card (later the moment has passed)
 
 # --- off topic ---
 OFFTOPIC_SENTENCES = 3         # this many informative sentences in a row without touching the section

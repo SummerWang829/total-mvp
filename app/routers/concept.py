@@ -16,7 +16,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from .. import concept, content_rules, groups, marks
+from .. import concept, content_rules, groups, marks, signals
 from ..asr_live import token_out
 from ..audit import audit
 from ..db import SessionLocal, get_db
@@ -169,6 +169,20 @@ class CaptionIn(BaseModel):
     text: str = Field(max_length=MAX_TEXT)
     final: bool = True  # false: the sentence is still being spoken (shown greyed, not stored)
     dur_ms: int = Field(default=0, ge=0, le=120_000)  # how long the sentence took, from the recogniser (used to place it on the transcript timeline)
+    vol_db: float | None = Field(default=None, ge=-100, le=0)  # average level while speaking, dBFS, measured in the speaker's own browser (one number, no audio)
+
+
+def _how_it_was_said(db: Session, itv: Interview, speaker: str, text: str, body: CaptionIn) -> dict:
+    """Pace, volume, the pause before answering and the tone of the words for a new sentence, against this speaker's own earlier sentences."""
+    rows = db.execute(select(CaptionLine.rate_x10, CaptionLine.vol_db10, CaptionLine.gap_ms).where(
+        CaptionLine.interview_id == itv.id, CaptionLine.speaker == speaker).order_by(CaptionLine.seq.desc()).limit(40)).all()[::-1]
+    history = [signals.Past(None if r is None else r / 10, None if v is None else v / 10, g) for r, v, g in rows]
+    last = db.execute(select(CaptionLine.speaker, CaptionLine.at_ms).where(CaptionLine.interview_id == itv.id).order_by(CaptionLine.seq.desc()).limit(1)).first()
+    start = max(0, at_ms(itv) - body.dur_ms) if body.dur_ms else None
+    gap = start - last[1] if last and last[0] != speaker and start is not None and start >= last[1] else None  # silence after someone else finished
+    got = signals.analyze(text, body.dur_ms, body.vol_db, gap, history)
+    return {"rate_x10": None if got.rate is None else round(got.rate * 10), "vol_db10": None if body.vol_db is None else round(body.vol_db * 10),
+            "gap_ms": gap, "senti": round(got.senti * 100), "tags": ",".join(got.tags)}
 
 
 def _store_caption(db: Session, itv: Interview, speaker: str, body: CaptionIn) -> None:
@@ -180,13 +194,14 @@ def _store_caption(db: Session, itv: Interview, speaker: str, body: CaptionIn) -
         _PARTIAL[(itv.id, speaker)] = (text, time.time())
         return
     _PARTIAL.pop((itv.id, speaker), None)
+    said = _how_it_was_said(db, itv, speaker, text, body)
     with _LINE_LOCK:  # moderator and participant finish sentences at the same time: keep seq numbers unique
         for _ in range(3):
             seq = (db.scalar(select(func.max(CaptionLine.seq)).where(CaptionLine.interview_id == itv.id)) or 0) + 1
             if seq > MAX_LINES_PER_INTERVIEW:
                 raise HTTPException(429, "字幕条数已达上限")
             line = CaptionLine(org_id=itv.org_id, interview_id=itv.id, seq=seq, speaker=speaker, text=text, at_ms=at_ms(itv), dur_ms=body.dur_ms,
-                               flags=",".join(sorted(checked.flags)))
+                               flags=",".join(sorted(checked.flags)), **said)
             db.add(line)
             try:
                 db.commit()
@@ -233,7 +248,9 @@ def get_captions(iid: str, after: int = 0, ctx: Ctx = Depends(current_ctx), db: 
     if after > 0:
         fills = [{"id": c.id, "text_zh": c.text_zh} for c in db.scalars(select(CaptionLine).where(
             CaptionLine.interview_id == itv.id, CaptionLine.seq <= after, CaptionLine.seq > after - 15, CaptionLine.text_zh != "")).all()]
-    return {"lines": [{"id": c.id, "seq": c.seq, "speaker": c.speaker, "text": c.text, "text_zh": c.text_zh, "at_ms": c.at_ms, "dur_ms": c.dur_ms} for c in rows],
+    team = ctx.user.role in OPERATE  # how-it-was-said hints go to the operating team only (not to client observers)
+    return {"lines": [{"id": c.id, "seq": c.seq, "speaker": c.speaker, "text": c.text, "text_zh": c.text_zh, "at_ms": c.at_ms, "dur_ms": c.dur_ms,
+                       **({"hints": signals.labels(c.tags.split(","))} if team and c.tags else {})} for c in rows],
             "partial": partial, "fills": fills}
 
 

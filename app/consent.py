@@ -9,7 +9,20 @@ import hashlib
 from .config import settings
 from .moderator.compliance import moderator_runs_locally
 
-VERSION = "2026-10-draft-5"  # draft-5: the AI also reads the screening answers; draft-4: AI-moderator disclosure (AI interviews only)
+VERSION = "2026-10-draft-6"  # draft-6: how things are said (pace, pauses, volume) and emoji are noted; draft-5: the AI also reads the screening answers; draft-4: AI-moderator disclosure (AI interviews only)
+
+# How things are said, and emoji: stated in every interview (the live captions are always on). Numbers and the participant's own emoji only.
+SIGNALS_TEXTS = {
+    "en": "To help the research team see where to ask more, we note how things are said (speaking pace, pauses and volume, compared only with your own usual way of speaking) "
+          "and any emoji you choose to send. We do not judge your feelings from this: only these numbers and your own emoji are kept.",
+    "zh": "为了帮助研究团队知道哪些地方值得多问，我们会记录您说话的语速、停顿和音量（只和您自己平时的说话习惯比较），以及您主动发送的表情。"
+          "我们不会据此判断您的情绪，只保存这些数值和您自己发的表情。",
+    "ms": "Untuk membantu pasukan penyelidik mengetahui di mana perlu bertanya lebih lanjut, kami mencatat cara anda bercakap (kelajuan, jeda dan kelantangan, dibandingkan dengan cara "
+          "biasa anda sendiri bercakap) dan sebarang emoji yang anda pilih untuk hantar. Kami tidak menilai perasaan anda daripada ini: hanya nombor ini dan emoji anda sendiri disimpan.",
+    "ta": "ஆய்வுக் குழு எங்கு மேலும் கேட்கலாம் என்பதை அறிய உதவ, நீங்கள் பேசும் விதத்தை (உங்கள் வழக்கமான பேச்சுடன் மட்டும் ஒப்பிட்ட வேகம், இடைநிறுத்தம், ஒலி அளவு) "
+          "மற்றும் நீங்களாக அனுப்பும் எமோஜிகளை நாங்கள் பதிவு செய்கிறோம். இதிலிருந்து உங்கள் உணர்வுகளை நாங்கள் மதிப்பிடுவதில்லை: இந்த எண்களும் நீங்கள் அனுப்பிய எமோஜிகளும் மட்டுமே சேமிக்கப்படும்.",
+}
+
 
 TEXTS = {
     "en": (
@@ -116,6 +129,7 @@ def consent_for(lang: str, org_name: str, ai: bool = False) -> dict:
     """
     l = "zh" if (lang or "").startswith("zh") else lang if lang in TEXTS else "en"  # anything else: English
     text = TEXTS[l].format(org=org_name, dpo=settings.dpo_email)
+    text = text + ("" if l == "zh" else " ") + SIGNALS_TEXTS[l]
     labels = dict(LABELS[l])
     if ai:
         text = _ai_disclosure(l) + text

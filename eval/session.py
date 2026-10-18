@@ -3,6 +3,7 @@ import logging
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app import signals
 from app.moderator.clock import ManualClock
 from app.moderator.constants import MSG_SERVICE_UNAVAILABLE, AlertLevel, ControlMode, EndReason, Operator, Phase, QualityRule, RedLine
 from app.moderator.engine import ModeratorEngine
@@ -108,7 +109,8 @@ def run_session(scenario: Scenario, guide: InterviewGuide, chat: ModeratorChatPr
             answer = said or _participant_reply(participant, last_ai, history)
             clock.advance(speaking_seconds(answer, guide.language) + THINK_PAUSE_S)
             control = engine.control
-            payload = engine.handle_participant(answer)
+            hints = signals.chat.hints(answer, [len(t) for who, t in history if who == "participant"])  # the same hints the live room gives the model
+            payload = engine.handle_participant(answer, hints)
             if payload.fatal_service_error:
                 raise ServiceUnavailableError(payload.alert_reason)
             if payload.spoken_response:

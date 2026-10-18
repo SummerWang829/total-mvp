@@ -97,6 +97,36 @@ def test_three_informative_sentences_that_miss_the_section_make_an_off_topic_car
     assert rules.offtopic(snap(s, 140, steps=None)) == []
 
 
+def _said(seq, speaker, end_s, text, tags=(), senti=0.0):
+    return Line(seq, sent(speaker, end_s, 5, text), tags=tuple(tags), senti=senti)
+
+
+def _snap_with(lines, now_s):
+    base = snap([ln.sentence for ln in lines], now_s)
+    return Snapshot(base.now_ms, base.metrics, lines, None, {}, None)
+
+
+def test_a_long_pause_slow_speech_or_a_strongly_negative_answer_makes_a_hint_card():
+    lines = [_said(1, "p2", 100, "这个我还得想一想吧不太确定怎么说", ["hesitation", "slow", "quiet"])]
+    c = rules.how_said(_snap_with(lines, 110))
+    assert len(c) == 1 and c[0].kind is K.Kind.SIGNAL and "参与者 ·02" in c[0].text and "回答前停顿长" in c[0].text and "语速偏慢" in c[0].text
+    assert "仅供参考" in c[0].text and "不代表" in c[0].text and c[0].evidence == (1,) and c[0].ask
+    strong = [_said(1, "p1", 100, "我真的很失望这个太糟糕了", ["negative"], -0.8)]
+    assert rules.how_said(_snap_with(strong, 110))
+
+
+def test_ordinary_answers_old_answers_and_the_moderator_make_no_hint_card():
+    assert rules.how_said(_snap_with([_said(1, "p1", 100, "我平时一般先看看成分表", [])], 110)) == []
+    assert rules.how_said(_snap_with([_said(1, "p1", 100, "嗯", ["slow"])], 110)) == []   # one mild tag alone is not worth a card
+    assert rules.how_said(_snap_with([_said(1, "p1", 100, "停了很久", ["hesitation"])], 400)) == []   # 300 s ago
+    assert rules.how_said(_snap_with([_said(1, "moderator", 100, "你觉得呢", ["hesitation"])], 110)) == []
+
+
+def test_the_hint_card_never_names_a_feeling_as_a_fact():
+    text = rules.how_said(_snap_with([_said(1, "p1", 100, "不太确定", ["hesitation", "slow"])], 110))[0].text
+    assert not any(w in text for w in ("紧张", "生气", "不满", "害怕", "说谎", "不诚实"))
+
+
 def test_candidates_come_most_urgent_first():
     s = [sent("p1", 100, 90), sent("p1", 200, 90), sent("p2", 230, 10, "我去年确诊了抑郁，现在在吃药治疗"), sent("p3", 250, 5)]
     assert kinds(candidates(snap(s, 260)))[0] is K.Kind.COMPLIANCE

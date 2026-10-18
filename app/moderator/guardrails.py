@@ -255,12 +255,35 @@ def check_model_identity(text: str, ctx: GuardrailContext) -> list[Violation]:
     return []
 
 
+# H14: the AI may use hints about HOW something was said to ask more gently, but it never tells the person it noticed anything about them. Such claims are
+# often wrong (a pause may be a phone call, a quiet voice a bad microphone) and feel intrusive.
+_FEELING_CLAIMS = [
+    r"我(?:注意到|发现|察觉到?|感觉到|听出|听到|看出|看到)(?:了)?(?:您|你)(?:刚才|刚刚|方才|的|有些|有点|突然){0,2}(?:声音|语速|语气|表情|停顿|情绪|音量|犹豫|紧张|沉默|停了|变慢|变快|变小|变大|变轻|变得)",
+    r"(?:您|你)(?:听起来|看起来|似乎|好像|感觉|显得)(?:有点|有些|很|比较|非常|挺)?(?:紧张|生气|犹豫|不安|难过|烦躁|不高兴|不开心|沮丧|焦虑|失望|害怕|激动|为难|犹犹豫豫)",
+    r"(?:检测|识别|分析|捕捉)(?:到|出)?(?:了)?(?:您|你)(?:的)?(?:情绪|语气|声音|表情|语速|停顿)",
+    r"(?:您|你)(?:的)?(?:语速|声音|语气)(?:突然|忽然|有点|比较|很|变得|变)+(?:慢|快|小|轻|低|重|大)",
+    r"我(?:觉得|感觉到?|察觉到?|看得出|听得出|能感觉到)(?:您|你)(?:有点|有些|很|比较|不太|不是很|不)?(?:开心|高兴|紧张|生气|犹豫|不安|难过|烦躁|沮丧|焦虑|失望|害怕|激动|为难)",
+    r"\bI(?:'ve| have)? (?:can |could )?(?:hear|sense|tell|noticed?|saw|see|detected?|felt|feel) (?:that )?(?:you(?:'re| are| sound| seem| look| paused| hesitat| paus| slow| went quiet| got quiet| trailed| stopped| spoke| sounded| looked)|your (?:voice|tone|pace|expression|pauses?|hesitation))",
+    r"\byou (?:sound|seem|look|appear|come across as) (?:a bit |a little |quite |very |rather |somewhat |kind of )?(?:nervous|angry|upset|hesitant|unsure|anxious|sad|annoyed|frustrated|disappointed|afraid|scared|uncomfortable|stressed)",
+    r"\b(?:your|the) (?:tone|voice|pace|expression|pauses?|hesitation)\b.{0,25}\b(?:suggests?|shows?|tells? me|indicates?|means?)",
+    r"\b(?:detected|picked up on)\b.{0,25}\b(?:emotion|tone|mood|hesitation|stress)",
+]
+
+
+def check_feeling_claims(text: str, ctx: GuardrailContext) -> list[Violation]:
+    """H14: no "I noticed your voice / pace / pauses", no "you sound nervous", no naming of an emotion the AI claims to have detected."""
+    if hit := _matched_text(_FEELING_CLAIMS, text):
+        return _v(RedLine.H14_NO_FEELING_CLAIMS, f"claims to have noticed how the participant feels or sounds: {hit}")
+    return []
+
+
 CHECKS: list[tuple[RedLine, Callable[[str, GuardrailContext], list[Violation]]]] = [
     (RedLine.H1_ONE_QUESTION, check_one_question), (RedLine.H2_LEADING, check_leading), (RedLine.H3_AI_DISCLOSURE, check_ai_disclosure),
     (RedLine.H4_PERSONAL_DATA, check_personal_data), (RedLine.H5_STOP_OR_CRISIS, check_stop_or_crisis), (RedLine.H6_LANGUAGE, check_language),
     (RedLine.H7_EVALUATIVE, check_evaluative), (RedLine.H8_CONFIDENTIAL, check_confidential), (RedLine.H9_ADVICE, check_advice),
     (RedLine.H10_FORBIDDEN_TOPIC, check_forbidden_topics), (RedLine.H11_SILENT_AFTER_TAKEOVER, check_silent_after_takeover),
     (RedLine.H12_TOO_LONG, check_length), (RedLine.H13_MODEL_IDENTITY, check_model_identity),
+    (RedLine.H14_NO_FEELING_CLAIMS, check_feeling_claims),
 ]
 
 

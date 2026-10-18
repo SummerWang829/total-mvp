@@ -24,7 +24,7 @@ def _context_json(ctx: ModeratorContext) -> dict:
         "RECENT_TURNS": [{"speaker": t.speaker.value, "text": t.text} for t in ctx.recent_turns],
         "HYPOTHESES": ctx.hypotheses_internal, "FORBIDDEN_TOPICS": ctx.forbidden_topics, "PRODUCT_FACTS": ctx.product_facts,
         "BRAND_DISCLOSURE_ALLOWED": ctx.brand_disclosure_allowed, "ALREADY_ASKED": ctx.asked_questions,
-        "KEY_FACTS": ctx.key_facts, "RECALLED_EARLIER": ctx.recalled, "PARTICIPANT_PROFILE": ctx.profile,
+        "KEY_FACTS": ctx.key_facts, "RECALLED_EARLIER": ctx.recalled, "PARTICIPANT_PROFILE": ctx.profile, "PARTICIPANT_SIGNALS": ctx.signals,
     }
 
 

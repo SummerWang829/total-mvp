@@ -85,7 +85,8 @@ def refresh(db: Session, itv: Interview) -> None:
         if itv.status != "live":
             return
         rows = db.scalars(select(CaptionLine).where(CaptionLine.interview_id == itv.id).order_by(CaptionLine.seq)).all()
-        lines = [Line(r.seq, Sentence(r.speaker, r.text, r.at_ms, r.dur_ms), frozenset(f for f in r.flags.split(",") if f)) for r in rows]
+        lines = [Line(r.seq, Sentence(r.speaker, r.text, r.at_ms, r.dur_ms), frozenset(f for f in r.flags.split(",") if f),
+                  tuple(t for t in r.tags.split(",") if t), r.senti / 100) for r in rows]
         now_ms = _elapsed_ms(itv)
         seats = groups.seats(db, itv.id)
         metrics = compute([ln.sentence for ln in lines], [s.seat for s in seats], now_ms)

@@ -41,28 +41,28 @@ const iid = q.get("i"), inviteT = q.get("t"), asRole = q.get("as");
 // Participant-facing text (the participant sees the room in the interview's language). ms/ta are machine drafts: native review needed.
 const I18N = {
   en: { title: "Interview room", you: "You", mod: "Moderator", waiting: "You're in. Please wait, the moderator will start the interview soon.", live: "The interview is in progress.",
-        rec: "Recording", mic: "Mic", micOff: "Mic off", cam: "Camera", camOff: "Camera off", leave: "Leave", left: "You have left the interview.", ended: "The interview has ended. Thank you for taking part!",
+        rec: "Recording", mic: "Mic", micOff: "Mic off", cam: "Camera", camOff: "Camera off", leave: "Leave", react: "Reactions", rxSent: "sent", rxSlow: "A little slower, please", rxWait: "Not available right now", rxMore: "More emoji", rxInsert: "Add an emoji", rx: { like: "Agree", love: "Love it", smile: "Happy", laugh: "Funny", surprise: "Surprised", confused: "Confused", sad: "Sad", dislike: "Disagree" }, left: "You have left the interview.", ended: "The interview has ended. Thank you for taking part!",
         sound: "Tap to turn on sound", noDevice: "We could not access your camera or microphone. Please allow access in your browser, then reload this page.",
         noCam: "Your camera is not available, joining with microphone only.", lost: "Connection lost. Please reload this page.", connecting: "Connecting…", upload: "Having trouble saving the recording. Please keep this page open.",
         cantEnter: "Unable to enter", aiName: "AI moderator", chatTitle: "Chat with the moderator", chatPh: "Type your answer here…", send: "Send", typing: "The moderator is replying…",
         chatWait: "The moderator will write to you here shortly.", chatClosed: "The conversation has ended. Thank you!", chatErr: "Could not send. Please try again.", playHint: "Tap the play button on the video to watch it.", person: "Participant", names: { moderator: "Moderator" }, toDark: "Dark green", toLight: "Light", themeName: "Room colours", leftBack: "To come back, open your invitation link again; the moderator will let you in.",
         markHint: "Tap the picture to mark what you like or dislike.", markLike: "Like", markDislike: "Dislike", markRemove: "Remove this mark" },
   zh: { title: "访谈房间", you: "我", mod: "主持人", waiting: "你已进入。请稍等，主持人很快会开始访谈。", live: "访谈进行中。",
-        rec: "正在录制", mic: "麦克风", micOff: "麦克风已关", cam: "摄像头", camOff: "摄像头已关", leave: "离开", left: "你已离开访谈。", ended: "访谈已结束，感谢你的参与！",
+        rec: "正在录制", mic: "麦克风", micOff: "麦克风已关", cam: "摄像头", camOff: "摄像头已关", leave: "离开", react: "表情", rxSent: "已发送", rxSlow: "慢一点，稍后再发", rxWait: "现在还不能发送", rxMore: "更多表情", rxInsert: "插入表情", rx: { like: "赞同", love: "喜欢", smile: "开心", laugh: "好笑", surprise: "惊讶", confused: "困惑", sad: "难过", dislike: "不赞同" }, left: "你已离开访谈。", ended: "访谈已结束，感谢你的参与！",
         sound: "点击开启声音", noDevice: "无法使用你的摄像头或麦克风。请在浏览器里允许访问后刷新本页。",
         noCam: "摄像头不可用，将只用麦克风加入。", lost: "连接已断开，请刷新本页。", connecting: "正在连接…", upload: "录制保存遇到问题，请保持本页打开。",
         cantEnter: "无法进入", aiName: "AI 主持人", chatTitle: "和主持人聊天", chatPh: "在这里输入你的回答…", send: "发送", typing: "主持人正在回复…",
         chatWait: "主持人很快会在这里给你发消息。", chatClosed: "对话已结束，谢谢！", chatErr: "没有发送成功，请再试一次。", playHint: "请点击视频上的播放键观看。", person: "参与者", names: {}, toDark: "深绿主题", toLight: "浅色主题", themeName: "切换房间配色", leftBack: "如需回来，请重新打开邀请链接，等主持人再次放行。",
         markHint: "点图片，标出你喜欢或不喜欢的地方。", markLike: "喜欢", markDislike: "不喜欢", markRemove: "删除这个标记" },
   ms: { title: "Bilik temu bual", you: "Anda", mod: "Moderator", waiting: "Anda sudah masuk. Sila tunggu, moderator akan memulakan temu bual sebentar lagi.", live: "Temu bual sedang berlangsung.",
-        rec: "Sedang dirakam", mic: "Mikrofon", micOff: "Mikrofon dimatikan", cam: "Kamera", camOff: "Kamera dimatikan", leave: "Keluar", left: "Anda telah keluar dari temu bual.", ended: "Temu bual telah tamat. Terima kasih kerana mengambil bahagian!",
+        rec: "Sedang dirakam", mic: "Mikrofon", micOff: "Mikrofon dimatikan", cam: "Kamera", camOff: "Kamera dimatikan", leave: "Keluar", react: "Reaksi", rxSent: "dihantar", rxSlow: "Perlahan sedikit, sila", rxWait: "Tidak tersedia sekarang", rxMore: "Lagi emoji", rxInsert: "Tambah emoji", rx: { like: "Setuju", love: "Suka sangat", smile: "Gembira", laugh: "Kelakar", surprise: "Terkejut", confused: "Keliru", sad: "Sedih", dislike: "Tidak setuju" }, left: "Anda telah keluar dari temu bual.", ended: "Temu bual telah tamat. Terima kasih kerana mengambil bahagian!",
         sound: "Ketik untuk menghidupkan bunyi", noDevice: "Kami tidak dapat mengakses kamera atau mikrofon anda. Sila benarkan akses dalam pelayar anda, kemudian muat semula halaman ini.",
         noCam: "Kamera tidak tersedia, menyertai dengan mikrofon sahaja.", lost: "Sambungan terputus. Sila muat semula halaman ini.", connecting: "Menyambung…", upload: "Ada masalah menyimpan rakaman. Sila biarkan halaman ini terbuka.",
         cantEnter: "Tidak dapat masuk", aiName: "Moderator AI", chatTitle: "Sembang dengan moderator", chatPh: "Taip jawapan anda di sini…", send: "Hantar", typing: "Moderator sedang membalas…",
         chatWait: "Moderator akan menulis kepada anda di sini sebentar lagi.", chatClosed: "Perbualan telah tamat. Terima kasih!", chatErr: "Tidak dapat menghantar. Sila cuba lagi.", playHint: "Ketik butang main pada video untuk menontonnya.", person: "Peserta", names: {}, toDark: "Hijau gelap", toLight: "Cerah", themeName: "Warna bilik", leftBack: "Untuk kembali, buka semula pautan jemputan anda; moderator akan membenarkan anda masuk.",
         markHint: "Ketik gambar untuk menanda apa yang anda suka atau tidak suka.", markLike: "Suka", markDislike: "Tidak suka", markRemove: "Buang tanda ini" },
   ta: { title: "நேர்காணல் அறை", you: "நீங்கள்", mod: "நெறியாளர்", waiting: "நீங்கள் உள்ளே வந்துவிட்டீர்கள். சிறிது காத்திருங்கள், நெறியாளர் விரைவில் நேர்காணலைத் தொடங்குவார்.", live: "நேர்காணல் நடைபெறுகிறது.",
-        rec: "பதிவு செய்யப்படுகிறது", mic: "ஒலிவாங்கி", micOff: "ஒலிவாங்கி அணைக்கப்பட்டது", cam: "கேமரா", camOff: "கேமரா அணைக்கப்பட்டது", leave: "வெளியேறு", left: "நீங்கள் நேர்காணலிலிருந்து வெளியேறிவிட்டீர்கள்.", ended: "நேர்காணல் முடிந்தது. பங்கேற்றதற்கு நன்றி!",
+        rec: "பதிவு செய்யப்படுகிறது", mic: "ஒலிவாங்கி", micOff: "ஒலிவாங்கி அணைக்கப்பட்டது", cam: "கேமரா", camOff: "கேமரா அணைக்கப்பட்டது", leave: "வெளியேறு", react: "எதிர்வினை", rxSent: "அனுப்பப்பட்டது", rxSlow: "கொஞ்சம் மெதுவாக, தயவுசெய்து", rxWait: "இப்போது கிடைக்கவில்லை", rxMore: "மேலும் எமோஜி", rxInsert: "எமோஜி சேர்", rx: { like: "ஒப்புதல்", love: "மிகவும் பிடிக்கும்", smile: "மகிழ்ச்சி", laugh: "வேடிக்கை", surprise: "ஆச்சரியம்", confused: "குழப்பம்", sad: "சோகம்", dislike: "மறுப்பு" }, left: "நீங்கள் நேர்காணலிலிருந்து வெளியேறிவிட்டீர்கள்.", ended: "நேர்காணல் முடிந்தது. பங்கேற்றதற்கு நன்றி!",
         sound: "ஒலியை இயக்கத் தட்டவும்", noDevice: "உங்கள் கேமரா அல்லது ஒலிவாங்கியை அணுக முடியவில்லை. உலாவியில் அனுமதி அளித்து, இந்தப் பக்கத்தை மீண்டும் ஏற்றவும்.",
         noCam: "கேமரா கிடைக்கவில்லை, ஒலிவாங்கியுடன் மட்டும் இணைகிறீர்கள்.", lost: "இணைப்பு துண்டிக்கப்பட்டது. இந்தப் பக்கத்தை மீண்டும் ஏற்றவும்.", connecting: "இணைக்கப்படுகிறது…", upload: "பதிவைச் சேமிப்பதில் சிக்கல். இந்தப் பக்கத்தைத் திறந்தே வைத்திருங்கள்.",
         cantEnter: "உள்ளே நுழைய முடியவில்லை", aiName: "AI நெறியாளர்", chatTitle: "நெறியாளருடன் அரட்டை", chatPh: "உங்கள் பதிலை இங்கே தட்டச்சு செய்யவும்…", send: "அனுப்பு", typing: "நெறியாளர் பதிலளிக்கிறார்…",
@@ -88,6 +88,65 @@ $id("theme").onclick = () => {
 themeLabel();
 let room = null, S = null, role = null, ended = false, localTracks = [], camTrack = null, micTrack = null;
 
+// ---- emoji: a quick row, and the full panel (search, categories, skin tones, recents) like a phone keyboard; all files come from our own server ----
+const QUICK = [["like", "👍"], ["love", "❤️"], ["smile", "😊"], ["laugh", "😂"], ["surprise", "😮"], ["confused", "😕"], ["sad", "😢"], ["dislike", "👎"]];
+const EMO = { pop: null, picker: null, loading: null, onPick: null };
+async function loadPicker() {
+  if (EMO.picker) return EMO.picker;
+  if (!EMO.loading) EMO.loading = (async () => {
+    const l = S.language || "en", loc = l === "zh" ? "zh" : "en", ui = l === "zh" ? "zh_CN" : l === "ms" ? "ms_MY" : "en";   // emoji names exist in English and Chinese; the panel's own words also in Malay
+    await import("/vendor/emoji/index.js");
+    const p = document.createElement("emoji-picker");
+    p.className = document.body.classList.contains("t-dark") ? "dark" : "light";
+    p.setAttribute("locale", loc); p.setAttribute("data-source", `/vendor/emoji/data/${loc}.json`); p.i18n = (await import(`/vendor/emoji/i18n/${ui}.js`)).default;
+    p.addEventListener("emoji-click", (e) => { if (EMO.onPick) EMO.onPick(e.detail.unicode); });
+    return p;
+  })();
+  try { EMO.picker = await EMO.loading; } catch (e) { EMO.loading = null; throw e; }
+  return EMO.picker;
+}
+async function showFullPicker() {
+  const full = $id("rxfull"); if (!full) return;
+  try {
+    const p = await loadPicker(); if (!full.contains(p)) full.appendChild(p);
+    full.hidden = false; $id("rx-more").setAttribute("aria-expanded", "true");
+    const sb = p.shadowRoot && p.shadowRoot.querySelector("input[type=search]"); if (sb) sb.focus();
+  } catch { toast(T.rxWait); }
+}
+function emojiPopover() {
+  if (EMO.pop) return EMO.pop;
+  const pop = document.createElement("div"); pop.id = "rxpop"; pop.className = "rxpop"; pop.hidden = true; pop.setAttribute("role", "group"); pop.setAttribute("aria-label", T.react);
+  const quick = document.createElement("div"); quick.className = "rxq";
+  QUICK.forEach(([key, glyph]) => {
+    const b = document.createElement("button"); b.type = "button"; b.textContent = glyph; b.dataset.k = glyph; b.setAttribute("aria-label", T.rx[key]); b.title = T.rx[key];
+    b.onclick = () => { if (EMO.onPick) EMO.onPick(glyph); }; quick.appendChild(b);
+  });
+  const more = document.createElement("button"); more.type = "button"; more.id = "rx-more"; more.className = "rxmore"; more.textContent = T.rxMore; more.setAttribute("aria-expanded", "false"); more.onclick = showFullPicker;
+  const full = document.createElement("div"); full.id = "rxfull"; full.hidden = true;
+  pop.append(quick, more, full); document.body.appendChild(pop);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !pop.hidden) closeEmoji(); });
+  document.addEventListener("pointerdown", (e) => { if (!pop.hidden && !pop.contains(e.target) && !e.target.closest("#b-react, #cemoji")) closeEmoji(); });
+  return (EMO.pop = pop);
+}
+function closeEmoji() {
+  const pop = EMO.pop; if (!pop) return; pop.hidden = true;
+  $id("b-react")?.setAttribute("aria-expanded", "false"); $id("cemoji")?.setAttribute("aria-expanded", "false");
+}
+function openEmoji(onPick, { quick }) {   // quick: the row of eight first (a reaction); otherwise straight to the full panel (inserting into a message)
+  const pop = emojiPopover(); EMO.onPick = (g) => { closeEmoji(); onPick(g); };
+  pop.querySelector(".rxq").hidden = !quick; pop.querySelector("#rx-more").hidden = !quick; pop.hidden = false;
+  if (!quick) showFullPicker();
+}
+async function sendReaction(glyph) {
+  try {
+    const r = await fetch(`/api/public/join/${encodeURIComponent(inviteT)}/reaction`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ emoji: glyph }) });
+    toast(r.ok ? `${glyph} ${T.rxSent}` : r.status === 429 ? T.rxSlow : T.rxWait);
+  } catch { toast(T.rxWait); }
+}
+function buildReactionButton() {  // a participant can send an emoji at any moment; the team sees it with the time and the material on screen
+  const b = addBtn("b-react", T.react, async () => { if (EMO.pop && !EMO.pop.hidden) closeEmoji(); else { openEmoji(sendReaction, { quick: true }); b.setAttribute("aria-expanded", "true"); } });
+  b.setAttribute("aria-haspopup", "true"); b.setAttribute("aria-expanded", "false");
+}
 function addBtn(id, label, fn, cls = "") {
   const b = document.createElement("button"); b.id = id; b.textContent = label; if (cls) b.className = cls;
   if (id.startsWith("b-") && ["b-start", "b-rec", "b-stop", "b-end"].includes(id)) b.dataset.polled = "1";  // enabled/disabled by the live state, not by the click
@@ -278,7 +337,7 @@ async function pollChat() {
 function aiRender(st) {
   if (role === "participant") {
     const open = C.started && !C.finished && !ended && last && last.status === "live";
-    $id("cin").disabled = !open || C.sending; $id("csend").disabled = !open || C.sending;
+    $id("cin").disabled = !open || C.sending; $id("csend").disabled = !open || C.sending; $id("cemoji").disabled = !open || C.sending;
     $id("cnote").textContent = C.sending ? T.typing : C.finished ? T.chatClosed : !C.started ? T.chatWait : "";
     return;
   }
@@ -303,8 +362,8 @@ function aiRender(st) {
 function buildParticipantChat() {
   const box = document.createElement("div"); box.className = "rpan chat"; box.id = "chatbox"; box.setAttribute("aria-label", T.chatTitle);
   box.innerHTML = `<h3></h3><div class="log" id="clog" role="log" aria-live="polite"></div><p class="closed" id="cnote" role="status"></p>
-    <form id="cform"><textarea id="cin" rows="2" maxlength="2000" disabled></textarea><button class="p" id="csend" type="submit" disabled></button></form>`;
-  $("h3", box).textContent = T.chatTitle; $("#cin", box).placeholder = T.chatPh; $("#cin", box).setAttribute("aria-label", T.chatPh); $("#csend", box).textContent = T.send;
+    <form id="cform"><textarea id="cin" rows="2" maxlength="2000" disabled></textarea><button type="button" id="cemoji" class="emo" aria-haspopup="true" aria-expanded="false" disabled>😊</button><button class="p" id="csend" type="submit" disabled></button></form>`;
+  $("h3", box).textContent = T.chatTitle; $("#cin", box).placeholder = T.chatPh; $("#cin", box).setAttribute("aria-label", T.chatPh); $("#csend", box).textContent = T.send; $("#cemoji", box).setAttribute("aria-label", T.rxInsert); $("#cemoji", box).title = T.rxInsert;
   grid.parentNode.appendChild(box);
   const send = async () => {
     const ta = $id("cin"), text = ta.value.trim(); if (!text || C.sending) return;
@@ -316,6 +375,11 @@ function buildParticipantChat() {
     C.sending = false; await pollChat(); $id("cin").focus();
   };
   $id("cform").onsubmit = (e) => { e.preventDefault(); send(); };
+  $id("cemoji").onclick = () => {   // put the chosen emoji into the message at the cursor
+    if (EMO.pop && !EMO.pop.hidden) return closeEmoji();
+    $id("cemoji").setAttribute("aria-expanded", "true");
+    openEmoji((g) => { const ta = $id("cin"), a = ta.selectionStart ?? ta.value.length, z = ta.selectionEnd ?? a; ta.value = ta.value.slice(0, a) + g + ta.value.slice(z); ta.selectionStart = ta.selectionEnd = a + g.length; ta.focus(); }, { quick: false });
+  };
   $id("cin").onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); } };
 }
 function buildAiPanel() {  // the team's side: status, alert, controls (moderator only), the conversation, whispers
@@ -425,7 +489,7 @@ function moderatorMarks(s, pins) {
 // ---------------- live captions: this browser streams ITS OWN microphone to the speech recogniser ----------------
 // The server hands out a short-lived signed address (the secret key never reaches the browser); finished sentences are then posted back,
 // so the team sees both speakers, each sentence labelled by who spoke.
-const CAP = { on: false, ws: null, ctx: null, tries: 0, stopping: false, partial: "", sentPartial: "", queue: [], busy: false };
+const CAP = { on: false, ws: null, ctx: null, tries: 0, stopping: false, partial: "", sentPartial: "", queue: [], busy: false, lv: [] };
 const capApi = (p) => (inviteT ? `/api/public/join/${encodeURIComponent(inviteT)}/${p}` : `/api/interviews/${iid}/${p}`);
 const PCM_WORKLET = [  // 16 kHz 16-bit mono, 200 ms (3200 samples) per message
   "class P extends AudioWorkletProcessor{",
@@ -449,7 +513,11 @@ async function capFlush() {  // finished sentences, in order; a hiccup retries, 
   }
   CAP.busy = false;
 }
-function capPost(text, dur) { CAP.partial = ""; CAP.sentPartial = ""; CAP.queue.push({ text, final: true, dur_ms: Math.max(0, Math.min(120000, Math.round(dur || 0))) }); capFlush(); }
+function capLevel() {  // the average level (dBFS) of the speech since the last finished sentence, or undefined when there was none; then start over
+  const v = CAP.lv; CAP.lv = [];
+  return v.length >= 3 ? Math.round((v.reduce((a, b) => a + b, 0) / v.length) * 10) / 10 : undefined;
+}
+function capPost(text, dur) { CAP.partial = ""; CAP.sentPartial = ""; CAP.queue.push({ text, final: true, dur_ms: Math.max(0, Math.min(120000, Math.round(dur || 0))), vol_db: capLevel() }); capFlush(); }
 setInterval(() => {  // the sentence being spoken: at most twice a second, only the latest
   if (!CAP.partial || CAP.partial === CAP.sentPartial || CAP.queue.length) return;
   CAP.sentPartial = CAP.partial;
@@ -463,7 +531,12 @@ async function capAudio() {
   ["pointerdown", "keydown", "touchstart"].forEach((ev) => addEventListener(ev, resume, { passive: true })); resume();
   await ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([PCM_WORKLET], { type: "text/javascript" })));
   const node = new AudioWorkletNode(ctx, "pcm16");
-  node.port.onmessage = (e) => { if (CAP.ws && CAP.ws.readyState === 1) CAP.ws.send(e.data); };
+  node.port.onmessage = (e) => {
+    if (CAP.ws && CAP.ws.readyState === 1) CAP.ws.send(e.data);
+    const pcm = new Int16Array(e.data); let sum = 0; for (let i = 0; i < pcm.length; i++) sum += pcm[i] * pcm[i];
+    const db = 20 * Math.log10(Math.sqrt(sum / pcm.length) / 32768 + 1e-9);   // level of this 200 ms frame; silence is left out, a muted microphone gives nothing
+    if (db > -60) { CAP.lv.push(db); if (CAP.lv.length > 600) CAP.lv.shift(); }
+  };
   // the page's own microphone track (muting the mic in the room also silences the captions); not connected to the speakers, so no echo
   ctx.createMediaStreamSource(new MediaStream([micTrack.mediaStreamTrack])).connect(node);
 }
@@ -545,6 +618,7 @@ function addCap(c) {
   const tx = document.createElement("div"); tx.textContent = c.text;
   const zh = document.createElement("div"); zh.className = "zh"; zh.textContent = c.text_zh || ""; zh.hidden = !c.text_zh;  // Chinese translation (English interviews), may arrive later
   d.append(hd, tx, zh);
+  if (c.hints && c.hints.length) { const h = document.createElement("div"); h.className = "hints"; h.textContent = c.hints.join(" · ") + "（仅供参考）"; d.appendChild(h); }
   const stick = log.scrollTop + log.clientHeight >= log.scrollHeight - 40;
   log.appendChild(d); if (stick) log.scrollTop = log.scrollHeight;
 }
@@ -583,6 +657,25 @@ async function pollProbes() {
     box.appendChild(row);
   });
 }
+// ---------------- emoji reactions: what the participants chose to show (the team incl. hidden observers sees them) ----------------
+const RXF = { after: 0 };
+async function pollReactions() {
+  const box = $id("rxfeed"); if (!box || ended) return;
+  let d; try { d = await api(`/interviews/${iid}/reactions?after=${RXF.after}`); } catch { return; }
+  d.reactions.forEach((r) => {
+    RXF.after = Math.max(RXF.after, r.seq);
+    const row = document.createElement("div"); row.className = "rx"; row.setAttribute("role", "listitem");
+    const g = document.createElement("span"); g.className = "g"; g.textContent = r.glyph; g.setAttribute("aria-hidden", "true");
+    const t = document.createElement("span"); t.textContent = `${r.who}：${r.label} · ${mmss(r.at_ms)}${r.stimulus ? " · 当时在看：" + (SHORT[r.stimulus] || r.stimulus) : ""}`;
+    row.append(g, t); box.appendChild(row); box.scrollTop = box.scrollHeight;
+  });
+}
+function addReactionFeed(host) {
+  if ($id("rxfeed")) return;
+  const wrap = document.createElement("div"); wrap.innerHTML = `<h3 style="margin-top:6px">表情反应（受访者发的）</h3><div class="rxfeed" id="rxfeed" role="list" aria-label="表情反应" tabindex="0"></div>`;
+  host.appendChild(wrap); pollReactions(); setInterval(pollReactions, 2000);
+}
+
 // ---------------- focus group: who has spoken how much (team only; numbers, never names) ----------------
 async function pollFair() {
   const box = $id("fairbody"); if (!box || ended) return;
@@ -596,7 +689,7 @@ function buildFairnessPanel() {
 }
 
 // ---------------- focus group: private cue cards for the moderator (the AI never speaks to participants) ----------------
-const CUE = { sig: "", label: { compliance: "注意个人信息", dominant: "控场", silent: "邀请还没说话的人", time: "时间", offtopic: "可能聊偏了" },
+const CUE = { sig: "", label: { compliance: "注意个人信息", dominant: "控场", silent: "邀请还没说话的人", time: "时间", offtopic: "可能聊偏了", signal: "值得留意的一刻" },
   done: { used: "已用", dismissed: "已忽略", expired: "已过期" } };
 async function cueAnswer(id, status) {
   const d = await api(`/cues/${id}`, { method: "PATCH", body: { status } }); renderCues(d.cards);
@@ -651,6 +744,7 @@ function buildCaptionPanel() {
     await api(`/interviews/${iid}/highlights`, { method: "POST", body: { kind: "probe", text } }); ta.value = ""; toast("已加入待追问"); await pollProbes();
   });
   pollCaps(); pollProbes(); setInterval(pollCaps, 1000); setInterval(pollProbes, 4000);
+  addReactionFeed($id("rpan"));
   buildBackroom($id("rpan"));
 }
 
@@ -768,6 +862,7 @@ async function start() {
     addBtn("b-mic", T.mic, async (b) => { if (!micTrack) return; micTrack.mediaStreamTrack.enabled = !micTrack.mediaStreamTrack.enabled; b.textContent = micTrack.mediaStreamTrack.enabled ? T.mic : T.micOff; b.setAttribute("aria-pressed", String(!micTrack.mediaStreamTrack.enabled)); });
     addBtn("b-cam", T.cam, async (b) => { if (!camTrack) return; const on = (camTrack.mediaStreamTrack.enabled = !camTrack.mediaStreamTrack.enabled); b.textContent = on ? T.cam : T.camOff; b.setAttribute("aria-pressed", String(!on)); const o = $id("t_me")?.querySelector(".off"); if (o) { o.hidden = on; o.textContent = T.camOff; } });
   }
+  if (role === "participant") buildReactionButton();
   addBtn("b-leave", T.leave, async () => {
     stopRecorder(); await R.q; localTracks.forEach((t) => { try { t.stop(); } catch {} }); if (room) room.disconnect(); ended = true;
     if (inviteT) fetch(`/api/public/join/${encodeURIComponent(inviteT)}/leave`, { method: "POST" }).catch(() => {});  // coming back needs a new admit

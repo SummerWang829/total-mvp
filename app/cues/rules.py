@@ -9,6 +9,7 @@ from ..group_metrics.compute import Sentence, is_informative
 from ..group_metrics.constants import SILENT_YELLOW_S
 from ..content_rules import CONDUCT, SEVERE
 from ..content_rules import constants as _CR
+from .. import signals as _signals
 from ..moderator.recall import recall
 from . import constants as K
 
@@ -23,6 +24,8 @@ class Line:
     seq: int
     sentence: Sentence
     flags: frozenset[str] = frozenset()   # what the rule library hid in this sentence (contact, abuse, hate, threat, sexual)
+    tags: tuple[str, ...] = ()            # how it was said (app/signals): hesitation, slow, fast, quiet, loud, negative, positive
+    senti: float = 0.0                    # tone of the words, -1 .. 1
 
 
 @dataclass(frozen=True)
@@ -191,7 +194,25 @@ def offtopic(snap: Snapshot) -> list[Candidate]:
                       f"offtopic:{index}:{recent[-1].seq}", ask=question, evidence=tuple(ln.seq for ln in recent[-K.EVIDENCE_PER_CARD:]))]
 
 
-RULES = (compliance, dominant, silent, time_check, offtopic)
+# ---------- how the last answer was said ----------
+def how_said(snap: Snapshot) -> list[Candidate]:
+    """The newest answer was given after a long pause, slowly, quietly or in a strongly negative tone: a hint to give time or ask from another angle.
+
+    Only a hint, always against the speaker's own habits (app/signals); it never says what the person feels."""
+    for ln in reversed(_participant_lines(snap)):
+        if ln.sentence.end_ms < snap.now_ms - K.SIGNAL_MAX_AGE_S * 1000:
+            break
+        if not _signals.is_notable(ln.tags, ln.senti):
+            continue
+        seat = int(ln.sentence.speaker[1:]) if re.fullmatch(r"p\d+", ln.sentence.speaker) else None
+        who = f"参与者 ·{seat:02d}" if seat else "受访者"
+        said = "、".join(_signals.labels(ln.tags))
+        return [Candidate(K.Kind.SIGNAL, f"{who} 刚才这句话：{said}（和 TA 自己平时相比）。可以给 TA 一点时间，或者换个角度再问；仅供参考，不代表 TA 的真实感受。",
+                          f"signal:{ln.seq}", seat, ask="不着急，你可以慢慢说，或者换个角度说说看？", evidence=(ln.seq,))]
+    return []
+
+
+RULES = (compliance, dominant, silent, how_said, time_check, offtopic)
 
 
 def candidates(snap: Snapshot) -> list[Candidate]:

@@ -114,11 +114,12 @@ class ModeratorEngine:
         self.fsm.start()
         return self._say(self._intro, analysis=None, plan=None)
 
-    def handle_participant(self, text: str) -> ModeratorTurnPayload:
+    def handle_participant(self, text: str, signals: list[str] | None = None) -> ModeratorTurnPayload:
         """Process the participant's answer and produce the AI's next turn (or silence while a human is in control).
 
         Args:
             text: what the participant said (typed text, or a transcript in the voice version).
+            signals: short hints about how it was said (app/signals), for the model only; the AI must never mention them (red line H14).
 
         Raises:
             EngineStateError: not opened yet, or the interview has ended.
@@ -128,6 +129,7 @@ class ModeratorEngine:
             raise EngineStateError("interview is not running")
         started = time.monotonic()
         self.memory.add_turn(Speaker.PARTICIPANT, text, self._now())
+        self.memory.signals = list(signals or [])[:3]
         self._schedule_memory(text, self._now())
         if self.control is ControlMode.HUMAN:
             return self._record(ModeratorTurnPayload(analysis=None, plan=None, spoken_response=None))  # H11: silent

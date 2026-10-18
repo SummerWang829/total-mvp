@@ -16,8 +16,8 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from .audit import audit
-from . import content_rules, screener
-from .models import AiSession, ChatMessage, Interview, RoomState, Stimulus, TranscriptSegment, utcnow
+from . import content_rules, screener, signals
+from .models import AiSession, ChatMessage, Interview, Reaction, RoomState, Stimulus, TranscriptSegment, utcnow
 from .moderator.compliance import ai_moderation_blocker
 from .moderator.constants import AlertLevel, ModerationMode, Phase
 from .moderator.engine import EngineStateError, ModeratorEngine
@@ -214,11 +214,31 @@ def participant_says(db: Session, itv: Interview, text: str) -> None:
                 ending = checked.conduct and sess.strikes >= content_rules.STRIKES_BEFORE_ENDING
                 payload = engine.moderation_reply(text, kind, ending)  # a fixed reminder, never the model's words
             else:
-                payload = engine.handle_participant(text)
+                payload = engine.handle_participant(text, _chat_hints(db, itv, text))
         except EngineStateError:
             sess.finished = True
             return
         _apply_payload(db, itv, sess, engine, payload)
+
+
+def _chat_hints(db: Session, itv: Interview, text: str) -> list[str]:
+    """Hints for the model about how this typed answer was given (tone of the words, unusually short, slow to arrive, reactions sent), against this
+    participant's own earlier answers. The model uses them only to ask more gently and must never mention them (red line H14)."""
+    rows = db.scalars(select(ChatMessage).where(ChatMessage.interview_id == itv.id, ChatMessage.sender.in_(("ai", "participant")))
+                      .order_by(ChatMessage.seq)).all()
+    lengths: list[int] = []
+    delays: list[float] = []
+    last_ai = None
+    for r in rows:
+        if r.sender == "ai":
+            last_ai = r
+        elif last_ai is not None:
+            lengths.append(len(r.text))
+            delays.append((r.created_at - last_ai.created_at).total_seconds())
+    delay = (utcnow() - last_ai.created_at).total_seconds() if last_ai else None
+    reacted = [x.emoji for x in db.scalars(select(Reaction).where(Reaction.interview_id == itv.id, Reaction.created_at >= last_ai.created_at)
+                                         .order_by(Reaction.seq))] if last_ai else []
+    return signals.chat.hints(text, lengths, delay, delays, reacted)
 
 
 def _tell_the_team(db: Session, itv: Interview, sess: AiSession, checked: content_rules.Checked) -> None:

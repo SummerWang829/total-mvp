@@ -222,6 +222,12 @@ def group_section(br, D):
     ok(pg.locator(".fair .frow").count() == 3 and "公平指数" in panel and "p2" not in panel and not any(n in panel for n in ("座谈甲", "座谈乙", "座谈丙")),
        "[group] the speaking tab lists three numbered seats and shows no names")
     audit_page(pg, "group speaking tab/desktop", errs)
+    call(f"/public/join/{tok}/reaction", {"emoji": "😕"})
+    pg.goto(B + f"/#/i/{iid}/signals"); pg.wait_for_selector("#tab table.tbl")   # (the table appears once the data has arrived)
+    ok("参与者 ·02" in pg.inner_text("#tab") and "😕" in pg.inner_text("#tab") and "仅供参考" in pg.inner_text("#tab"), "[group] the signals tab shows the reaction and says it is only a guide")
+    audit_page(pg, "group signals tab/desktop", errs)
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "group_signals_1280.png"), full_page=True)
+    pg.goto(B + f"/#/i/{iid}/fairness"); pg.wait_for_selector(".fair .frow")
     pg.screenshot(path=os.path.join(ROOT, "qa_shots", "group_fairness_1280.png"), full_page=True)
     ctx.close()
     ctx, pg, errs = new_page(br, 390, token=adm)

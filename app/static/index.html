@@ -492,7 +492,7 @@ async function interviewView(iid, tab) {
   const invite = sessionStorage.getItem("invite_" + iid);
   const room = (as, cls) => `<a class="btn ${cls}" href="/room.html?i=${iid}&as=${as}" target="_blank" rel="noopener">${as === "observer" ? "隐身观察" : "进入房间（主持）"}</a>`;
   const canRoom = it.status !== "ended" && !it.purged;
-  const tabs = [["transcript", "转写"], ["insights", "洞察"], ["clips", "片段"], ...(staff ? [["highlights", "引用与追问"]] : []), ...(it.kind === "group" ? [["fairness", "发言情况"]] : [])];
+  const tabs = [["transcript", "转写"], ["insights", "洞察"], ["clips", "片段"], ...(staff ? [["highlights", "引用与追问"], ["signals", "情绪信号"]] : []), ...(it.kind === "group" ? [["fairness", "发言情况"]] : [])];
   shell(`<a class="back" href="#/p/${it.project_id}/insights">← 洞察与片段</a>
     <div class="head"><div><h1>${esc(it.title)}</h1><p class="lead" style="margin:6px 0 0">${it.kind === "group" ? "座谈会" : "受访者"}：${esc(it.participant.name)}${it.participant.country ? " · " + esc(it.participant.country) : ""} · 访谈语言 ${esc(LANGS[it.language] || it.language)} · <span class="tag ${c}">${t}</span>${it.kind === "group" ? ` <span class="tag o">座谈会</span>` : ""}${it.moderation === "ai" ? ` <span class="tag o">AI 主持</span>` : ""}${it.invite_state ? ` <span class="tag ${(INVITE[it.invite_state] || [])[1] || ""}">${(INVITE[it.invite_state] || [it.invite_state])[0]}</span>` : ""}</p></div><span class="sp"></span>
       <div class="row">${canRoom ? (ME.role === "observer" ? room("observer", "") : staff ? room("moderator", "p") + room("observer", "") : room("moderator", "p")) : ""}</div></div>
@@ -514,6 +514,7 @@ async function interviewView(iid, tab) {
   if (tab === "clips") return clipsTab(iid, staff, my);
   if (tab === "highlights" && staff) return highlightsTab(iid, my);
   if (tab === "fairness" && it.kind === "group") return fairnessTab(iid, my);
+  if (tab === "signals" && staff) return signalsTab(iid, my);
   return insightsTab(iid, staff, my);
 }
 
@@ -578,6 +579,21 @@ async function transcriptTab(iid, it, staff, my) {
 }
 
 const MATERIAL = { ad_film: "广告片", concept_a: "概念 A", concept_b: "概念 B", ad_film_2: "备用广告片" };
+async function signalsTab(iid, my) {  // how things were said (pace, pauses, volume, tone of the words) and emoji reactions: hints against each person's own habits
+  const d = await api(`/interviews/${iid}/signals`);
+  if (stale(my) || !$("#tab")) return;
+  const tagName = { hesitation: "回答前停顿长", slow: "语速偏慢", fast: "语速偏快", quiet: "声音偏轻", loud: "声音偏大", negative: "偏负面", positive: "偏正面" };
+  const tags = (o) => Object.entries(o).map(([k, n]) => `${esc(tagName[k] || k)} ${n}`).join("、") || "—";
+  const reacts = (o) => Object.entries(o).map(([k, n]) => `<span class="emo">${esc(k)}</span> ${n}`).join("　") || "—";   // the keys are the emoji themselves
+  const mat = Object.entries(d.stimuli);
+  $("#tab").innerHTML = `<div class="card"><h3>情绪信号</h3><p class="sm mut">${esc(d.note)}。语速、停顿、音量只和这个人自己平时比较；表情符号是受访者自己发的。</p>
+    ${d.speakers.length ? `<div class="scroll"><table class="tbl"><thead><tr><th>谁</th><th>句数</th><th>词句的整体倾向</th><th>标记</th><th>表情反应</th></tr></thead><tbody>
+      ${d.speakers.map((s) => `<tr><td><b>${esc(s.who)}</b></td><td>${s.sentences}</td><td>${s.tone > 0.15 ? "偏正面" : s.tone < -0.15 ? "偏负面" : "中性"}（${s.tone.toFixed(2)}）</td><td>${tags(s.tags)}</td><td>${reacts(s.reactions)}</td></tr>`).join("")}</tbody></table></div>`
+      : `<p class="mut">这场访谈还没有实时字幕或表情反应。</p>`}</div>
+    <div class="card"><h3>值得回看的时刻（${d.moments.length}）</h3>${d.moments.length ? d.moments.map((m) => `<div class="sig-moment"><div class="sm mut">${fmt(m.at_ms)} · ${esc(m.who)}</div><div>${esc(m.text)}</div><div class="sm hint">${esc(m.hints.join(" · "))}</div></div>`).join("") : `<p class="mut">暂时没有。出现回答前停顿很长、语速或音量明显偏离平时、或词句明显偏负面的地方会列在这里。</p>`}</div>
+    ${mat.length ? `<div class="card"><h3>各素材的表情反应</h3>${mat.map(([k, o]) => `<p><b>${esc(MATERIAL[k] || k)}</b>：${reacts(o)}</p>`).join("")}</div>` : ""}`;
+}
+
 async function fairnessTab(iid, my) {  // a focus group: who talked how much, who stayed quiet, who talked over whom (from the live captions)
   const d = await api(`/interviews/${iid}/group/metrics`);
   if (stale(my) || !$("#tab")) return;

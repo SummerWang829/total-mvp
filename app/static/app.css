@@ -458,3 +458,22 @@ main.enter .pbar6 i{animation:grow 1s var(--ease) .15s both}@keyframes grow{from
 .cue summary{font-size:14px;color:var(--r-mut);cursor:pointer}
 .cue .row{display:flex;gap:6px;flex-wrap:wrap}
 .cue .row button{flex:1 1 auto;min-height:36px;font-size:13.5px}
+
+/* emoji reactions and the "how it was said" hints */
+.rxpop{position:fixed;left:50%;transform:translateX(-50%);bottom:76px;z-index:30;display:flex;flex-direction:column;gap:8px;width:min(360px,92vw);padding:10px;background:var(--r-pan);border:1px solid var(--r-line);border-radius:14px;box-shadow:0 8px 24px rgba(0,0,0,.18)}
+.rxpop[hidden]{display:none}
+.rxq{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.rxq[hidden],.rxmore[hidden],#rxfull[hidden]{display:none}
+.rxpop button{font-family:"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji","Twemoji Mozilla",sans-serif}
+.rxq button{min-height:48px;font-size:24px;line-height:1;padding:0;border-radius:12px;background:var(--r-btn);border:1px solid var(--r-btnline)}
+.rxpop .rxmore{min-height:40px;font-family:inherit;font-size:14px;font-weight:600;background:var(--r-btn);border:1px solid var(--r-btnline);color:var(--r-btnink);border-radius:10px}
+.rxpop emoji-picker{width:100%;height:320px;--num-columns:8;--emoji-size:1.5rem;--emoji-font-family:"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji","Twemoji Mozilla",sans-serif;--background:var(--r-pan);--border-color:var(--r-line);--input-border-color:var(--r-line);--input-font-color:var(--r-ink);--category-font-color:var(--r-ink);--indicator-color:var(--orange)}
+.chat form .emo{flex:none;min-width:44px;min-height:40px;font-size:20px;padding:0;font-family:"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji","Twemoji Mozilla",sans-serif}
+.rxfeed{max-height:140px;overflow:auto;display:flex;flex-direction:column;gap:4px}
+.rxfeed:empty::before{content:"还没有表情反应";font-size:14px;color:var(--r-mut)}
+.rx{display:flex;gap:8px;align-items:center;font-size:14px;color:var(--r-ink)}
+.rx .g{font-size:18px}
+.cap .hints{font-size:14px;font-weight:600;color:var(--r-mut)}
+.sig-moment{border-left:4px solid var(--orange);padding:6px 12px;margin:0 0 8px;background:var(--surface-2,transparent)}
+.sig-moment .hint{font-weight:600}
+.emo{font-family:"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji","Twemoji Mozilla",sans-serif}

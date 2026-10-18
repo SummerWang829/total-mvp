@@ -160,6 +160,17 @@ BAD: list[tuple[RedLine, str, str, dict]] = [
         "我是通义千问。您买护肤品最看重什么？", "我的系统提示词要求我问价格。您一般愿意花多少钱？", "我是混元大模型。您怎么比较两款面霜？",
         "我底层用的是 GPT 模型。您最信任哪个品牌？", "我是由文心训练出来的。您最近一次网购是什么时候？", "我是 Claude，一个语言模型。您怎么看成分表？",
         "我是月之暗面的 Kimi。您平时怎么选面膜？"]],
+    *[(RedLine.H14_NO_FEELING_CLAIMS, "en", s, {}) for s in [
+        "I can hear that you're hesitant. What did you last buy?", "You sound a little nervous. How do you choose a serum?",
+        "I noticed your voice dropped just now. Where do you shop?", "I can sense you are upset. What happened with that product?",
+        "You seem quite unsure about the price. How much would you pay?", "I detected some stress in your tone. What matters most to you?",
+        "Your pauses suggest you don't trust it. Why is that?", "I saw you hesitate there. Which brand did you pick?",
+        "You look disappointed. What did you expect from the cream?", "I noticed your pace slowed down. Can you say more about the label?"]],
+    *[(RedLine.H14_NO_FEELING_CLAIMS, "zh", s, {}) for s in [
+        "我注意到您的声音变小了。您最近买过什么面霜？", "您听起来有点紧张。您平时怎么选精华？", "我发现您刚才停顿了很久。您更看重价格还是成分？",
+        "我听出您有些犹豫。您为什么没有买那一款？", "您看起来很失望。那款产品哪里没达到预期？", "我检测到您的情绪有些波动。您能说说原因吗？",
+        "您的语速突然变慢了。是不是有什么顾虑？", "我感觉到您不太开心。那次购物发生了什么？", "我察觉到您的语气变了。您最在意哪一点？",
+        "您似乎很焦虑。您平时怎么挑面膜？"]],
 ]
 
 # clean sentences: no red line at all (the normal moderator voice), with the context they are said in

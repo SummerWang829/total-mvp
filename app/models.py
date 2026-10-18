@@ -412,6 +412,12 @@ class CaptionLine(Base):
     dur_ms: Mapped[int] = mapped_column(Integer, default=0)  # how long the sentence took to say, as measured by the recogniser (0 = unknown)
     text_zh: Mapped[str] = mapped_column(Text, default="")  # Chinese translation for non-Chinese interviews, filled in a moment after the sentence arrives
     flags: Mapped[str] = mapped_column(String(40), default="")  # what app/content_rules hid in this sentence: contact, abuse, hate, threat, sexual (comma separated)
+    # signals about HOW it was said (app/signals), always compared with this speaker's own habits; hints for the team, never conclusions
+    rate_x10: Mapped[int | None] = mapped_column(Integer, nullable=True)  # characters (Chinese) or words per second, times ten
+    vol_db10: Mapped[int | None] = mapped_column(Integer, nullable=True)  # average level while speaking in dBFS times ten, measured in the speaker's own browser
+    gap_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)  # silence between the end of the previous speaker's sentence and the start of this one
+    senti: Mapped[int] = mapped_column(Integer, default=0)  # tone of the words, -100 (very negative) .. 100 (very positive)
+    tags: Mapped[str] = mapped_column(String(80), default="")  # slow, fast, quiet, loud, hesitation, negative, positive (comma separated)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
@@ -525,3 +531,22 @@ class CueCard(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     handled_by: Mapped[str] = mapped_column(String(32), default="")
     handled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class Reaction(Base):
+    """An emoji reaction a participant sent during the interview (one of a fixed set, see ``app/signals/constants.py``).
+
+    Stored with the moment (milliseconds from the start of the interview, on our clock) and the material that was on screen. Personal data:
+    purged with the interview (``app/retention.py``).
+    """
+    __tablename__ = "reactions"
+    __table_args__ = (UniqueConstraint("interview_id", "seq"),)
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
+    org_id: Mapped[str] = mapped_column(String(32), index=True)
+    interview_id: Mapped[str] = mapped_column(ForeignKey("interviews.id"), index=True)
+    seq: Mapped[int] = mapped_column(Integer)
+    speaker: Mapped[str] = mapped_column(String(20))  # "participant" in a depth interview, "p1" .. "p10" in a focus group
+    emoji: Mapped[str] = mapped_column(String(32))  # the emoji itself (any real emoji, checked against the official list in app/signals/emoji.py)
+    at_ms: Mapped[int] = mapped_column(Integer, default=0)
+    stimulus_key: Mapped[str] = mapped_column(String(40), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
