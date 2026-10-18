@@ -35,3 +35,4 @@ models/
 Thumbs.db
 .idea/
 .vscode/
+secrets/
