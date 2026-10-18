@@ -478,3 +478,12 @@ main.enter .pbar6 i{animation:grow 1s var(--ease) .15s both}@keyframes grow{from
 .sig-moment{border-left:4px solid var(--orange);padding:6px 12px;margin:0 0 8px;background:var(--surface-2,transparent)}
 .sig-moment .hint{font-weight:600}
 .emo{font-family:"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji","Twemoji Mozilla",sans-serif}
+.sbars{display:flex;align-items:flex-end;gap:4px;height:120px;overflow-x:auto;padding-bottom:2px}
+.sday{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;min-width:30px;flex:1}
+.sday span{font-size:12px;color:var(--muted);margin-top:4px}.sstack{width:70%;min-height:4px;display:flex;flex-direction:column;border-radius:4px;overflow:hidden}
+.sneg{background:#C62B4B}.sneu{background:#8DA196}.spos{background:#1F7A55}.dot{display:inline-block;width:10px;height:10px;border-radius:3px;margin:0 2px 0 8px;vertical-align:middle}
+.hitm p{overflow-wrap:anywhere}
+.big{font-size:32px;font-weight:700;color:var(--ink);line-height:1.2}
+.qbar{height:8px;border-radius:5px;background:#E2E8E4;overflow:hidden}.qbar i{display:block;height:100%;background:#1F7A55}
+.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+@media (max-width:820px){.tbl input[type=checkbox]{width:36px;height:36px}}

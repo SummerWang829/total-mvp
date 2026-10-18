@@ -370,6 +370,85 @@ def repo_section(br, D):
     ctx.close()
 
 
+def listening_section(br, D):
+    """Public-opinion monitoring: add a (mock) source, run it, see the numbers and the posts, filter, take one down, delete the source."""
+    rs, pid = D["tok"]["researcher"], D["pid"]
+    ctx, pg, errs = new_page(br, 1280, token=rs)
+    pg.on("dialog", lambda d: d.accept())
+    pg.goto(B + f"/#/p/{pid}/listening"); pg.wait_for_selector("#addsrc")
+    ok("舆情监测" in pg.inner_text("nav.side"), "[listening] the project menu has the monitoring page")
+    audit_page(pg, "listening empty/desktop", errs)
+    pg.click("#addsrc"); pg.wait_for_selector("#kind")
+    pg.fill("[name=name]", "模拟来源"); pg.fill("[name=c_brand]", "Acme"); pg.fill("[name=c_lang]", "en"); pg.click("#f button.p")
+    pg.wait_for_selector("[data-run]")
+    pg.click("[data-run]")
+    ok(wait_until(lambda: pg.locator("#mlist .hitm").count() >= 5, 15), "[listening] running the source brings in posts")
+    ok(wait_until(lambda: "负面" in pg.inner_text("main") and "最多人谈的话题" in pg.inner_text("main"), 8), "[listening] the page shows sentiment and topics")
+    ok(pg.locator(".sday").count() >= 1, "[listening] the daily volume chart has a bar for today")
+    audit_page(pg, "listening/desktop", errs)
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "listening_1280.png"), full_page=True)
+    pg.select_option("#mf [name=sentiment]", "neg"); pg.click("#mf button.p")
+    ok(wait_until(lambda: pg.locator("#mlist .hitm").count() >= 1 and all("负面" in t for t in pg.locator("#mlist .hitm").all_inner_texts()), 8), "[listening] the filter shows only negative posts")
+    n = pg.locator("#mlist .hitm").count()
+    pg.locator("[data-dm]").first.click()
+    ok(wait_until(lambda: pg.locator("#mlist .hitm").count() == n - 1, 8), "[listening] taking one post down removes it")
+    ctx.close()
+    ctx, pg, errs = new_page(br, 390, token=rs)
+    pg.goto(B + f"/#/p/{pid}/listening"); pg.wait_for_selector("#addsrc"); pg.wait_for_selector("#mlist .hitm")
+    audit_page(pg, "listening/phone", errs)
+    ctx.close()
+
+
+def recruit_section(br, D):
+    """Recruiting: import a spreadsheet, set a rule, see who qualifies and why, filter, pick people and invite them in one go, set a quota."""
+    rs, pid = D["tok"]["researcher"], D["pid"]
+    ctx, pg, errs = new_page(br, 1280, token=rs)
+    pg.on("dialog", lambda d: d.accept())
+    pg.goto(B + f"/#/p/{pid}/people"); pg.wait_for_selector("#imp2")
+    audit_page(pg, "recruiting/desktop", errs)
+    nl = chr(10)
+    pg.click("#imp2"); pg.wait_for_selector("[name=csv]")
+    pg.fill("[name=csv]", "姓名,邮箱,国家,语言,标签,年龄" + nl + "林小雨QA,qa1@example.com,SG,zh,女性;学生,22" + nl + "王大明QA,qa2@example.com,SG,zh,,17" + nl)
+    pg.click("#dry")
+    ok(wait_until(lambda: "将新增" in pg.inner_text("#prev") and "2" in pg.inner_text("#prev"), 8), "[recruit] the preview says how many people would be added")
+    audit_page(pg, "recruiting import/desktop", errs)
+    pg.click("#impgo")
+    pg.wait_for_selector("td:has-text('林小雨QA')", timeout=15000)
+    ok(pg.locator("tr", has_text="林小雨QA").locator(".tag", has_text="女性").count() == 1, "[recruit] the imported tags are shown")
+    pg.click("#rules"); pg.wait_for_selector("#addr"); pg.click("#addr")
+    row = pg.locator(".rrow").last
+    row.locator(".r-f").select_option("question"); row.locator(".r-q").fill("年龄"); row.locator(".r-o").select_option("between"); row.locator(".r-v").fill("18,65")
+    row.locator(".r-e").select_option("require"); row.locator(".r-n").fill("年龄 18–65")
+    audit_page(pg, "recruiting rules/desktop", errs)
+    pg.click("#f button.p")
+    pg.wait_for_selector("tr:has-text('王大明QA') .tag:has-text('不符合')", timeout=15000)
+    ok("年龄 18–65" in pg.locator("tr", has_text="王大明QA").inner_text(), "[recruit] a disqualified person shows the reason")
+    ok(pg.locator("tr", has_text="林小雨QA").locator(".tag", has_text="符合条件").count() == 1, "[recruit] a person who fits is marked as qualified")
+    ok(pg.locator("tr", has_text="王大明QA").locator(".pick").is_disabled(), "[recruit] a disqualified person cannot be picked for an invitation")
+    audit_page(pg, "recruiting rules applied/desktop", errs)
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "recruiting_1280.png"), full_page=True)
+    pg.select_option("#f_screen", "qualified")
+    ok(wait_until(lambda: pg.locator("tr", has_text="王大明QA").count() == 0 and pg.locator("tr", has_text="林小雨QA").count() == 1, 8), "[recruit] filtering by qualified hides the disqualified")
+    pg.locator("tr", has_text="林小雨QA").locator(".pick").check()
+    ok(wait_until(lambda: not pg.is_disabled("#batch") and "已选 1" in pg.inner_text("#selcount"), 5), "[recruit] picking a person enables the batch invite")
+    pg.click("#batch"); pg.wait_for_selector("[name=title]")
+    pg.fill("[name=title]", "QA 批量深访"); pg.click("#f button.p")
+    pg.wait_for_selector("code.copy")
+    ok("/join.html?t=" in pg.inner_text("code.copy") and pg.locator("code.copy").count() == 1, "[recruit] batch invite produces one link per person")
+    pg.click("#done")
+    pg.click("#quotas"); pg.wait_for_selector("#addq"); pg.click("#addq")
+    qrow = pg.locator(".qrow").last
+    qrow.locator(".q-f").select_option("tag"); qrow.locator(".q-v").fill("女性"); qrow.locator(".q-t").fill("2")
+    pg.click("#f button.p")
+    pg.wait_for_selector(".qbar", timeout=10000)
+    ok("1 / 目标 2" in pg.inner_text("main") or "已有 1 / 目标 2" in pg.inner_text("main"), "[recruit] the quota shows progress against the target")
+    ctx.close()
+    ctx, pg, errs = new_page(br, 390, token=rs)
+    pg.goto(B + f"/#/p/{pid}/people"); pg.wait_for_selector("#imp2")
+    audit_page(pg, "recruiting/phone", errs)
+    ctx.close()
+
+
 def main():
     tmp = tempfile.mkdtemp()
     env = {**os.environ, "DATABASE_URL": f"sqlite:///{tmp}/qa.db", "MEDIA_DIR": f"{tmp}/media", "LIVEKIT_URL": "", "ASR_PROVIDER": "mock", "LLM_PROVIDER": "mock", "ASR_API_KEY": "", "LLM_API_KEY": "",
@@ -723,7 +802,7 @@ def run():
     D = seed()
     mi, pid = D["main"]["id"], D["pid"]
     proj = [f"#/p/{pid}/rooms", f"#/p/{pid}/insights"]
-    staff_routes = [f"#/projects", f"#/p/{pid}/home", f"#/p/{pid}/people", f"#/p/{pid}/sessions", f"#/p/{pid}/analysis", f"#/p/{pid}/members", f"#/p/{pid}/studies", "#/repo"] + proj + [f"#/i/{mi}", f"#/i/{mi}/insights", f"#/i/{mi}/clips"]
+    staff_routes = [f"#/projects", f"#/p/{pid}/home", f"#/p/{pid}/people", f"#/p/{pid}/sessions", f"#/p/{pid}/analysis", f"#/p/{pid}/members", f"#/p/{pid}/studies", f"#/p/{pid}/listening", "#/repo"] + proj + [f"#/i/{mi}", f"#/i/{mi}/insights", f"#/i/{mi}/clips"]
     role_routes = {
         "demo_admin": ["#/projects", f"#/p/{D['demo_pid']}/home", "#/demo"],
         "admin": staff_routes + ["#/team", "#/audit"],
@@ -861,7 +940,7 @@ def run():
         ctx, pg, errs = new_page(br, 390, token=D["tok"]["admin"])
         pg.goto(B + f"/#/p/{pid}/people"); pg.wait_for_selector(".tbl.rc")
         ok(pg.evaluate("getComputedStyle(document.querySelector('.tbl.rc thead')).display") == "none", "phone: table header hidden, rows shown as cards")
-        ok(pg.evaluate("document.querySelector('.tbl.rc tbody td').dataset.l") == "编号", "phone: every card line carries its column name")
+        ok(pg.evaluate("document.querySelector('.tbl.rc tbody td.code').dataset.l") == "编号" and pg.evaluate("document.querySelector('.tbl.rc tbody td').dataset.l") == "选择", "phone: every card line carries its column name")
         ctx.close()
         # demo company: the admin can clear the demo data (and only that)
         ctx, pg, errs = new_page(br, 1280, token=D["tok"]["demo_admin"])
@@ -1008,6 +1087,8 @@ def run():
         members_section(br, D)
         studies_section(br, D)
         repo_section(br, D)
+        listening_section(br, D)
+        recruit_section(br, D)
 
         # ---------- C2. dialogs and expandable panels on the staff pages (both screen sizes) ----------
         for w, vp in ((1280, "desktop"), (390, "phone")):

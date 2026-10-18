@@ -21,7 +21,7 @@ function navHtml(active, p) {
   let h = `<a class="brand" href="#/projects" aria-label="星桐 TOTAL 首页">${LOGO_SVG}</a>${a("/projects", "全部项目", "projects", "▦")}${STAFF() ? a("/repo", "研究库", "repo", "◈") : ""}`;
   if (p) {
     h += `<div class="sec">当前项目<b>${esc(p.name)}</b></div>`;
-    if (STAFF()) h += a(`/p/${p.id}/home`, "项目总览", "home", "◉") + a(`/p/${p.id}/members`, "项目成员", "members", "◎") + a(`/p/${p.id}/studies`, "异步研究", "studies", "✦");
+    if (STAFF()) h += a(`/p/${p.id}/home`, "项目总览", "home", "◉") + a(`/p/${p.id}/members`, "项目成员", "members", "◎") + a(`/p/${p.id}/studies`, "异步研究", "studies", "✦") + a(`/p/${p.id}/listening`, "舆情监测", "listening", "◔");
     h += `<div class="sec">定性 · 深访</div>`;
     if (STAFF()) h += a(`/p/${p.id}/people`, "受访者招募", "people", "", true) + a(`/p/${p.id}/sessions`, "场次与邀请", "sessions", "", true);
     h += a(`/p/${p.id}/rooms`, "直播间", "rooms", "", true) + a(`/p/${p.id}/insights`, "洞察与片段", "insights", "", true);
@@ -96,6 +96,7 @@ async function render() {
       if (page === "insights") return await insightsListView(p);
       if (page === "analysis" && STAFF()) return await analysisView(p);
       if (page === "members" && STAFF()) return await membersView(p);
+      if (page === "listening" && STAFF()) return await listeningView(p);
       if (page === "studies" && STAFF()) return seg[4] ? await studyView(p, seg[4]) : await studiesView(p);
       location.hash = `#/p/${p.id}/rooms`; return;
     }
@@ -200,17 +201,48 @@ async function homeView(p) {
 }
 
 // ---------------- 受访者招募 ----------------
+let PEOPLE_F = { tag: "", country: "", language: "", screen: "" };   // the filters of the recruiting table (kept while the page redraws)
+const SCREEN = { qualified: ["符合条件", "ok"], disqualified: ["不符合", "bad"], review: ["待人工看", "live"] };
+const RULE_FIELDS = [["country", "国家"], ["language", "语言"], ["tags", "标签"], ["question", "甄别题（写关键词）"]];
+const RULE_OPS = [["equals", "等于"], ["in", "是其中之一"], ["not_in", "不是其中之一"], ["contains", "包含"], ["not_contains", "不包含"], ["gte", "不小于（数字）"], ["lte", "不大于（数字）"], ["between", "在区间内（如 18,65）"], ["answered", "回答了"]];
+const RULE_EFFECTS = [["require", "必须满足"], ["exclude", "命中就排除"], ["flag", "命中就让人工看"]];
 async function peopleView(p) {
-  const [parts, its] = await Promise.all([api(`/projects/${p.id}/participants`), api(`/projects/${p.id}/interviews`)]);
+  const my = renderSeq;
+  const [parts, its, rec] = await Promise.all([api(`/projects/${p.id}/participants`), api(`/projects/${p.id}/interviews`), api(`/projects/${p.id}/recruiting`)]);
+  if (stale(my)) return;
   const nIt = (id) => its.filter((i) => i.participant.id === id).length;
-  shell(`${head("受访者招募", `问卷平台接入后，通过甄别的人会自动出现在这里，并带上甄别题答案；现在可以手动添加或粘贴甄别答案（AI 主持人会读它，避免重复提问）。目前只开放新加坡。`, `<button class="p" id="np">添加受访者</button>`)}
-    ${parts.length ? `<div class="card scroll" style="padding:6px 10px"><table class="tbl rc"><thead><tr><th>编号</th><th>姓名</th><th>国家</th><th>语言</th><th>甄别题答案</th><th>状态</th><th>场次</th><th></th></tr></thead><tbody>
-      ${parts.map((x, n) => `<tr><td class="code">${pcode(n)}</td><td><b>${esc(x.name)}</b>${x.email ? `<div class="sm mut">${esc(x.email)}</div>` : ""}</td><td>${esc(x.country || "—")}</td><td>${esc(LANGS[x.language] || x.language || "—")}</td>
+  const allTags = [...new Set(parts.flatMap((x) => x.tags))].sort(), countries = [...new Set(parts.map((x) => x.country).filter(Boolean))].sort(), langs = [...new Set(parts.map((x) => x.language).filter(Boolean))];
+  const F = PEOPLE_F;
+  const shown = parts.map((x, n) => [x, n]).filter(([x]) => (!F.tag || x.tags.includes(F.tag)) && (!F.country || x.country === F.country) && (!F.language || x.language === F.language) && (!F.screen || x.screen_result === F.screen));
+  const C = rec.counts, anyRules = rec.rules.length > 0;
+  const bar = (q) => `<div style="margin:6px 0"><div class="sm"><b>${esc(q.name)}</b> · 已有 ${q.have} / 目标 ${q.target}${q.full ? " ✓" : ""} · 已安排场次 ${q.invited}</div><div class="qbar" role="img" aria-label="${esc(q.name)} ${q.have} / ${q.target}"><i style="width:${Math.min(100, Math.round((q.have / q.target) * 100))}%"></i></div></div>`;
+  const sel = (id, label, opts, cur) => `<label class="f" style="margin:0"><span>${label}</span><select id="${id}"><option value="">全部</option>${opts.map(([v, n]) => `<option value="${esc(v)}"${v === cur ? " selected" : ""}>${esc(n)}</option>`).join("")}</select></label>`;
+  shell(`${head("受访者招募", `手动添加、从表格批量导入，再用“资格规则”自动筛出符合条件的人；“配额”看每类人招到了多少。问卷平台接入后，通过甄别的人会自动出现在这里。目前只开放新加坡。`, `<button id="imp2">导入表格</button> <button class="p" id="np">添加受访者</button>`)}
+    <div class="card"><div class="row" style="align-items:flex-start"><div style="flex:1;min-width:240px"><h3 style="margin-top:0">资格规则${rec.rules_version ? ` <span class="tag">第 ${rec.rules_version} 版 · ${rec.rules.length} 条</span>` : ""}</h3>
+      <p class="sm" style="margin:0">${anyRules ? `<span class="tag ok">符合 ${C.qualified}</span> <span class="tag bad">不符合 ${C.disqualified}</span> <span class="tag live">待人工看 ${C.review}</span>${C.not_screened ? ` <span class="tag">未筛 ${C.not_screened}</span>` : ""}` : "还没有设规则：所有人都算符合。"}</p>
+      <div class="row" style="margin-top:8px"><button class="s" id="rules">编辑规则</button>${anyRules ? `<button class="s" id="reapply">重新筛一遍</button>` : ""}</div></div>
+      <div style="flex:1;min-width:240px"><h3 style="margin-top:0">配额</h3>${rec.quotas.length ? rec.quotas.map(bar).join("") : `<p class="sm mut" style="margin:0">还没有配额。例如“新加坡 10 人”“女性 5 人”。</p>`}<button class="s" id="quotas" style="margin-top:6px">编辑配额</button></div></div></div>
+    ${parts.length ? `<form class="card row" id="pf" style="align-items:flex-end;flex-wrap:wrap">${sel("f_screen", "资格", [["qualified", "符合条件"], ["disqualified", "不符合"], ["review", "待人工看"]], F.screen)}${sel("f_tag", "标签", allTags.map((t) => [t, t]), F.tag)}${sel("f_country", "国家", countries.map((c) => [c, c]), F.country)}${sel("f_language", "语言", langs.map((l) => [l, LANGS[l] || l]), F.language)}
+      <span class="sp"></span><span class="sm mut" id="selcount">已选 0 人</span><button class="p" type="button" id="batch" disabled>批量邀请到场次</button></form>
+    <div class="card scroll" style="padding:6px 10px"><table class="tbl rc"><thead><tr><th><span class="vh">选择</span><input type="checkbox" id="all" aria-label="全选"></th><th>编号</th><th>姓名</th><th>国家 / 语言</th><th>标签</th><th>甄别题答案</th><th>资格</th><th></th></tr></thead><tbody>
+      ${shown.map(([x, n]) => `<tr><td><input type="checkbox" class="pick" value="${x.id}" aria-label="选择 ${esc(x.name)}"${x.screening === "eligible" && !x.anonymized && x.screen_result !== "disqualified" ? "" : " disabled"}></td><td class="code">${pcode(n)}</td><td><b>${esc(x.name)}</b>${x.email ? `<div class="sm mut">${esc(x.email)}</div>` : ""}<div class="sm mut">${nIt(x.id) ? `${nIt(x.id)} 场` : "未邀请"}</div></td><td>${esc(x.country || "—")} · ${esc(LANGS[x.language] || x.language || "—")}</td>
+        <td>${x.tags.map((t) => `<span class="tag">${esc(t)}</span>`).join(" ")} ${x.anonymized ? "" : `<button class="s" data-tags="${x.id}" data-cur="${esc(x.tags.join(", "))}">标签</button>`}</td>
         <td>${x.anonymized ? `<span class="mut">—</span>` : `<button class="s" data-scr="${x.id}">${x.screener ? `${x.screener} 题 · 查看` : "添加答案"}</button>`}</td>
-        <td>${x.screening === "blocked_region" ? `<span class="tag bad">地区暂未开放</span>` : x.anonymized ? `<span class="tag">已匿名</span>` : `<span class="tag ok">可邀请</span>`}</td>
-        <td>${nIt(x.id) ? `${nIt(x.id)} 场` : `<span class="mut">未邀请</span>`}</td>
-        <td class="acts">${x.screening === "eligible" && !x.anonymized ? `<button class="s" data-inv="${x.id}">邀请到场次</button> ` : ""}${x.anonymized ? "" : `<button class="s warn" data-erase="${x.id}">删除数据</button>`}</td></tr>`).join("")}</tbody></table></div>`
-      : `<div class="card empty"><b>还没有受访者。</b><span>问卷平台接入后，通过甄别的人会自动出现在这里；现在可以点右上角“添加受访者”手动添加。</span></div>`}`, { active: "people", p });
+        <td>${x.screening === "blocked_region" ? `<span class="tag bad">地区暂未开放</span>` : x.anonymized ? `<span class="tag">已匿名</span>` : x.screen_result ? `<span class="tag ${SCREEN[x.screen_result][1]}" ${x.screen_reason ? `title="${esc(x.screen_reason)}"` : ""}>${SCREEN[x.screen_result][0]}</span>${x.screen_reason ? `<div class="sm mut">${esc(x.screen_reason)}</div>` : ""}` : `<span class="tag ok">可邀请</span>`}</td>
+        <td class="acts">${x.screening === "eligible" && !x.anonymized ? `<button class="s" data-inv="${x.id}">邀请到场次</button> ` : ""}${x.anonymized ? "" : `<button class="s warn" data-erase="${x.id}">删除数据</button>`}</td></tr>`).join("")}</tbody></table></div>
+      ${shown.length ? "" : `<div class="card empty"><b>没有符合筛选条件的人。</b></div>`}`
+      : `<div class="card empty"><b>还没有受访者。</b><span>点右上角“添加受访者”手动添加，或“导入表格”一次导入很多人。</span></div>`}`, { active: "people", p });
+  const bind = (id, key) => { const e = $(id); if (e) e.onchange = () => { PEOPLE_F = { ...PEOPLE_F, [key]: e.value }; render(); }; };
+  bind("#f_screen", "screen"); bind("#f_tag", "tag"); bind("#f_country", "country"); bind("#f_language", "language");
+  const picks = () => [...app.querySelectorAll(".pick:checked")].map((c) => c.value);
+  const syncSel = () => { const n = picks().length; const sc = $("#selcount"); if (sc) { sc.textContent = `已选 ${n} 人`; $("#batch").disabled = !n; } };
+  app.querySelectorAll(".pick").forEach((c) => c.onchange = syncSel);
+  const all = $("#all"); if (all) all.onchange = () => { app.querySelectorAll(".pick:not(:disabled)").forEach((c) => { c.checked = all.checked; }); syncSel(); };
+  const batch = $("#batch"); if (batch) batch.onclick = guard(() => batchInvite(p, picks()));
+  $("#imp2").onclick = () => importModal(p);
+  $("#rules").onclick = () => rulesModal(p, rec);
+  $("#quotas").onclick = () => quotasModal(p, rec);
+  const ra = $("#reapply"); if (ra) ra.onclick = guard(async () => { await api(`/projects/${p.id}/recruiting/apply`, { method: "POST" }); toast("已重新筛选"); render(); });
   $("#np").onclick = () => {
     const m = modal(`<h2>添加受访者</h2><form id="f"><label class="f"><span>姓名</span><input name="name" required></label><label class="f"><span>邮箱（选填）</span><input name="email" type="email"></label>
       <label class="f"><span>所在国家</span><select name="country">${openCountryOpts(p.market)}</select></label><label class="f"><span>语言</span><select name="language">${langOpts(p.language)}</select></label>
@@ -219,6 +251,11 @@ async function peopleView(p) {
     $("#c", m).onclick = () => m.remove();
     $("#f", m).onsubmit = guard(async (e) => { e.preventDefault(); await api(`/projects/${p.id}/participants`, { method: "POST", body: Object.fromEntries(new FormData(e.target)) }); m.remove(); toast("已添加"); render(); });
   };
+  app.querySelectorAll("[data-tags]").forEach((b) => b.onclick = () => {
+    const m = modal(`<h2>标签</h2><form id="f"><label class="f"><span>用逗号隔开，例如：女性, 学生, 老用户</span><input name="tags" value="${esc(b.dataset.cur)}"></label><div class="row"><button class="p">保存</button><button type="button" id="c">取消</button></div></form>`);
+    $("#c", m).onclick = () => m.remove();
+    $("#f", m).onsubmit = guard(async (e) => { e.preventDefault(); await api(`/participants/${b.dataset.tags}/tags`, { method: "PUT", body: { tags: e.target.tags.value.split(/[,，;；|]/).map((t) => t.trim()).filter(Boolean) } }); m.remove(); render(); });
+  });
   app.querySelectorAll("[data-scr]").forEach((b) => b.onclick = guard(async () => {
     const id = b.dataset.scr, r = await api(`/participants/${id}/screener`);
     const m = modal(`<h2>甄别问卷答案</h2><form id="f"><label class="f"><span>每行一题，写成“题目：答案”。保存后会替换原来的全部答案。</span><textarea name="text" rows="14">${esc(r.text)}</textarea></label>
@@ -231,6 +268,88 @@ async function peopleView(p) {
     if (!confirm("这会删除该受访者所有访谈的录制、转写、引文和分享链接，且无法恢复。继续？")) return;
     const r = await api(`/participants/${b.dataset.erase}/data`, { method: "DELETE" }); toast(`已清除 ${r.purged_interviews} 场访谈的数据`); render();
   }));
+}
+
+function importModal(p) {
+  const m = modal(`<h2>从表格导入受访者</h2><form id="f"><p class="sm mut">用 Excel 或 Numbers 另存为 CSV（UTF-8），或直接粘贴。第一行是表头：必须有“姓名”（或 name）；可选 邮箱、国家（如 SG）、语言（en/zh/ms/ta）、标签（用分号隔开）；其余每一列都当作一道甄别题（表头是题目，格子是答案）。一次最多 500 行。</p>
+    <label class="f"><span>选择文件（.csv / .txt）</span><input type="file" id="file" accept=".csv,.txt,text/csv,text/plain"></label>
+    <label class="f"><span>或粘贴内容</span><textarea name="csv" rows="8" required placeholder="姓名,邮箱,国家,语言,标签,年龄&#10;林小雨,lin@example.com,SG,zh,女性;学生,22"></textarea></label>
+    <div id="prev" class="sm" role="status" aria-live="polite"></div>
+    <div class="row"><button type="button" id="dry">先预览</button><button class="p" id="impgo">导入</button><button type="button" id="c">取消</button></div></form>`);
+  $("#c", m).onclick = () => m.remove();
+  $("#file", m).onchange = async (e) => { const f = e.target.files[0]; if (f) $("[name=csv]", m).value = await f.text(); };
+  const show = (r) => { $("#prev", m).innerHTML = `${r.dry_run ? "预览：将新增" : "已新增"} <b>${r.created}</b> 人${r.skipped.length ? `，跳过 ${r.skipped.length} 行：<ul style="margin:4px 0 0 18px">${r.skipped.slice(0, 8).map((s) => `<li>第 ${s.line} 行：${esc(s.why)}</li>`).join("")}${r.skipped.length > 8 ? "<li>…</li>" : ""}</ul>` : ""}`; };
+  $("#dry", m).onclick = guard(async () => show(await api(`/projects/${p.id}/participants/import`, { method: "POST", body: { csv: $("[name=csv]", m).value, dry_run: true } })));
+  $("#f", m).onsubmit = guard(async (e) => { e.preventDefault(); const r = await api(`/projects/${p.id}/participants/import`, { method: "POST", body: { csv: e.target.csv.value, dry_run: false } }); show(r); toast(`已导入 ${r.created} 人`); setTimeout(() => { m.remove(); render(); }, 900); });
+}
+
+function rulesModal(p, rec) {
+  const row = (r = {}) => { const k = r.field || (r.question !== undefined && r.question !== "" ? "question" : "country"); return `<div class="rrow card" style="padding:10px;margin:0 0 8px">
+    <div class="row" style="flex-wrap:wrap"><label class="f" style="margin:0"><span>针对</span><select class="r-f">${RULE_FIELDS.map(([v, n]) => `<option value="${v}"${v === k ? " selected" : ""}>${n}</option>`).join("")}</select></label>
+      <label class="f" style="margin:0;flex:1 1 140px"><span>题目关键词（针对甄别题时填）</span><input class="r-q" value="${esc(r.question || "")}"></label></div>
+    <div class="row" style="flex-wrap:wrap"><label class="f" style="margin:0"><span>条件</span><select class="r-o">${RULE_OPS.map(([v, n]) => `<option value="${v}"${v === r.op ? " selected" : ""}>${n}</option>`).join("")}</select></label>
+      <label class="f" style="margin:0;flex:1 1 120px"><span>值（多个用逗号隔开）</span><input class="r-v" value="${esc(Array.isArray(r.value) ? r.value.join(",") : r.value ?? "")}"></label>
+      <label class="f" style="margin:0"><span>处理</span><select class="r-e">${RULE_EFFECTS.map(([v, n]) => `<option value="${v}"${v === (r.effect || "require") ? " selected" : ""}>${n}</option>`).join("")}</select></label></div>
+    <div class="row"><label class="f" style="margin:0;flex:1"><span>说明（显示给团队看，例如“年龄 18–65”）</span><input class="r-n" value="${esc(r.note || "")}"></label><button type="button" class="s warn r-del">删除这条</button></div></div>`; };
+  const m = modal(`<h2>资格规则</h2><form id="f"><p class="sm mut">规则按甄别答案自动判断每个人：不满足“必须满足”的、命中“排除”的 → 不符合；缺少答案或命中“人工看” → 待人工看；其余 → 符合。每次保存会生成新版本并立刻重新筛一遍。</p>
+    <div id="rows">${rec.rules.map(row).join("")}</div><div class="row"><button type="button" class="s" id="addr">+ 加一条规则</button></div><p class="sm" id="rerr" role="alert" hidden style="color:#A8203E"></p>
+    <div class="row" style="margin-top:12px"><button class="p">保存并重新筛选</button><button type="button" id="c">取消</button></div></form>`);
+  const bindDel = () => m.querySelectorAll(".r-del").forEach((b) => b.onclick = () => b.closest(".rrow").remove());
+  bindDel();
+  $("#addr", m).onclick = () => { $("#rows", m).insertAdjacentHTML("beforeend", row({ op: "equals", effect: "require" })); bindDel(); };
+  $("#c", m).onclick = () => m.remove();
+  $("#f", m).onsubmit = async (e) => {
+    e.preventDefault();
+    const rules = [...m.querySelectorAll(".rrow")].map((d) => { const f = d.querySelector(".r-f").value, op = d.querySelector(".r-o").value, raw = d.querySelector(".r-v").value.trim();
+      const value = op === "answered" ? null : ["gte", "lte"].includes(op) ? raw : ["in", "not_in", "between"].includes(op) ? raw.split(/[,，;；]/).map((x) => x.trim()).filter(Boolean) : raw;
+      return { ...(f === "question" ? { question: d.querySelector(".r-q").value.trim() } : { field: f }), op, value, effect: d.querySelector(".r-e").value, note: d.querySelector(".r-n").value.trim() }; });
+    try { await api(`/projects/${p.id}/recruiting/rules`, { method: "PUT", body: { rules } }); m.remove(); toast("规则已保存并重新筛选"); render(); }
+    catch (err) { const pr = $("#rerr", m); pr.textContent = err.message; pr.hidden = false; }
+  };
+}
+
+function quotasModal(p, rec) {
+  const row = (q = {}) => `<div class="qrow row" style="flex-wrap:wrap;align-items:flex-end;margin-bottom:8px"><label class="f" style="margin:0"><span>类型</span><select class="q-f">${[["country", "国家"], ["language", "语言"], ["tag", "标签"], ["answer", "甄别题答案"]].map(([v, n]) => `<option value="${v}"${v === q.field ? " selected" : ""}>${n}</option>`).join("")}</select></label>
+    <label class="f" style="margin:0;flex:1 1 110px"><span>题目关键词（甄别题）</span><input class="q-q" value="${esc(q.question || "")}"></label>
+    <label class="f" style="margin:0;flex:1 1 100px"><span>值</span><input class="q-v" value="${esc(q.value || "")}"></label>
+    <label class="f" style="margin:0;width:90px"><span>目标人数</span><input class="q-t" type="number" min="1" max="10000" value="${q.target || ""}"></label>
+    <button type="button" class="s warn q-del">删除</button></div>`;
+  const m = modal(`<h2>配额</h2><form id="f"><p class="sm mut">说明这个研究每类人要招多少。统计的是“没被判为不符合”的人。</p><div id="rows">${rec.quotas.map(row).join("")}</div>
+    <div class="row"><button type="button" class="s" id="addq">+ 加一个配额</button></div><p class="sm" id="qerr" role="alert" hidden style="color:#A8203E"></p><div class="row" style="margin-top:12px"><button class="p">保存</button><button type="button" id="c">取消</button></div></form>`);
+  const bindDel = () => m.querySelectorAll(".q-del").forEach((b) => b.onclick = () => b.closest(".qrow").remove());
+  bindDel();
+  $("#addq", m).onclick = () => { $("#rows", m).insertAdjacentHTML("beforeend", row({ field: "country" })); bindDel(); };
+  $("#c", m).onclick = () => m.remove();
+  $("#f", m).onsubmit = async (e) => {
+    e.preventDefault();
+    const quotas = [...m.querySelectorAll(".qrow")].map((d) => ({ field: d.querySelector(".q-f").value, question: d.querySelector(".q-q").value.trim(), value: d.querySelector(".q-v").value.trim(), target: Number(d.querySelector(".q-t").value) }));
+    try { await api(`/projects/${p.id}/recruiting/quotas`, { method: "PUT", body: { quotas } }); m.remove(); toast("已保存"); render(); }
+    catch (err) { const pr = $("#qerr", m); pr.textContent = err.message; pr.hidden = false; }
+  };
+}
+
+async function batchInvite(p, ids) {
+  const users = await api("/users");
+  const mods = users.filter((u) => ["moderator", "researcher", "admin"].includes(u.role)), obs = users.filter((u) => u.role === "observer");
+  const m = modal(`<h2>批量邀请 ${ids.length} 人</h2><form id="f"><p class="sm mut">每个人各得到一场深访和一条专属链接（只显示这一次）。</p>
+    <label class="f"><span>场次名称（团队内部看，受访者看不到）</span><input name="title" required></label>
+    <label class="f"><span>访谈语言</span><select name="language">${langOpts("", "同各自的语言")}</select></label>
+    <label class="f"><span>谁来主持</span><select name="moderation"><option value="human">真人主持人</option><option value="ai">AI 主持人（文字聊天，受访者会被告知并需单独同意）</option></select></label>
+    <label class="f"><span>主持人</span><select name="moderator_id"><option value="">稍后指定</option>${mods.map((u) => `<option value="${u.id}">${esc(u.name)}（${ROLE[u.role]}）</option>`).join("")}</select></label>
+    <fieldset style="border:1px solid var(--line);border-radius:10px;margin:0 0 14px;padding:6px 14px"><legend class="sm mut">观察员（隐身旁听）</legend>${obs.length ? obs.map((u) => `<label class="chk"><input type="checkbox" name="obs" value="${u.id}"><span>${esc(u.name)}</span></label>`).join("") : `<span class="sm mut">还没有观察员账号</span>`}</fieldset>
+    <div class="row"><button class="p">创建并生成链接</button><button type="button" id="c">取消</button></div></form>`);
+  $("#c", m).onclick = () => m.remove();
+  $("#f", m).onsubmit = guard(async (e) => {
+    e.preventDefault(); const fd = new FormData(e.target);
+    const r = await api(`/projects/${p.id}/interviews/batch`, { method: "POST", body: { participant_ids: ids, title: fd.get("title"), language: fd.get("language") || null, moderation: fd.get("moderation"), moderator_id: fd.get("moderator_id") || null, observer_ids: fd.getAll("obs") } });
+    m.remove();
+    const lines = r.invites.map((i) => `${i.name}\t${location.origin + i.invite_path}`).join("\n");
+    const m2 = modal(`<h2>邀请链接（只显示这一次）</h2>${r.invites.map((i) => `<p style="margin:10px 0 2px"><b>${esc(i.name)}</b></p><code class="copy">${esc(location.origin + i.invite_path)}</code>`).join("")}
+      ${r.skipped.length ? `<p class="sm mut">没有生成：${r.skipped.map((x) => `${esc(x.name)}（${esc(x.why)}）`).join("、")}</p>` : ""}
+      <div class="row" style="margin-top:12px"><button id="cp">复制全部（姓名 + 链接）</button><button class="p" id="done">我已保存</button></div>`);
+    $("#cp", m2).onclick = guard(async () => { await navigator.clipboard.writeText(lines); toast("已复制"); });
+    $("#done", m2).onclick = () => { m2.remove(); render(); };
+  });
 }
 
 async function newSession(p, parts, preselect) {
@@ -539,6 +658,68 @@ async function repoView() {
     });
   };
   app.querySelectorAll("[data-del]").forEach((b) => b.onclick = guard(async () => { if (!confirm("删除后这份资料不会再被搜索到。继续？")) return; await api(`/repo/documents/${b.dataset.del}`, { method: "DELETE" }); toast("已删除"); render(); }));
+}
+
+// ---------------- 舆情监测：公开渠道上的声音 ----------------
+const L_KIND = { mock: "模拟数据（试用）", rss: "新闻 / 博客订阅（RSS）", appstore: "App Store 评论", web: "公开网页（选择器）" };
+const L_SENT = { neg: ["负面", "bad"], neu: ["中性", ""], pos: ["正面", "ok"] };
+async function listeningView(p) {
+  const my = renderSeq;
+  const o = await api(`/projects/${p.id}/listening`);
+  if (stale(my)) return;
+  const S = o.summary, sn = S.sentiment, maxDay = Math.max(1, ...S.per_day.map((d) => d.neg + d.neu + d.pos + d.none));
+  const when = (t) => (t ? new Date(t + "Z").toLocaleString() : "还没运行");
+  const bars = S.per_day.length ? `<div class="sbars" role="img" aria-label="每天的声量和情感：${S.per_day.map((d) => `${d.day} 共 ${d.neg + d.neu + d.pos + d.none} 条`).join("，")}">${S.per_day.map((d) => { const t = d.neg + d.neu + d.pos + d.none; return `<div class="sday" title="${d.day}：负面 ${d.neg}，中性 ${d.neu}，正面 ${d.pos}"><div class="sstack" style="height:${Math.round((t / maxDay) * 100)}%"><i class="sneg" style="flex:${d.neg}"></i><i class="sneu" style="flex:${d.neu + d.none}"></i><i class="spos" style="flex:${d.pos}"></i></div><span>${d.day.slice(5)}</span></div>`; }).join("")}</div>
+    <p class="sm mut" style="margin:6px 0 0"><i class="dot sneg"></i> 负面 <i class="dot sneu"></i> 中性 <i class="dot spos"></i> 正面</p>` : `<p class="mut" style="margin:0">最近 ${S.days} 天还没有内容。添加来源并点“立即运行”。</p>`;
+  const row = (s) => `<tr><td><b>${esc(s.name)}</b><div class="sm mut">${esc(L_KIND[s.kind] || s.kind)}</div></td>
+      <td>${s.last_status === "ok" ? `<span class="tag ok">正常</span>` : s.last_status === "error" ? `<span class="tag bad" title="${esc(s.last_error)}">出错</span>` : `<span class="tag">未运行</span>`}${s.enabled ? "" : ` <span class="tag">已暂停</span>`}
+        ${s.last_status === "error" ? `<div class="sm" style="color:#A8203E">${esc(s.last_error)}</div>` : ""}</td>
+      <td class="mut">${esc(when(s.last_run_at))}<div class="sm">上次新增 ${s.last_count} 条 · 每 ${s.interval_min} 分钟</div></td><td>${s.mentions}</td>
+      <td class="acts"><button class="s" data-run="${s.id}">立即运行</button> <button class="s" data-tog="${s.id}" data-to="${s.enabled ? 0 : 1}">${s.enabled ? "暂停" : "启用"}</button> <button class="s warn" data-del="${s.id}">删除</button></td></tr>`;
+  shell(`${head("舆情监测", "公开渠道上的评论、帖子、新闻：自动采集，打上语言、情感和话题，和访谈放在一起看。只存正文、链接和作者的哈希（不存名字和头像）。", `<button class="p" id="addsrc">添加来源</button>`)}
+    <div class="grid"><div class="card"><div class="sm mut">最近 ${S.days} 天的内容</div><div class="big">${S.total}</div></div>
+      <div class="card"><div class="sm mut">负面占比</div><div class="big">${S.negative_share === null ? "—" : Math.round(S.negative_share * 100) + "%"}</div><div class="sm mut">负面 ${sn.neg} · 中性 ${sn.neu} · 正面 ${sn.pos}${sn.none ? ` · 待分析 ${sn.none}` : ""}</div></div>
+      <div class="card"><div class="sm mut">最多人谈的话题</div><div style="margin-top:6px">${S.topics.length ? S.topics.slice(0, 5).map((t) => `<span class="tag">${esc(t.topic)} ${t.count}</span>`).join(" ") : "—"}</div></div></div>
+    <div class="card"><h3>每天的声量</h3>${bars}</div>
+    <h2>来源</h2>${o.sources.length ? `<div class="card scroll" style="padding:6px 10px"><table class="tbl rc"><thead><tr><th>来源</th><th>状态</th><th>最近运行</th><th>内容</th><th>操作</th></tr></thead><tbody>${o.sources.map(row).join("")}</tbody></table></div>`
+      : `<div class="card empty"><b>还没有来源。</b><span>先加一个“模拟数据”试用，或接入新闻订阅、App Store 评论、公开网页。</span></div>`}
+    <h2>内容</h2><form class="card row" id="mf" style="align-items:flex-end;flex-wrap:wrap">
+      <label class="f" style="margin:0"><span>情感</span><select name="sentiment"><option value="">全部</option><option value="neg">负面</option><option value="neu">中性</option><option value="pos">正面</option></select></label>
+      <label class="f" style="margin:0"><span>话题</span><select name="topic"><option value="">全部</option>${S.topics.map((t) => `<option>${esc(t.topic)}</option>`).join("")}</select></label>
+      <label class="f" style="margin:0"><span>语言</span><select name="lang"><option value="">全部</option>${Object.keys(S.languages).map((l) => `<option value="${l}">${esc(LANGS[l] || l)}</option>`).join("")}</select></label>
+      <label class="f" style="margin:0;flex:1 1 220px;min-width:160px"><span>包含的文字</span><input name="q" maxlength="200"></label><button class="p">筛选</button></form>
+    <div id="mlist" aria-live="polite"></div>`, { active: "listening", p });
+  const list = $("#mlist"), mf = $("#mf");
+  const load = guard(async () => {
+    const v = Object.fromEntries(new FormData(mf)); const qs = new URLSearchParams({ ...v, limit: 30 });
+    const r = await api(`/projects/${p.id}/listening/mentions?${qs}`);
+    list.innerHTML = r.mentions.length ? `<p class="sm mut">共 ${r.total} 条，显示前 ${r.mentions.length} 条</p>` + r.mentions.map((m) => `<div class="card hitm"><div class="sm mut">${m.sentiment ? `<span class="tag ${L_SENT[m.sentiment][1]}">${L_SENT[m.sentiment][0]}</span>` : `<span class="tag">待分析</span>`} ${m.topics.map((t) => `<span class="tag">${esc(t)}</span>`).join(" ")} · ${esc(LANGS[m.lang] || m.lang)}${m.posted_at ? ` · ${esc(new Date(m.posted_at + "Z").toLocaleDateString())}` : ""}${m.metrics && m.metrics.rating ? ` · ${"★".repeat(m.metrics.rating)}` : ""}</div>
+      <p style="margin:6px 0">${m.title && !m.text.startsWith(m.title) ? `<b>${esc(m.title)}</b> ` : ""}${esc(m.text)}</p><div class="row"><a class="sm" href="${esc(m.url)}" target="_blank" rel="noopener noreferrer">查看原帖 ↗</a><span class="sp"></span>
+      ${m.author ? `<button class="s" data-au="${m.author}">下架此作者的全部内容</button>` : ""}<button class="s warn" data-dm="${m.id}">下架这条</button></div></div>`).join("")
+      : `<div class="card empty"><b>没有符合条件的内容。</b></div>`;
+    list.querySelectorAll("[data-dm]").forEach((b) => b.onclick = guard(async () => { if (!confirm("下架后这条会被删除，并且以后不会再被采集。继续？")) return; await api(`/listening/mentions/${b.dataset.dm}`, { method: "DELETE" }); toast("已下架"); load(); }));
+    list.querySelectorAll("[data-au]").forEach((b) => b.onclick = guard(async () => { if (!confirm("这个作者在本项目里的全部内容都会被删除，并且以后不会再被采集。继续？")) return; const r = await api(`/projects/${p.id}/listening/takedown`, { method: "POST", body: { author: b.dataset.au } }); toast(`已下架 ${r.removed} 条`); render(); }));
+  });
+  mf.onsubmit = (e) => { e.preventDefault(); load(); }; load();
+  app.querySelectorAll("[data-run]").forEach((b) => b.onclick = guard(async () => { b.disabled = true; b.textContent = "运行中…"; const r = await api(`/listening/sources/${b.dataset.run}/run`, { method: "POST" }); toast(r.ok ? `新增 ${r.new} 条` : r.error, !r.ok); render(); }));
+  app.querySelectorAll("[data-tog]").forEach((b) => b.onclick = guard(async () => { await api(`/listening/sources/${b.dataset.tog}`, { method: "PATCH", body: { enabled: b.dataset.to === "1" } }); render(); }));
+  app.querySelectorAll("[data-del]").forEach((b) => b.onclick = guard(async () => { if (!confirm("删除这个来源，也会删除它采集到的全部内容。继续？")) return; await api(`/listening/sources/${b.dataset.del}`, { method: "DELETE" }); toast("已删除"); render(); }));
+  $("#addsrc").onclick = () => {
+    const m = modal(`<h2>添加来源</h2><form id="f"><label class="f"><span>类型</span><select name="kind" id="kind">${o.kinds.map((k) => `<option value="${k}">${esc(L_KIND[k])}</option>`).join("")}</select></label>
+      <label class="f"><span>名称（方便你认）</span><input name="name" required maxlength="200"></label><div id="cfg"></div>
+      <p class="sm mut">只读取公开页面：遵守网站的 robots.txt，限速，不登录，不绕过任何限制；网站拒绝就停止。</p>
+      <div class="row"><button class="p">添加</button><button type="button" id="c">取消</button></div></form>`);
+    const FIELDS = { mock: [["brand", "品牌名", "示例品牌"], ["lang", "语言（zh 或 en）", "zh"]], rss: [["url", "订阅源网址（RSS/Atom）", ""], ["keywords", "只要提到这些词的（用逗号隔开，可空）", ""]],
+      appstore: [["app_id", "App 编号（数字）", ""], ["country", "国家代码", "sg"]], web: [["url", "页面网址", ""], ["item", "每条内容的选择器（如 div.post）", ""], ["text", "正文选择器（在每条内容里，可空）", ""], ["link", "链接选择器（可空）", ""], ["title", "标题选择器（可空）", ""], ["date", "日期选择器（可空）", ""], ["author", "作者选择器（可空，只存哈希）", ""], ["keywords", "只要提到这些词的（逗号隔开，可空）", ""]] };
+    const draw = () => { $("#cfg", m).innerHTML = FIELDS[$("#kind", m).value].map(([k, label, def]) => `<label class="f"><span>${esc(label)}</span><input name="c_${k}" value="${esc(def)}"></label>`).join(""); };
+    $("#kind", m).onchange = draw; draw();
+    $("#c", m).onclick = () => m.remove();
+    $("#f", m).onsubmit = guard(async (e) => {
+      e.preventDefault(); const fd = Object.fromEntries(new FormData(e.target)); const config = {};
+      Object.entries(fd).forEach(([k, v]) => { if (k.startsWith("c_")) config[k.slice(2)] = k === "c_keywords" ? v.split(/[,，]/).map((x) => x.trim()).filter(Boolean) : v.trim(); });
+      await api(`/projects/${p.id}/listening/sources`, { method: "POST", body: { kind: fd.kind, name: fd.name, config } }); m.remove(); toast("已添加"); render();
+    });
+  };
 }
 
 async function membersView(p) {  // who works on this project (admins see every project; moderators and observers are assigned per interview)

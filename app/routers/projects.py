@@ -51,7 +51,8 @@ def project_out(p: Project) -> dict:
 
 def participant_out(p: Participant, screener_count: int = 0) -> dict:
     return {"id": p.id, "name": p.name, "email": p.email, "country": p.country, "language": p.language,
-            "screening": p.screening, "anonymized": p.anonymized_at is not None, "screener": screener_count}
+            "screening": p.screening, "anonymized": p.anonymized_at is not None, "screener": screener_count,
+            "tags": p.tags or [], "screen_result": p.screen_result, "screen_reason": p.screen_reason}
 
 
 def get_project(db: Session, ctx: Ctx, pid: str) -> Project:
@@ -140,9 +141,12 @@ def add_participant(pid: str, body: NewParticipant, ctx: Ctx = Depends(require_r
 
 
 @router.get("/projects/{pid}/participants")
-def list_participants(pid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+def list_participants(pid: str, tag: str = "", country: str = "", language: str = "", screen: str = "", ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    """The project's people; optionally only those with a tag, a country, a language, or a screening result (qualified / disqualified / review)."""
     proj = get_project(db, ctx, pid)
     people = db.scalars(select(Participant).where(Participant.project_id == proj.id).order_by(Participant.created_at)).all()
+    people = [p for p in people if (not tag or tag in (p.tags or [])) and (not country or p.country == country.upper()) and (not language or p.language == language)
+              and (not screen or p.screen_result == screen)]
     counted = screener.counts(db, [p.id for p in people])
     return [participant_out(p, counted.get(p.id, 0)) for p in people]
 

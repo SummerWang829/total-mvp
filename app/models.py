@@ -73,6 +73,10 @@ class Participant(Base):
     language: Mapped[str] = mapped_column(String(10), default="")
     screening: Mapped[str] = mapped_column(String(20), default="eligible")  # eligible | blocked_region (= region not open)
     anonymized_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    tags: Mapped[list] = mapped_column(JSON, default=list)  # free labels for filtering and quotas (app/recruit.py)
+    screen_result: Mapped[str] = mapped_column(String(14), default="")  # "" (rules not run) | qualified | disqualified | review
+    screen_reason: Mapped[str] = mapped_column(String(300), default="")
+    screen_version: Mapped[int] = mapped_column(Integer, default=0)  # the version of the project's rules that produced the result
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
@@ -509,6 +513,72 @@ class RepoDocument(Base):
     title: Mapped[str] = mapped_column(String(200))
     source_note: Mapped[str] = mapped_column(String(300), default="")  # where it came from (who wrote it, when), for the reader
     text: Mapped[str] = mapped_column(Text)
+    created_by: Mapped[str] = mapped_column(String(32))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class RecruitSettings(Base):
+    """A project's eligibility rules (versioned) and quotas (app/recruit.py)."""
+    __tablename__ = "recruit_settings"
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), primary_key=True)
+    org_id: Mapped[str] = mapped_column(String(32), index=True)
+    rules: Mapped[list] = mapped_column(JSON, default=list)
+    rules_version: Mapped[int] = mapped_column(Integer, default=0)
+    quotas: Mapped[list] = mapped_column(JSON, default=list)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class ListeningSource(Base):
+    """One place the project watches for public opinion (a news feed, an app's reviews...). Settings live in `config` (app/listening/connectors.py)."""
+    __tablename__ = "listening_sources"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
+    org_id: Mapped[str] = mapped_column(ForeignKey("orgs.id"), index=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(12))  # mock | rss | appstore
+    name: Mapped[str] = mapped_column(String(200))
+    config: Mapped[dict] = mapped_column(JSON, default=dict)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    interval_min: Mapped[int] = mapped_column(Integer, default=360)  # how often the background job collects
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_status: Mapped[str] = mapped_column(String(8), default="")  # ok | error
+    last_error: Mapped[str] = mapped_column(String(300), default="")
+    last_count: Mapped[int] = mapped_column(Integer, default=0)  # new mentions in the last run
+    created_by: Mapped[str] = mapped_column(String(32))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class Mention(Base):
+    """One public post / review / article. Only the text, the link and a salted hash of the author are kept (never a name or picture)."""
+    __tablename__ = "mentions"
+    __table_args__ = (UniqueConstraint("project_id", "dedup_hash"),)
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
+    org_id: Mapped[str] = mapped_column(ForeignKey("orgs.id"), index=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
+    source_id: Mapped[str] = mapped_column(ForeignKey("listening_sources.id"), index=True)
+    url: Mapped[str] = mapped_column(Text)
+    title: Mapped[str] = mapped_column(String(300), default="")
+    text: Mapped[str] = mapped_column(Text)
+    lang: Mapped[str] = mapped_column(String(10), default="")
+    posted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    author_hash: Mapped[str] = mapped_column(String(16), default="", index=True)
+    dedup_hash: Mapped[str] = mapped_column(String(64))
+    metrics: Mapped[dict] = mapped_column(JSON, default=dict)
+    sentiment: Mapped[str] = mapped_column(String(3), default="")  # neg | neu | pos ("" until tagged)
+    topics: Mapped[list] = mapped_column(JSON, default=list)
+    enriched_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    enrich_attempts: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class MentionSuppression(Base):
+    """A take-down: a link (hash) or an author (hash) that must never be collected again for this project."""
+    __tablename__ = "mention_suppressions"
+    __table_args__ = (UniqueConstraint("project_id", "kind", "value"),)
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
+    org_id: Mapped[str] = mapped_column(ForeignKey("orgs.id"), index=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(8))  # hash | author
+    value: Mapped[str] = mapped_column(String(64))
     created_by: Mapped[str] = mapped_column(String(32))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 

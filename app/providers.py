@@ -97,6 +97,7 @@ def get_asr() -> ASR:
 class LLM(Protocol):
     def insights(self, segments: list[dict]) -> list[dict]: ...
     def translate(self, texts: list[str]) -> list[str]: ...  # into Chinese; same length and order; "" where it cannot
+    def classify_mentions(self, items: list[dict]) -> list[dict]: ...  # public posts: [{"n","text"}] -> [{"n","sentiment": neg|neu|pos,"topics":[short names]}]
     def answer(self, question: str, sources: list[dict]) -> dict: ...  # research library: {"claims": [{"text", "evidence": [source numbers]}], "insufficient": bool}
     def suggest_codes(self, statements: list[str], codebook: list[str]) -> list[list[str]]: ...  # per statement: 1-3 short code names (reuse the codebook where it fits)
 
@@ -109,6 +110,21 @@ class MockLLM:
 
     def translate(self, texts: list[str]) -> list[str]:
         return ["" for _ in texts]
+
+    _POS = ("love", "great", "good", "easy", "fair", "saved", "喜欢", "满意", "推荐", "方便", "不错", "省")
+    _NEG = ("slow", "cold", "never", "disappoint", "crash", "bug", "expensive", "refund", "慢", "凉", "失望", "闪退", "贵", "差", "退款", "没回复")
+    _TOPICS = {"配送": ("delivery", "slow", "cold", "配送", "物流", "送到"), "价格": ("price", "expensive", "cheap", "promotion", "saved", "价格", "贵", "便宜", "优惠"),
+               "客服": ("customer service", "support", "refund", "客服", "退款"), "App 体验": ("app", "crash", "bug", "order", "闪退", "下单"), "品质": ("quality", "品质", "质量")}
+
+    def classify_mentions(self, items: list[dict]) -> list[dict]:
+        """Offline stand-in: word lists. Says nothing about real sentiment quality."""
+        out = []
+        for it in items:
+            t = it["text"].lower()
+            pos, neg = sum(w in t for w in self._POS), sum(w in t for w in self._NEG)
+            out.append({"n": it["n"], "sentiment": "pos" if pos > neg else "neg" if neg > pos else "neu",
+                        "topics": [name for name, words in self._TOPICS.items() if any(w in t for w in words)][:3]})
+        return out
 
     def answer(self, question: str, sources: list[dict]) -> dict:
         """Offline stand-in: one claim per best passage, quoting its opening. No real reading comprehension."""
@@ -154,6 +170,13 @@ class OpenAICompatLLM:
                 got = [(self._translate_batch([t]) or [""])[0] for t in batch]
             out += got
         return out
+
+    def classify_mentions(self, items: list[dict]) -> list[dict]:
+        """Ask the model for the sentiment (neg / neu / pos) and 1-3 short topic names of each public post. The reply is untrusted: callers check it."""
+        prompt = ("你是舆情分析员。对下面每条公开帖子或评论，判断整体情感（neg 负面 / neu 中性 / pos 正面），并给出 1-3 个简短的话题名（每个不超过 6 个字，用帖子本身的语言或中文，"
+                  "例如 配送、价格、客服、App 体验）。只输出 JSON：" + '{"results":[{"n":int,"sentiment":"neg|neu|pos","topics":[str,...]}]}\n\n' + json.dumps(items, ensure_ascii=False))
+        got = self._chat(prompt).get("results", [])
+        return [r for r in got if isinstance(r, dict)] if isinstance(got, list) else []
 
     def answer(self, question: str, sources: list[dict]) -> dict:
         """Ask the model to answer from the numbered passages only. The reply is untrusted: app/repo/ask.py checks every number and figure."""

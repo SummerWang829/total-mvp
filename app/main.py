@@ -7,10 +7,11 @@ from fastapi.staticfiles import StaticFiles
 from starlette.responses import Response
 
 from . import loopwatch, mailer, project_members, ratelimit
+from .listening import service as listening_service
 from .config import settings
 from .db import Base, SessionLocal, engine, ensure_columns
 from .recording import start_worker
-from .routers import ai_room, analysis, auth, concept, cues, group_metrics, interviews, signals, studies, repo, overview, projects, public
+from .routers import ai_room, analysis, auth, concept, cues, group_metrics, interviews, listening, recruit, signals, studies, repo, overview, projects, public
 
 @asynccontextmanager
 async def lifespan(_app):
@@ -20,6 +21,7 @@ async def lifespan(_app):
         project_members.backfill(db)  # nobody loses the access they had before project membership existed
     if settings.loop_watch_s > 0:
         loopwatch.start(settings.loop_watch_s)  # names whatever blocks the event loop in the log
+    listening_service.start_worker()  # collects due sources and tags new mentions (public-opinion monitoring)
     mailer.start_worker()  # sends the account emails waiting in the outbox (does nothing without MAIL_HOST)
     if settings.run_worker:
         start_worker()  # mixes uploaded recordings once an interview recording stops
@@ -27,7 +29,7 @@ async def lifespan(_app):
 
 
 app = FastAPI(title="星桐 TOTAL MVP", version="0.1.0", lifespan=lifespan)
-for r in (auth.router, projects.router, interviews.router, overview.router, public.router, ai_room.router, concept.router, analysis.router, group_metrics.router, cues.router, signals.router, studies.router, repo.router):
+for r in (auth.router, projects.router, interviews.router, overview.router, public.router, ai_room.router, concept.router, analysis.router, group_metrics.router, cues.router, signals.router, studies.router, repo.router, listening.router, recruit.router):
     app.include_router(r)
 app.middleware("http")(ratelimit.middleware)  # no-op unless RATE_LIMIT=1
 if settings.loop_watch_s > 0:
