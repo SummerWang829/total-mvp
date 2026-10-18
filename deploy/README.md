@@ -23,5 +23,16 @@
 ## 升级
 `git pull && docker compose up -d --build`（数据在卷 `appdata` 里，不会丢）。
 
+## 监控与告警
+`deploy/monitor.sh` 每 5 分钟检查一次：数据库、磁盘剩余、最近一次备份是否超过 36 小时、账号邮件是否堆积失败、视频服务能否连上、舆情来源是否全部出错；**状态变化时**才通知（出问题一条、恢复一条，不会每 5 分钟刷屏）。应用容器自己挂了时，由脚本直接发通知。
+
+1. 在聊天工具里建一个机器人，拿到它的 webhook 地址（飞书、企业微信、Slack 都行，接收 `{"text": "..."}`）；填进 `deploy/.env`：`ALERT_WEBHOOK_URL=...`，然后 `docker compose up -d`。
+2. 服务器上加定时：`crontab -e`，写一行 `*/5 * * * * /opt/total-mvp/deploy/monitor.sh >> /var/log/xingtong-monitor.log 2>&1`。
+3. 另外在腾讯云监控或 UptimeRobot 加一条对 `https://你的域名/api/health` 的网站探测（整台服务器挂了的时候，上面这个脚本也跟着挂，只有外部探测能发现）。
+4. `docker compose exec app python -m app.doctor` 里会显示“监控告警”是否已配置。
+
+## 自动检查（CI）
+`.github/workflows/ci.yml`：每次推送到 main 和每个拉取请求，GitHub 都会跑 `scripts/qa.sh`（逻辑测试、全站浏览器检查、真实视频访谈、一键启动），失败时把报告和截图作为附件留 7 天。**不会自动部署**，部署仍然是人工的一步。
+
 ## 还没做（上线给真实受访者之前）
-Postgres、录像对象存储/备份、限流、云端转写（或服务器上的 whisper）、录像合成放进受限环境、数据保护应急预案。
+Postgres、录像对象存储和异地备份（数据库已异地备份，录像还没有）、云端转写（或服务器上的 whisper）、录像合成放进受限环境、数据保护应急预案、一键回滚。

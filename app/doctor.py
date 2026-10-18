@@ -155,6 +155,10 @@ def main() -> int:
         line("ok", f"账号邮件：已配置（{settings.mail_host}，发件人 {settings.mail_from}）；发件箱待发 {mailer.pending_count()} 封")
     else:
         line("warn", "账号邮件：没配置（MAIL_HOST / MAIL_FROM / PUBLIC_BASE_URL），忘记密码不可用，邀请和重置链接要手动发给对方")
+    if os.getenv("ALERT_WEBHOOK_URL", "").strip():
+        line("ok", "监控告警：已配置 webhook（deploy/monitor.sh 每 5 分钟检查，状态变化时通知）")
+    else:
+        line("warn", "监控告警：没配置 ALERT_WEBHOOK_URL，服务出问题不会有人收到通知（飞书/企业微信/Slack 的机器人 webhook 都行）；另请在腾讯云监控或 UptimeRobot 加一条网站探测")
     check_backup()
     check_offsite()
     if settings.allow_signup and os.path.exists("/.dockerenv"):
