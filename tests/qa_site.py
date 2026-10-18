@@ -549,6 +549,34 @@ def pool_section(br, D):
     ctx.close()
 
 
+def admin_data_section(br, D):
+    """Admin pages: the audit trail can be filtered and exported; the retention page lists projects with dates and what they hold."""
+    adm, pid = D["tok"]["admin"], D["pid"]
+    ctx, pg, errs = new_page(br, 1280, token=adm)
+    pg.on("dialog", lambda d: d.accept())
+    pg.goto(B + "/#/audit"); pg.wait_for_selector("#arows tr")
+    ok(pg.locator("#arows tr").count() >= 10, "[audit] the trail lists many rows")
+    pg.fill("#af [name=action]", "project."); pg.click("#af button.p")
+    ok(wait_until(lambda: pg.locator("#arows tr").count() >= 1 and all("project." in t for t in pg.locator("#arows tr").all_inner_texts() if t.strip()), 8), "[audit] filtering by action keeps only matching rows")
+    pg.fill("#af [name=action]", "zzz-no-such"); pg.click("#af button.p")
+    ok(wait_until(lambda: pg.locator("#arows tr").count() == 0 and "没有符合条件" in pg.inner_text("#acount"), 8), "[audit] a filter with no match says so")
+    with pg.expect_download(timeout=15000) as dl:
+        pg.click("#aexp")
+    ok(dl.value.suggested_filename == "audit.csv", "[audit] the trail exports as CSV")
+    audit_page(pg, "audit filters/desktop", errs)
+    pg.goto(B + "/#/retention"); pg.wait_for_selector("table.tbl tbody tr")
+    ok(pg.locator("tr", has_text="新加坡护肤品牌进入研究").count() == 1 and "现在保有" in pg.inner_text("main"), "[retention] the page lists the projects with what each holds")
+    audit_page(pg, "retention/desktop", errs)
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "retention_1280.png"), full_page=True)
+    ctx.close()
+    ctx, pg, errs = new_page(br, 390, token=adm)
+    pg.goto(B + "/#/retention"); pg.wait_for_selector("table.tbl tbody tr")
+    audit_page(pg, "retention/phone", errs)
+    pg.goto(B + "/#/audit"); pg.wait_for_selector("#arows tr")
+    audit_page(pg, "audit/phone", errs)
+    ctx.close()
+
+
 def main():
     tmp = tempfile.mkdtemp()
     env = {**os.environ, "DATABASE_URL": f"sqlite:///{tmp}/qa.db", "MEDIA_DIR": f"{tmp}/media", "LIVEKIT_URL": "", "ASR_PROVIDER": "mock", "LLM_PROVIDER": "mock", "ASR_API_KEY": "", "LLM_API_KEY": "",
@@ -906,7 +934,7 @@ def run():
     staff_routes = [f"#/projects", f"#/p/{pid}/home", f"#/p/{pid}/people", f"#/p/{pid}/sessions", f"#/p/{pid}/analysis", f"#/p/{pid}/members", f"#/p/{pid}/studies", f"#/p/{pid}/listening", f"#/p/{pid}/pool", "#/repo"] + proj + [f"#/i/{mi}", f"#/i/{mi}/insights", f"#/i/{mi}/clips"]
     role_routes = {
         "demo_admin": ["#/projects", f"#/p/{D['demo_pid']}/home", "#/demo"],
-        "admin": staff_routes + ["#/team", "#/audit"],
+        "admin": staff_routes + ["#/team", "#/audit", "#/retention"],
         "researcher": staff_routes,
         "moderator": ["#/projects", f"#/p/{pid}"] + proj + [f"#/i/{mi}", f"#/i/{mi}/insights"],
         "observer": ["#/projects", f"#/p/{pid}"] + proj + [f"#/i/{mi}", f"#/i/{mi}/insights", f"#/i/{mi}/clips"],
@@ -1202,6 +1230,7 @@ def run():
         wizard_section(br, D)
         quant_section(br, D)
         pool_section(br, D)
+        admin_data_section(br, D)
 
         # ---------- C2. dialogs and expandable panels on the staff pages (both screen sizes) ----------
         for w, vp in ((1280, "desktop"), (390, "phone")):

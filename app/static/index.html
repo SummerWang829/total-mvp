@@ -34,7 +34,7 @@ function navHtml(active, p) {
     h += (live ? a(`/p/${p.id}/rooms`, "直播间", "rooms", "", true) : "") + a(`/p/${p.id}/insights`, "洞察与片段", "insights", "", true);
     if (STAFF()) h += a(`/p/${p.id}/analysis`, "编码与分析", "analysis", "", true);
   }
-  if (ME.role === "admin") h += `<div class="sec">设置</div>${a("/team", "团队", "team", "◎")}${a("/audit", "审计日志", "audit", "≡")}${DEMO_ORG ? a("/demo", "演示数据", "demo", "↺") : ""}`;
+  if (ME.role === "admin") h += `<div class="sec">设置</div>${a("/team", "团队", "team", "◎")}${a("/retention", "数据保留", "retention", "⌛")}${a("/audit", "审计日志", "audit", "≡")}${DEMO_ORG ? a("/demo", "演示数据", "demo", "↺") : ""}`;
   h += `<div class="me"><span>${esc(ME.org_name)}<br><b>${esc(ME.name)}</b> · ${ROLE[ME.role]}</span><button id="out">退出</button></div>`;
   return h;
 }
@@ -111,6 +111,7 @@ async function render() {
     }
     if (seg[1] === "i") return await interviewView(seg[2], seg[3] || "transcript");
     if (r === "/repo" && STAFF()) return await repoView();
+    if (r === "/retention") return await dataView();
     if (r === "/team") return await teamView();
     if (r === "/audit") return await auditView();
     if (r === "/demo") return await demoView();
@@ -1218,9 +1219,66 @@ async function teamView() {
 
 async function auditView() {
   if (ME.role !== "admin") { location.hash = "#/projects"; return; }
-  const rows = await api("/audit?limit=200");
-  shell(`${head("审计日志", "谁在什么时候做了什么。最近 200 条。")}<div class="card scroll" style="padding:6px 10px"><table class="tbl rc"><thead><tr><th>时间</th><th>动作</th><th>操作者</th><th>详情</th></tr></thead><tbody>
-    ${rows.map((r) => `<tr><td class="mut" style="white-space:nowrap">${esc(new Date(r.at + "Z").toLocaleString())}</td><td>${esc(r.action)}</td><td class="mut code">${esc(r.actor)}</td><td class="mut code">${esc(JSON.stringify(r.meta))}</td></tr>`).join("")}</tbody></table></div>`, { active: "audit", title: "审计日志" });
+  const F = { action: "", actor: "", since: "", until: "" };
+  shell(`${head("审计日志", "谁在什么时候做了什么。可以按动作、操作者、日期筛选，也可以导出 CSV（导出本身也会被记录）。", `<button class="s" id="aexp">导出 CSV</button>`)}
+    <form class="card row" id="af" style="align-items:flex-end;flex-wrap:wrap">
+      <label class="f" style="margin:0;flex:1 1 150px"><span>动作开头（如 insight. 或 project.）</span><input name="action" maxlength="60"></label>
+      <label class="f" style="margin:0;flex:1 1 130px"><span>操作者包含</span><input name="actor" maxlength="80"></label>
+      <label class="f" style="margin:0"><span>从</span><input name="since" type="date"></label><label class="f" style="margin:0"><span>到</span><input name="until" type="date"></label><button class="p">筛选</button></form>
+    <div class="card scroll" style="padding:6px 10px"><table class="tbl rc"><thead><tr><th>时间</th><th>动作</th><th>操作者</th><th>详情</th></tr></thead><tbody id="arows"></tbody></table></div>
+    <div class="row" style="margin-top:10px"><button id="amore" hidden>再看更多</button><span class="sm mut" id="acount" role="status"></span></div>`, { active: "audit", title: "审计日志" });
+  const PAGE = 100; let offset = 0;
+  const qs = (extra = {}) => new URLSearchParams(Object.fromEntries(Object.entries({ ...F, ...extra }).filter(([, v]) => v !== "" && v !== undefined)));
+  const row = (r) => `<tr><td class="mut" style="white-space:nowrap" data-l="时间">${esc(new Date(r.at + "Z").toLocaleString())}</td><td data-l="动作">${esc(r.action)}</td><td class="mut code" data-l="操作者">${esc(r.actor)}</td><td class="mut code" data-l="详情">${esc(JSON.stringify(r.meta))}</td></tr>`;
+  const load = guard(async (reset) => {
+    if (reset) { offset = 0; $("#arows").innerHTML = ""; }
+    const rows = await api(`/audit?${qs({ limit: PAGE, offset })}`);
+    $("#arows").insertAdjacentHTML("beforeend", rows.map(row).join(""));
+    offset += rows.length;
+    $("#amore").hidden = rows.length < PAGE;
+    $("#acount").textContent = offset ? `已显示 ${offset} 条` : "没有符合条件的记录";
+  });
+  $("#af").onsubmit = (e) => { e.preventDefault(); Object.assign(F, Object.fromEntries(new FormData(e.target))); load(true); };
+  $("#amore").onclick = () => load(false);
+  $("#aexp").onclick = guard(async () => {
+    const r = await fetch(`/api/audit/export?${qs()}`, { headers: { Authorization: "Bearer " + store.get("tt_token") } });
+    if (!r.ok) throw new Error("导出失败，请稍后再试");
+    const a = document.createElement("a"); a.href = URL.createObjectURL(await r.blob()); a.download = "audit.csv"; document.body.appendChild(a); a.click(); a.remove();
+  });
+  load(true);
+}
+
+// ---------------- 数据保留：什么时候删、现在有多少、延后或立即清除 ----------------
+async function dataView() {
+  if (ME.role !== "admin") { location.hash = "#/projects"; return; }
+  const my = renderSeq;
+  const o = await api("/admin/data");
+  if (stale(my)) return;
+  const day = (t) => (t ? new Date(t + "Z").toLocaleDateString() : "—");
+  const holds = (h) => `访谈 ${h.interviews} · 受访者 ${h.participants} · 公开内容 ${h.mentions} · 文档 ${h.documents}`;
+  const row = (p) => `<tr><td data-l="项目"><b>${esc(p.name)}</b></td><td data-l="结项">${p.closed_at ? esc(day(p.closed_at)) : `<span class="tag">未结项</span>`}</td>
+    <td data-l="删除日期">${p.purge_at ? `${esc(day(p.purge_at))}<div class="sm mut">还剩 ${p.days_left} 天${p.hold_until ? " · 已延后" : ""}</div>` : `<span class="mut">结项后 ${o.retention_days} 天</span>`}</td><td class="mut" data-l="现在保有">${esc(holds(p.holds))}</td>
+    <td class="acts" data-l="操作">${p.closed_at ? `<button class="s" data-hold="${p.id}">延后</button> ${p.hold_until ? `<button class="s" data-rel="${p.id}">取消延后</button> ` : ""}<button class="s warn" data-now="${p.id}" data-name="${esc(p.name)}">立即清除</button>` : ""}</td></tr>`;
+  shell(`${head("数据保留", `受访者的个人数据（录像、转写、引文、聊天、没访谈过的人、采集的公开内容、导入的项目文档）在项目结项 ${o.retention_days} 天后自动删除，洞察结论保留。没结项的项目，访谈结束 ${o.backstop_days} 天后兜底删除。这里可以延后、或在确认后立即清除。`)}
+    <div class="card scroll" style="padding:6px 10px"><table class="tbl rc"><thead><tr><th>项目</th><th>结项</th><th>删除日期</th><th>现在保有</th><th>操作</th></tr></thead><tbody>${o.projects.length ? o.projects.map(row).join("") : `<tr><td colspan="5" class="mut">还没有项目。</td></tr>`}</tbody></table></div>`, { active: "retention", title: "数据保留" });
+  app.querySelectorAll("[data-hold]").forEach((b) => b.onclick = () => {
+    const m = modal(`<h2>延后删除</h2><form id="f"><label class="f"><span>在原定删除日期之后再保留多久？</span><select name="days"><option value="30">30 天</option><option value="90">90 天</option><option value="180">180 天</option><option value="365">365 天</option></select></label>
+      <p class="sm mut">延后只是推迟，到期仍会自动删除。会记入审计日志。</p><div class="row"><button class="p">延后</button><button type="button" id="c">取消</button></div></form>`);
+    $("#c", m).onclick = () => m.remove();
+    $("#f", m).onsubmit = guard(async (e) => { e.preventDefault(); await api(`/admin/data/${b.dataset.hold}/hold`, { method: "POST", body: { days: Number(e.target.days.value) } }); m.remove(); toast("已延后"); render(); });
+  });
+  app.querySelectorAll("[data-rel]").forEach((b) => b.onclick = guard(async () => { await api(`/admin/data/${b.dataset.rel}/hold`, { method: "DELETE" }); toast("已取消延后"); render(); }));
+  app.querySelectorAll("[data-now]").forEach((b) => b.onclick = () => {
+    const m = modal(`<h2>立即清除个人数据</h2><form id="f"><p>会永久删除「${esc(b.dataset.name)}」的录像、转写、引文、片段、聊天、没访谈过的人、采集的公开内容和导入的项目文档。<b>无法恢复。</b>洞察结论保留。</p>
+      <label class="f"><span>请输入项目名称确认</span><input name="confirm" required autocomplete="off"></label><p class="sm" id="perr" role="alert" hidden style="color:#A8203E"></p>
+      <div class="row"><button class="p warn" id="go2">永久删除</button><button type="button" id="c">取消</button></div></form>`);
+    $("#c", m).onclick = () => m.remove();
+    $("#f", m).onsubmit = async (e) => {
+      e.preventDefault();
+      try { const r = await api(`/admin/data/${b.dataset.now}/purge`, { method: "POST", body: { confirm: e.target.confirm.value } }); m.remove(); toast(`已清除 ${r.purged_interviews} 场访谈的个人数据`); render(); }
+      catch (err) { const p = $("#perr", m); p.textContent = err.message; p.hidden = false; }
+    };
+  });
 }
 
 async function demoView() {

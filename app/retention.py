@@ -13,7 +13,7 @@ from .audit import audit
 from .config import settings
 from .media import purge_cache
 from . import ai_room, screener
-from .models import (BackroomMessage, CaptionLine, Clip, CueCard, Evidence, Highlight, Insight, Interview, InterviewParticipant, Participant, PreTask, PreTaskAnswer, Project,
+from .models import (BackroomMessage, CaptionLine, Clip, CueCard, Evidence, Highlight, Insight, Interview, InterviewParticipant, Mention, Participant, PreTask, PreTaskAnswer, Project, RepoDocument,
                      Recording, RecordingTrack, Reaction, ShareLink, StimulusMark, TimeSlot, TranscriptSegment, utcnow)
 
 PURGED = "[已按保留期删除]"
@@ -61,8 +61,25 @@ def anonymize_participant(db: Session, p: Participant) -> None:
 
 
 def purge_date(project: Project):
-    """When this project's personal data will be deleted (None until the project is closed)."""
-    return project.closed_at + timedelta(days=settings.retention_days) if project.closed_at else None
+    """When this project's personal data will be deleted (None until the project is closed); an admin's hold can push it later."""
+    if not project.closed_at:
+        return None
+    due = project.closed_at + timedelta(days=settings.retention_days)
+    return max(due, project.purge_hold_until) if project.purge_hold_until else due
+
+
+def purge_project_extras(db: Session, project: Project, actor: str, reason: str) -> dict:
+    """What a project holds besides interviews that is personal data: people nobody interviewed (imported, pushed by a survey tool, recruited), the public posts
+    collected for it, and documents imported into it. The caller commits. Returns how many of each."""
+    people = db.scalars(select(Participant).where(Participant.project_id == project.id, Participant.anonymized_at.is_(None))).all()
+    for p in people:
+        anonymize_participant(db, p)
+    posts = db.execute(delete(Mention).where(Mention.project_id == project.id)).rowcount or 0
+    docs = db.execute(delete(RepoDocument).where(RepoDocument.project_id == project.id)).rowcount or 0
+    out = {"participants": len(people), "mentions": posts, "documents": docs}
+    if any(out.values()):
+        audit(db, project.org_id, actor, "project.purge_extras", project.id, reason=reason, **out)
+    return out
 
 
 def run_retention(db: Session, now=None) -> int:
@@ -74,6 +91,7 @@ def run_retention(db: Session, now=None) -> int:
     q = (select(Interview).join(Project, Project.id == Interview.project_id)
          .where(Interview.purged_at.is_(None), Interview.ended_at.is_not(None))
          .where((Project.closed_at < close_cut) | ((Project.closed_at.is_(None)) & (Interview.ended_at < back_cut))))
+    q = q.where((Project.purge_hold_until.is_(None)) | (Project.purge_hold_until < now))   # an admin's hold keeps the data until its date
     due = db.scalars(q).all()
     for itv in due:
         closed = db.get(Project, itv.project_id).closed_at is not None
@@ -81,6 +99,8 @@ def run_retention(db: Session, now=None) -> int:
         purge_interview(db, itv, f"retention:{settings.retention_days}d-after-project-close" if closed else f"retention-backstop:{settings.retention_backstop_days}d")
         for person in people:
             anonymize_participant(db, person)
+    for proj in db.scalars(select(Project).where(Project.closed_at < close_cut, (Project.purge_hold_until.is_(None)) | (Project.purge_hold_until < now))).all():
+        purge_project_extras(db, proj, "system", f"retention:{settings.retention_days}d-after-project-close")
     db.commit()
     return len(due)
 

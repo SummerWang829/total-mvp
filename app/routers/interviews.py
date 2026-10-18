@@ -1,3 +1,4 @@
+import json
 import os
 from datetime import datetime, timedelta
 
@@ -859,10 +860,44 @@ def revoke_share(share_id: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: S
 
 
 # ---------- admin ----------
+def _audit_query(ctx: Ctx, action: str, actor: str, since: str, until: str):
+    """The audit rows of this company, newest first, narrowed by action (a prefix such as "insight."), actor, and a date range (YYYY-MM-DD, whole days)."""
+    q = select(AuditLog).where(AuditLog.org_id == ctx.org_id)
+    if action.strip():
+        q = q.where(AuditLog.action.like(action.strip().replace("\\", "\\\\").replace("%", r"\%").replace("_", r"\_") + "%", escape="\\"))
+    if actor.strip():
+        q = q.where(AuditLog.actor.contains(actor.strip()))
+    try:
+        if since:
+            q = q.where(AuditLog.at >= datetime.fromisoformat(since))
+        if until:
+            q = q.where(AuditLog.at < datetime.fromisoformat(until) + timedelta(days=1))
+    except ValueError as e:
+        raise HTTPException(422, "日期要写成 年-月-日，例如 2026-10-18") from e
+    return q.order_by(AuditLog.at.desc())
+
+
 @router.get("/audit")
-def audit_log(limit: int = 100, ctx: Ctx = Depends(require_roles("admin")), db: Session = Depends(get_db)):
-    rows = db.scalars(select(AuditLog).where(AuditLog.org_id == ctx.org_id).order_by(AuditLog.at.desc()).limit(min(limit, 500)))
+def audit_log(limit: int = 100, offset: int = 0, action: str = "", actor: str = "", since: str = "", until: str = "", ctx: Ctx = Depends(require_roles("admin")), db: Session = Depends(get_db)):
+    """The audit trail (admins only), newest first. Narrow it by action prefix, actor, and dates; page with offset."""
+    rows = db.scalars(_audit_query(ctx, action, actor, since, until).offset(max(offset, 0)).limit(min(max(limit, 1), 500)))
     return [{"at": r.at.isoformat(), "actor": r.actor, "action": r.action, "target": r.target, "meta": r.meta} for r in rows]
+
+
+@router.get("/audit/export")
+def audit_export(action: str = "", actor: str = "", since: str = "", until: str = "", ctx: Ctx = Depends(require_roles("admin")), db: Session = Depends(get_db)):
+    """The same filter as a CSV (at most 20000 rows). Exporting is itself written to the trail."""
+    import csv
+    import io
+    rows = db.scalars(_audit_query(ctx, action, actor, since, until).limit(20000)).all()
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["时间(UTC)", "操作者", "动作", "对象", "详情"])
+    for r in rows:
+        w.writerow([export._csv_cell(x) for x in (r.at.isoformat(), r.actor, r.action, r.target, json.dumps(r.meta, ensure_ascii=False))])
+    audit(db, ctx.org_id, ctx.actor, "audit.export", ctx.org_id, rows=len(rows))
+    db.commit()
+    return Response(("﻿" + buf.getvalue()).encode("utf-8"), media_type="text/csv; charset=utf-8", headers={"Content-Disposition": 'attachment; filename="audit.csv"'})
 
 
 @router.post("/admin/retention/run")
