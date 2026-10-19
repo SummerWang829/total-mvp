@@ -849,3 +849,21 @@ class ProjectMember(Base):
     is_owner: Mapped[bool] = mapped_column(Boolean, default=False)  # may add and remove members (an admin always may)
     added_by: Mapped[str] = mapped_column(String(32), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class ProjectPlan(Base):
+    """The set-up of one project (the 立项向导): draft -> review -> approved -> published (locked). Projects made before plans existed have none."""
+    __tablename__ = "project_plans"
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), primary_key=True)
+    org_id: Mapped[str] = mapped_column(String(32), index=True)
+    status: Mapped[str] = mapped_column(String(10), default="draft")  # draft | review | approved | published (app/plans.py STATUSES)
+    config_json: Mapped[str] = mapped_column(Text, default="{}")
+    version: Mapped[int] = mapped_column(Integer, default=0)  # 1 once published
+    review_hash: Mapped[str] = mapped_column(String(32), default="")  # fingerprint of the config when it was submitted for review
+    review_note: Mapped[str] = mapped_column(String(300), default="")  # why a reviewer sent it back
+    submitted_by: Mapped[str] = mapped_column(String(32), default="")
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    approved_by: Mapped[str] = mapped_column(String(32), default="")
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

@@ -5,6 +5,8 @@
 <div id="app"></div>
 <script src="/app.js"></script>
 <script src="/fairness.js"></script>
+<script src="/wizard.js"></script>
+<script src="/shell.js"></script>
 <script src="/logo.js"></script>
 <script>
 let ME = null, PROJECTS = null, DEMO_ORG = false;
@@ -28,11 +30,12 @@ function navHtml(active, p) {
   } else if (p) {
     h += `<div class="sec">当前项目<b>${esc(p.name)}</b></div>`;
     const M = p.methods || ["depth", "group", "async", "listening"], live = M.includes("depth") || M.includes("group");
-    if (STAFF()) h += a(`/p/${p.id}/home`, "项目总览", "home", "◉") + a(`/p/${p.id}/members`, "项目成员", "members", "◎") + a(`/p/${p.id}/pool`, "洞察池", "pool", "◈") + (M.includes("async") ? a(`/p/${p.id}/studies`, "异步研究", "studies", "✦") : "") + (M.includes("listening") ? a(`/p/${p.id}/listening`, "舆情监测", "listening", "◔") : "") + (M.includes("quant") ? a(`/p/${p.id}/quant`, "定量结果", "quant", "▤") : "");
-    h += `<div class="sec">定性 · 深访</div>`;
-    if (STAFF()) h += a(`/p/${p.id}/people`, "受访者招募", "people", "", true) + (live ? a(`/p/${p.id}/sessions`, "场次与邀请", "sessions", "", true) : "");
-    h += (live ? a(`/p/${p.id}/rooms`, "直播间", "rooms", "", true) : "") + a(`/p/${p.id}/insights`, "洞察与片段", "insights", "", true);
-    if (STAFF()) h += a(`/p/${p.id}/analysis`, "编码与分析", "analysis", "", true);
+    const setup = p.plan_status && p.plan_status !== "published";
+    if (STAFF() && setup) return h + a(`/p/${p.id}/wiz`, "立项向导", "wiz", "✎") + `<div class="me"><span>${esc(ME.org_name)}<br><b>${esc(ME.name)}</b> · ${ROLE[ME.role]}</span><button id="out">退出</button></div>`;
+    if (STAFF()) h += shNav(p, active);
+    else {  // moderators and observers: the rooms and the insights they are assigned to
+      h += (live ? a(`/p/${p.id}/rooms`, "直播间", "rooms", "◉") : "") + a(`/p/${p.id}/insights`, "洞察与片段", "insights", "◈");
+    }
   }
   if (ME.role === "admin") h += `<div class="sec">设置</div>${a("/team", "团队", "team", "◎")}${a("/retention", "数据保留", "retention", "⌛")}${a("/audit", "审计日志", "audit", "≡")}${DEMO_ORG ? a("/demo", "演示数据", "demo", "↺") : ""}`;
   h += `<div class="me"><span>${esc(ME.org_name)}<br><b>${esc(ME.name)}</b> · ${ROLE[ME.role]}</span><button id="out">退出</button></div>`;
@@ -40,13 +43,16 @@ function navHtml(active, p) {
 }
 
 function shell(inner, { active, p, title } = {}) {
+  const proj = p && STAFF();  // researchers and admins: stage navigation + project bar + tabs
   const st = p ? (p.closed_at ? `<span class="tag">已结项</span>` : `<span class="tag ok keep">进行中</span>`) : "";
   const meta = p ? `<span class="tag">${esc(p.market || "—")}</span><span class="tag">${esc(LANGS[p.language] || p.language)}</span>${st}` +
     (STAFF() ? (p.closed_at ? `<button class="s" id="reopen">重新打开</button>` : `<button class="s" id="closeproj" title="从结项那天起 ${p.retention_days} 天，受访者数据会自动删除">结项</button>`) : "") : "";
-  app.innerHTML = `<div class="app"><nav class="side" aria-label="主导航">${navHtml(active, p)}</nav><div class="work">
-    <div class="top">${p ? `<span class="crumb"><a href="#/projects">项目总览</a> /</span><span class="pname">${esc(p.name)}</span>` : `<span class="pname">${esc(title || "")}</span>`}<div class="meta">${meta}</div></div>
-    <main class="enter">${p && p.closed_at ? `<div class="note"><b>项目已结项。</b>受访者的录像、转写原文、引文和分享链接将在 ${esc(new Date(p.purge_at + "Z").toLocaleDateString())} 自动删除（结项后 ${p.retention_days} 天），洞察结论会保留。</div>` : ""}${inner}</main></div></div>`;
+  const notice = p && p.closed_at ? `<div class="note"><b>项目已结项。</b>受访者的录像、转写原文、引文和分享链接将在 ${esc(new Date(p.purge_at + "Z").toLocaleDateString())} 自动删除（结项后 ${p.retention_days} 天），洞察结论会保留。</div>` : "";
+  const top = proj ? shCtx(p, active) : `<div class="top">${p ? `<span class="crumb"><a href="#/projects">项目总览</a> /</span><span class="pname">${esc(p.name)}</span>` : `<span class="pname">${esc(title || "")}</span>`}<div class="meta">${meta}</div></div>`;
+  app.innerHTML = `<div class="app"><nav class="side" aria-label="主导航">${navHtml(active, p)}</nav><div class="work">${top}
+    <main class="enter">${proj ? shTabs(p, active) : ""}${notice}${inner}</main></div></div>`;
   labelTables();
+  if (proj) shWire(p);
   if (!window._brandShown) { window._brandShown = true; brandPlay(); }
   $("#out").onclick = () => { store.del("tt_token"); ME = null; PROJECTS = null; DEMO_ORG = false; location.hash = "#/login"; render(); };
   if (p) {
@@ -95,7 +101,10 @@ async function render() {
       const p = (await projects()).find((x) => x.id === seg[2]);
       if (stale(seq)) return;
       if (!p) throw new Error("找不到这个项目：可能链接已失效，或这个项目没有分配给你。回到“全部项目”重新选择。");
-      const page = seg[3] || (STAFF() ? "home" : VIEWER() ? "pool" : RECRUITER() ? "people" : "rooms");
+      const setup = p.plan_status && p.plan_status !== "published";  // a project still in the wizard has nothing else to open yet
+      const page = setup && STAFF() ? "wiz" : seg[3] || (STAFF() ? "home" : VIEWER() ? "pool" : RECRUITER() ? "people" : "rooms");
+      if (page === "wiz" && STAFF()) return await wizardView(p);
+      if (page === "monitor" && STAFF()) return await monitorView(p);
       if (page === "home" && STAFF()) return await homeView(p);
       if (page === "people" && (STAFF() || RECRUITER())) return await peopleView(p);
       if (page === "sessions" && STAFF()) return await sessionsView(p);
@@ -160,8 +169,10 @@ function loginView() {
 function projectCard(p) {
   const s = p.summary;
   const st = p.closed_at ? `<span class="tag">已结项</span>` : s && s.live ? `<span class="tag live">${s.live} 场进行中</span>` : `<span class="tag ok">进行中</span>`;
-  return `<a class="card pcard" href="#/p/${p.id}" data-name="${esc(p.name.toLowerCase())}" data-st="${p.closed_at ? "closed" : "open"}">
-    <div class="row"><h3>${esc(p.name)}</h3><span class="sp"></span>${st}</div>
+  const setup = p.plan_status && p.plan_status !== "published";
+  const stt = setup ? `<span class="tag o">${{ draft: "草稿", review: "审查中", approved: "待发布" }[p.plan_status] || "立项中"}</span>` : st;
+  return `<a class="card pcard" href="#/p/${p.id}${setup ? "/wiz" : ""}" data-name="${esc(p.name.toLowerCase())}" data-st="${p.closed_at ? "closed" : "open"}">
+    <div class="row"><h3>${esc(p.name)}</h3><span class="sp"></span>${stt}</div>
     <div class="sm mut">${esc(p.market || "—")} · ${esc(LANGS[p.language] || p.language)}${p.brief ? " · " + esc(p.brief).slice(0, 40) : ""}</div>
     ${s ? `<div class="nums"><div><b>${s.participants}</b><span>受访者</span></div><div><b>${s.done}/${s.sessions}</b><span>场次完成</span></div><div><b>${s.approved}</b><span>洞察已通过</span></div></div>
       <div class="sm">${s.next_at ? `下一场：<b>${when(s.next_at)}</b>` : `<span class="mut">没有待开始的场次</span>`}</div>` : ""}</a>`;
@@ -183,10 +194,10 @@ async function projectsView() {
   };
   if ($("#pq")) { $("#pq").oninput = () => { sessionStorage.setItem("pq", $("#pq").value); apply(); }; apply(); }
   app.querySelectorAll("[data-pf]").forEach((b) => b.onclick = () => { sessionStorage.setItem("pf", b.dataset.pf); app.querySelectorAll("[data-pf]").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); apply(); });
-  if (canMake) $("#np").onclick = guard(() => projectWizard());
+  if (canMake) $("#np").onclick = () => newProjectPrompt();
 }
 
-// ---------------- 立项向导：基本信息 → 研究方法 → 团队 → 确认 ----------------
+// ---------------- 研究方法的名称（立项向导在 wizard.js，调整研究方法的弹窗在项目总览里用这些） ----------------
 const METHOD_INFO = {
   depth: ["深访（一对一）", "和受访者一对一视频访谈，可由真人或 AI 主持，实时字幕、录制、转写、洞察。"],
   group: ["座谈会", "最多 10 人同场，发言公平仪表盘和副主持提示卡。"],
@@ -195,46 +206,6 @@ const METHOD_INFO = {
   quant: ["定量结果", "接入外部问卷平台：推送通过甄别的人和问卷结果，和访谈放在一起看。"],
 };
 const METHOD_ORDER = ["depth", "group", "async", "listening", "quant"];
-async function projectWizard() {
-  const users = (await api("/users")).filter((u) => u.role === "researcher" && u.active && u.id !== ME.id);
-  const W = { name: "", market: "SG", language: "en", brief: "", methods: ["depth"], members: [] };
-  let step = 0;
-  const m = modal(`<div id="wz"></div>`);
-  const draw = () => {
-    const names = ["基本信息", "研究方法", "团队", "确认"];
-    const head = `<h2>新建项目</h2><p class="sm mut" id="wzstep" style="margin:0 0 10px">第 ${step + 1} 步 / 共 ${names.length} 步 · ${names[step]}</p>`;
-    let body = "";
-    if (step === 0) body = `<label class="f"><span>项目名称</span><input name="name" required value="${esc(W.name)}"></label>
-      <label class="f"><span>目标市场</span><select name="market">${openCountryOpts(W.market)}</select></label>
-      <label class="f"><span>访谈语言</span><select name="language">${langOpts(W.language)}</select></label>
-      <label class="f"><span>研究背景（选填）</span><textarea name="brief" rows="3">${esc(W.brief)}</textarea></label>`;
-    else if (step === 1) body = `<p class="sm mut">这个项目要用哪些方法？可以多选，以后随时在项目总览里调整。</p>${METHOD_ORDER.map((k) => `<label class="chk"><input type="checkbox" name="methods" value="${k}"${W.methods.includes(k) ? " checked" : ""}><span><b>${METHOD_INFO[k][0]}</b><br><span class="sm mut">${METHOD_INFO[k][1]}</span></span></label>`).join("")}`;
-    else if (step === 2) body = `<p class="sm mut">你会自动成为项目负责人。还有谁要一起做这个项目？（只有项目成员的研究员能看到它；管理员始终能看到所有项目。）</p>
-      ${users.length ? users.map((u) => `<label class="chk"><input type="checkbox" name="members" value="${u.id}"${W.members.includes(u.id) ? " checked" : ""}><span>${esc(u.name)} <span class="sm mut">${esc(u.email)}</span></span></label>`).join("") : `<p class="mut">公司里还没有其他研究员，可以以后在“项目成员”里添加。</p>`}`;
-    else body = `<div class="card" style="margin:0 0 10px"><p style="margin:0"><b>${esc(W.name)}</b></p><p class="sm mut" style="margin:4px 0 0">${esc(W.market)} · ${esc(LANGS[W.language] || W.language)}${W.brief ? ` · ${esc(W.brief.slice(0, 60))}` : ""}</p></div>
-      <p class="sm" style="margin:0 0 6px"><b>研究方法：</b>${W.methods.map((k) => METHOD_INFO[k][0]).join("、")}</p><p class="sm" style="margin:0"><b>团队：</b>你（负责人）${W.members.length ? ` + ${W.members.map((id) => esc((users.find((u) => u.id === id) || {}).name || "")).join("、")}` : ""}</p>`;
-    $("#wz", m).innerHTML = `${head}<form id="wf">${body}<p class="sm" id="wzerr" role="alert" hidden style="color:#A8203E"></p>
-      <div class="row">${step > 0 ? `<button type="button" id="wback">上一步</button>` : `<button type="button" id="wcancel">取消</button>`}<span class="sp"></span><button class="p" id="wnext">${step === names.length - 1 ? "创建项目" : "下一步"}</button></div></form>`;
-    const err = (t) => { const e = $("#wzerr", m); e.textContent = t; e.hidden = false; };
-    if (step > 0) $("#wback", m).onclick = () => { read(); step -= 1; draw(); }; else $("#wcancel", m).onclick = () => m.remove();
-    $("#wf", m).onsubmit = guard(async (e) => {
-      e.preventDefault(); read();
-      if (step === 0 && !W.name.trim()) return err("请填写项目名称");
-      if (step === 1 && !W.methods.length) return err("请至少选择一种研究方法");
-      if (step < names.length - 1) { step += 1; draw(); return; }
-      const p = await api("/projects", { method: "POST", body: { name: W.name.trim(), market: W.market, language: W.language, brief: W.brief, methods: W.methods, member_ids: W.members } });
-      m.remove(); await projects(true); location.hash = `#/p/${p.id}/home`;
-    });
-  };
-  const read = () => {
-    const f = $("#wf", m); if (!f) return; const fd = new FormData(f);
-    if (step === 0) { W.name = fd.get("name") || ""; W.market = fd.get("market"); W.language = fd.get("language"); W.brief = fd.get("brief") || ""; }
-    if (step === 1) W.methods = METHOD_ORDER.filter((k) => fd.getAll("methods").includes(k));
-    if (step === 2) W.members = fd.getAll("members");
-  };
-  draw();
-}
-
 function starmapHtml(p, nodes) {
   const ic = { depth: "◉", group: "◍", async: "✦", listening: "◔", quant: "▤" };
   return `<div class="starmap" role="list" aria-label="研究方法进度">${nodes.map((n) => `<a class="snode card${n.started ? "" : " idle"}" role="listitem" href="#/p/${p.id}/${n.page}" data-m="${n.key}"><div class="sm mut"><span aria-hidden="true">${ic[n.key] || "◆"}</span> ${esc(n.title)}</div>
@@ -502,7 +473,8 @@ function showInvite(iid, url, created, sched) {
 // ---------------- 场次与邀请 ----------------
 const SESS_FILTERS = ["all", "sent", "opened", "device_ok", "consented", "entered", "done"];
 async function sessionsView(p) {
-  const [its, parts, users] = await Promise.all([api(`/projects/${p.id}/interviews`), api(`/projects/${p.id}/participants`), api("/users")]);
+  const [itsAll, parts, users] = await Promise.all([api(`/projects/${p.id}/interviews`), api(`/projects/${p.id}/participants`), api("/users")]);
+  const its = shFilterInterviews(p, itsAll);  // the sub-project and the 深访/座谈会 choice in the navigation
   const uname = Object.fromEntries(users.map((u) => [u.id, u.name]));
   const code = (id) => pcode(parts.findIndex((x) => x.id === id));
   const f = sessionStorage.getItem("sessf") || "all";
@@ -535,7 +507,7 @@ function roomState(i) {
 }
 const newest = (a, b) => (b.scheduled_at || b.started_at || "").localeCompare(a.scheduled_at || a.started_at || "");
 async function roomsView(p) {
-  const its = await api(`/projects/${p.id}/interviews`);
+  const its = shFilterInterviews(p, await api(`/projects/${p.id}/interviews`));
   const staff = STAFF(), obs = ME.role === "observer";
   const go = (i, as, label, cls) => `<a class="btn s ${cls}" href="/room.html?i=${i.id}&as=${as}" target="_blank" rel="noopener">${label}</a>`;
   const groups = [["进行中", its.filter((i) => i.status === "live")], ["待开始", its.filter((i) => i.status === "scheduled")], ["已结束", its.filter((i) => i.status === "ended")]];
