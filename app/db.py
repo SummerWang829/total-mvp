@@ -1,6 +1,6 @@
 import logging
 
-from sqlalchemy import create_engine, event, inspect, text
+from sqlalchemy import JSON, create_engine, event, inspect, text
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from .config import settings
@@ -58,6 +58,8 @@ def ensure_columns(eng=None) -> list[str]:
             if col.name in have:
                 continue
             default = col.default.arg if col.default is not None and getattr(col.default, "is_scalar", False) else None
+            if default is None and col.default is not None and getattr(col.default, "is_callable", False) and isinstance(col.type, JSON):
+                default = "[]" if getattr(col.default.arg, "__wrapped__", col.default.arg) is list else "{}" if getattr(col.default.arg, "__wrapped__", col.default.arg) is dict else None   # list / dict -> empty JSON
             if default is None and not col.nullable:
                 log.error("cannot add %s.%s automatically: NOT NULL without a plain default; migrate it by hand", table.name, col.name)
                 continue

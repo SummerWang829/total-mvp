@@ -29,3 +29,16 @@ def test_a_database_that_is_up_to_date_is_left_alone():
     eng = create_engine(f"sqlite:///{tempfile.mkdtemp()}/new.db")
     Base.metadata.create_all(eng)
     assert ensure_columns(eng) == []
+
+
+def test_a_json_list_column_with_a_list_default_is_added_as_an_empty_list():
+    """participants.tags (a list) could not be added by hand-less upgrade once: NOT NULL JSON with default=list."""
+    eng = create_engine(f"sqlite:///{tempfile.mkdtemp()}/old2.db")
+    Base.metadata.create_all(eng)
+    with eng.begin() as c:
+        notnull = [r[1] for r in c.execute(text("PRAGMA table_info(participants)")).fetchall() if r[3] and r[4] is None]
+        c.execute(text("INSERT INTO participants (" + ",".join(notnull) + ") VALUES (" + ",".join("'[]'" if n == "tags" else "'2026-10-15 00:00:00'" if n == "created_at" else "'x'" for n in notnull) + ")"))
+        c.execute(text("ALTER TABLE participants DROP COLUMN tags"))
+    assert "participants.tags" in ensure_columns(eng)
+    with eng.connect() as c:
+        assert c.execute(text("SELECT tags FROM participants")).scalar() == "[]"
