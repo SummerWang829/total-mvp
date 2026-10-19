@@ -237,3 +237,22 @@ def monitor(pid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = D
 
     return {"published": True, "design": cfg.design, "q": table(cfg.qt, "t", quant_people), "i": table(cfg.lt, "i", people), "f": table(cfg.ft, "f", people, cfg.n.fs),
             "fs": cfg.n.fs, "subs": [s.model_dump() for s in cfg.subs]}
+
+
+@router.post("/projects/{pid}/copy", status_code=201)
+def copy_project(pid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    """复制项目：a new draft with this project's plan (same research design, sub-projects, quotas, templates). People, interviews and results are not copied."""
+    project, plan = _plan(db, ctx, pid)
+    if plan is None:
+        raise HTTPException(409, "这个项目创建时没有立项记录，不能复制")
+    cfg = _config(plan)
+    cfg.cons = plans.Cons()  # confirmations are given again for the new project
+    new = Project(org_id=ctx.org_id, created_by=ctx.user.id, name=f"{project.name}（副本）"[:200], brief=project.brief, market=project.market, language=project.language,
+                  methods=methods_mod.store(["depth"]))
+    db.add(new)
+    db.flush()
+    db.add(ProjectMember(org_id=ctx.org_id, project_id=new.id, user_id=ctx.user.id, is_owner=True, added_by=ctx.user.id))
+    db.add(ProjectPlan(project_id=new.id, org_id=ctx.org_id, status="draft", config_json=json.dumps(cfg.model_dump(), ensure_ascii=False)))
+    audit(db, ctx.org_id, ctx.actor, "project.copy", new.id, source=project.id)
+    db.commit()
+    return {**project_out(new, "draft"), "copied_from": project.id}

@@ -7,6 +7,7 @@
 <script src="/fairness.js"></script>
 <script src="/wizard.js"></script>
 <script src="/shell.js"></script>
+<script src="/home.js"></script>
 <script src="/logo.js"></script>
 <script>
 let ME = null, PROJECTS = null, DEMO_ORG = false;
@@ -214,12 +215,15 @@ function starmapHtml(p, nodes) {
 // ---------------- 项目总览：整体进度 + 分项进度 + 下一步 + 最近动态 ----------------
 const PAGE_NAME = { people: "去受访者招募", sessions: "去场次与邀请", rooms: "去直播间", insights: "去洞察与片段" };
 async function homeView(p) {
+  const my = renderSeq;
   const o = await api(`/projects/${p.id}/overview`), s = o.summary;
+  const h = STAFF() && p.plan_status === "published" ? await hmBuild(p, o) : null;  // projects with a plan get the original overview: big number, country map, status, sub-projects
+  if (stale(my)) return;
   const pct = (a, b) => (b ? Math.round((a / b) * 100) : 0);
   const meter = (label, a, b, cls = "") => `<div class="meter"><dt>${label}</dt><dd class="pbar6 ${cls}" role="img" aria-label="${label} ${a} / ${b}"><i style="width:${pct(a, b)}%"></i></dd><dd>${a} / ${b}</dd></div>`;
   shell(`${head("项目总览", "这个项目用了哪些研究方法、各做到哪一步、下一步做什么。", `<button class="s" id="rep">下载研究报告（Word）</button> <button class="s" id="chm">调整研究方法</button>`)}
-    ${starmapHtml(p, o.starmap)}
-    ${o.methods.includes("depth") || o.methods.includes("group") ? `<div class="hero">
+    ${h ? h.html : ""}${h && h.sub ? "" : starmapHtml(p, o.starmap)}
+    ${!h && (o.methods.includes("depth") || o.methods.includes("group")) ? `<div class="hero">
       <div class="card"><div class="hero-k">已完成的深访</div><div class="hero-n"><b>${s.done}</b><span>/ ${s.sessions} 场</span></div>
         <dl class="meters">${meter("受访者到场", s.done, s.sessions)}${meter("已转写", s.transcribed, s.ended)}${meter("洞察已通过", s.approved, s.insights, "o")}</dl>
         <p class="sm mut" style="margin:14px 0 0">受访者 ${s.participants} 人 · 进行中 ${s.live} 场 · 待开始 ${s.upcoming} 场${s.next_at ? ` · 下一场 ${when(s.next_at)}` : ""}</p></div>
@@ -227,6 +231,7 @@ async function homeView(p) {
     </div>` : ""}
     <div class="card"><h2>最近动态</h2>${o.activity.length ? `<ul class="feed">${o.activity.map((a) => `<li><time>${when(a.at.replace(/Z$/, ""))}</time><span><b>${esc(a.who)}</b> ${esc(a.what)}${a.session ? ` <span class="mut">· ${esc(a.session)}</span>` : ""}</span></li>`).join("")}</ul>`
       : `<p class="mut" style="margin:0">还没有动态。添加受访者、发出邀请后，这里会按时间列出每一步。</p>`}</div>`, { active: "home", p });
+  if (h) h.wire();
   $("#rep").onclick = guard(async () => {  // a download needs the login header, so fetch it and hand the browser a file
     const r = await fetch(`/api/projects/${p.id}/report?format=docx`, { headers: { Authorization: "Bearer " + store.get("tt_token") } });
     if (!r.ok) throw new Error("生成报告失败，请稍后再试");

@@ -520,6 +520,15 @@ def wizard_section(br, D):
     ok("异步 AI 研究" in nav and "舆情采集" not in nav and "座谈会" not in nav and "定量验证" in nav, "[wizard] the menu shows only what the project uses (and the stages of its research order)")
     ok("定性、定量、定性" in pg.inner_text(".ctx") and pg.locator(".track li").count() == 3, "[wizard] the project bar shows the research order")
     audit_page(pg, "star map/desktop", errs)
+    # the original overview: big number, a map with one node per sub-project, the status steps, the sub-project table
+    ok(pg.locator(".hero2").count() == 1 and pg.locator(".sn").count() == 2 and pg.locator(".hm-st").count() == 6, "[home] the overview has the big number, a map node per sub-project and the 6 status steps")
+    ok(pg.locator(".hm-st.on").inner_text() == "招募中" and pg.locator(".hero2 .hero-k").inner_text() in ("定量完成", "深访就绪"), "[home] the status is 招募中 for a published project with no sessions yet")
+    ok(pg.locator("tbody tr", has_text="马来西亚").count() == 1, "[home] the sub-project table lists every sub-project")
+    pg.locator(".sn").first.click()
+    pg.wait_for_selector(".hm-chain")
+    ok(pg.locator("#subsel").input_value() != "all" and pg.locator(".hm-chain .step").count() == 3 and pg.locator(".grid3 .bx").count() == 3, "[home] clicking a map node opens that sub-project (steps of its research order + three boxes)")
+    audit_page(pg, "sub-project home/desktop", errs)
+    pg.select_option("#subsel", "all"); pg.wait_for_selector(".hero2")
     with pg.expect_download(timeout=15000) as dl:
         pg.click("#rep")
     ok(dl.value.suggested_filename.endswith(".docx"), "[wizard] the research report downloads as a Word file")
@@ -527,7 +536,10 @@ def wizard_section(br, D):
     pg.click("#chm"); pg.wait_for_selector("input[name=methods][value=listening]")
     pg.locator("input[name=methods][value=listening]").check(); pg.click("#f button.p")
     ok(wait_until(lambda: pg.locator(".snode").count() == 2 and "舆情采集" in pg.inner_text("nav.side"), 10), "[wizard] switching a method on adds it to the map and the menu")
-    pg.goto(B + "/#/p/" + pg.url.split("/p/")[1].split("/")[0] + "/monitor"); pg.wait_for_selector(".bx.q")
+    pid_new = pg.url.split("/p/")[1].split("/")[0]
+    pg.click("#hmcopy"); pg.wait_for_selector(".chain .step")
+    ok("（副本）" in pg.inner_text(".ctx-name") and "草稿" in pg.inner_text(".ctx"), "[home] copying a project opens a draft of it in the wizard")
+    pg.goto(B + "/#/p/" + pid_new + "/monitor"); pg.wait_for_selector(".bx.q")
     ok(pg.locator(".bx.i tbody tr").count() >= 1, "[wizard] the monitor shows the quota boards of a published plan")
     audit_page(pg, "monitor/desktop", errs)
     ctx.close()

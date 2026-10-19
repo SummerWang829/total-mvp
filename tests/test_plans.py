@@ -227,3 +227,16 @@ def test_saving_the_same_content_again_does_not_undo_a_submission(org):
     again = save(org, pid, cfg).json()  # the page saves before every action, whether or not anything changed
     assert again["status"] == "review"
     assert org.c.post(f"/api/projects/{pid}/plan/approve", headers=org.h("admin")).status_code == 200
+
+
+def test_copying_a_project_makes_a_draft_with_the_same_plan_and_no_confirmations(org):
+    pid = draft(org, "原项目")["id"]
+    cfg = approved(org, pid)
+    org.c.post(f"/api/projects/{pid}/plan/publish", headers=org.h())
+    r = org.c.post(f"/api/projects/{pid}/copy", headers=org.h())
+    assert r.status_code == 201 and r.json()["name"] == "原项目（副本）" and r.json()["plan_status"] == "draft" and r.json()["copied_from"] == pid
+    new = plan(org, r.json()["id"])
+    assert new["status"] == "draft" and new["config"]["n"] == cfg["n"] and new["config"]["subs"] == cfg["subs"]
+    assert not any(new["config"]["cons"].values())  # the new project must be confirmed again
+    assert org.c.post(f"/api/projects/{org.project()}/copy", headers=org.h()).status_code == 409  # a project without a plan cannot be copied
+    assert org.c.post(f"/api/projects/{pid}/copy", headers=org.h("observer")).status_code == 403
