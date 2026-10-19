@@ -23,6 +23,11 @@
 - **部署**：未部署，需要 SW 的电脑执行（服务器密钥在那边）。新表 `project_plans` 由启动时自动创建；`projects` 表没有加列。
 ---
 
+## 2026-10-19 · 第三次部署到新加坡测试服务器（提交 2024e3b）
+- 部署前确认没有进行中（live）的访谈，重启不会打断人。备份 `total-20261019-080129.db.gz` 已生成，异地备份（COS）上传成功。
+- `git archive` 覆盖 `/opt/total-mvp`（`deploy/.env` 保留）；`docker compose up -d --build`；三个容器运行，app healthy。没有新表、没有新字段。
+- 检查：`/api/health`、`/home.js`、`/wizard.js`、`/shell.js` 全 200；doctor：视频在线、AI 主持人可用、实时字幕已配置、限流已开，没有必须解决的问题；日志 error/traceback/cannot 计数 0。新接口 `POST /api/projects/{id}/copy` 随代码上线，未登录冒烟（无管理员密码）。
+
 ## 2026-10-19 · 再次部署到新加坡测试服务器（提交 7929c56）
 - **备份**：`total-20261019-065029.db.gz`（53 张表）已生成，异地备份（腾讯云 COS）上传成功。
 - **上传与构建**：`git archive` 覆盖 `/opt/total-mvp`，`deploy/.env` 保留；`docker compose up -d --build`，app / livekit / caddy 三个容器都在运行，app healthy。没有碰硅谷服务器。
