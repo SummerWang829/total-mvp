@@ -23,6 +23,12 @@
 - **部署**：未部署，需要 SW 的电脑执行（服务器密钥在那边）。新表 `project_plans` 由启动时自动创建；`projects` 表没有加列。
 ---
 
+## 2026-10-19 · 再次部署到新加坡测试服务器（提交 7929c56）
+- **备份**：`total-20261019-065029.db.gz`（53 张表）已生成，异地备份（腾讯云 COS）上传成功。
+- **上传与构建**：`git archive` 覆盖 `/opt/total-mvp`，`deploy/.env` 保留；`docker compose up -d --build`，app / livekit / caddy 三个容器都在运行，app healthy。没有碰硅谷服务器。
+- **检查**：`/api/health`、`/wizard.js`、`/shell.js` 都 200；doctor：视频服务器在线、AI 主持人可连接、实时字幕已配置、限流已开，只剩邮件和监控 webhook 两条老提醒；新表 `project_plans` 已自动创建（0 行）；日志没有任何 error / traceback / “cannot add” 字样，projects 表无需补字段。上次手动补的 `participants.tags` 保持正常。
+- 同上次，没有登录冒烟（无管理员密码）；上次那条 `ensure_columns` 的修复也随这次代码上线。
+
 ## 2026-10-19 · 已部署到新加坡测试服务器（提交 c7c38e8）
 - **备份**：部署前跑 `deploy/backup.sh`，`total-20261019-033001.db.gz` 已生成，**异地备份（腾讯云 COS）上传成功**，媒体镜像 266 MB。
 - **上传与构建**：`git archive` 覆盖 `/opt/total-mvp`（`deploy/.env` 保留未动）；`docker compose up -d --build`，app / livekit / caddy 三个容器都在运行，app 状态 healthy；重启约几十秒。没有碰硅谷服务器。
