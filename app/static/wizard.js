@@ -2,11 +2,14 @@
    页面状态放在 WZ 里；每次改动 0.8 秒后自动保存（PUT /projects/{id}/plan），上一步/下一步前也会先保存。已发布的立项是锁定的，整页只读。
    依赖 index.html 里的 shell / head / api / esc / toast / guard / modal / $。 */
 const WZ_STEPS = ["基本信息", "研究设计", "人员与角色", "人群与样本", "渠道与触达", "合规举证", "确认发布"];
-const WZ_DESIGNS = {
-  ql: ["先定性，后定量", "探索型：先摸清痛点和说法，再用问卷验证有多普遍。新品、新市场最常用。", ["定性探索", "定量验证", "定性追问"]],
-  qt: ["先定量，后定性", "解释型：先用问卷找到问题，再从问卷里挑人追问和短深访。", ["定量摸底", "定性追问"]],
-  sw: ["定性、定量、定性", "三明治：先探索，再验证，最后对关键人群深挖。大项目常用。", ["定性探索", "定量验证", "定性深挖"]],
+const WZ_DESIGNS = {  // research order of one sub-project (a country): label + the methods it runs, in order
+  fq: ["先座谈会，后定量", ["group", "quant"]], iq: ["先深访，后定量", ["depth", "quant"]], qi: ["先定量，后深访", ["quant", "depth"]],
+  i: ["仅深访", ["depth"]], f: ["仅座谈会", ["group"]], q: ["仅定量", ["quant"]], fi: ["先座谈会，后深访", ["group", "depth"]], if: ["先深访，后座谈会", ["depth", "group"]],
 };
+const WZ_MNAME = { depth: "深访", group: "座谈会", quant: "定量" }, WZ_MCLS = { depth: "mi", group: "mf", quant: "mq" };  // each method has its own colour
+const wzM = (m) => `<span class="${WZ_MCLS[m]}">${WZ_MNAME[m]}</span>`;
+const wzDesignHtml = (k) => { const ms = WZ_DESIGNS[k][1]; return ms.length === 1 ? `仅${wzM(ms[0])}` : `先${wzM(ms[0])}，后${wzM(ms[1])}`; };
+const WZ_RETENTION = [30, 60, 120, 180];
 const WZ_TYPES = {
   "使用习惯与态度": "人群细分、使用场景题库、动机编码表",
   "概念测试": "概念卡轮换顺序、随机分组、逐个概念对比",
@@ -15,17 +18,24 @@ const WZ_TYPES = {
   "产品与包装测试": "样品发放与签收、开箱视频上传",
 };
 const WZ_LANGS = ["中文", "英语", "马来语", "泰米尔语"];
-const WZ_STATUS = { draft: ["草稿", "o"], review: ["审查中", "o"], approved: ["审查通过，可发布", ""], published: ["已发布并锁定", ""] };
+const WZ_STATUS = { draft: ["草稿", "o"], review: ["审查中", "o"], approved: ["审查通过，可发布", ""], published: ["暂时锁定", ""] };
 const WZ_PERMS = {  // what each account role can do in a project (shown as the permission preview)
   admin: ["招募", "邀请", "看个人信息", "写洞察"], researcher: ["招募", "邀请", "看个人信息", "写洞察"], recruiter: ["招募", "邀请"],
   moderator: ["发言", "观察"], observer: ["观察"], viewer: ["只读成果"],
 };
-const WZ_ROLE = { admin: "管理员", researcher: "研究员", recruiter: "招募员", moderator: "主持人", observer: "观察员", viewer: "客户（只读）" };
-const WZ = { p: null, plan: null, cfg: null, step: 0, tab: "q", users: [], timer: null, saving: null, picks: {}, known: [] };
+const WZ_ROLE = { admin: "管理员", researcher: "研究员", recruiter: "项目经理", moderator: "主持人", observer: "观察员", viewer: "客户（只读）" };
+const WZ_KIND = { quant: "定量研究员", qual: "定性研究员", all: "全科研究员" };
+const WZ = { p: null, plan: null, cfg: null, step: 0, tab: "q", users: [], timer: null, saving: null, picks: {}, known: [], estNote: "" };
 
 const wzLocked = () => WZ.plan.status === "published";
-const wzMethod = (m) => WZ.cfg.methods.includes(m);
+const wzMethods = () => {  // what the sub-projects use (the server derives the same list)
+  const got = new Set();
+  WZ.cfg.subs.forEach((s) => { WZ_DESIGNS[s.design][1].forEach((m) => got.add(m)); if (s.listening) got.add("listening"); if (s.async_ai) got.add("async"); });
+  return got;
+};
+const wzMethod = (m) => wzMethods().has(m);
 const wzInterviews = () => ["depth", "group", "async"].some(wzMethod);
+const wzCanUnlock = () => ["admin", "recruiter"].includes(ME.role);
 const wzUid = (pre) => pre + Math.random().toString(36).slice(2, 8);
 const wzNum = (v, d = 0) => { const n = parseInt(v, 10); return Number.isFinite(n) && n >= 0 ? n : d; };
 const wzSums = () => ({ q: WZ.cfg.qt.rows.reduce((a, r) => a + r.t, 0), i: WZ.cfg.lt.rows.reduce((a, r) => a + r.i, 0), f: WZ.cfg.ft.rows.reduce((a, r) => a + r.f, 0) });
@@ -42,7 +52,7 @@ async function wizardView(p) {
     shell(`${head("立项向导", "这个项目创建时还没有立项向导，所以没有立项记录。新建项目会从向导开始。")}<div class="card empty"><b>没有立项记录</b><span>老项目照常使用，不受影响。</span><a class="btn p" href="#/p/${p.id}/home">回到项目总览</a></div>`, { active: "wiz", p });
     return;
   }
-  Object.assign(WZ, { p, plan, cfg: plan.config, users: users.filter((u) => u.active), picks: {}, known: [], step: Math.min(WZ.p && WZ.p.id === p.id ? WZ.step : 0, 6) });
+  Object.assign(WZ, { p, plan, cfg: plan.config, users: users.filter((u) => u.active), picks: {}, known: [], step: Math.min(WZ.p && WZ.p.id === p.id ? WZ.step : 0, 6), estNote: "" });
   wzDraw();
 }
 
@@ -59,7 +69,8 @@ function wzSave(now = false) {
   clearTimeout(WZ.timer);
   const run = async () => {
     const r = await api(`/projects/${WZ.p.id}/plan`, { method: "PUT", body: { name: WZ.name_edit ?? undefined, brief: WZ.brief_edit ?? undefined, config: WZ.cfg } });
-    WZ.plan = { ...WZ.plan, ...r }; WZ.cfg = r.config; WZ.name_edit = WZ.brief_edit = undefined;
+    WZ.plan = { ...WZ.plan, ...r }; WZ.cfg.methods = r.config.methods;  // never swap in the server's copy: an edit made while this save was on its way would be lost
+    WZ.name_edit = WZ.brief_edit = undefined;
     const lab = $("#wzstat"); if (lab) lab.textContent = "已保存";
   };
   if (now) return (WZ.saving = run());
@@ -69,39 +80,94 @@ function wzSave(now = false) {
 }
 
 /* ---------- pieces ---------- */
-function wzDesignPick() {
-  const cur = WZ.cfg.design;
-  return `<div class="card" style="display:flex;flex-direction:column;gap:10px"><b>先选研究顺序</b><div class="grid">${Object.keys(WZ_DESIGNS).map((k) => `<label class="card pick ${cur === k ? "on" : ""}">
-    <span class="chk"><input type="radio" name="design" data-w="design" value="${k}" ${cur === k ? "checked" : ""}><b>${WZ_DESIGNS[k][0]}</b></span>
-    <div class="sm mut" style="margin-top:6px">${WZ_DESIGNS[k][1]}</div><div style="margin-top:6px">${WZ_DESIGNS[k][2].map((x, i) => `<span class="tag">${i + 1} ${x}</span>`).join("")}</div></label>`).join("")}</div>
-    <div class="note">${cur === "ql" ? "定性的结论转成问卷题目和选项，进入问卷设计；做过定性的人不再放进定量样本。" : cur === "qt" ? "问卷里发现问题后，可以：① 针对原回答直接追问；② 邀请少数人做短深访。座谈会很少从定量里邀请。" : "第三阶段只对定量里发现的关键人群做短深访。"}</div></div>`;
+function wzDesignView() {
+  const c = WZ.cfg;
+  return `<div class="card" style="display:flex;flex-direction:column;gap:10px"><b>各子项目的研究设计</b>
+    <p class="sm mut" style="margin:0">研究顺序在第 1 步按子项目（国家）选好，这里只用来核对，给研究员和项目经理看。要改请回第 1 步。</p>
+    <div class="scroll"><table class="tbl"><thead><tr><th>子项目</th><th>研究顺序</th><th>阶段</th><th>舆情</th><th>异步 AI 研究</th></tr></thead><tbody>
+    ${c.subs.map((s, i) => `<tr><td><b>S${i + 1}</b> ${esc(s.name)}<div class="sm mut">${esc(s.lang)}</div></td><td>${wzDesignHtml(s.design)}</td>
+      <td>${WZ_DESIGNS[s.design][1].map((m, k) => `<span class="tag nw ${WZ_MCLS[m]}">${k + 1} ${WZ_MNAME[m]}</span>`).join("")}</td><td>${s.listening ? "做" : '<span class="mut">不做</span>'}</td><td>${s.async_ai ? "做" : '<span class="mut">不做</span>'}</td></tr>`).join("")}
+    </tbody></table></div></div>`;
 }
 
 function wzSubs() {
-  const c = WZ.cfg, pms = [["", "未指定"], ...WZ.users.filter((u) => ["admin", "researcher"].includes(u.role)).map((u) => [u.id, u.name])];
+  const c = WZ.cfg, pms = [["", "未指定"], ...WZ.users.filter((u) => ["admin", "researcher", "recruiter"].includes(u.role)).map((u) => [u.id, u.name])];
   const single = c.split === "single";
   return `<div><b>子项目</b>
     <div class="row" style="margin:6px 0"><label class="chk"><input type="radio" name="split" data-split="country" ${single ? "" : "checked"}>按国家拆成子项目（日本、韩国……各一个）</label>
-    <label class="chk"><input type="radio" name="split" data-split="single" ${single ? "checked" : ""}>只有一个子项目（在里面分组）</label></div>
-    <div class="scroll"><table class="tbl"><thead><tr><th>编号</th><th>${single ? "名称" : "国家（可改名）"}</th><th>执行语言</th><th>责任人</th><th>研究顺序</th><th></th></tr></thead><tbody>
+    <label class="chk"><input type="radio" name="split" data-split="single" ${single ? "checked" : ""}>只有一个子项目（在里面分组）</label>
+    <span class="sp"></span><button class="s" id="subtpl" type="button">下载 Excel 模板</button><button class="s" id="subimp" type="button">导入表格</button><input type="file" id="subfile" accept=".csv,text/csv" hidden aria-label="导入子项目表格"></div>
+    <div class="scroll"><table class="tbl"><thead><tr><th>编号</th><th>${single ? "名称" : "国家（可改名）"}</th><th>执行语言</th><th>责任人</th><th>研究顺序</th><th>舆情</th><th>异步 AI 研究</th><th></th></tr></thead><tbody>
     ${c.subs.map((s, i) => `<tr><td><b>S${i + 1}</b></td><td>${wzInp(`data-sub="${s.id}|name" aria-label="名称"`, s.name, 'size="12"')}</td>
       <td>${wzSel(`data-sub="${s.id}|lang" aria-label="执行语言"`, s.lang, WZ_LANGS.map((l) => [l, l]), 130)}</td>
       <td>${wzSel(`data-sub="${s.id}|pm" aria-label="责任人"`, s.pm, pms, 150)}</td>
-      <td>${wzSel(`data-sub="${s.id}|design" aria-label="研究顺序"`, s.design, Object.keys(WZ_DESIGNS).map((k) => [k, WZ_DESIGNS[k][0]]), 170)}</td>
+      <td>${wzSel(`data-sub="${s.id}|design" aria-label="研究顺序"`, s.design, Object.keys(WZ_DESIGNS).map((k) => [k, WZ_DESIGNS[k][0]]), 170)}<div class="sm" style="margin-top:4px">${wzDesignHtml(s.design)}</div></td>
+      <td><label class="chk wzbig"><input type="checkbox" data-subx="${s.id}|listening" ${s.listening ? "checked" : ""} aria-label="${esc(s.name)} 做舆情收集"></label></td>
+      <td><label class="chk wzbig"><input type="checkbox" data-subx="${s.id}|async_ai" ${s.async_ai ? "checked" : ""} aria-label="${esc(s.name)} 做异步 AI 研究"></label></td>
       <td>${c.subs.length > 1 ? `<button class="s" data-subdel="${s.id}" type="button">删除</button>` : ""}</td></tr>`).join("")}</tbody></table></div>
     ${single ? `<div class="note">一个子项目：定量一份问卷，定性按组拆分。</div>` : `<div class="row" style="margin-top:8px"><input id="subnew" placeholder="新增国家，例如：马来西亚" aria-label="新增国家"><button class="s p" id="subadd" type="button">+ 添加子项目</button></div>
-    <div class="note">改名或删除后，配额和执行监控会同步更新。</div>`}</div>`;
+    <div class="note">改名或删除后，配额和执行监控会同步更新。模板按“编号、国家、执行语言、责任人、研究顺序、舆情、异步AI研究”填好后导入。勾了“异步 AI 研究”，招募时选 AI 主持人就是异步 AI 研究。</div>`}</div>`;
 }
 
+const wzCsv = (rows) => "\ufeff" + rows.map((r) => r.map((x) => `"${String(x).replace(/"/g, '""')}"`).join(",")).join("\r\n");
+function wzParseCsv(text) {  // a small CSV reader (quotes, commas, line breaks inside quotes)
+  const rows = []; let row = [], cur = "", q = false;
+  text = text.replace(/^\ufeff/, "");
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (q) { if (ch === '"') { if (text[i + 1] === '"') { cur += '"'; i++; } else q = false; } else cur += ch; }
+    else if (ch === '"') q = true;
+    else if (ch === ",") { row.push(cur); cur = ""; }
+    else if (ch === "\n" || ch === "\r") { if (ch === "\r" && text[i + 1] === "\n") i++; row.push(cur); cur = ""; if (row.some((x) => x.trim())) rows.push(row); row = []; }
+    else cur += ch;
+  }
+  row.push(cur); if (row.some((x) => x.trim())) rows.push(row);
+  return rows;
+}
+function wzSubTemplate() {
+  const csv = wzCsv([["编号", "国家", "执行语言", "责任人", "研究顺序", "舆情", "异步AI研究"], ["S1", "新加坡", "英语", "", "先深访，后定量", "否", "否"], ["S2", "马来西亚", "马来语", "", "仅深访", "是", "否"],
+    ["", "", "语言可选：" + WZ_LANGS.join("、"), "责任人写团队里的姓名，可留空", "研究顺序可选：" + Object.values(WZ_DESIGNS).map((d) => d[0]).join("、"), "是 / 否", "是 / 否"]]);
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })); a.download = "子项目导入模板.csv"; document.body.appendChild(a); a.click(); a.remove();
+}
+function wzImportSubs(text) {
+  const rows = wzParseCsv(text), head = rows.shift() || [], col = (n) => head.findIndex((h) => h.replace(/\s/g, "").includes(n));
+  const [iName, iLang, iPm, iDes, iLis, iAs] = ["国家", "执行语言", "责任人", "研究顺序", "舆情", "异步"].map(col);
+  if (iName < 0) throw new Error("表头里要有“国家”这一列，请用下载的模板");
+  const yes = (v) => /^(是|yes|y|1|true|做|✓)$/i.test((v || "").trim()), byLabel = Object.fromEntries(Object.entries(WZ_DESIGNS).map(([k, d]) => [d[0], k]));
+  const subs = [], bad = [];
+  rows.forEach((r, n) => {
+    const name = (r[iName] || "").trim(); if (!name || /^语言可选/.test(r[iLang] || "")) return;
+    const lang = (r[iLang] || "").trim() || "英语", des = (r[iDes] || "").trim().replace(/,/g, "，") || "先深访，后定量", pm = (r[iPm] || "").trim();
+    if (!WZ_LANGS.includes(lang)) bad.push(`第 ${n + 2} 行：执行语言“${lang}”不在可选范围`);
+    if (!byLabel[des]) bad.push(`第 ${n + 2} 行：研究顺序“${des}”不在可选范围`);
+    subs.push({ id: wzUid("s"), name, lang: WZ_LANGS.includes(lang) ? lang : "英语", pm: (WZ.users.find((u) => u.name === pm) || {}).id || "", design: byLabel[des] || "iq", listening: yes(r[iLis]), async_ai: yes(r[iAs]) });
+  });
+  if (!subs.length) throw new Error("表里没有可导入的子项目");
+  if (bad.length) throw new Error(bad.slice(0, 3).join("；"));
+  return subs;
+}
+
+function wzDefault(u) {  // the ticks a person gets when they are added, from their role (and for a researcher, the kind of researcher)
+  const all = { q: true, i: true, f: true, l: true }, k = u.research_kind || "all";
+  if (u.role === "admin" || u.role === "viewer") return all;
+  if (u.role === "researcher") return k === "quant" ? { q: true, i: false, f: false, l: true } : k === "qual" ? { q: false, i: true, f: true, l: true } : all;
+  if (u.role === "moderator" || u.role === "observer") return { q: false, i: true, f: true, l: false };
+  return { q: false, i: false, f: false, l: false };  // the project manager: ticked one by one by the researcher
+}
 function wzRoles() {
-  const en = [wzMethod("quant"), wzMethod("depth"), wzMethod("group")], team = Object.fromEntries(WZ.cfg.team.map((m) => [m.user_id, m]));
-  const us = WZ.users.filter((u) => u.role !== "admin" || true);
-  return `<p class="sub">每个人参与哪些环节。能不能进项目由账号角色决定：研究员、招募员、客户在发布时加入项目；主持人和观察员按场次安排，不是项目成员。人员来自“团队”，在那里可以新建。</p>
-    <div class="row"><span class="mut sm">按列勾选：</span>${["定量", "深访", "座谈会"].map((n, j) => en[j] ? `<span class="row" style="gap:4px"><b>${n}</b><button class="lnk" data-col="${j}|1" type="button">全选</button><button class="lnk" data-col="${j}|0" type="button">全不选</button></span>` : "").join("")}</div>
-    <div class="scroll"><table class="tbl"><thead><tr><th>人员</th><th>角色</th><th>定量</th><th>深访</th><th>座谈会</th><th>权限预览</th></tr></thead><tbody>${us.map((u) => { const m = team[u.id] || {};
-      return `<tr><td>${esc(u.name)}</td><td>${WZ_ROLE[u.role] || u.role}</td>${["q", "i", "f"].map((k, j) => `<td><input type="checkbox" aria-label="${esc(u.name)} ${["定量", "深访", "座谈会"][j]}" data-member="${u.id}|${k}" ${m[k] ? "checked" : ""} ${en[j] ? "" : "disabled"}></td>`).join("")}
-      <td>${(WZ_PERMS[u.role] || []).map((t) => `<span class="tag">${t}</span>`).join("")}</td></tr>`; }).join("")}</tbody></table></div>
-    <div class="note">只有主持人可以开麦；观察员和客户在后台，只看到受访者编号。招募员只能处理项目里的人，看不到访谈内容。</div>`;
+  const en = [wzMethod("quant"), wzMethod("depth"), wzMethod("group"), wzMethod("listening")], names = ["定量", "深访", "座谈会", "舆情"], keys = ["q", "i", "f", "l"];
+  const team = Object.fromEntries(WZ.cfg.team.map((m) => [m.user_id, m])), byId = Object.fromEntries(WZ.users.map((u) => [u.id, u]));
+  const admins = WZ.users.filter((u) => u.role === "admin"), mine = WZ.cfg.team.filter((m) => byId[m.user_id]).map((m) => byId[m.user_id]);
+  const addable = WZ.users.filter((u) => u.role !== "admin" && !team[u.id]);
+  const roleName = (u) => (u.role === "researcher" ? WZ_KIND[u.research_kind || "all"] : WZ_ROLE[u.role] || u.role);
+  const row = (u, m, fixed) => `<tr><td>${esc(u.name)}</td><td>${roleName(u)}</td>${keys.map((k, j) => `<td><label class="chk wzbig"><input type="checkbox" aria-label="${esc(u.name)} ${names[j]}" ${fixed ? "checked disabled" : `data-member="${u.id}|${k}" ${m[k] ? "checked" : ""} ${en[j] ? "" : "disabled"}`}></label></td>`).join("")}
+    <td>${(WZ_PERMS[u.role] || []).map((t) => `<span class="tag">${t}</span>`).join("")}</td><td>${fixed ? "" : `<button class="s" data-memdel="${u.id}" type="button">移出</button>`}</td></tr>`;
+  return `<p class="sub">每个人参与哪些环节。人员来自“团队”；加进来时按角色自动勾好，可以再改。管理员自动参与全部。研究员、项目经理、客户在发布时加入项目；主持人和观察员按场次安排，不是项目成员。</p>
+    <div class="row"><label class="field" style="flex-direction:row;align-items:center;gap:8px">添加人员${wzSel('id="memsel" aria-label="选择要添加的人员"', "", [["", addable.length ? "选择一位同事" : "没有可添加的人"], ...addable.map((u) => [u.id, `${u.name}（${roleName(u)}）`])], 260)}</label>
+      <button class="s p" id="memadd" type="button" ${addable.length ? "" : "disabled"}>添加</button>
+      <span class="mut sm">按列勾选：</span>${names.map((n, j) => en[j] ? `<span class="row" style="gap:4px"><b>${n}</b><button class="lnk" data-col="${j}|1" type="button">全选</button><button class="lnk" data-col="${j}|0" type="button">全不选</button></span>` : "").join("")}</div>
+    <div class="scroll"><table class="tbl"><thead><tr><th>人员</th><th>角色</th>${names.map((n) => `<th>${n}</th>`).join("")}<th>权限预览</th><th></th></tr></thead><tbody>${admins.map((u) => row(u, {}, true)).join("")}${mine.map((u) => row(u, team[u.id], false)).join("")}</tbody></table></div>
+    <div class="note">只有主持人可以开麦；观察员和客户在后台，只看到受访者编号。项目经理只处理项目里的人，看不到访谈内容。灰掉的列，是这个项目没有用到的方法。</div>`;
 }
 
 function wzQuota(key, color, title, cols) {
@@ -113,7 +179,7 @@ function wzQuota(key, color, title, cols) {
     <div class="row selbar"><label class="chk"><input type="checkbox" data-qall="${key}" ${T.rows.length && T.rows.every((r) => sel.has(r.id)) ? "checked" : ""}>全选</label><span class="mut sm">已选 ${[...sel].filter((id) => T.rows.some((r) => r.id === id)).length} / ${T.rows.length}</span>
       <button class="s" data-qrow="${key}" type="button">+ 添加一行</button><button class="s" data-qrowdel="${key}" type="button">删除选中</button></div>
     <div class="scroll"><table class="tbl"><thead><tr><th></th>${T.dims.map((d) => `<th>${esc(d)}</th>`).join("")}${cols.map((cl) => `<th>${cl[1]}</th>`).join("")}${key === "ft" ? "<th>座谈会（人）</th>" : ""}</tr></thead><tbody>
-    ${T.rows.map((r) => `<tr><td><input type="checkbox" aria-label="选中这一行" data-qpick="${key}|${r.id}" ${sel.has(r.id) ? "checked" : ""}></td>${T.dims.map((d, i) => `<td>${wzSel(`data-qcell="${key}|${r.id}|v${i}" aria-label="${esc(d)}"`, r.vs[i], wzValues(d).map((v) => [v.id, v.name]), 170)}</td>`).join("")}
+    ${T.rows.map((r) => `<tr><td><label class="chk wzbig"><input type="checkbox" aria-label="选中这一行" data-qpick="${key}|${r.id}" ${sel.has(r.id) ? "checked" : ""}></label></td>${T.dims.map((d, i) => `<td>${wzSel(`data-qcell="${key}|${r.id}|v${i}" aria-label="${esc(d)}"`, r.vs[i], wzValues(d).map((v) => [v.id, v.name]), 170)}</td>`).join("")}
       ${cols.map((cl) => `<td>${wzInp(`type="number" min="0" data-qcell="${key}|${r.id}|${cl[0]}" aria-label="${cl[1]}"`, r[cl[0]], 'style="width:90px"')}</td>`).join("")}${key === "ft" ? `<td>${r.f * c.n.fs}</td>` : ""}</tr>`).join("") || `<tr><td colspan="${T.dims.length + cols.length + 2}" class="mut sm">还没有配额行，点“+ 添加一行”。</td></tr>`}
     <tr><td></td><td colspan="${T.dims.length}"><b>合计</b></td>${sums.map((s) => `<td><b>${s}</b></td>`).join("")}${key === "ft" ? `<td><b>${sums[0] * c.n.fs}</b></td>` : ""}</tr></tbody></table></div></div>`;
 }
@@ -131,15 +197,16 @@ function wzSample() {
   const c = WZ.cfg, s = wzSums(), ok = (a, b) => (a === b ? `<span class="pill">与上面一致</span>` : `<span class="pill r">应为 ${b}</span>`);
   return `<label class="field">用一句话描述目标人群<textarea data-w="pop" rows="3">${esc(c.pop)}</textarea></label>
     <div class="row"><button class="s" id="wztags" type="button">匹配标签</button><button class="s" id="wzest" type="button">人群规模估算</button></div>
-    ${c.tags.length ? `<div>${c.tags.map((t) => `<span class="tag">${esc(t)}</span>`).join("")}</div>` : ""}${c.est != null ? `<div class="note">${esc(c.estNote || `这个项目的受访者库里有 ${c.est} 人符合。`)}</div>` : ""}
+    ${c.tags.length ? `<div>${c.tags.map((t) => `<span class="tag">${esc(t)}</span>`).join("")}</div>` : ""}${c.est != null ? `<div class="note">${esc(WZ.estNote || `这个项目的受访者库里有 ${c.est} 人符合。`)}</div>` : ""}
     <div class="grid3">
-      <div class="bx q"><div class="bxh"><i></i>定量问卷</div><label class="field">样本量（份）${wzInp('type="number" min="0" data-n="q"', c.n.q)}</label><div class="sm mut">配额合计 ${s.q} ${ok(s.q, c.n.q)}</div></div>
-      <div class="bx i"><div class="bxh"><i></i>深访 IDI</div><label class="field">深访人数（人）${wzInp('type="number" min="0" data-n="i"', c.n.i)}</label><div class="sm mut">配额合计 ${s.i} ${ok(s.i, c.n.i)}</div></div>
-      <div class="bx f"><div class="bxh"><i></i>座谈会 FGD</div><div class="stack"><label class="field">座谈会场数（场）${wzInp('type="number" min="0" data-n="f"', c.n.f)}</label><label class="field">每场人数（人）${wzInp('type="number" min="3" max="10" data-n="fs"', c.n.fs)}</label></div><div class="sm mut">共 ${c.n.f * c.n.fs} 人 · 配额场数合计 ${s.f} ${ok(s.f, c.n.f)}</div></div>
+      ${wzMethod("quant") ? `<div class="bx q"><div class="bxh"><i></i>定量问卷</div><label class="field">样本量（份）${wzInp('type="number" min="0" data-n="q"', c.n.q)}</label><div class="sm mut">配额合计 ${s.q} ${ok(s.q, c.n.q)}</div></div>` : ""}
+      ${wzMethod("depth") ? `<div class="bx i"><div class="bxh"><i></i>深访 IDI</div><label class="field">深访人数（人）${wzInp('type="number" min="0" data-n="i"', c.n.i)}</label><div class="sm mut">配额合计 ${s.i} ${ok(s.i, c.n.i)}</div></div>` : ""}
+      ${wzMethod("group") ? `<div class="bx f"><div class="bxh"><i></i>座谈会 FGD</div><div class="stack"><label class="field">座谈会场数（场）${wzInp('type="number" min="0" data-n="f"', c.n.f)}</label><label class="field">每场人数（人）${wzInp('type="number" min="3" max="10" data-n="fs"', c.n.fs)}</label></div><div class="sm mut">共 ${c.n.f * c.n.fs} 人 · 配额场数合计 ${s.f} ${ok(s.f, c.n.f)}</div></div>` : ""}
     </div>
+    <div class="row"><button class="p" id="wzconfirmn" type="button">确认样本量</button><span class="sm mut">填好数字后点一下，立即保存并核对配额合计。</span></div>
     ${wzDims()}
-    <div class="note">先定义变量和取值（上面），再给定量、深访、座谈会各选各的配额变量。这些配额会进入“执行监控”。</div>
-    ${wzQuota("qt", "q", "定量配额", [["t", "目标（份）"]])}${wzQuota("lt", "i", "深访配额", [["i", "深访（人）"]])}${wzQuota("ft", "f", "座谈会配额", [["f", "座谈会（场）"]])}`;
+    <div class="note">先定义变量和取值（上面），再给用到的方法各选各的配额变量。这些配额会进入“执行监控”。</div>
+    ${wzMethod("quant") ? wzQuota("qt", "q", "定量配额", [["t", "目标（份）"]]) : ""}${wzMethod("depth") ? wzQuota("lt", "i", "深访配额", [["i", "深访（人）"]]) : ""}${wzMethod("group") ? wzQuota("ft", "f", "座谈会配额", [["f", "座谈会（场）"]]) : ""}`;
 }
 
 function wzChannels() {
@@ -166,7 +233,7 @@ function wzCompliance() {
   const chain = ["提交审查", "法务审查", "审查通过"].map((x, i) => `<div class="step ${["draft"].includes(st) ? "" : (st === "review" ? i < 2 : true) ? "on" : ""}"><b>${i + 1} ${x}</b></div>`).join("");
   const me = ME.role === "admin";
   return `<p class="sub">十四项合规要求，使用访谈时再加四项。系统根据前面的选择自动判定，未通过的在这里补。</p>
-    <div class="card"><b>补充确认</b><div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">${tick("xb", "已签署标准合同或完成跨境评估（c6）")}${tick("minor", "人群限定 18 岁以上并在筛选题校验（c11）")}
+    <div class="card"><div class="row" style="justify-content:space-between"><b>补充确认</b><button class="s" id="wzall" type="button">一键全选同意以下所有条款</button></div><div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">${tick("xb", "已签署标准合同或完成跨境评估（c6）")}${tick("minor", "人群限定 18 岁以上并在筛选题校验（c11）")}
       ${wzInterviews() ? tick("rec", "进入房间前单独征得录音录像同意（q1）") + tick("recon", "定量问卷末尾询问是否同意再联系（q2）") + tick("mask", "观察员只见编号（q3）") + tick("ai", "告知 AI 转写、翻译与摘要（q4）") : ""}</div></div>
     <div class="scroll"><table class="tbl"><thead><tr><th>编号</th><th>要求</th><th>依据</th><th>怎么满足</th><th>状态</th></tr></thead><tbody>${P.compliance.map((x) => `<tr class="${x.passed ? "" : "sel"}"><td>${x.id}</td><td><b>${x.title}</b></td><td><span class="pill ${x.basis === "定性新增" ? "o" : "g"}">${x.basis}</span></td><td class="sm mut">${esc(x.how)}</td><td>${wzCheck(x.passed)}</td></tr>`).join("")}</tbody></table></div>
     ${!ok ? `<div class="note"><b>还不能提交：</b>${P.blockers.slice(0, 6).map(esc).join("；")}</div>` : ""}
@@ -180,21 +247,20 @@ function wzCompliance() {
 function wzConfirm() {
   const c = WZ.cfg, P = WZ.plan, done = P.status === "published", approved = P.status === "approved";
   const M = { depth: "深访", group: "座谈会", async: "异步 AI 研究", listening: "舆情监测", quant: "定量结果" };
-  return `<div class="grid"><div class="card"><h3>${esc(P.name)}</h3><div class="sm mut">${c.subs.map((s) => esc(s.name)).join("、")} · 留存 ${P.retention_days} 天 · ${esc(c.type)} · ${WZ_DESIGNS[c.design][0]}</div>
-      <div style="margin-top:8px">${c.methods.map((m) => `<span class="tag">${M[m]}</span>`).join("")}${c.n.q ? `<span class="tag">定量 ${c.n.q}</span>` : ""}${c.n.i ? `<span class="tag">深访 ${c.n.i}</span>` : ""}${c.n.f ? `<span class="tag">座谈会 ${c.n.f} 场 × ${c.n.fs}</span>` : ""}</div></div>
-    <div class="card"><h3>发布后会发生什么</h3><div class="sm mut" style="margin-top:6px">项目与配额锁定为 v1，邀请模板不可再改；所选研究方法进入左侧菜单；团队成员加入项目；“执行监控”按配额开始计数。</div></div></div>
-    <div class="row"><button class="p" id="wzpub" type="button" ${approved ? "" : "disabled"}>${done ? "已发布并锁定" : "发布并锁定"}</button>${approved || done ? "" : `<span class="sm mut">需要先通过合规审查（第 6 步）。</span>`}${done ? `<a class="btn" href="#/p/${WZ.p.id}/monitor">去看执行监控</a><a class="btn" href="#/p/${WZ.p.id}/home">去项目总览</a>` : ""}</div>`;
+  return `<div class="grid"><div class="card"><h3>${esc(P.name)}</h3><div class="sm mut">${c.subs.map((s) => `${esc(s.name)}（${WZ_DESIGNS[s.design][0]}）`).join("、")} · 留存 ${c.retention} 天 · ${esc(c.type)}</div>
+      <div style="margin-top:8px">${[...wzMethods()].map((m) => `<span class="tag">${M[m]}</span>`).join("")}${wzMethod("quant") && c.n.q ? `<span class="tag">定量 ${c.n.q}</span>` : ""}${wzMethod("depth") && c.n.i ? `<span class="tag">深访 ${c.n.i}</span>` : ""}${wzMethod("group") && c.n.f ? `<span class="tag">座谈会 ${c.n.f} 场 × ${c.n.fs}</span>` : ""}</div></div>
+    <div class="card"><h3>发布后会发生什么</h3><div class="sm mut" style="margin-top:6px">项目与配额暂时锁定，邀请模板不可再改；用到的研究方法进入左侧菜单；团队成员加入项目；“执行监控”按配额开始计数。之后要改样本或加方案，由管理员或项目经理解锁，改完重新审查、发布，配额和监控同步更新。</div></div></div>
+    <div class="row"><button class="p" id="wzpub" type="button" ${approved ? "" : "disabled"}>${done ? "已发布并锁定" : P.live ? `发布新版本（v${P.version + 1}）` : "发布并锁定"}</button>${approved || done ? "" : `<span class="sm mut">需要先通过合规审查（第 6 步）。</span>`}</div>`;
 }
 
 function wzBody() {
   const c = WZ.cfg;
   switch (WZ.step) {
     case 0: return `<div class="grid"><label class="field">主项目名称${wzInp('data-meta="name" aria-label="主项目名称"', WZ.name_edit ?? WZ.plan.name)}</label>
-      <label class="field">数据留存期限<input value="${WZ.plan.retention_days} 天（平台统一规定）" disabled aria-label="数据留存期限"><span class="mut" style="font-weight:400">同意书里写明的就是这个期限：项目结项后 ${WZ.plan.retention_days} 天自动删除个人数据，洞察结论保留。</span></label></div>
-      <label class="field">研究背景（选填，只给团队看）<textarea data-meta="brief" rows="3">${esc(WZ.brief_edit ?? WZ.plan.brief ?? "")}</textarea></label>${wzSubs()}`;
-    case 1: return `${wzDesignPick()}<label class="field" style="max-width:360px">研究类型（带出模板）${wzSel('data-w="type"', c.type, Object.keys(WZ_TYPES).map((x) => [x, x]))}</label>
-      <div class="note">选“${esc(c.type)}”会预置：${WZ_TYPES[c.type]}。</div>
-      <div class="card" style="display:flex;flex-direction:column;gap:8px"><b>研究方式（决定左侧菜单里有哪些）</b>${[["depth", "深访（一对一）", "真人或 AI 主持，实时字幕、录制、转写、洞察"], ["group", "座谈会", "最多 10 人同场，发言公平仪表盘和副主持提示卡"], ["async", "异步 AI 研究", "受访者随时自己和 AI 访谈员完成一场文字访谈"], ["listening", "舆情监测", "采集新闻、App 评论和公开网页上的声音"], ["quant", "定量结果", "接入外部问卷平台，推送人和结果"]].map((m) => `<label class="chk"><input type="checkbox" data-method="${m[0]}" ${wzMethod(m[0]) ? "checked" : ""}><span><b>${m[1]}</b> <span class="mut sm">${m[2]}</span></span></label>`).join("")}</div>`;
+      <label class="field">数据留存期限${wzSel('data-w="retention" aria-label="数据留存期限"', c.retention, WZ_RETENTION.map((d) => [d, `${d} 天${d === 180 ? "（平台上限）" : ""}`]))}<span class="mut" style="font-weight:400">同意书里写明的就是这个期限：项目结项后 ${c.retention} 天自动删除个人数据，洞察结论保留。${WZ.plan.live ? "已发布过的项目只能缩短，不能延长。" : ""}</span></label></div>
+      <label class="field">研究背景（选填，只给团队看）<textarea data-meta="brief" rows="3" placeholder="写清这个项目要解决什么问题、做给谁看。">${esc(WZ.brief_edit ?? WZ.plan.brief ?? "")}</textarea><span class="mut" style="font-weight:400">后续会用这段内容生成深访提纲、座谈会大纲、问卷和配额建议、舆情抓取方向。</span></label>${wzSubs()}`;
+    case 1: return `${wzDesignView()}<label class="field" style="max-width:360px">研究类型（带出模板）${wzSel('data-w="type"', c.type, Object.keys(WZ_TYPES).map((x) => [x, x]))}</label>
+      <div class="note">选“${esc(c.type)}”会预置：${WZ_TYPES[c.type]}。</div>`;
     case 2: return wzRoles();
     case 3: return wzSample();
     case 4: return wzChannels();
@@ -205,10 +271,12 @@ function wzBody() {
 
 function wzDraw() {
   const P = WZ.plan, [stLabel, stCls] = WZ_STATUS[P.status] || [P.status, ""], locked = wzLocked(), s = WZ.step;
+  const lockNote = locked ? `<div class="note"><b>立项已确认，暂时锁定。</b>要更新样本、追加或新增执行方案，请管理员或项目经理点“解锁修改”；改完需要重新审查、发布，涉及的定量、深访、座谈会、舆情的配额、问卷和监测大盘会同步变动。${wzCanUnlock() ? ` <button class="s" id="wzunlock2" type="button">解锁修改</button>` : ""}</div>`
+    : P.live ? `<div class="note"><b>修改中。</b>项目在这期间仍按已发布的版本（v${P.version}）运行；改完提交审查、通过后发布，配额和监控才会按新内容更新。</div>` : "";
   shell(`${head("立项向导", "一次选好角色、样本、人群和合规", `<span class="pill ${stCls}">${stLabel}</span><span class="sm mut" id="wzstat" role="status">${locked ? "已锁定，只读" : "改动会自动保存"}</span>`)}
-    <div class="chain" role="list">${WZ_STEPS.map((x, i) => `<button class="step ${s === i ? "on" : ""}" data-step="${i}" type="button" ${s === i ? 'aria-current="step"' : ""}>${i + 1} ${x}</button>`).join("")}</div>
+    ${lockNote}<div class="chain" role="list">${WZ_STEPS.map((x, i) => `<button class="step ${s === i ? "on" : ""}" data-step="${i}" type="button" ${s === i ? 'aria-current="step"' : ""}>${i + 1} ${x}</button>`).join("")}</div>
     <fieldset class="card wzbody" ${locked ? "disabled" : ""}>${wzBody()}</fieldset>
-    <div class="row" style="justify-content:space-between"><button id="wzprev" type="button" ${s ? "" : "disabled"}>上一步</button><button class="p" id="wznext" type="button" ${s < 6 ? "" : "disabled"}>下一步</button></div>`,
+    <div class="row" style="justify-content:space-between"><button id="wzprev" type="button" ${s ? "" : "disabled"}>上一步</button>${s < 6 ? `<button class="p" id="wznext" type="button">下一步</button>` : `<a class="btn p" id="wzhome" href="#/p/${WZ.p.id}/home" ${P.status === "published" || P.live ? "" : 'aria-disabled="true" hidden'}>去项目总览</a>`}</div>`,
     { active: "wiz", p: WZ.p });
   wzWire();
 }
@@ -225,7 +293,7 @@ function wzWire() {
   const root = $("main");
   root.querySelectorAll("[data-step]").forEach((b) => (b.onclick = guard(async () => { await wzSave(true); WZ.step = +b.dataset.step; wzDraw(); scrollTo(0, 0); })));
   $("#wzprev").onclick = guard(async () => { await wzSave(true); WZ.step--; wzDraw(); scrollTo(0, 0); });
-  $("#wznext").onclick = guard(async () => { await wzSave(true); WZ.step++; wzDraw(); scrollTo(0, 0); });
+  const nx = $("#wznext"); if (nx) nx.onclick = guard(async () => { await wzSave(true); WZ.step++; wzDraw(); scrollTo(0, 0); });
   root.addEventListener("change", wzChange);
   root.onclick = (e) => { const t = e.target.closest("button"); if (t) wzClick(t, e); };
 }
@@ -235,13 +303,14 @@ function wzChange(e) {
   if (wzLocked()) return;
   const c = WZ.cfg;
   if (d.meta) { WZ[d.meta + "_edit"] = t.value; return wzSave(); }
-  if (d.w === "design") { c.design = t.value; c.subs.forEach((s) => (s.design = t.value)); wzSave(); return wzRedraw(); }
+  if (d.w === "retention") { c.retention = +t.value; return wzSave(true).then(() => wzRedraw()).catch((er) => { toast(er.message, true); c.retention = WZ.p.retention_days; wzRedraw(); }); }
   if (d.w === "type") { c.type = t.value; wzSave(); return wzRedraw(); }
   if (d.w === "pop") { c.pop = t.value; return wzSave(); }
   if (d.split) { wzSplit(d.split); return; }
   if (d.sub) { const [id, f] = d.sub.split("|"), s = c.subs.find((x) => x.id === id); s[f] = t.value; if (f === "name" && !t.value.trim()) s.name = "未命名"; wzSyncCountry(); wzSave(); return wzRedraw(); }
-  if (d.method) { const set = new Set(c.methods); t.checked ? set.add(d.method) : set.delete(d.method); if (!set.size) { t.checked = true; return toast("至少选一种研究方式", true); } c.methods = ["depth", "group", "async", "listening", "quant"].filter((m) => set.has(m)); wzSave(); return; }
-  if (d.member) { const [uid, k] = d.member.split("|"); let m = c.team.find((x) => x.user_id === uid); if (!m) c.team.push((m = { user_id: uid, q: false, i: false, f: false })); m[k] = t.checked; c.team = c.team.filter((x) => x.q || x.i || x.f); wzSave(); return; }
+  if (d.subx) { const [id, f] = d.subx.split("|"); c.subs.find((x) => x.id === id)[f] = t.checked; wzSave(); return wzRedraw(); }
+  if (d.member) { const [uid, k] = d.member.split("|"), m = c.team.find((x) => x.user_id === uid); if (m) m[k] = t.checked; wzSave(); return; }
+  if (t.id === "subfile") { const f = t.files[0]; t.value = ""; if (!f) return; return f.text().then((txt) => { const subs = wzImportSubs(txt); if (c.subs.length > 1 && !confirm(`导入会替换现在的 ${c.subs.length} 个子项目，确定吗？`)) return; c.subs = subs; c.split = subs.length > 1 ? "country" : c.split; wzSyncCountry(); wzSave(); wzRedraw(); toast(`已导入 ${subs.length} 个子项目`); }).catch((er) => toast(er.message, true)); }
   if (d.n) { c.n[d.n] = wzNum(t.value, d.n === "fs" ? 6 : 0); if (d.n === "fs") c.n.fs = Math.min(10, Math.max(3, c.n.fs)); wzSave(); return wzRedraw(); }
   if (d.qdim) return wzQDim(d.qdim, t.value);
   if (d.qcell) return wzQCell(d.qcell, t);
@@ -260,7 +329,7 @@ function wzChange(e) {
 function wzSplit(kind) {
   const c = WZ.cfg;
   c.split = kind;
-  if (kind === "single") { const s = c.subs[0]; c.subs = [{ ...s, name: s.name }]; } else if (c.subs.length === 0) c.subs = [{ id: wzUid("s"), name: "新加坡", lang: "英语", pm: "", design: c.design }];
+  if (kind === "single") { const s = c.subs[0]; c.subs = [{ ...s, name: s.name }]; } else if (c.subs.length === 0) c.subs = [{ id: wzUid("s"), name: "新加坡", lang: "英语", pm: "", design: "iq", listening: false, async_ai: false }];
   wzSyncCountry(); wzSave(); wzRedraw();
 }
 
@@ -284,12 +353,24 @@ function wzClick(b, e) {
     await wzSave(true);
     const r = await api(`/projects/${WZ.p.id}/plan/tags`, { method: "POST" });
     c.tags = r.tags; c.est = r.reach;
-    c.estNote = r.tags.length ? `这个项目的受访者库共 ${r.pool} 人，其中 ${r.reach} 人带有这些标签。` : `这个项目的受访者库共 ${r.pool} 人。${r.known.length ? "描述里没有提到已有的标签（已有标签：" + r.known.slice(0, 8).join("、") + "）。" : "还没有人带标签。"}`;
+    WZ.estNote = r.tags.length ? `这个项目的受访者库共 ${r.pool} 人，其中 ${r.reach} 人带有这些标签。` : `这个项目的受访者库共 ${r.pool} 人。${r.known.length ? "描述里没有提到已有的标签（已有标签：" + r.known.slice(0, 8).join("、") + "）。" : "还没有人带标签。"}`;
     await wzSave(true); wzRedraw();
   })();
-  if (b.id === "subadd") { const v = $("#subnew").value.trim(); if (!v) return toast("先写国家名", true); wzMutate(() => { c.subs.push({ id: wzUid("s"), name: v, lang: "英语", pm: "", design: c.design }); wzSyncCountry(); }); return wzRedraw(); }
+  if (b.id === "subadd") { const v = $("#subnew").value.trim(); if (!v) return toast("先写国家名", true); wzMutate(() => { c.subs.push({ id: wzUid("s"), name: v, lang: "英语", pm: "", design: c.subs.length ? c.subs[c.subs.length - 1].design : "iq", listening: false, async_ai: false }); wzSyncCountry(); }); return wzRedraw(); }
   if (d.subdel) { wzMutate(() => { c.subs = c.subs.filter((s) => s.id !== d.subdel); wzSyncCountry(); }); return wzRedraw(); }
-  if (d.col) { const [j, on] = d.col.split("|"), k = ["q", "i", "f"][+j]; wzMutate(() => { WZ.users.forEach((u) => { let m = c.team.find((x) => x.user_id === u.id); if (!m) c.team.push((m = { user_id: u.id, q: false, i: false, f: false })); m[k] = on === "1"; }); c.team = c.team.filter((x) => x.q || x.i || x.f); }); return wzRedraw(); }
+  if (d.col) { const [j, on] = d.col.split("|"), k = ["q", "i", "f", "l"][+j]; wzMutate(() => c.team.forEach((m) => (m[k] = on === "1"))); return wzRedraw(); }
+  if (b.id === "memadd") { const id = $("#memsel").value, u = WZ.users.find((x) => x.id === id); if (!u) return toast("先选一位同事", true); wzMutate(() => c.team.push({ user_id: id, ...wzDefault(u) })); return wzRedraw(); }
+  if (d.memdel) { wzMutate(() => (c.team = c.team.filter((m) => m.user_id !== d.memdel))); return wzRedraw(); }
+  if (b.id === "subtpl") return wzSubTemplate();
+  if (b.id === "subimp") return $("#subfile").click();
+  if (b.id === "wzconfirmn") return guard(async () => { await wzSave(true); wzRedraw(); toast("样本量已确认并保存"); })();
+  if (b.id === "wzall") { wzMutate(() => ["xb", "minor", "rec", "recon", "mask", "ai"].forEach((k) => (c.cons[k] = true))); return wzSave(true).then(() => wzRedraw()).catch((er) => toast(er.message, true)); }
+  if (b.id === "wzunlock" || b.id === "wzunlock2") return guard(async () => {
+    if (!confirm("解锁后可以修改立项。项目这期间照常按旧版本运行；改完要重新提交审查，通过并发布后，配额、问卷、监控才按新内容更新。确定解锁吗？")) return;
+    const r = await api(`/projects/${WZ.p.id}/plan/unlock`, { method: "POST" });
+    WZ.plan = { ...WZ.plan, ...r }; WZ.cfg = r.config; WZ.step = 0; toast("已解锁，可以修改");
+    PROJECTS = null; await projects(true); WZ.p = (PROJECTS || []).find((x) => x.id === WZ.p.id) || WZ.p; wzDraw();
+  })();
   if (d.qrow) { const T = c[d.qrow]; wzMutate(() => { T.rows.push({ id: wzUid("r"), vs: T.dims.map((x) => (wzValues(x)[0] || {}).id), t: 0, i: 0, f: 0 }); }); return wzRedraw(); }
   if (d.qrowdel) { const set = WZ.picks[d.qrowdel] || new Set(); wzMutate(() => { c[d.qrowdel].rows = c[d.qrowdel].rows.filter((r) => !set.has(r.id)); }); WZ.picks[d.qrowdel] = new Set(); return wzRedraw(); }
   if (d.dvadd) { const input = document.getElementById("dvn-" + d.dvadd), v = input.value.trim(); if (!v) return; wzMutate(() => c.vars[d.dvadd].push({ id: wzUid("v"), name: v })); return wzRedraw(); }
@@ -300,10 +381,10 @@ function wzClick(b, e) {
   const act = { wzsubmit: ["plan/submit", "已提交审查"], wzapprove: ["plan/approve", "已通过审查"], wzpub: ["plan/publish", "已发布并锁定"] }[b.id];
   if (act) return guard(async () => {
     await wzSave(true);
-    if (b.id === "wzpub" && !confirm("发布后立项会锁定，研究方法和团队立即生效，不能再改。确定发布吗？")) return;
+    if (b.id === "wzpub" && !confirm("发布后立项会暂时锁定，研究方法和团队立即生效；之后要改需要管理员或项目经理解锁并重新审查。确定发布吗？")) return;
     const r = await api(`/projects/${WZ.p.id}/${act[0]}`, { method: "POST" });
     WZ.plan = { ...WZ.plan, ...r }; toast(act[1]);
-    if (b.id === "wzpub") { PROJECTS = null; await projects(true); WZ.p = (PROJECTS || []).find((x) => x.id === WZ.p.id) || WZ.p; }
+    if (b.id === "wzpub") { PROJECTS = null; await projects(true); WZ.p = (PROJECTS || []).find((x) => x.id === WZ.p.id) || WZ.p; WZ.plan.live = true; }
     wzDraw();
   })();
   if (b.id === "wzreturn") return guard(async () => {
@@ -341,7 +422,7 @@ async function monitorView(p) {
   const state = (a, b) => (b === 0 ? `<span class="pill g">未设</span>` : a >= b ? `<span class="pill r">已满</span>` : a >= b * 0.9 ? `<span class="pill o">接近满额</span>` : `<span class="pill">进行中</span>`);
   const board = (T, color, title, unit) => `<div class="bx ${color} wide"><div class="bxh"><i></i>${title}（按 ${T.dims.map(esc).join(" × ") || "—"}）</div>
     <div class="scroll"><table class="tbl"><thead><tr><th>${T.dims.map(esc).join(" × ") || "配额"}</th><th>目标（${unit}）</th><th>已就绪</th><th>缺口</th><th>进度</th><th>状态</th></tr></thead><tbody>
-    ${T.rows.map((r) => `<tr><td>${esc(r.label)}</td><td>${r.target}</td><td>${r.ready}</td><td>${r.gap}</td><td style="min-width:140px"><div class="qbar o"><i style="width:${r.target ? Math.min(100, (r.ready / r.target) * 100) : 0}%"></i></div></td><td>${state(r.ready, r.target)}</td></tr>`).join("") || `<tr><td colspan="6" class="sm mut">没有配额行。到立项向导第 4 步添加（已发布的立项是锁定的，需要新项目）。</td></tr>`}
+    ${T.rows.map((r) => `<tr><td>${esc(r.label)}</td><td>${r.target}</td><td>${r.ready}</td><td>${r.gap}</td><td style="min-width:140px"><div class="qbar o"><i style="width:${r.target ? Math.min(100, (r.ready / r.target) * 100) : 0}%"></i></div></td><td>${state(r.ready, r.target)}</td></tr>`).join("") || `<tr><td colspan="6" class="sm mut">没有配额行。到立项向导第 4 步添加（立项已锁定，要改请管理员或项目经理先解锁）。</td></tr>`}
     </tbody></table></div><div class="sm mut">合计：目标 ${T.target}，已就绪 ${T.ready}。</div></div>`;
   shell(`${head("执行监控", "配额按立项里定义的变量显示。“已就绪”是项目受访者库里符合这一行、且没有被甄别淘汰的人。")}
     ${board(m.q, "q", "定量配额看板", "份")}${board(m.i, "i", "深访配额看板", "人")}${board(m.f, "f", `座谈会配额看板（每场 ${m.fs} 人）`, "人")}

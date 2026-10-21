@@ -335,6 +335,7 @@ body.participant .tag.o,body.participant .tag.live,.stage.t-light .tag.o,.stage.
 /* ---------- 项目外壳：研究阶段导航、顶部项目条、页签（shell.js） ---------- */
 nav.side .stghead{display:flex;align-items:center;gap:8px;padding:8px 12px 2px;margin-top:6px;color:var(--nav-ink);font-size:12.5px;font-weight:600}
 nav.side .stghead.off{color:#B9D0C5}
+nav.side a.nv[aria-current=page] .sic{color:#FF9A55;border-color:#FF9A55}
 nav.side .sic{display:inline-flex;width:20px;height:20px;border-radius:50%;border:1.5px solid var(--sc,#FF6A00);color:var(--sc,#FF6A00);font-size:12px;font-weight:700;align-items:center;justify-content:center;flex:none}
 nav.side .c1{--sc:#FF6A00}nav.side .c2{--sc:#6FD3A6}nav.side .c3{--sc:#E8CF7A}
 nav.side a.nv.stg{gap:8px}
@@ -388,6 +389,18 @@ nav.side .dotc{width:7px;height:7px;border-radius:50%;background:var(--sc,#FF6A0
 .hm-st.on{background:var(--orange-mid);color:#8A3600;font-weight:700}.hm-st.done{color:var(--green)}
 .hm-chain .step{text-decoration:none;display:flex;align-items:center}
 @media (max-width:900px){.hero2{grid-template-columns:1fr}.hero-r{min-height:260px}}
+
+/* ---------- 每种研究方法一个颜色（研究顺序里的字） + 研究阶段列表 ---------- */
+.tag.nw{white-space:nowrap}
+.chk.wzbig{min-width:36px;min-height:36px;justify-content:center;align-items:center}
+.mq{color:var(--green);font-weight:700}.mi{color:var(--orange-ink);font-weight:700}.mf{color:#7A5F00;font-weight:700}
+:root[data-theme="dark"] .mf{color:#E8CF7A}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .mf{color:#E8CF7A}}
+.hm-stagelist{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:10px}
+.hm-stagelist li{display:grid;grid-template-columns:28px minmax(70px,auto) auto minmax(90px,auto) minmax(80px,1fr) auto;gap:10px;align-items:center}
+.hm-stagelist .sic{display:inline-flex;width:24px;height:24px;border-radius:50%;border:1.5px solid var(--orange);color:var(--orange-ink);font-size:12px;font-weight:700;align-items:center;justify-content:center}
+.hm-stages{margin-bottom:12px}
+@media (max-width:700px){.hm-stagelist li{grid-template-columns:28px 1fr auto}.hm-stagelist li .qbar,.hm-stagelist li .sm{grid-column:2/-1}.hm-stagelist li button{grid-column:2/-1;justify-self:start}}
 /* ---------- 立项向导（wizard.js）：步骤链、三色样本框、变量与取值、配额表 ---------- */
 .chain{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:10px}
 .step{min-width:0;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:3px;text-align:left;height:auto;font-weight:600;justify-content:center;align-items:flex-start}

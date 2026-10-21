@@ -250,9 +250,9 @@ def members_section(br, D):
     ctx.close()
     ctx, pg, errs = new_page(br, 1280, token=rs)
     pg.on("dialog", lambda d: d.accept())
-    pg.goto(B + f"/#/p/{pid}/members"); pg.wait_for_selector("#addm")
+    pg.goto(B + f"/#/p/{pid}/members"); pg.wait_for_selector("#addmem")
     ok(pg.locator("table.tbl tbody tr").count() == 1 and "项目负责人" in pg.inner_text("table.tbl"), "[members] the creator is listed as the project owner")
-    pg.select_option("#addm select", value=other["id"]); pg.click("#addm button")
+    pg.click("#addmem"); pg.wait_for_selector("#addm"); pg.select_option("#addm select", value=other["id"]); pg.click("#addm button.p")
     ok(wait_until(lambda: pg.locator("table.tbl tbody tr").count() == 2, 8), "[members] adding the second researcher lists them")
     ok(pid in [p["id"] for p in call("/projects", token=otok)], "[members] the added researcher now sees the project")
     pg.locator(f'[data-owner="{other["id"]}"]').click()
@@ -458,8 +458,8 @@ def recruit_section(br, D):
 
 
 def wizard_section(br, D):
-    """The 7-step project wizard (the original 星桐 立项向导): draft -> every step -> compliance -> review -> publish and lock;
-    then the menu and the star map follow the chosen methods and methods can be changed later."""
+    """The 7-step project wizard (the original 星桐 立项向导): draft -> every step -> compliance -> review -> publish and lock -> unlock, change, review again;
+    then the menu, the project bar and the overview follow each sub-project's research order."""
     adm = D["tok"]["admin"]
     ctx, pg, errs = new_page(br, 1280, token=adm)
     pg.on("dialog", lambda d: d.accept())
@@ -471,71 +471,100 @@ def wizard_section(br, D):
     ok("立项向导" in pg.inner_text("nav.side") and "项目总览" not in pg.inner_text("nav.side"), "[wizard] a project still in the wizard has only the wizard in its menu")
     for n, label in enumerate(["基本信息", "研究设计", "人员与角色", "人群与样本", "渠道与触达", "合规举证", "确认发布"], start=1):
         ok(f"{n} {label}" in pg.locator(".chain .step").nth(n - 1).inner_text(), f"[wizard] step {n} is {label}")
-    # step 1: name, fixed retention, sub-projects
-    ok("180 天" in pg.input_value("input[disabled]") and pg.locator("select[data-sub$='|lang']").count() == 1, "[wizard] retention is fixed at 180 days and there is one sub-project")
+    # step 1: name, retention (30/60/120/180), sub-projects with their own research order, listening and async ticks
+    ok(pg.locator("select[data-w=retention] option").count() == 4 and pg.input_value("select[data-w=retention]") == "180" and pg.locator("select[data-sub$='|lang']").count() == 1, "[wizard] retention is chosen from 30/60/120/180 (180 by default) and there is one sub-project")
+    pg.select_option("select[data-w=retention]", "60"); pg.wait_for_timeout(1200)  # it saves and redraws
+    ok(pg.locator("select[data-sub$='|design'] option").count() == 8, "[wizard] a sub-project's research order has the 8 choices")
     pg.fill("#subnew", "马来西亚"); pg.click("#subadd")
     ok(wait_until(lambda: pg.locator("select[data-sub$='|lang']").count() == 2, 5), "[wizard] a sub-project is added")
+    pg.locator("select[data-sub$='|design']").nth(1).select_option("i")
+    pg.wait_for_timeout(300)
+    pg.locator("input[data-subx$='|listening']").nth(1).check(); pg.wait_for_timeout(300)
+    pg.locator("input[data-subx$='|async_ai']").nth(1).check(); pg.wait_for_timeout(300)
+    ok(pg.locator("#subtpl").count() == 1 and pg.locator("#subimp").count() == 1, "[wizard] the sub-project table has a template to download and a file to import")
     audit_page(pg, "wizard step 1/desktop", errs); pg.click("#wznext")
-    # step 2: research order, type, methods
-    pg.wait_for_selector("input[data-method]")
-    ok(pg.locator("input[name=design]").count() == 3 and pg.locator("input[data-method]").count() == 5, "[wizard] step 2 offers 3 research orders and the 5 methods")
-    pg.locator("input[name=design][value=sw]").check()
-    pg.locator("input[data-method=async]").check(); pg.locator("input[data-method=depth]").uncheck()
+    # step 2: only the research design per sub-project, to read (no choosing here any more)
+    pg.wait_for_selector("text=各子项目的研究设计")
+    ok(pg.locator("input[name=design]").count() == 0 and pg.locator("input[data-method]").count() == 0 and pg.locator(".wzbody tbody tr").count() == 2, "[wizard] step 2 only lists each sub-project's research design")
     audit_page(pg, "wizard step 2/desktop", errs); pg.click("#wznext")
-    # step 3: people and roles
+    # step 3: people and roles: admins are in automatically, others are added and ticked by role
+    pg.wait_for_selector("#memsel")
+    ok(pg.locator("input[data-member]").count() == 0 and pg.locator("th", has_text="舆情").count() == 1, "[wizard] step 3 starts with the admins only and has a listening column")
+    pg.locator("#memsel option").nth(1).evaluate("o => o.selected = true"); pg.click("#memadd")
     pg.wait_for_selector("input[data-member]")
+    ok(pg.locator("input[data-member]").count() >= 1, "[wizard] a person added in step 3 gets ticks by role")
     audit_page(pg, "wizard step 3/desktop", errs); pg.click("#wznext")
-    # step 4: sample and quotas
+    # step 4: sample and quotas: only the methods in use
     pg.wait_for_selector(".bx.q")
-    ok(pg.locator(".bx.q").count() >= 2 and pg.locator(".bx.i").count() >= 2 and pg.locator(".bx.f").count() >= 2, "[wizard] step 4 has the three coloured boxes and the three quota tables")
+    ok(pg.locator(".bx.q").count() >= 2 and pg.locator(".bx.i").count() >= 2 and pg.locator(".bx.f").count() == 0, "[wizard] step 4 shows boxes and quota tables only for the methods in use (定量, 深访)")
     pg.fill("[data-n=i]", "4"); pg.locator("[data-n=i]").dispatch_event("change")
     ok(wait_until(lambda: "应为 4" in pg.inner_text("main"), 5), "[wizard] a target that the quota table does not add up to is flagged")
     pg.click("[data-qrow=lt]"); pg.wait_for_selector("[data-qcell^='lt|'][data-qcell$='|i']")
     pg.fill("[data-qcell^='lt|'][data-qcell$='|i']", "4"); pg.locator("[data-qcell^='lt|'][data-qcell$='|i']").dispatch_event("change")
     ok(wait_until(lambda: "应为 4" not in pg.inner_text("main"), 5), "[wizard] once the table adds up the flag goes away")
+    pg.click("#wzconfirmn"); pg.wait_for_timeout(1200)
+    ok(pg.input_value("[data-n=i]") == "4", "[wizard] a number typed in step 4 stays after saving (and the confirm button works)")
     audit_page(pg, "wizard step 4/desktop", errs); pg.click("#wznext")
     # step 5: channels
     pg.wait_for_selector("[data-tab]")
     pg.click("[data-tab=l]"); pg.wait_for_selector("[data-n2=lead]")
     audit_page(pg, "wizard step 5/desktop", errs); pg.click("#wznext")
-    # step 6: compliance, review
+    # step 6: compliance, one click ticks every confirmation, review
     pg.wait_for_selector("input[data-cons]")
     ok(pg.is_disabled("#wzsubmit") and "还不能提交" in pg.inner_text("main"), "[wizard] submitting is blocked until the confirmations are ticked")
-    for k in pg.locator("input[data-cons]").all():
-        k.check()
-    ok(wait_until(lambda: pg.is_enabled("#wzsubmit"), 8), "[wizard] ticking every confirmation makes the plan submittable")
+    pg.click("#wzall")
+    ok(wait_until(lambda: pg.is_enabled("#wzsubmit"), 8), "[wizard] 一键全选 makes the plan submittable")
     audit_page(pg, "wizard step 6/desktop", errs)
     pg.click("#wzsubmit"); pg.wait_for_selector("#wzapprove")
     ok("审查中" in pg.inner_text("main"), "[wizard] after submitting the plan is under review")
     pg.click("#wzapprove"); pg.wait_for_selector("text=法务通过，可发布并锁定")
     pg.click("#wznext")
     pg.wait_for_selector("#wzpub"); ok(pg.is_enabled("#wzpub"), "[wizard] approved: publishing is possible")
+    ok(pg.locator("#wznext").count() == 0, "[wizard] the last step has no 下一步")
     audit_page(pg, "wizard step 7/desktop", errs)
-    pg.click("#wzpub"); pg.wait_for_selector("text=已发布并锁定")
+    pg.click("#wzpub"); pg.wait_for_selector("text=暂时锁定")
     ok(wait_until(lambda: pg.locator("fieldset.wzbody[disabled]").count() == 1, 8), "[wizard] a published plan is locked (read only)")
+    ok(pg.locator("a", has_text="去看执行监控").count() == 0 and pg.locator("#wzhome").is_visible(), "[wizard] after publishing the last step offers 去项目总览 (and no 去看执行监控)")
+    # unlock, shorten the retention, review and publish again
+    pg.click("#wzunlock2"); pg.wait_for_selector("text=修改中")
+    ok(pg.locator("fieldset.wzbody[disabled]").count() == 0 and "项目总览" in pg.inner_text("nav.side"), "[wizard] an unlocked plan can be edited and the project stays usable (full menu)")
+    pg.click("[data-step='0']"); pg.wait_for_selector("select[data-w=retention]")
+    pg.select_option("select[data-w=retention]", "30"); pg.wait_for_timeout(1500)
+    pg.click("[data-step='5']"); pg.wait_for_selector("#wzsubmit")
+    ok(wait_until(lambda: pg.is_enabled("#wzsubmit"), 8), "[wizard] an unlocked and changed plan has to be submitted for review again")
+    pg.click("#wzsubmit"); pg.wait_for_selector("#wzapprove"); pg.click("#wzapprove"); pg.wait_for_selector("text=法务通过，可发布并锁定")
+    pg.click("#wznext"); pg.wait_for_selector("#wzpub"); pg.click("#wzpub"); pg.wait_for_selector("text=暂时锁定")
+    ok(wait_until(lambda: pg.locator("fieldset.wzbody[disabled]").count() == 1, 8), "[wizard] publishing the new version locks the plan again")
     pg.goto(B + "/#/projects"); pg.wait_for_selector(".pcard"); pg.locator(".pcard", has_text="向导测试项目").click()
-    pg.wait_for_selector(".starmap", timeout=15000)
-    ok(pg.locator(".snode").count() == 1 and "异步 AI 研究" in pg.inner_text(".starmap"), "[wizard] the star map has one node per chosen method")
+    pg.wait_for_selector(".hero2", timeout=15000)
     nav = pg.inner_text("nav.side")
-    ok("异步 AI 研究" in nav and "舆情采集" not in nav and "座谈会" not in nav and "定量验证" in nav, "[wizard] the menu shows only what the project uses (and the stages of its research order)")
-    ok("定性、定量、定性" in pg.inner_text(".ctx") and pg.locator(".track li").count() == 3, "[wizard] the project bar shows the research order")
-    audit_page(pg, "star map/desktop", errs)
-    # the original overview: big number, a map with one node per sub-project, the status steps, the sub-project table
-    ok(pg.locator(".hero2").count() == 1 and pg.locator(".sn").count() == 2 and pg.locator(".hm-st").count() == 6, "[home] the overview has the big number, a map node per sub-project and the 6 status steps")
+    ok(nav.index("立项向导") < nav.index("项目总览"), "[nav] the wizard comes before the project overview")
+    ok("异步 AI 研究" in nav and "舆情采集" in nav and "座谈会" not in nav and "深访" in nav and "定量" in nav, "[nav] the menu shows only what the project uses (stages = its research orders)")
+    ok(pg.locator(".track li").count() == 2 and "深访" in pg.inner_text(".track"), "[wizard] the project bar shows the research stages")
+    # the original overview: big number, a map with one node per sub-project, the status steps, the sub-project table, the stage list
+    ok(pg.locator(".hero2").count() == 1 and pg.locator(".sn").count() == 2 and pg.locator(".hm-st").count() == 5, "[home] the overview has the big number, a map node per sub-project and the 5 status steps (no 草稿)")
     ok(pg.locator(".hm-st.on").inner_text() == "招募中" and pg.locator(".hero2 .hero-k").inner_text() in ("定量完成", "深访就绪"), "[home] the status is 招募中 for a published project with no sessions yet")
-    ok(pg.locator("tbody tr", has_text="马来西亚").count() == 1, "[home] the sub-project table lists every sub-project")
+    ok(pg.locator("#chm").count() == 0, "[home] there is no 调整研究方法 button any more")
+    ok(pg.locator(".hero2 .meter").count() >= 3 and pg.locator(".hero2 .meter dt", has_text="座谈会").count() == 0, "[home] the meters show the methods the project uses")
+    ok(pg.locator(".hm-stagelist li").count() == 3 and pg.locator(".hm-stagelist .pill", has_text="招募中").count() == 3, "[home] each sub-project's stages are listed with their state")
+    ok(pg.locator("tbody tr", has_text="马来西亚").count() >= 1, "[home] the sub-project table lists every sub-project")
+    pg.locator(".hm-stagelist button").first.click(); pg.wait_for_selector("#imp2")
+    ok(pg.url.endswith("/people"), "[home] a stage opens its page (深访 starts at the recruiting setup)")
+    pg.go_back(); pg.wait_for_selector(".hm-stages")  # the stage button picked that sub-project
+    pg.select_option("#subsel", "all"); pg.wait_for_selector(".hero2")
     pg.locator(".sn").first.click()
-    pg.wait_for_selector(".hm-chain")
-    ok(pg.locator("#subsel").input_value() != "all" and pg.locator(".hm-chain .step").count() == 3 and pg.locator(".grid3 .bx").count() == 3, "[home] clicking a map node opens that sub-project (steps of its research order + three boxes)")
+    ok(wait_until(lambda: pg.locator("#subsel").input_value() != "all" and pg.locator(".hm-stagelist li").count() == 2, 8), "[home] clicking a map node opens that sub-project (its own stages)")
     audit_page(pg, "sub-project home/desktop", errs)
     pg.select_option("#subsel", "all"); pg.wait_for_selector(".hero2")
+    pg.click("nav.side a:has-text('深访')"); pg.wait_for_selector("#imp2")
+    ok(pg.url.endswith("/people"), "[nav] 深访 in the menu opens the recruiting setup first, not the sessions list")
+    pg.goto(B + "/#/team"); pg.wait_for_selector("nav.side")
+    ok("项目总览" in pg.inner_text("nav.side") and "团队" in pg.inner_text("nav.side"), "[nav] the settings pages keep the current project's menu on the left")
+    pg.goto(B + "/#/projects"); pg.locator(".pcard", has_text="向导测试项目").click(); pg.wait_for_selector(".hero2")
     with pg.expect_download(timeout=15000) as dl:
         pg.click("#rep")
     ok(dl.value.suggested_filename.endswith(".docx"), "[wizard] the research report downloads as a Word file")
     pg.screenshot(path=os.path.join(ROOT, "qa_shots", "starmap_1280.png"), full_page=True)
-    pg.click("#chm"); pg.wait_for_selector("input[name=methods][value=listening]")
-    pg.locator("input[name=methods][value=listening]").check(); pg.click("#f button.p")
-    ok(wait_until(lambda: pg.locator(".snode").count() == 2 and "舆情采集" in pg.inner_text("nav.side"), 10), "[wizard] switching a method on adds it to the map and the menu")
     pid_new = pg.url.split("/p/")[1].split("/")[0]
     pg.click("#hmcopy"); pg.wait_for_selector(".chain .step")
     ok("（副本）" in pg.inner_text(".ctx-name") and "草稿" in pg.inner_text(".ctx"), "[home] copying a project opens a draft of it in the wizard")
@@ -1288,7 +1317,7 @@ def run():
         ok(see("observer", f"#/i/{mi}", "text=Wei Ling") == 0, "observer must not see the participant's name")
         # the recruiting / invitation pages are for the research team only
         for role in ("observer", "moderator"):
-            ok(see(role, f"#/p/{pid}/rooms", "nav.side a:has-text('受访者招募'), nav.side a:has-text('场次与邀请')") == 0, f"{role} must not see recruiting / invitation pages in the nav")
+            ok(see(role, f"#/p/{pid}/rooms", "nav.side a:has-text('甄别设定'), nav.side a:has-text('场次与邀请')") == 0, f"{role} must not see recruiting / invitation pages in the nav")
             ok(see(role, f"#/p/{pid}/people", "text=添加受访者") == 0, f"{role} must not reach the recruiting page by URL")
         ok(see("observer", f"#/p/{pid}/rooms", "a:has-text('进入 TA 的房间')") == 0 and see("observer", f"#/p/{pid}/rooms", "a:has-text('隐身观察')") >= 1, "observer can only enter rooms hidden")
         ok(see("observer", f"#/p/{pid}/rooms", "text=Wei Ling") == 0, "observer's room list never shows participant names")
