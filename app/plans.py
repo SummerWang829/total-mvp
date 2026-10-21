@@ -81,6 +81,7 @@ class Row(BaseModel):
     t: int = Field(default=0, ge=0, le=1_000_000)  # survey completes
     i: int = Field(default=0, ge=0, le=100_000)  # interviews
     f: int = Field(default=0, ge=0, le=10_000)  # group discussions
+    a: bool = False  # this group of people is done by the asynchronous AI moderator (the interviewees / groups the client chose for it)
 
 
 class Quota(BaseModel):
@@ -153,7 +154,7 @@ class PlanConfig(BaseModel):
 
     @model_validator(mode="after")
     def _derive_methods(self):
-        self.methods = methods_for(self.subs)
+        self.methods = methods_for(self.subs, [*self.lt.rows, *self.ft.rows])
         return self
 
     @field_validator("type")
@@ -178,9 +179,12 @@ class PlanConfig(BaseModel):
         return v
 
 
-def methods_for(subs: list) -> list[str]:
-    """The research methods a plan uses: what its sub-projects' research orders run, plus listening / async studies where a sub-project ticks them."""
+def methods_for(subs: list, rows: list | None = None) -> list[str]:
+    """The research methods a plan uses: what its sub-projects' research orders run, plus listening / async studies where a sub-project ticks them
+    (or where a group of people in the interview / focus-group quota is marked for the asynchronous AI)."""
     got: set[str] = set()
+    if any(r.a for r in rows or []):
+        got.add("async")
     for s in subs:
         got.update(DESIGN_STAGES[s.design][1])
         if s.listening:

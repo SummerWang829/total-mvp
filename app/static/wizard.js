@@ -31,6 +31,7 @@ const wzLocked = () => WZ.plan.status === "published";
 const wzMethods = () => {  // what the sub-projects use (the server derives the same list)
   const got = new Set();
   WZ.cfg.subs.forEach((s) => { WZ_DESIGNS[s.design][1].forEach((m) => got.add(m)); if (s.listening) got.add("listening"); if (s.async_ai) got.add("async"); });
+  if ([...WZ.cfg.lt.rows, ...WZ.cfg.ft.rows].some((r) => r.a)) got.add("async");
   return got;
 };
 const wzMethod = (m) => wzMethods().has(m);
@@ -92,7 +93,8 @@ function wzDesignView() {
 
 function wzSuggest() {  // what the AI suggests from the research background (to read and take over by hand; nothing is applied by itself)
   const s = WZ.plan.suggest, list = (a) => `<ul style="margin:4px 0 0 18px">${a.map((t) => `<li><b>${esc(t.title)}</b>：${t.questions.map(esc).join(" / ")}</li>`).join("")}</ul>`;
-  return `<div class="row"><button class="s" id="wzsug" type="button">根据研究背景生成建议</button><span class="sm mut" id="wzsugstat" role="status" aria-live="polite">${s ? "下面是上次生成的建议，仅供参考，需要的内容请自己复制到对应的地方。" : "生成深访提纲、座谈会大纲、配额和舆情关键词的建议。"}</span></div>
+  return `<div class="row"><button class="s" id="wzlib" type="button">存入研究库</button><label class="chk"><input type="checkbox" id="wzuselib" ${WZ.plan.library_docs ? "checked" : "disabled"}><span>参考研究库里本项目的资料（${WZ.plan.library_docs || 0} 份）</span></label>
+      <button class="s" id="wzsug" type="button">根据研究背景生成建议</button><span class="sm mut" id="wzsugstat" role="status" aria-live="polite">${s ? "下面是上次生成的建议，仅供参考，需要的内容请自己复制到对应的地方。" : "生成深访提纲、座谈会大纲、配额和舆情关键词的建议。"}</span></div>
     ${s ? `<div class="grid"><div class="card"><h3>深访提纲建议</h3>${list(s.depth_topics)}</div><div class="card"><h3>座谈会大纲建议</h3>${list(s.group_topics)}</div>
       <div class="card"><h3>配额建议</h3><p class="sm" style="margin:6px 0 0">${esc(s.quota_hint)}</p></div><div class="card"><h3>舆情关键词建议</h3><div style="margin-top:6px">${s.listening_keywords.map((k) => `<span class="tag">${esc(k)}</span>`).join("")}</div></div></div>` : ""}`;
 }
@@ -184,11 +186,12 @@ function wzQuota(key, color, title, cols) {
   const sums = cols.map((cl) => T.rows.reduce((a, r) => a + r[cl[0]], 0));
   return `<div class="bx ${color} wide"><div class="bxh"><i></i>${title}</div><div class="row"><span class="sm">配额变量：</span>${dimSel}</div>
     <div class="row selbar"><label class="chk"><input type="checkbox" data-qall="${key}" ${T.rows.length && T.rows.every((r) => sel.has(r.id)) ? "checked" : ""}>全选</label><span class="mut sm">已选 ${[...sel].filter((id) => T.rows.some((r) => r.id === id)).length} / ${T.rows.length}</span>
-      <button class="s" data-qrow="${key}" type="button">+ 添加一行</button><button class="s" data-qrowdel="${key}" type="button">删除选中</button></div>
-    <div class="scroll"><table class="tbl"><thead><tr><th></th>${T.dims.map((d) => `<th>${esc(d)}</th>`).join("")}${cols.map((cl) => `<th>${cl[1]}</th>`).join("")}${key === "ft" ? "<th>座谈会（人）</th>" : ""}</tr></thead><tbody>
+      <button class="s" data-qrow="${key}" type="button">+ 添加一行</button><button class="s" data-qrowdel="${key}" type="button">删除选中</button>
+      ${key !== "qt" ? `<button class="s" data-qasync="${key}|1" type="button">选中的设为异步 AI 执行</button><button class="s" data-qasync="${key}|0" type="button">取消异步 AI</button>` : ""}</div>
+    <div class="scroll"><table class="tbl"><thead><tr><th></th>${T.dims.map((d) => `<th>${esc(d)}</th>`).join("")}${cols.map((cl) => `<th>${cl[1]}</th>`).join("")}${key === "ft" ? "<th>座谈会（人）</th>" : ""}${key !== "qt" ? "<th>异步 AI 执行</th>" : ""}</tr></thead><tbody>
     ${T.rows.map((r) => `<tr><td><label class="chk wzbig"><input type="checkbox" aria-label="选中这一行" data-qpick="${key}|${r.id}" ${sel.has(r.id) ? "checked" : ""}></label></td>${T.dims.map((d, i) => `<td>${wzSel(`data-qcell="${key}|${r.id}|v${i}" aria-label="${esc(d)}"`, r.vs[i], wzValues(d).map((v) => [v.id, v.name]), 170)}</td>`).join("")}
-      ${cols.map((cl) => `<td>${wzInp(`type="number" min="0" data-qcell="${key}|${r.id}|${cl[0]}" aria-label="${cl[1]}"`, r[cl[0]], 'style="width:90px"')}</td>`).join("")}${key === "ft" ? `<td>${r.f * c.n.fs}</td>` : ""}</tr>`).join("") || `<tr><td colspan="${T.dims.length + cols.length + 2}" class="mut sm">还没有配额行，点“+ 添加一行”。</td></tr>`}
-    <tr><td></td><td colspan="${T.dims.length}"><b>合计</b></td>${sums.map((s) => `<td><b>${s}</b></td>`).join("")}${key === "ft" ? `<td><b>${sums[0] * c.n.fs}</b></td>` : ""}</tr></tbody></table></div></div>`;
+      ${cols.map((cl) => `<td>${wzInp(`type="number" min="0" data-qcell="${key}|${r.id}|${cl[0]}" aria-label="${cl[1]}"`, r[cl[0]], 'style="width:90px"')}</td>`).join("")}${key === "ft" ? `<td>${r.f * c.n.fs}</td>` : ""}${key !== "qt" ? `<td><label class="chk wzbig"><input type="checkbox" data-qa="${key}|${r.id}" ${r.a ? "checked" : ""} aria-label="这一组由异步 AI 执行"></label></td>` : ""}</tr>`).join("") || `<tr><td colspan="${T.dims.length + cols.length + 3}" class="mut sm">还没有配额行，点“+ 添加一行”。</td></tr>`}
+    <tr><td></td><td colspan="${T.dims.length}"><b>合计</b></td>${sums.map((s) => `<td><b>${s}</b></td>`).join("")}${key === "ft" ? `<td><b>${sums[0] * c.n.fs}</b></td>` : ""}${key !== "qt" ? `<td class="sm">${T.rows.filter((r) => r.a).length ? `异步 AI：${T.rows.filter((r) => r.a).reduce((a, r) => a + r[cols[0][0]], 0)} ${key === "ft" ? "场" : "人"}` : ""}</td>` : ""}</tr></tbody></table></div></div>`;
 }
 
 function wzDims() {
@@ -212,7 +215,7 @@ function wzSample() {
     </div>
     <div class="row"><button class="p" id="wzconfirmn" type="button">确认样本量</button><span class="sm mut">填好数字后点一下，立即保存并核对配额合计。</span></div>
     ${wzDims()}
-    <div class="note">先定义变量和取值（上面），再给用到的方法各选各的配额变量。这些配额会进入“执行监控”。</div>
+    <div class="note">先定义变量和取值（上面），再给用到的方法各选各的配额变量。这些配额会进入“执行监控”。深访和座谈会的配额表里，客户要哪些人（可以多人）或哪几组（可以多组）用异步 AI 执行，就在“异步 AI 执行”一列勾上，或选中几行后点“选中的设为异步 AI 执行”；项目总览和执行监控里会标出来。</div>
     ${wzMethod("quant") ? wzQuota("qt", "q", "定量配额", [["t", "目标（份）"]]) : ""}${wzMethod("depth") ? wzQuota("lt", "i", "深访配额", [["i", "深访（人）"]]) : ""}${wzMethod("group") ? wzQuota("ft", "f", "座谈会配额", [["f", "座谈会（场）"]]) : ""}`;
 }
 
@@ -265,7 +268,7 @@ function wzBody() {
   switch (WZ.step) {
     case 0: return `<div class="grid"><label class="field">主项目名称${wzInp('data-meta="name" aria-label="主项目名称"', WZ.name_edit ?? WZ.plan.name)}</label>
       <label class="field">数据留存期限${wzSel('data-w="retention" aria-label="数据留存期限"', c.retention, WZ_RETENTION.map((d) => [d, `${d} 天${d === 180 ? "（平台上限）" : ""}`]))}<span class="mut" style="font-weight:400">同意书里写明的就是这个期限：项目结项后 ${c.retention} 天自动删除个人数据，洞察结论保留。${WZ.plan.live ? "已发布过的项目只能缩短，不能延长。" : ""}</span></label></div>
-      <label class="field">研究背景（选填，只给团队看）<textarea data-meta="brief" rows="3" placeholder="写清这个项目要解决什么问题、做给谁看。">${esc(WZ.brief_edit ?? WZ.plan.brief ?? "")}</textarea><span class="mut" style="font-weight:400">可以用这段内容生成深访提纲、座谈会大纲、配额建议和舆情关键词，招募问卷也可以直接用它。</span></label>
+      <label class="field">研究背景（选填，只给团队看）<textarea data-meta="brief" rows="3" placeholder="写清这个项目要解决什么问题、做给谁看。">${esc(WZ.brief_edit ?? WZ.plan.brief ?? "")}</textarea><span class="mut" style="font-weight:400">先“存入研究库”，再从研究库出发：生成深访提纲、座谈会大纲、配额建议和舆情关键词，招募问卷也会参考它。</span></label>
       <div class="note">${esc(rfAiNotice())}</div>${wzSuggest()}${wzSubs()}`;
     case 1: return `${wzDesignView()}<label class="field" style="max-width:360px">研究类型（带出模板）${wzSel('data-w="type"', c.type, Object.keys(WZ_TYPES).map((x) => [x, x]))}</label>
       <div class="note">选“${esc(c.type)}”会预置：${WZ_TYPES[c.type]}。</div>`;
@@ -322,6 +325,7 @@ function wzChange(e) {
   if (d.n) { c.n[d.n] = wzNum(t.value, d.n === "fs" ? 6 : 0); if (d.n === "fs") c.n.fs = Math.min(10, Math.max(3, c.n.fs)); wzSave(); return wzRedraw(); }
   if (d.qdim) return wzQDim(d.qdim, t.value);
   if (d.qcell) return wzQCell(d.qcell, t);
+  if (d.qa) { const [k, id] = d.qa.split("|"), row = c[k].rows.find((r) => r.id === id); row.a = t.checked; wzSave(); return wzRedraw(); }
   if (d.qpick) { const [k, id] = d.qpick.split("|"), set = WZ.picks[k] || (WZ.picks[k] = new Set()); t.checked ? set.add(id) : set.delete(id); return wzRedraw(); }
   if (d.qall) { const set = (WZ.picks[d.qall] = new Set()); if (t.checked) c[d.qall].rows.forEach((r) => set.add(r.id)); return wzRedraw(); }
   if (d.dvn) { const [dim, id] = d.dvn.split("|"), v = c.vars[dim].find((x) => x.id === id); v.name = t.value.trim() || v.name; wzSave(); return wzRedraw(); }
@@ -369,9 +373,13 @@ function wzClick(b, e) {
   if (d.col) { const [j, on] = d.col.split("|"), k = ["q", "i", "f", "l"][+j]; wzMutate(() => c.team.forEach((m) => (m[k] = on === "1"))); return wzRedraw(); }
   if (b.id === "memadd") { const id = $("#memsel").value, u = WZ.users.find((x) => x.id === id); if (!u) return toast("先选一位同事", true); wzMutate(() => c.team.push({ user_id: id, ...wzDefault(u) })); return wzRedraw(); }
   if (d.memdel) { wzMutate(() => (c.team = c.team.filter((m) => m.user_id !== d.memdel))); return wzRedraw(); }
+  if (b.id === "wzlib") return guard(async () => {  // the research background goes into the project's research library; the AI tools and the team read it from there
+    await wzSave(true); const r = await api(`/projects/${WZ.p.id}/plan/brief-to-library`, { method: "POST" });
+    WZ.plan.library_docs = r.library_docs; wzRedraw(); toast("已存入研究库（研究库里可以看到“研究背景（立项）”）");
+  })();
   if (b.id === "wzsug") return guard(async () => {
     await wzSave(true); b.disabled = true; const st = $("#wzsugstat"); if (st) st.textContent = "正在生成，大约要几秒…";
-    try { WZ.plan.suggest = await api(`/projects/${WZ.p.id}/plan/suggest`, { method: "POST" }); wzRedraw(); toast("建议已生成"); } finally { b.disabled = false; }
+    try { WZ.plan.suggest = await api(`/projects/${WZ.p.id}/plan/suggest?use_library=${$("#wzuselib") && $("#wzuselib").checked}`, { method: "POST" }); wzRedraw(); toast("建议已生成"); } finally { b.disabled = false; }
   })();
   if (b.id === "subtpl") return wzSubTemplate();
   if (b.id === "subimp") return $("#subfile").click();
@@ -383,7 +391,8 @@ function wzClick(b, e) {
     WZ.plan = { ...WZ.plan, ...r }; WZ.cfg = r.config; WZ.step = 0; toast("已解锁，可以修改");
     PROJECTS = null; await projects(true); WZ.p = (PROJECTS || []).find((x) => x.id === WZ.p.id) || WZ.p; wzDraw();
   })();
-  if (d.qrow) { const T = c[d.qrow]; wzMutate(() => { T.rows.push({ id: wzUid("r"), vs: T.dims.map((x) => (wzValues(x)[0] || {}).id), t: 0, i: 0, f: 0 }); }); return wzRedraw(); }
+  if (d.qrow) { const T = c[d.qrow]; wzMutate(() => { T.rows.push({ id: wzUid("r"), vs: T.dims.map((x) => (wzValues(x)[0] || {}).id), t: 0, i: 0, f: 0, a: false }); }); return wzRedraw(); }
+  if (d.qasync) { const [k, on] = d.qasync.split("|"), set = WZ.picks[k] || new Set(); if (!set.size) return toast("先在表里勾选要设置的行", true); wzMutate(() => c[k].rows.forEach((r) => { if (set.has(r.id)) r.a = on === "1"; })); return wzRedraw(); }
   if (d.qrowdel) { const set = WZ.picks[d.qrowdel] || new Set(); wzMutate(() => { c[d.qrowdel].rows = c[d.qrowdel].rows.filter((r) => !set.has(r.id)); }); WZ.picks[d.qrowdel] = new Set(); return wzRedraw(); }
   if (d.dvadd) { const input = document.getElementById("dvn-" + d.dvadd), v = input.value.trim(); if (!v) return; wzMutate(() => c.vars[d.dvadd].push({ id: wzUid("v"), name: v })); return wzRedraw(); }
   if (d.dvdel) { const [dim, id] = d.dvdel.split("|"); wzMutate(() => { c.vars[dim] = c.vars[dim].filter((v) => v.id !== id); for (const k of ["qt", "lt", "ft"]) { const i = c[k].dims.indexOf(dim); if (i >= 0) c[k].rows = c[k].rows.filter((r) => r.vs[i] !== id); } }); return wzRedraw(); }
@@ -433,8 +442,8 @@ async function monitorView(p) {
   for (const k of ["q", "i", "f"]) if (sub) m[k] = { ...m[k], rows: m[k].rows.filter((r) => r.label.split(" · ").includes(sub.name)) };
   const state = (a, b) => (b === 0 ? `<span class="pill g">未设</span>` : a >= b ? `<span class="pill r">已满</span>` : a >= b * 0.9 ? `<span class="pill o">接近满额</span>` : `<span class="pill">进行中</span>`);
   const board = (T, color, title, unit) => `<div class="bx ${color} wide"><div class="bxh"><i></i>${title}（按 ${T.dims.map(esc).join(" × ") || "—"}）</div>
-    <div class="scroll"><table class="tbl"><thead><tr><th>${T.dims.map(esc).join(" × ") || "配额"}</th><th>目标（${unit}）</th><th>已就绪</th><th>缺口</th><th>进度</th><th>状态</th></tr></thead><tbody>
-    ${T.rows.map((r) => `<tr><td>${esc(r.label)}</td><td>${r.target}</td><td>${r.ready}</td><td>${r.gap}</td><td style="min-width:140px"><div class="qbar o"><i style="width:${r.target ? Math.min(100, (r.ready / r.target) * 100) : 0}%"></i></div></td><td>${state(r.ready, r.target)}</td></tr>`).join("") || `<tr><td colspan="6" class="sm mut">没有配额行。到立项向导第 4 步添加（立项已锁定，要改请管理员或项目经理先解锁）。</td></tr>`}
+    <div class="scroll"><table class="tbl"><thead><tr><th>${T.dims.map(esc).join(" × ") || "配额"}</th><th>目标（${unit}）</th><th>已就绪</th><th>缺口</th><th>进度</th><th>状态</th><th>执行方式</th></tr></thead><tbody>
+    ${T.rows.map((r) => `<tr><td>${esc(r.label)}</td><td>${r.target}</td><td>${r.ready}</td><td>${r.gap}</td><td style="min-width:140px"><div class="qbar o"><i style="width:${r.target ? Math.min(100, (r.ready / r.target) * 100) : 0}%"></i></div></td><td>${state(r.ready, r.target)}</td><td>${r.async === null ? '<span class="mut">—</span>' : r.async ? `<span class="tag o">异步 AI</span>` : '<span class="mut">真人主持</span>'}</td></tr>`).join("") || `<tr><td colspan="7" class="sm mut">没有配额行。到立项向导第 4 步添加（立项已锁定，要改请管理员或项目经理先解锁）。</td></tr>`}
     </tbody></table></div><div class="sm mut">合计：目标 ${T.target}，已就绪 ${T.ready}。</div></div>`;
   shell(`${head("执行监控", "配额按立项里定义的变量显示。“已就绪”是项目受访者库里符合这一行、且没有被甄别淘汰的人。")}
     ${board(m.q, "q", "定量配额看板", "份")}${board(m.i, "i", "深访配额看板", "人")}${board(m.f, "f", `座谈会配额看板（每场 ${m.fs} 人）`, "人")}

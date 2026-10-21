@@ -23,7 +23,7 @@ def test_the_ai_writes_questions_from_the_idea_and_the_form_is_saved_and_version
     pid = org.project()
     r = org.c.post(url(pid, "/generate"), headers=org.h(), json={"idea": "想了解新加坡年轻人如何选购护肤品牌"}).json()
     assert r["source"] == "ai" and 5 <= len(r["questions"]) <= 15 and r["version"] == 1 and r["generated_by"] == "mock"
-    assert [q["id"] for q in r["questions"]][:2] == ["q1", "q2"] and any(o["end"] for q in r["questions"] for o in q["options"])
+    assert [q["id"] for q in r["questions"]][:2] == ["q1", "q2"] and any(o["goto"] == "end_out" for q in r["questions"] for o in q["options"])
     assert org.c.get(url(pid), headers=org.h()).json()["questions"] == r["questions"]
     again = org.c.post(url(pid, "/generate"), headers=org.h(), json={"idea": "改成了另一个想法，关于防晒产品的购买习惯"}).json()
     assert again["version"] == 2 and again["idea"].startswith("改成了")

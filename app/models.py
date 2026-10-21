@@ -700,6 +700,12 @@ class RecruitForm(Base):
     version: Mapped[int] = mapped_column(Integer, default=0)
     generated_by: Mapped[str] = mapped_column(String(100), default="")  # the model that wrote the questions ("" = by hand)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    status: Mapped[str] = mapped_column(String(10), default="draft")  # draft | published | closed (the public link works only while published)
+    token: Mapped[str] = mapped_column(String(40), default="", index=True)  # the public link's token, made at the first publish and kept
+    published_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    n_qualified: Mapped[int] = mapped_column(Integer, default=0)  # people who finished and qualified (they are in the participant list)
+    n_out: Mapped[int] = mapped_column(Integer, default=0)  # people screened out (nothing about them is kept)
+    out_by: Mapped[dict] = mapped_column(JSON, default=dict)  # question id -> how many were screened out there
 
 
 class ListeningSource(Base):

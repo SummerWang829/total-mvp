@@ -391,6 +391,8 @@ nav.side .dotc{width:7px;height:7px;border-radius:50%;background:var(--sc,#FF6A0
 @media (max-width:900px){.hero2{grid-template-columns:1fr}.hero-r{min-height:260px}}
 
 /* ---------- 每种研究方法一个颜色（研究顺序里的字） + 研究阶段列表 ---------- */
+:root[data-theme="dark"] .pill.o,:root[data-theme="dark"] .tag.o{color:#FFB27A}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .pill.o,:root:not([data-theme="light"]) .tag.o{color:#FFB27A}}
 .tag.nw{white-space:nowrap}
 .chk.wzbig{min-width:36px;min-height:36px;justify-content:center;align-items:center}
 .mq{color:var(--green);font-weight:700}.mi{color:var(--orange-ink);font-weight:700}.mf{color:#7A5F00;font-weight:700}
@@ -408,6 +410,12 @@ nav.side .dotc{width:7px;height:7px;border-radius:50%;background:var(--sc,#FF6A0
 .rf-r{background:var(--wash);border-radius:var(--r-pan);padding:14px;min-height:200px;display:flex;flex-direction:column;gap:10px}
 .rf-qs{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px}
 .rf-q{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px}
+.rf-edit{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px;margin-bottom:10px}
+.rf-optl{display:flex;flex-direction:column;gap:8px}.rf-optrow{display:flex;gap:6px;flex-wrap:wrap;align-items:center}.rf-optrow>input[data-o=text]{flex:1 1 140px;min-width:0}
+.rf-ai{border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--surface)}.rf-ai summary{cursor:pointer;font-weight:700;min-height:36px;display:flex;align-items:center}
+.rf-ai[open] summary{margin-bottom:8px}.rf-ai>*:not(summary){margin-top:8px}
+.rf-pub{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px;margin-top:6px}
+.rf-link{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap}.rf-link>div{flex:1 1 220px;min-width:0}.rf-link img{border:1px solid var(--line);border-radius:8px;background:#fff;padding:4px}
 .rfurl{word-break:break-all;font-size:13px;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:6px 10px}
 .rf-opts{display:flex;flex-direction:column;gap:6px}
 @media (max-width:900px){.rf-grid{grid-template-columns:1fr}}

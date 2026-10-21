@@ -10,8 +10,8 @@ const hmPct = (a, b) => (b ? Math.min(100, Math.round((a / b) * 100)) : 0);
 function hmSubStats(mon, sub) {
   const mine = (T) => T.rows.filter((r) => r.label.split(" · ").includes(sub.name));
   const sum = (rows, k) => rows.reduce((a, r) => a + r[k], 0);
-  const q = mine(mon.q), i = mine(mon.i), f = mine(mon.f);
-  return { qc: sum(q, "ready"), qt: sum(q, "target"), ic: sum(i, "ready"), it: sum(i, "target"), fc: sum(f, "ready"), ft: sum(f, "target") };
+  const q = mine(mon.q), i = mine(mon.i), f = mine(mon.f), marked = (rows) => rows.filter((r) => r.async);  // marked = the groups the client chose for the asynchronous AI
+  return { qc: sum(q, "ready"), qt: sum(q, "target"), ic: sum(i, "ready"), it: sum(i, "target"), fc: sum(f, "ready"), ft: sum(f, "target"), ia: sum(marked(i), "target"), fa: sum(marked(f), "target") };
 }
 
 /** 项目状态：立项 › 招募中 › 进行中 › 已完成 › 已归档（项目整体）。 */
@@ -58,7 +58,7 @@ function hmTable(p, mon, users) {
   return `<div class="card"><div class="scroll"><table class="tbl"><thead><tr><th>子项目</th><th>研究顺序</th><th>定量</th><th>定性</th></tr></thead><tbody>
     ${mon.subs.map((s, i) => { const x = hmSubStats(mon, s), ks = (SH_DESIGN[s.design] || SH_DESIGN.iq)[1]; return `<tr><td><b>S${i + 1}</b> ${esc(s.name)}<div class="sm mut">${esc(s.lang)} · ${esc(pm(s.pm))}${s.listening ? " · 舆情" : ""}${s.async_ai ? " · 异步 AI" : ""}</div></td><td><span class="pill o">${SH_DESIGN[s.design] ? SH_DESIGN[s.design][0] : ""}</span></td>
       <td style="min-width:150px">${ks.includes("quant") ? `${x.qc} / ${x.qt}<div class="qbar o"><i style="width:${hmPct(x.qc, x.qt)}%"></i></div>` : '<span class="mut">不做</span>'}</td>
-      <td>${ks.includes("depth") ? `深访 ${x.ic}/${x.it}` : ""}${ks.includes("depth") && ks.includes("group") ? "<br>" : ""}${ks.includes("group") ? `座谈会 ${x.fc}/${x.ft} 人` : ""}${ks.some((k) => k !== "quant") ? "" : '<span class="mut">不做</span>'}</td></tr>`; }).join("")}
+      <td>${ks.includes("depth") ? `深访 ${x.ic}/${x.it}${x.ia ? ` <span class="tag o">异步 AI ${x.ia}</span>` : ""}` : ""}${ks.includes("depth") && ks.includes("group") ? "<br>" : ""}${ks.includes("group") ? `座谈会 ${x.fc}/${x.ft} 人${x.fa ? ` <span class="tag o">异步 AI ${x.fa}</span>` : ""}` : ""}${ks.some((k) => k !== "quant") ? "" : '<span class="mut">不做</span>'}</td></tr>`; }).join("")}
     </tbody></table></div></div>`;
 }
 
@@ -66,10 +66,10 @@ function hmTable(p, mon, users) {
 function hmStages(p, mon, o, users, one) {
   const subs = one ? [one] : mon.subs, many = subs.length > 1, pm = (id) => (users.find((u) => u.id === id) || {}).name || "未指定";
   const block = (s) => {
-    const x = hmSubStats(mon, s), ks = (SH_DESIGN[s.design] || SH_DESIGN.iq)[1], num = { quant: [x.qc, x.qt, "份"], depth: [x.ic, x.it, "人"], group: [x.fc, x.ft, "人"] };
+    const x = hmSubStats(mon, s), ks = (SH_DESIGN[s.design] || SH_DESIGN.iq)[1], num = { quant: [x.qc, x.qt, "份"], depth: [x.ic, x.it, "人"], group: [x.fc, x.ft, "人"] }, asy = { depth: x.ia, group: x.fa };
     return `<div class="card hm-stages">${many || one ? `<div class="row"><b>${esc(s.name)}</b><span class="mut sm">${SH_DESIGN[s.design] ? SH_DESIGN[s.design][0] : ""} · 责任人 ${esc(pm(s.pm))}</span></div>` : ""}
       <ol class="hm-stagelist">${ks.map((k, i) => { const [d, t, u] = num[k], st = hmStageState(p, o, k, d, t); return `<li><span class="sic">${i + 1}</span><b>${SH_KIND[k]}</b><span class="pill ${st === "招募中" ? "o" : st === "进行中" ? "" : "g"}">${st}</span>
-        <span class="mut sm">${d} / ${t} ${u}</span><div class="qbar o"><i style="width:${hmPct(d, t)}%"></i></div><button class="s" type="button" data-gostage="${s.id}|${k}">看进度与配额</button></li>`; }).join("")}</ol></div>`;
+        <span class="mut sm">${d} / ${t} ${u}${asy[k] ? ` <span class="tag o">其中 ${asy[k]} ${u} 由异步 AI 执行</span>` : ""}</span><div class="qbar o"><i style="width:${hmPct(d, t)}%"></i></div><button class="s" type="button" data-gostage="${s.id}|${k}">看进度与配额</button></li>`; }).join("")}</ol></div>`;
   };
   return `<h2 style="margin:18px 0 8px">研究阶段</h2>${subs.map(block).join("")}`;
 }

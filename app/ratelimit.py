@@ -28,6 +28,7 @@ LOGIN_ACCOUNT = (5, 900)
 LINK_PROBES = (30, 60)
 REGISTER = (10, 3600)
 SIGNUP = (20, 3600)         # study sign-ups through a public link, per address per hour (always on: it stops a script filling a study)
+SCREEN_STEP = (400, 3600)  # questionnaire steps through a public link, per address per hour (a step is cheap, but a script should not hammer it)
 ASK = (40, 3600)           # library questions per person per hour (each one is a paid model call)
 FORGOT_IP = (5, 3600)       # "forgot password" requests per address per hour
 FORGOT_ACCOUNT = (3, 3600)  # and per account, so one inbox cannot be flooded
@@ -116,6 +117,14 @@ def signup_allowed(ip: str) -> int:
     if wait := blocked(f"signup:{ip}", SIGNUP):
         return wait
     record(f"signup:{ip}", SIGNUP[1])
+    return 0
+
+
+def screen_step_allowed(ip: str) -> int:
+    """Count one step of a public questionnaire; returns 0 when allowed, otherwise the seconds to wait."""
+    if wait := blocked(f"screen:{ip}", SCREEN_STEP):
+        return wait
+    record(f"screen:{ip}", SCREEN_STEP[1])
     return 0
 
 

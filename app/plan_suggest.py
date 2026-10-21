@@ -49,7 +49,7 @@ def _topics(raw) -> list[dict]:
     return out
 
 
-def suggest(chat: ModeratorChatProvider | None, brief: str, language: str) -> dict:
+def suggest(chat: ModeratorChatProvider | None, brief: str, language: str, library: str = "") -> dict:
     """Suggestions from the research background. `chat` None means the offline mock.
 
     Raises:
@@ -65,6 +65,8 @@ def suggest(chat: ModeratorChatProvider | None, brief: str, language: str) -> di
                 reply = mock_suggest(language)
             else:
                 user = f"Research background (internal): {brief.strip()}\nLanguage: {language}"
+                if library:
+                    user += f"\n\nReference material from this project's research library (internal):\n{library}"
                 if problem:
                     user += f"\nYour previous answer was rejected: {problem}\nWrite a new one that avoids this."
                 reply = chat.complete([{"role": "system", "content": SYSTEM.replace("{language}", language)}, {"role": "user", "content": user}], temperature=0.4)

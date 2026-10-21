@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Questionnaire · 星桐</title><link rel="stylesheet" href="/app.css">
+<style>.swrap{max-width:640px;margin:0 auto;padding:18px 16px 40px;display:flex;flex-direction:column;gap:14px}.swrap h1{font-size:22px;margin:0}</style></head>
+<body class="participant"><div class="pbar" id="logobar"></div><div class="swrap" id="box"><p class="mut">…</p></div>
+<script src="/app.js"></script>
+<script src="/logo.js"></script>
+<script src="/screen_run.js"></script>
+<script>$("#logobar").innerHTML = LOGO_SVG;</script>
+<script>
+// The public recruiting questionnaire: one question at a time; the server walks the logic. Someone screened out gets a polite thanks and nothing about them is kept;
+// someone who qualifies leaves a name and an e-mail after agreeing to the notice. English and Chinese; other languages show English (ms / ta are not written yet).
+const t = new URLSearchParams(location.search).get("t") || "";
+const box = $("#box"), enc = encodeURIComponent(t);
+const T = {
+  en: { title: "A short questionnaire", intro: "{org} would like to know if this research is a good fit for you. It takes a few minutes.", start: "Start",
+        notice: "These questions help decide whether this research is a good fit for you. If it is, we ask for your name and e-mail so the research team can invite you. If it is not, nothing about you is kept. If you take part, your details are kept until {days} days after the research project ends, then deleted. This is run by TOTAL for {org}. Questions, or to ask us to delete your data: {dpo}.",
+        outT: "Thank you", out: "Thank you for your time. This research is not the right fit for you this time.", okT: "You may be a good fit", ok: "Please tell us how to reach you. The research team will contact you if you are invited.",
+        name: "Your name", email: "Your e-mail", country: "Country or region", agree: "I have read the notice above and agree that you keep my details for this purpose.", submit: "Submit", doneT: "Thank you!", done: "We have your details. You can close this page.",
+        closed: "This questionnaire is closed. Thank you!", bad: "This link is not valid", err: "Could not send. Please check the form and try again.", need: "Please fill in your name and e-mail and tick the box." },
+  zh: { title: "一份简短的问卷", intro: "{org} 想了解这项研究是否适合你，大约需要几分钟。", start: "开始",
+        notice: "这些问题用来判断这项研究是否适合你。适合的话，我们会请你留下姓名和邮箱，方便研究团队邀请你；不适合的话，不会保留任何关于你的信息。如果你参加，你的信息会保存到研究项目结束后 {days} 天，然后删除。本问卷由星桐代 {org} 进行。有疑问或要求删除数据，请联系 {dpo}。",
+        outT: "谢谢你", out: "谢谢你抽时间填写。这次的研究暂时不太适合你。", okT: "你可能很合适", ok: "请告诉我们怎么联系你。如果邀请你参加，研究团队会联系你。",
+        name: "你的姓名", email: "你的邮箱", country: "所在国家或地区", agree: "我已阅读上面的说明，同意你们为此目的保存我的信息。", submit: "提交", doneT: "谢谢！", done: "我们已经收到你的信息，可以关闭页面了。",
+        closed: "这份问卷已经关闭，谢谢！", bad: "这个链接无效", err: "没有发送成功，请检查后再试一次。", need: "请填写姓名和邮箱，并勾选同意。" },
+};
+const COUNTRY = { SG: "Singapore / 新加坡", MY: "Malaysia / 马来西亚", ID: "Indonesia / 印尼", TH: "Thailand / 泰国", VN: "Vietnam / 越南", PH: "Philippines / 菲律宾" };
+const post = async (path, body) => {
+  const r = await fetch(`/api/public/screen/${enc}${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) { const e = new Error(typeof j.detail === "string" ? j.detail : "error"); e.status = r.status; throw e; }
+  return j;
+};
+const fill = (s, info) => s.replace("{org}", info.org).replace("{days}", info.retention_days).replace("{dpo}", info.dpo);
+
+(async () => {
+  let info, x;
+  try { info = await (await fetch(`/api/public/screen/${enc}`)).json(); if (!info.org) throw 0; } catch { box.innerHTML = `<h1>${T.en.bad} / ${T.zh.bad}</h1>`; return; }
+  const lang = (info.language || "en").startsWith("zh") ? "zh" : "en"; x = T[lang]; document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
+  if (!info.open) { box.innerHTML = `<h1>${x.closed}</h1>`; return; }
+  box.innerHTML = `<h1>${x.title}</h1><p>${esc(fill(x.intro, info))}</p><div class="note">${esc(fill(x.notice, info))}</div><div><button class="p" id="scrgo" type="button">${x.start}</button></div><div id="q"></div>`;
+  $("#scrgo").onclick = () => {
+    $("#scrgo").parentElement.remove();
+    const host = $("#q");
+    const runner = scrRunner(host, {
+      lang, step: (answers) => post("/step", { answers }).catch((e) => { throw new Error(e.status === 410 ? x.closed : e.message); }),
+      onEnd: (result, answers) => {
+        if (result === "out") { host.innerHTML = `<h2>${x.outT}</h2><p>${x.out}</p>`; return; }
+        host.innerHTML = `<h2>${x.okT}</h2><p>${x.ok}</p><form id="cf" class="stack"><label class="f"><span>${x.name}</span><input name="name" maxlength="100" autocomplete="name" required></label>
+          <label class="f"><span>${x.email}</span><input name="email" type="email" maxlength="200" autocomplete="email" required></label>
+          <label class="f"><span>${x.country}</span><select name="country">${info.countries.map((c) => `<option value="${c}">${esc(COUNTRY[c] || c)}</option>`).join("")}</select></label>
+          <label class="chk"><input type="checkbox" name="consent" required><span>${x.agree}</span></label><div class="note" id="cerr" role="alert" hidden></div><div><button class="p" type="submit">${x.submit}</button></div></form>`;
+        $("#cf").onsubmit = async (e) => {
+          e.preventDefault(); const f = e.target, err = $("#cerr");
+          if (!f.consent.checked || !f.name.value.trim() || !f.email.value.trim()) { err.textContent = x.need; err.hidden = false; return; }
+          try { await post("/submit", { answers, name: f.name.value, email: f.email.value, country: f.country.value, consent: true }); host.innerHTML = `<h2>${x.doneT}</h2><p>${x.done}</p>`; }
+          catch (er) { err.textContent = er.status === 403 || er.status === 422 || er.status === 429 ? er.message : x.err; err.hidden = false; }
+        };
+      },
+    });
+    runner.start();
+  };
+})();
+</script></body></html>

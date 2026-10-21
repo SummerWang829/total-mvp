@@ -12,3 +12,4 @@ websockets>=12  # tests/fake_asr.py: a stand-in for Tencent's real-time speech r
 pillow>=10
 numpy>=1.26
 scrapling>=0.4  # only its HTML parser (public listing pages); the stealth / anti-bot browsers are not installed or used
+segno>=1.6  # the QR code of the public questionnaire link (pure Python, no dependencies)

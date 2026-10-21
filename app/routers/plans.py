@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import methods as methods_mod
-from .. import plan_suggest, plans, recruit_form
+from .. import library_context, plan_suggest, plans, recruit_form
 from ..audit import audit
 from ..db import get_db
 from ..deps import MEMBER_ROLES, STAFF, Ctx, require_roles
@@ -59,7 +59,7 @@ def _config(plan: ProjectPlan) -> plans.PlanConfig:
     return plans.validate(json.loads(plan.config_json or "{}") or plans.default_config())
 
 
-def plan_out(project: Project, plan: ProjectPlan | None) -> dict:
+def plan_out(project: Project, plan: ProjectPlan | None, library_docs: int | None = None) -> dict:
     """The plan as the wizard needs it: status, config, the compliance list and what still blocks submitting."""
     if plan is None:
         return {"status": "", "legacy": True, "name": project.name, "brief": project.brief}
@@ -68,7 +68,8 @@ def plan_out(project: Project, plan: ProjectPlan | None) -> dict:
             "compliance": plans.compliance(cfg), "blockers": plans.blockers(cfg), "review_hash": plan.review_hash, "review_note": plan.review_note,
             "submitted_at": plan.submitted_at.isoformat() if plan.submitted_at else None, "approved_at": plan.approved_at.isoformat() if plan.approved_at else None,
             "published_at": plan.published_at.isoformat() if plan.published_at else None, "retention_days": cfg.retention, "live": plan.version > 0,
-            "suggest": json.loads(plan.suggest_json) if plan.suggest_json else None, "sums": plans.quota_sums(cfg)}
+            "suggest": json.loads(plan.suggest_json) if plan.suggest_json else None, "sums": plans.quota_sums(cfg),
+            **({"library_docs": library_docs} if library_docs is not None else {})}
 
 
 @router.post("/projects/draft", status_code=201)
@@ -87,7 +88,7 @@ def create_draft(body: NewDraft, ctx: Ctx = Depends(require_roles(*STAFF)), db: 
 @router.get("/projects/{pid}/plan")
 def get_plan(pid: str, ctx: Ctx = Depends(require_roles(*PLAN_ROLES)), db: Session = Depends(get_db)):
     project, plan = _plan(db, ctx, pid)
-    return plan_out(project, plan)
+    return plan_out(project, plan, len(library_context.project_documents(db, project.id)))
 
 
 @router.get("/projects/{pid}/plan/people")
@@ -99,7 +100,7 @@ def plan_people(pid: str, ctx: Ctx = Depends(require_roles(*PLAN_ROLES)), db: Se
 
 
 @router.post("/projects/{pid}/plan/suggest")
-def suggest(pid: str, ctx: Ctx = Depends(require_roles(*PLAN_ROLES)), db: Session = Depends(get_db)):
+def suggest(pid: str, use_library: bool = False, ctx: Ctx = Depends(require_roles(*PLAN_ROLES)), db: Session = Depends(get_db)):
     """The AI reads the research background and suggests interview topics, group topics, a quota hint and listening keywords (to read and take over by hand).
     The background is sent to the AI service (the wizard says so next to the box); it is not written to the log."""
     project, plan = _plan(db, ctx, pid)
@@ -109,7 +110,7 @@ def suggest(pid: str, ctx: Ctx = Depends(require_roles(*PLAN_ROLES)), db: Sessio
     chat = _ai_chat()
     lang = LANG_CODE.get(cfg.subs[0].lang, project.language) if cfg.subs else project.language
     try:
-        out = plan_suggest.suggest(chat, project.brief or "", lang)
+        out = plan_suggest.suggest(chat, project.brief or "", lang, library_context.library_text(db, project.id)[0] if use_library else "")
     except ChatFatalError as e:
         raise HTTPException(502, f"AI 模型服务拒绝了请求：{e.reason}") from e
     except recruit_form.FormError as e:
@@ -118,6 +119,18 @@ def suggest(pid: str, ctx: Ctx = Depends(require_roles(*PLAN_ROLES)), db: Sessio
     audit(db, ctx.org_id, ctx.actor, "plan.suggest", project.id, model=chat.name if chat else "mock")
     db.commit()
     return out
+
+
+@router.post("/projects/{pid}/plan/brief-to-library", status_code=201)
+def brief_to_library(pid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    """Save the research background into the project's research library (one document, refreshed on each save): the library is where the AI tools and the team read it from."""
+    project, plan = _plan(db, ctx, pid)
+    if not (project.brief or "").strip():
+        raise HTTPException(422, "研究背景还是空的")
+    doc = library_context.save_brief(db, ctx.org_id, project.id, project.brief, ctx.user.id)
+    audit(db, ctx.org_id, ctx.actor, "plan.brief_to_library", project.id)
+    db.commit()
+    return {"document_id": doc.id, "library_docs": len(library_context.project_documents(db, project.id))}
 
 
 @router.put("/projects/{pid}/plan")
@@ -285,8 +298,9 @@ def monitor(pid: str, ctx: Ctx = Depends(require_roles(*PLAN_ROLES)), db: Sessio
             names = [(d, values[d].get(vid, "")) for d, vid in zip(q.dims, r.vs)]
             target = getattr(r, key) * scale
             ready = sum(1 for p in pool if _matches(p, names))
-            rows.append({"id": r.id, "label": " · ".join(n for _, n in names), "target": target, "ready": ready, "gap": max(0, target - ready)})
-        return {"dims": q.dims, "rows": rows, "target": sum(x["target"] for x in rows), "ready": sum(min(x["ready"], x["target"]) for x in rows)}
+            rows.append({"id": r.id, "label": " · ".join(n for _, n in names), "target": target, "ready": ready, "gap": max(0, target - ready), "async": r.a if key != "t" else None})  # None: surveys have no choice of who runs them
+        return {"dims": q.dims, "rows": rows, "target": sum(x["target"] for x in rows), "ready": sum(min(x["ready"], x["target"]) for x in rows),
+                "async_target": sum(x["target"] for x in rows if x["async"])}
 
     return {"published": True, "methods": cfg.methods, "q": table(cfg.qt, "t", quant_people), "i": table(cfg.lt, "i", people), "f": table(cfg.ft, "f", people, cfg.n.fs),
             "fs": cfg.n.fs, "subs": [s.model_dump() for s in cfg.subs], "version": plan.version}

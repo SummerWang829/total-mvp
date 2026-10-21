@@ -1,10 +1,11 @@
 """Recruiting (staff of the project): import from a spreadsheet, tags, eligibility rules, quotas, and inviting many people to sessions at once."""
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import recruit, recruit_form
+from .. import library_context, recruit, recruit_form
 from ..audit import audit
 from ..db import get_db
 from ..deps import RECRUITERS, STAFF, Ctx, require_roles
@@ -29,8 +30,14 @@ class FormIn(BaseModel):
     questions: list[dict] = Field(default_factory=list, max_length=15)
 
 
+class PreviewBody(BaseModel):
+    questions: list[dict] = Field(default_factory=list, max_length=30)
+    answers: dict = Field(default_factory=dict)
+
+
 class IdeaBody(BaseModel):
     idea: str = Field(default="", max_length=5000)
+    use_library: bool = False  # also hand the project's research library to the AI
 
 
 def _ai_chat():
@@ -110,15 +117,79 @@ def recruiting(pid: str, ctx: Ctx = Depends(require_roles(*RECRUITERS)), db: Ses
 
 def _form_out(f: RecruitForm | None) -> dict:
     if f is None:
-        return {"source": "ai", "idea": "", "html_url": "", "questions": [], "version": 0, "generated_by": ""}
-    return {"source": f.source, "idea": f.idea, "html_url": f.html_url, "questions": f.questions or [], "version": f.version, "generated_by": f.generated_by}
+        return {"source": "ai", "idea": "", "html_url": "", "questions": [], "version": 0, "generated_by": "", "status": "draft", "link": "", "stats": {"qualified": 0, "out": 0, "out_by": {}}}
+    return {"source": f.source, "idea": f.idea, "html_url": f.html_url, "questions": [q.model_dump() for q in recruit_form.load(f.questions)], "version": f.version, "generated_by": f.generated_by,
+            "status": f.status or "draft", "link": f"/screen.html?t={f.token}" if f.token else "", "published_at": f.published_at.isoformat() if f.published_at else None,
+            "stats": {"qualified": f.n_qualified or 0, "out": f.n_out or 0, "out_by": f.out_by or {}}}
+
+
+def _questions(f: RecruitForm) -> list[recruit_form.Question]:
+    return [recruit_form.Question.model_validate(q) for q in (f.questions or [])]
+
+
+@router.post("/projects/{pid}/recruiting/form/preview")
+def preview_form(pid: str, body: PreviewBody, ctx: Ctx = Depends(require_roles(*RECRUITERS)), db: Session = Depends(get_db)):
+    """Test the questionnaire as it is being edited (nothing is stored or counted): the same walk candidates get, with the reason shown to the team."""
+    get_project(db, ctx, pid)
+    try:
+        form = recruit_form.normalize({"source": "ai", "questions": body.questions})
+        step = recruit_form.next_step(form.questions, body.answers)
+    except recruit_form.FormError as e:
+        raise HTTPException(422, str(e)) from e
+    except recruit_form.AnswerError as e:
+        raise HTTPException(422, "这个回答不符合题目要求") from e
+    return {"question": step.question, "result": step.result, "reason": step.reason, "tags": step.tags}
+
+
+@router.post("/projects/{pid}/recruiting/form/publish")
+def publish_form(pid: str, ctx: Ctx = Depends(require_roles(*RECRUITERS)), db: Session = Depends(get_db)):
+    """Make the public link work (the first time it also creates the link). Needs written questions."""
+    proj = get_project(db, ctx, pid)
+    f = db.get(RecruitForm, proj.id)
+    if f is None or f.source != "ai" or not f.questions:
+        raise HTTPException(422, "先在这里写好问卷题目，再发布")
+    if not f.token:
+        f.token = recruit_form.new_token()
+    f.status, f.published_at, f.updated_at = "published", utcnow(), utcnow()
+    audit(db, ctx.org_id, ctx.actor, "recruit.form_publish", proj.id, questions=len(f.questions))
+    db.commit()
+    return _form_out(f)
+
+
+@router.post("/projects/{pid}/recruiting/form/close")
+def close_form(pid: str, ctx: Ctx = Depends(require_roles(*RECRUITERS)), db: Session = Depends(get_db)):
+    """Stop taking answers (the link shows "closed"); publishing again opens the same link."""
+    proj = get_project(db, ctx, pid)
+    f = db.get(RecruitForm, proj.id)
+    if f is None or f.status != "published":
+        raise HTTPException(409, "问卷没有在发布中")
+    f.status, f.updated_at = "closed", utcnow()
+    audit(db, ctx.org_id, ctx.actor, "recruit.form_close", proj.id)
+    db.commit()
+    return _form_out(f)
+
+
+@router.get("/projects/{pid}/recruiting/form/qr.svg")
+def form_qr(pid: str, request: Request, ctx: Ctx = Depends(require_roles(*RECRUITERS)), db: Session = Depends(get_db)):
+    """The QR code of the public link, as an image (fetched by the page with the login header, so it is not a public address)."""
+    import io
+
+    import segno
+    proj = get_project(db, ctx, pid)
+    f = db.get(RecruitForm, proj.id)
+    if f is None or not f.token:
+        raise HTTPException(404, "问卷还没有发布过")
+    host = request.headers.get("host") or request.url.netloc
+    buf = io.BytesIO()
+    segno.make(f"{request.url.scheme}://{host}/screen.html?t={f.token}", error="m").save(buf, kind="svg", scale=6, border=2, dark="#0B382C")
+    return Response(buf.getvalue(), media_type="image/svg+xml", headers={"Cache-Control": "no-store"})
 
 
 @router.get("/projects/{pid}/recruiting/form")
 def get_form(pid: str, ctx: Ctx = Depends(require_roles(*RECRUITERS)), db: Session = Depends(get_db)):
     """The recruiting questionnaire (empty until the team writes one)."""
     proj = get_project(db, ctx, pid)
-    return _form_out(db.get(RecruitForm, proj.id))
+    return {**_form_out(db.get(RecruitForm, proj.id)), "library_docs": len(library_context.project_documents(db, proj.id))}
 
 
 @router.put("/projects/{pid}/recruiting/form")
@@ -135,6 +206,8 @@ def put_form(pid: str, body: FormIn, ctx: Ctx = Depends(require_roles(*RECRUITER
         db.add(f)
     f.source, f.idea, f.html_url, f.questions = form.source, form.idea, form.html_url, [q.model_dump() for q in form.questions]
     f.version, f.updated_at = (f.version or 0) + 1, utcnow()
+    if form.source != "ai" and f.status == "published":
+        f.status = "closed"  # the link only serves the questionnaire written here
     audit(db, ctx.org_id, ctx.actor, "recruit.form", proj.id, source=form.source, questions=len(form.questions))
     db.commit()
     return _form_out(f)
@@ -145,8 +218,9 @@ def generate_form(pid: str, body: IdeaBody, ctx: Ctx = Depends(require_roles(*RE
     """The AI writes the questionnaire from the research idea and it replaces the saved questions. The idea is sent to the AI service (the page says so); takes several seconds."""
     proj = get_project(db, ctx, pid)
     chat = _ai_chat()
+    library = library_context.library_text(db, proj.id)[0] if body.use_library else ""
     try:
-        questions = recruit_form.generate(chat, body.idea, proj.language)
+        questions = recruit_form.generate(chat, body.idea, proj.language, library)
     except ChatFatalError as e:
         raise HTTPException(502, f"AI 模型服务拒绝了请求：{e.reason}") from e
     except recruit_form.FormError as e:
@@ -155,11 +229,9 @@ def generate_form(pid: str, body: IdeaBody, ctx: Ctx = Depends(require_roles(*RE
     if f is None:
         f = RecruitForm(project_id=proj.id, org_id=proj.org_id)
         db.add(f)
-    f.source, f.idea, f.html_url, f.questions = "ai", body.idea.strip(), "", [q.model_dump() for i, q in enumerate(questions)]
-    for i, q in enumerate(f.questions, 1):
-        q["id"] = f"q{i}"
+    f.source, f.idea, f.html_url, f.questions = "ai", body.idea.strip(), "", [q.model_dump() for q in questions]
     f.generated_by, f.version, f.updated_at = chat.name if chat else "mock", (f.version or 0) + 1, utcnow()
-    audit(db, ctx.org_id, ctx.actor, "recruit.form_generate", proj.id, model=f.generated_by, questions=len(f.questions))  # the idea itself is not written to the log
+    audit(db, ctx.org_id, ctx.actor, "recruit.form_generate", proj.id, model=f.generated_by, questions=len(f.questions), library=bool(library))  # the idea itself is not written to the log
     db.commit()
     return _form_out(f)
 
