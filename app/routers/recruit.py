@@ -4,11 +4,12 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import recruit
+from .. import recruit, recruit_form
 from ..audit import audit
 from ..db import get_db
 from ..deps import RECRUITERS, STAFF, Ctx, require_roles
-from ..models import Participant, Project, RecruitSettings, utcnow
+from ..moderator.providers import ChatFatalError
+from ..models import Participant, Project, RecruitForm, RecruitSettings, utcnow
 from .interviews import NewInterview, create_interview
 from .projects import _own_participant, get_project, participant_out
 
@@ -19,6 +20,29 @@ MAX_BATCH = 100
 class ImportBody(BaseModel):
     csv: str = Field(min_length=1, max_length=2_000_000)
     dry_run: bool = False
+
+
+class FormIn(BaseModel):
+    source: str = "ai"
+    idea: str = Field(default="", max_length=5000)
+    html_url: str = Field(default="", max_length=500)
+    questions: list[dict] = Field(default_factory=list, max_length=15)
+
+
+class IdeaBody(BaseModel):
+    idea: str = Field(default="", max_length=5000)
+
+
+def _ai_chat():
+    """The model that writes questionnaires (None = the offline mock). A cloud model needs its vendor named, because the idea is sent there."""
+    from ..config import settings
+    from ..moderator.compliance import moderator_runs_locally
+    from ..moderator.providers import get_moderator_chat
+    if settings.moderator_provider == "mock":
+        return None
+    if not moderator_runs_locally() and not settings.moderator_vendor.strip():
+        raise HTTPException(409, recruit_form.MSG_VENDOR_MISSING)
+    return get_moderator_chat()
 
 
 class RulesBody(BaseModel):
@@ -82,6 +106,62 @@ def recruiting(pid: str, ctx: Ctx = Depends(require_roles(*RECRUITERS)), db: Ses
     out = _overview(db, proj)
     db.commit()
     return out
+
+
+def _form_out(f: RecruitForm | None) -> dict:
+    if f is None:
+        return {"source": "ai", "idea": "", "html_url": "", "questions": [], "version": 0, "generated_by": ""}
+    return {"source": f.source, "idea": f.idea, "html_url": f.html_url, "questions": f.questions or [], "version": f.version, "generated_by": f.generated_by}
+
+
+@router.get("/projects/{pid}/recruiting/form")
+def get_form(pid: str, ctx: Ctx = Depends(require_roles(*RECRUITERS)), db: Session = Depends(get_db)):
+    """The recruiting questionnaire (empty until the team writes one)."""
+    proj = get_project(db, ctx, pid)
+    return _form_out(db.get(RecruitForm, proj.id))
+
+
+@router.put("/projects/{pid}/recruiting/form")
+def put_form(pid: str, body: FormIn, ctx: Ctx = Depends(require_roles(*RECRUITERS)), db: Session = Depends(get_db)):
+    """Save the questionnaire as edited by hand (an AI one with changed options, or an HTML link)."""
+    proj = get_project(db, ctx, pid)
+    try:
+        form = recruit_form.normalize(body.model_dump())
+    except recruit_form.FormError as e:
+        raise HTTPException(422, str(e)) from e
+    f = db.get(RecruitForm, proj.id)
+    if f is None:
+        f = RecruitForm(project_id=proj.id, org_id=proj.org_id)
+        db.add(f)
+    f.source, f.idea, f.html_url, f.questions = form.source, form.idea, form.html_url, [q.model_dump() for q in form.questions]
+    f.version, f.updated_at = (f.version or 0) + 1, utcnow()
+    audit(db, ctx.org_id, ctx.actor, "recruit.form", proj.id, source=form.source, questions=len(form.questions))
+    db.commit()
+    return _form_out(f)
+
+
+@router.post("/projects/{pid}/recruiting/form/generate")
+def generate_form(pid: str, body: IdeaBody, ctx: Ctx = Depends(require_roles(*RECRUITERS)), db: Session = Depends(get_db)):
+    """The AI writes the questionnaire from the research idea and it replaces the saved questions. The idea is sent to the AI service (the page says so); takes several seconds."""
+    proj = get_project(db, ctx, pid)
+    chat = _ai_chat()
+    try:
+        questions = recruit_form.generate(chat, body.idea, proj.language)
+    except ChatFatalError as e:
+        raise HTTPException(502, f"AI 模型服务拒绝了请求：{e.reason}") from e
+    except recruit_form.FormError as e:
+        raise HTTPException(422 if "先写一下" in str(e) else 502, str(e)) from e
+    f = db.get(RecruitForm, proj.id)
+    if f is None:
+        f = RecruitForm(project_id=proj.id, org_id=proj.org_id)
+        db.add(f)
+    f.source, f.idea, f.html_url, f.questions = "ai", body.idea.strip(), "", [q.model_dump() for i, q in enumerate(questions)]
+    for i, q in enumerate(f.questions, 1):
+        q["id"] = f"q{i}"
+    f.generated_by, f.version, f.updated_at = chat.name if chat else "mock", (f.version or 0) + 1, utcnow()
+    audit(db, ctx.org_id, ctx.actor, "recruit.form_generate", proj.id, model=f.generated_by, questions=len(f.questions))  # the idea itself is not written to the log
+    db.commit()
+    return _form_out(f)
 
 
 @router.put("/projects/{pid}/recruiting/rules")

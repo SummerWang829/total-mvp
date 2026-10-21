@@ -688,6 +688,20 @@ class RecruitSettings(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
+class RecruitForm(Base):
+    """A project's recruiting questionnaire (甄别问卷, app/recruit_form.py): written by the AI from the research idea, or a link to one made in another system."""
+    __tablename__ = "recruit_forms"
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), primary_key=True)
+    org_id: Mapped[str] = mapped_column(String(32), index=True)
+    source: Mapped[str] = mapped_column(String(10), default="ai")  # ai | html
+    idea: Mapped[str] = mapped_column(Text, default="")
+    html_url: Mapped[str] = mapped_column(String(500), default="")
+    questions: Mapped[list] = mapped_column(JSON, default=list)
+    version: Mapped[int] = mapped_column(Integer, default=0)
+    generated_by: Mapped[str] = mapped_column(String(100), default="")  # the model that wrote the questions ("" = by hand)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class ListeningSource(Base):
     """One place the project watches for public opinion (a news feed, an app's reviews...). Settings live in `config` (app/listening/connectors.py)."""
     __tablename__ = "listening_sources"
@@ -878,6 +892,7 @@ class ProjectPlan(Base):
     status: Mapped[str] = mapped_column(String(10), default="draft")  # draft | review | approved | published (app/plans.py STATUSES)
     config_json: Mapped[str] = mapped_column(Text, default="{}")
     version: Mapped[int] = mapped_column(Integer, default=0)  # 0 until first published, then +1 at each (re)publish
+    suggest_json: Mapped[str] = mapped_column(Text, default="")  # the AI's suggestions from the research background (app/plan_suggest.py)
     published_json: Mapped[str] = mapped_column(Text, default="")  # the config as last published: the project runs on this while an unlocked plan is being edited
     review_hash: Mapped[str] = mapped_column(String(32), default="")  # fingerprint of the config when it was submitted for review
     review_note: Mapped[str] = mapped_column(String(300), default="")  # why a reviewer sent it back

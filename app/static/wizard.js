@@ -90,6 +90,13 @@ function wzDesignView() {
     </tbody></table></div></div>`;
 }
 
+function wzSuggest() {  // what the AI suggests from the research background (to read and take over by hand; nothing is applied by itself)
+  const s = WZ.plan.suggest, list = (a) => `<ul style="margin:4px 0 0 18px">${a.map((t) => `<li><b>${esc(t.title)}</b>：${t.questions.map(esc).join(" / ")}</li>`).join("")}</ul>`;
+  return `<div class="row"><button class="s" id="wzsug" type="button">根据研究背景生成建议</button><span class="sm mut" id="wzsugstat" role="status" aria-live="polite">${s ? "下面是上次生成的建议，仅供参考，需要的内容请自己复制到对应的地方。" : "生成深访提纲、座谈会大纲、配额和舆情关键词的建议。"}</span></div>
+    ${s ? `<div class="grid"><div class="card"><h3>深访提纲建议</h3>${list(s.depth_topics)}</div><div class="card"><h3>座谈会大纲建议</h3>${list(s.group_topics)}</div>
+      <div class="card"><h3>配额建议</h3><p class="sm" style="margin:6px 0 0">${esc(s.quota_hint)}</p></div><div class="card"><h3>舆情关键词建议</h3><div style="margin-top:6px">${s.listening_keywords.map((k) => `<span class="tag">${esc(k)}</span>`).join("")}</div></div></div>` : ""}`;
+}
+
 function wzSubs() {
   const c = WZ.cfg, pms = [["", "未指定"], ...WZ.users.filter((u) => ["admin", "researcher", "support", "recruiter"].includes(u.role)).map((u) => [u.id, u.name])];
   const single = c.split === "single";
@@ -258,7 +265,8 @@ function wzBody() {
   switch (WZ.step) {
     case 0: return `<div class="grid"><label class="field">主项目名称${wzInp('data-meta="name" aria-label="主项目名称"', WZ.name_edit ?? WZ.plan.name)}</label>
       <label class="field">数据留存期限${wzSel('data-w="retention" aria-label="数据留存期限"', c.retention, WZ_RETENTION.map((d) => [d, `${d} 天${d === 180 ? "（平台上限）" : ""}`]))}<span class="mut" style="font-weight:400">同意书里写明的就是这个期限：项目结项后 ${c.retention} 天自动删除个人数据，洞察结论保留。${WZ.plan.live ? "已发布过的项目只能缩短，不能延长。" : ""}</span></label></div>
-      <label class="field">研究背景（选填，只给团队看）<textarea data-meta="brief" rows="3" placeholder="写清这个项目要解决什么问题、做给谁看。">${esc(WZ.brief_edit ?? WZ.plan.brief ?? "")}</textarea><span class="mut" style="font-weight:400">后续会用这段内容生成深访提纲、座谈会大纲、问卷和配额建议、舆情抓取方向。</span></label>${wzSubs()}`;
+      <label class="field">研究背景（选填，只给团队看）<textarea data-meta="brief" rows="3" placeholder="写清这个项目要解决什么问题、做给谁看。">${esc(WZ.brief_edit ?? WZ.plan.brief ?? "")}</textarea><span class="mut" style="font-weight:400">可以用这段内容生成深访提纲、座谈会大纲、配额建议和舆情关键词，招募问卷也可以直接用它。</span></label>
+      <div class="note">${esc(rfAiNotice())}</div>${wzSuggest()}${wzSubs()}`;
     case 1: return `${wzDesignView()}<label class="field" style="max-width:360px">研究类型（带出模板）${wzSel('data-w="type"', c.type, Object.keys(WZ_TYPES).map((x) => [x, x]))}</label>
       <div class="note">选“${esc(c.type)}”会预置：${WZ_TYPES[c.type]}。</div>`;
     case 2: return wzRoles();
@@ -361,6 +369,10 @@ function wzClick(b, e) {
   if (d.col) { const [j, on] = d.col.split("|"), k = ["q", "i", "f", "l"][+j]; wzMutate(() => c.team.forEach((m) => (m[k] = on === "1"))); return wzRedraw(); }
   if (b.id === "memadd") { const id = $("#memsel").value, u = WZ.users.find((x) => x.id === id); if (!u) return toast("先选一位同事", true); wzMutate(() => c.team.push({ user_id: id, ...wzDefault(u) })); return wzRedraw(); }
   if (d.memdel) { wzMutate(() => (c.team = c.team.filter((m) => m.user_id !== d.memdel))); return wzRedraw(); }
+  if (b.id === "wzsug") return guard(async () => {
+    await wzSave(true); b.disabled = true; const st = $("#wzsugstat"); if (st) st.textContent = "正在生成，大约要几秒…";
+    try { WZ.plan.suggest = await api(`/projects/${WZ.p.id}/plan/suggest`, { method: "POST" }); wzRedraw(); toast("建议已生成"); } finally { b.disabled = false; }
+  })();
   if (b.id === "subtpl") return wzSubTemplate();
   if (b.id === "subimp") return $("#subfile").click();
   if (b.id === "wzconfirmn") return guard(async () => { await wzSave(true); wzRedraw(); toast("样本量已确认并保存"); })();

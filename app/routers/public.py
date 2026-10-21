@@ -51,7 +51,10 @@ def _window_ok(itv: Interview) -> bool:
 
 @router.get("/config")
 def public_config():
-    return {"allowed_countries": sorted(settings.allowed_countries), "languages": list(settings.languages), "asr": settings.asr_provider, "llm": settings.llm_provider, "video": bool(settings.livekit_url)}
+    from ..moderator.compliance import moderator_runs_locally  # where the AI writing tools run: the wizard tells people whether their text leaves our servers
+    local = moderator_runs_locally()
+    return {"allowed_countries": sorted(settings.allowed_countries), "languages": list(settings.languages), "asr": settings.asr_provider, "llm": settings.llm_provider, "video": bool(settings.livekit_url),
+            "ai_local": local, "ai_vendor": "" if local else settings.moderator_vendor.strip()}
 
 
 def _days(db: Session, itv) -> int:

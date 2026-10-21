@@ -401,6 +401,16 @@ nav.side .dotc{width:7px;height:7px;border-radius:50%;background:var(--sc,#FF6A0
 .hm-stagelist .sic{display:inline-flex;width:24px;height:24px;border-radius:50%;border:1.5px solid var(--orange);color:var(--orange-ink);font-size:12px;font-weight:700;align-items:center;justify-content:center}
 .hm-stages{margin-bottom:12px}
 @media (max-width:700px){.hm-stagelist li{grid-template-columns:28px 1fr auto}.hm-stagelist li .qbar,.hm-stagelist li .sm{grid-column:2/-1}.hm-stagelist li button{grid-column:2/-1;justify-self:start}}
+
+/* ---------- 招募问卷（rform.js）：左边输入、右边题目 ---------- */
+.rf-grid{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:20px;margin-top:12px;align-items:start}
+.rf-l{display:flex;flex-direction:column;gap:10px}
+.rf-r{background:var(--wash);border-radius:var(--r-pan);padding:14px;min-height:200px;display:flex;flex-direction:column;gap:10px}
+.rf-qs{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px}
+.rf-q{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px}
+.rfurl{word-break:break-all;font-size:13px;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:6px 10px}
+.rf-opts{display:flex;flex-direction:column;gap:6px}
+@media (max-width:900px){.rf-grid{grid-template-columns:1fr}}
 /* ---------- 立项向导（wizard.js）：步骤链、三色样本框、变量与取值、配额表 ---------- */
 .chain{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:10px}
 .step{min-width:0;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:3px;text-align:left;height:auto;font-weight:600;justify-content:center;align-items:flex-start}

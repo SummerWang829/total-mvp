@@ -12,12 +12,14 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import methods as methods_mod
-from .. import plans
+from .. import plan_suggest, plans, recruit_form
 from ..audit import audit
 from ..db import get_db
 from ..deps import MEMBER_ROLES, STAFF, Ctx, require_roles
 from ..models import Participant, Project, ProjectMember, ProjectPlan, User, utcnow
+from ..moderator.providers import ChatFatalError
 from .projects import get_project, project_out
+from .recruit import _ai_chat
 
 router = APIRouter(prefix="/api", tags=["plans"])
 
@@ -66,7 +68,7 @@ def plan_out(project: Project, plan: ProjectPlan | None) -> dict:
             "compliance": plans.compliance(cfg), "blockers": plans.blockers(cfg), "review_hash": plan.review_hash, "review_note": plan.review_note,
             "submitted_at": plan.submitted_at.isoformat() if plan.submitted_at else None, "approved_at": plan.approved_at.isoformat() if plan.approved_at else None,
             "published_at": plan.published_at.isoformat() if plan.published_at else None, "retention_days": cfg.retention, "live": plan.version > 0,
-            "sums": plans.quota_sums(cfg)}
+            "suggest": json.loads(plan.suggest_json) if plan.suggest_json else None, "sums": plans.quota_sums(cfg)}
 
 
 @router.post("/projects/draft", status_code=201)
@@ -94,6 +96,28 @@ def plan_people(pid: str, ctx: Ctx = Depends(require_roles(*PLAN_ROLES)), db: Se
     get_project(db, ctx, pid)
     rows = db.scalars(select(User).where(User.org_id == ctx.org_id, User.active.is_(True)).order_by(User.created_at))
     return [{"id": u.id, "name": u.name, "role": u.role, "active": u.active, "research_kind": u.research_kind or "all"} for u in rows]
+
+
+@router.post("/projects/{pid}/plan/suggest")
+def suggest(pid: str, ctx: Ctx = Depends(require_roles(*PLAN_ROLES)), db: Session = Depends(get_db)):
+    """The AI reads the research background and suggests interview topics, group topics, a quota hint and listening keywords (to read and take over by hand).
+    The background is sent to the AI service (the wizard says so next to the box); it is not written to the log."""
+    project, plan = _plan(db, ctx, pid)
+    if plan is None:
+        raise HTTPException(409, "这个项目没有立项记录")
+    cfg = _config(plan)
+    chat = _ai_chat()
+    lang = LANG_CODE.get(cfg.subs[0].lang, project.language) if cfg.subs else project.language
+    try:
+        out = plan_suggest.suggest(chat, project.brief or "", lang)
+    except ChatFatalError as e:
+        raise HTTPException(502, f"AI 模型服务拒绝了请求：{e.reason}") from e
+    except recruit_form.FormError as e:
+        raise HTTPException(422 if "先在" in str(e) else 502, str(e)) from e
+    plan.suggest_json = json.dumps(out, ensure_ascii=False)
+    audit(db, ctx.org_id, ctx.actor, "plan.suggest", project.id, model=chat.name if chat else "mock")
+    db.commit()
+    return out
 
 
 @router.put("/projects/{pid}/plan")

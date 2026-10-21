@@ -8,6 +8,7 @@
 <script src="/wizard.js"></script>
 <script src="/shell.js"></script>
 <script src="/home.js"></script>
+<script src="/rform.js"></script>
 <script src="/logo.js"></script>
 <script>
 let ME = null, PROJECTS = null, DEMO_ORG = false;
@@ -252,7 +253,8 @@ const RULE_OPS = [["equals", "等于"], ["in", "是其中之一"], ["not_in", "�
 const RULE_EFFECTS = [["require", "必须满足"], ["exclude", "命中就排除"], ["flag", "命中就让人工看"]];
 async function peopleView(p) {
   const my = renderSeq;
-  const [parts, its, rec] = await Promise.all([api(`/projects/${p.id}/participants`), api(`/projects/${p.id}/interviews`), api(`/projects/${p.id}/recruiting`)]);
+  const [parts, its, rec, form] = await Promise.all([api(`/projects/${p.id}/participants`), api(`/projects/${p.id}/interviews`), api(`/projects/${p.id}/recruiting`), api(`/projects/${p.id}/recruiting/form`)]);
+  const rf = rfCard(p, form);
   if (stale(my)) return;
   const nIt = (id) => its.filter((i) => i.participant.id === id).length;
   const allTags = [...new Set(parts.flatMap((x) => x.tags))].sort(), countries = [...new Set(parts.map((x) => x.country).filter(Boolean))].sort(), langs = [...new Set(parts.map((x) => x.language).filter(Boolean))];
@@ -261,10 +263,12 @@ async function peopleView(p) {
   const C = rec.counts, anyRules = rec.rules.length > 0, RC = RECRUITER();
   const bar = (q) => `<div style="margin:6px 0"><div class="sm"><b>${esc(q.name)}</b> · 已有 ${q.have} / 目标 ${q.target}${q.full ? " ✓" : ""} · 已安排场次 ${q.invited}</div><div class="qbar" role="img" aria-label="${esc(q.name)} ${q.have} / ${q.target}"><i style="width:${Math.min(100, Math.round((q.have / q.target) * 100))}%"></i></div></div>`;
   const sel = (id, label, opts, cur) => `<label class="f" style="margin:0"><span>${label}</span><select id="${id}"><option value="">全部</option>${opts.map(([v, n]) => `<option value="${esc(v)}"${v === cur ? " selected" : ""}>${esc(n)}</option>`).join("")}</select></label>`;
-  shell(`${head("甄别设定", `手动添加、从表格批量导入，再用“资格规则”自动筛出符合条件的人；“配额”看每类人招到了多少。问卷平台接入后，通过甄别的人会自动出现在这里。目前只开放新加坡。`, `<button id="imp2">导入表格</button> <button class="p" id="np">添加受访者</button>`)}
-    <div class="card"><div class="row" style="align-items:flex-start"><div style="flex:1;min-width:240px"><h3 style="margin-top:0">资格规则${rec.rules_version ? ` <span class="tag">第 ${rec.rules_version} 版 · ${rec.rules.length} 条</span>` : ""}</h3>
+  shell(`${head("甄别设定", `先做招募问卷（AI 生成，或导入别的系统做好的问卷），再设置配额；受访者可以手动添加或从表格批量导入。目前只开放新加坡。`, `<button id="imp2">导入表格</button> <button class="p" id="np">添加受访者</button>`)}
+    ${rf.html}
+    <div class="card"><div class="row" style="align-items:flex-start">${anyRules ? `<div style="flex:1;min-width:240px"><h3 style="margin-top:0">旧版资格规则 <span class="tag">第 ${rec.rules_version} 版 · ${rec.rules.length} 条</span></h3>
       <p class="sm" style="margin:0">${anyRules ? `<span class="tag ok">符合 ${C.qualified}</span> <span class="tag bad">不符合 ${C.disqualified}</span> <span class="tag live">待人工看 ${C.review}</span>${C.not_screened ? ` <span class="tag">未筛 ${C.not_screened}</span>` : ""}` : "还没有设规则：所有人都算符合。"}</p>
-      <div class="row" style="margin-top:8px"><button class="s" id="rules">编辑规则</button>${anyRules ? `<button class="s" id="reapply">重新筛一遍</button>` : ""}</div></div>
+      <p class="sm mut" style="margin:4px 0 0">资格规则已被招募问卷取代；这个项目以前设过规则，所以还在生效，清空后就不再显示。</p>
+      <div class="row" style="margin-top:8px"><button class="s" id="rules">编辑或清空规则</button><button class="s" id="reapply">重新筛一遍</button></div></div>` : ""}
       <div style="flex:1;min-width:240px"><h3 style="margin-top:0">配额</h3>${rec.quotas.length ? rec.quotas.map(bar).join("") : `<p class="sm mut" style="margin:0">还没有配额。例如“新加坡 10 人”“女性 5 人”。</p>`}<button class="s" id="quotas" style="margin-top:6px">编辑配额</button></div></div></div>
     ${parts.length ? `<form class="card row" id="pf" style="align-items:flex-end;flex-wrap:wrap">${sel("f_screen", "资格", [["qualified", "符合条件"], ["disqualified", "不符合"], ["review", "待人工看"]], F.screen)}${sel("f_tag", "标签", allTags.map((t) => [t, t]), F.tag)}${sel("f_country", "国家", countries.map((c) => [c, c]), F.country)}${sel("f_language", "语言", langs.map((l) => [l, LANGS[l] || l]), F.language)}
       <span class="sp"></span>${RC ? "" : `<span class="sm mut" id="selcount">已选 0 人</span><button class="p" type="button" id="batch" disabled>批量邀请到场次</button>`}</form>
@@ -284,7 +288,8 @@ async function peopleView(p) {
   const all = $("#all"); if (all) all.onchange = () => { app.querySelectorAll(".pick:not(:disabled)").forEach((c) => { c.checked = all.checked; }); syncSel(); };
   const batch = $("#batch"); if (batch) batch.onclick = guard(() => batchInvite(p, picks()));
   $("#imp2").onclick = () => importModal(p);
-  $("#rules").onclick = () => rulesModal(p, rec);
+  rf.wire();
+  const rl = $("#rules"); if (rl) rl.onclick = () => rulesModal(p, rec);
   $("#quotas").onclick = () => quotasModal(p, rec);
   const ra = $("#reapply"); if (ra) ra.onclick = guard(async () => { await api(`/projects/${p.id}/recruiting/apply`, { method: "POST" }); toast("已重新筛选"); render(); });
   $("#np").onclick = () => {
