@@ -18,7 +18,7 @@ from ..signals import constants as K
 from .concept import _entered_participant
 
 router = APIRouter(prefix="/api", tags=["signals"])
-OPERATE = ("admin", "researcher", "moderator")
+OPERATE = ("admin", "researcher", "support", "moderator")
 _LOCK = threading.Lock()
 MOMENTS_SHOWN = 30
 

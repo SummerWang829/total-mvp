@@ -9,12 +9,13 @@ from .. import mailer, ratelimit
 from ..audit import audit
 from ..config import settings
 from ..db import get_db
-from ..deps import Ctx, client_ip, current_ctx, require_roles
-from ..models import Org, User, UserInvite, utcnow
+from ..deps import STAFF, Ctx, client_ip, current_ctx, require_roles
+from ..models import Brand, Org, User, UserInvite, utcnow
 from ..security import create_access_token, hash_password, new_secret_token, token_hash, verify_password
 
 router = APIRouter(prefix="/api", tags=["auth"])
-ROLES = {"admin", "researcher", "moderator", "observer", "recruiter", "viewer"}
+ROLES = {"admin", "researcher", "moderator", "observer", "recruiter", "viewer", "support"}
+RESEARCH_KINDS = ("quant", "qual", "all")  # 定量研究员 / 定性研究员 / 全科研究员
 
 
 class Register(BaseModel):
@@ -34,10 +35,30 @@ class NewUser(BaseModel):
     email: str = Field(pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
     password: str = Field(min_length=8, max_length=200)
     role: str
+    research_kind: str = "all"
+    brand_id: str | None = None
+    job_title: str = Field(default="", max_length=100)
+    phone: str = Field(default="", max_length=60)
 
 
 def user_out(u: User) -> dict:
-    return {"id": u.id, "name": u.name, "email": u.email, "role": u.role, "org_id": u.org_id, "active": u.active}
+    return {"id": u.id, "name": u.name, "email": u.email, "role": u.role, "org_id": u.org_id, "active": u.active, "research_kind": u.research_kind or "all",
+            "brand_id": u.brand_id, "job_title": u.job_title or "", "phone": u.phone or ""}
+
+
+def profile(db: Session, ctx: Ctx, role: str, kind: str, brand_id: str | None, title: str, phone: str) -> dict:
+    """The role-specific fields of an account, checked: a researcher's kind, and a client's brand (a client is always added under a brand).
+
+    Raises:
+        HTTPException: 422 for a kind that does not exist, or a client without a brand of this company.
+    """
+    if kind not in RESEARCH_KINDS:
+        raise HTTPException(422, "研究员类型不对")
+    if role == "viewer":
+        if not brand_id or not db.scalar(select(Brand.id).where(Brand.id == brand_id, Brand.org_id == ctx.org_id)):
+            raise HTTPException(422, "客户要先选一个品牌（没有就先添加品牌）")
+        return {"research_kind": "all", "brand_id": brand_id, "job_title": title.strip(), "phone": phone.strip()}
+    return {"research_kind": kind if role == "researcher" else "all", "brand_id": None, "job_title": "", "phone": ""}
 
 
 @router.post("/auth/register")
@@ -79,9 +100,48 @@ def me(ctx: Ctx = Depends(current_ctx), db: Session = Depends(get_db)):
 
 
 @router.get("/users")
-def users(ctx: Ctx = Depends(require_roles("admin", "researcher")), db: Session = Depends(get_db)):
+def users(ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
     rows = db.scalars(select(User).where(User.org_id == ctx.org_id).order_by(User.created_at))
     return [user_out(u) for u in rows]
+
+
+# ---------- brands (a client is added under a brand) ----------
+class BrandIn(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+
+
+def brand_out(db: Session, b: Brand) -> dict:
+    return {"id": b.id, "name": b.name, "clients": len(db.scalars(select(User.id).where(User.brand_id == b.id)).all())}
+
+
+@router.get("/brands")
+def list_brands(ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    return [brand_out(db, b) for b in db.scalars(select(Brand).where(Brand.org_id == ctx.org_id).order_by(Brand.created_at))]
+
+
+@router.post("/brands", status_code=201)
+def create_brand(body: BrandIn, ctx: Ctx = Depends(require_roles("admin")), db: Session = Depends(get_db)):
+    name = body.name.strip()
+    if db.scalar(select(Brand.id).where(Brand.org_id == ctx.org_id, Brand.name == name)):
+        raise HTTPException(409, "已经有这个品牌了")
+    b = Brand(org_id=ctx.org_id, name=name)
+    db.add(b)
+    db.flush()
+    audit(db, ctx.org_id, ctx.actor, "brand.create", b.id)
+    db.commit()
+    return brand_out(db, b)
+
+
+@router.delete("/brands/{bid}", status_code=204)
+def delete_brand(bid: str, ctx: Ctx = Depends(require_roles("admin")), db: Session = Depends(get_db)):
+    b = db.get(Brand, bid)
+    if not b or b.org_id != ctx.org_id:
+        raise HTTPException(404, "没有这个品牌")
+    if db.scalar(select(User.id).where(User.brand_id == b.id)):
+        raise HTTPException(409, "这个品牌下还有客户，先把他们移走或停用")
+    audit(db, ctx.org_id, ctx.actor, "brand.delete", b.id)
+    db.delete(b)
+    db.commit()
 
 
 @router.post("/users", status_code=201)
@@ -91,7 +151,8 @@ def create_user(body: NewUser, ctx: Ctx = Depends(require_roles("admin")), db: S
     email = body.email.lower()
     if db.scalar(select(User).where(User.email == email)):
         raise HTTPException(409, "邮箱已被使用")
-    u = User(org_id=ctx.org_id, email=email, name=body.name, role=body.role, password_hash=hash_password(body.password))
+    extra = profile(db, ctx, body.role, body.research_kind, body.brand_id, body.job_title, body.phone)
+    u = User(org_id=ctx.org_id, email=email, name=body.name, role=body.role, password_hash=hash_password(body.password), **extra)
     db.add(u)
     audit(db, ctx.org_id, ctx.actor, "user.create", u.id, role=body.role)
     db.commit()
@@ -107,6 +168,10 @@ EMAIL = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
 class Patch(BaseModel):
     role: str | None = None
     active: bool | None = None
+    research_kind: str | None = None
+    brand_id: str | None = None
+    job_title: str | None = Field(default=None, max_length=100)
+    phone: str | None = Field(default=None, max_length=60)
 
 
 def _member(db: Session, ctx: Ctx, uid: str) -> User:
@@ -131,6 +196,12 @@ def patch_user(uid: str, body: Patch, ctx: Ctx = Depends(require_roles("admin"))
     losing_admin = u.role == "admin" and u.active and ((body.role is not None and body.role != "admin") or body.active is False)
     if losing_admin and _other_active_admins(db, ctx, u.id) == 0:
         raise HTTPException(409, "公司至少要保留一位管理员")
+    new_role = body.role if body.role is not None else u.role
+    if body.role is not None or any(x is not None for x in (body.research_kind, body.brand_id, body.job_title, body.phone)):
+        extra = profile(db, ctx, new_role, body.research_kind or u.research_kind or "all", body.brand_id if body.brand_id is not None else u.brand_id,
+                        body.job_title if body.job_title is not None else u.job_title or "", body.phone if body.phone is not None else u.phone or "")
+        for k, v in extra.items():
+            setattr(u, k, v)
     if body.role is not None and body.role != u.role:
         audit(db, ctx.org_id, ctx.actor, "user.role", u.id, frm=u.role, to=body.role)
         u.role = body.role
@@ -145,16 +216,20 @@ class InviteIn(BaseModel):
     email: str = Field(pattern=EMAIL)
     role: str
     send_email: bool = False
+    research_kind: str = "all"
+    brand_id: str | None = None
+    job_title: str = Field(default="", max_length=100)
+    phone: str = Field(default="", max_length=60)
 
 
 class ForgotIn(BaseModel):
     email: str = Field(max_length=200)
 
 
-def _make_invite(db: Session, ctx: Ctx, kind: str, email: str, role: str, user_id: str | None = None) -> tuple[UserInvite, str]:
+def _make_invite(db: Session, ctx: Ctx, kind: str, email: str, role: str, user_id: str | None = None, extra: dict | None = None) -> tuple[UserInvite, str]:
     token = new_secret_token()
     inv = UserInvite(org_id=ctx.org_id, kind=kind, email=email, role=role, user_id=user_id, token_hash=token_hash(token), created_by=ctx.user.id,
-                     expires_at=utcnow() + timedelta(days=INVITE_DAYS))
+                     expires_at=utcnow() + timedelta(days=INVITE_DAYS), **(extra or {}))
     db.add(inv)
     db.flush()
     audit(db, ctx.org_id, ctx.actor, f"user.{kind}_link", inv.id, role=role)
@@ -222,7 +297,8 @@ def create_invite(body: InviteIn, ctx: Ctx = Depends(require_roles("admin")), db
         raise HTTPException(409, "这个邮箱已经是成员了")
     if body.send_email:
         _need_mail()
-    inv, token = _make_invite(db, ctx, "join", email, body.role)
+    extra = profile(db, ctx, body.role, body.research_kind, body.brand_id, body.job_title, body.phone)
+    inv, token = _make_invite(db, ctx, "join", email, body.role, extra=extra)
     return _maybe_emailed(db, inv, token, body.send_email)
 
 
@@ -289,7 +365,8 @@ def invite_accept(token: str, body: Accept, db: Session = Depends(get_db)):
             raise HTTPException(422, "请填写姓名")
         if db.scalar(select(User).where(User.email == inv.email)):
             raise HTTPException(409, "这个邮箱已经是成员了")
-        u = User(org_id=inv.org_id, email=inv.email, name=name, role=inv.role, password_hash=hash_password(body.password))
+        u = User(org_id=inv.org_id, email=inv.email, name=name, role=inv.role, password_hash=hash_password(body.password), research_kind=inv.research_kind or "all",
+                 brand_id=inv.brand_id, job_title=inv.job_title or "", phone=inv.phone or "")
         db.add(u)
         db.flush()
     else:

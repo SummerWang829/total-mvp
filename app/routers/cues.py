@@ -14,7 +14,7 @@ from ..deps import Ctx, require_roles, visible_interview
 from ..models import CueCard
 
 router = APIRouter(prefix="/api", tags=["cues"])
-OPERATE = ("admin", "researcher", "moderator")  # not the client observers: a card may quote a participant's screening answer
+OPERATE = ("admin", "researcher", "support", "moderator")  # not the client observers: a card may quote a participant's screening answer
 
 
 @router.get("/interviews/{iid}/cues")

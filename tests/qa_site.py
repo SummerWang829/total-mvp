@@ -584,6 +584,31 @@ def wizard_section(br, D):
     ctx.close()
 
 
+def team_section(br, D):
+    """The team page: nine roles (three kinds of researcher, project manager, technical support, ...), brands, and a client who has to belong to a brand."""
+    adm = D["tok"]["admin"]
+    ctx, pg, errs = new_page(br, 1280, token=adm)
+    pg.on("dialog", lambda d: d.accept())
+    pg.goto(B + "/#/team"); pg.wait_for_selector("#nb")
+    pg.click("#nb"); pg.wait_for_selector(".modal form#f")
+    audit_page(pg, "brands dialog/desktop", errs)
+    pg.fill(".modal input[name=name]", "品牌甲QA"); pg.click(".modal button.p")
+    pg.wait_for_selector("#nu"); pg.click("#nu"); pg.wait_for_selector(".modal select[name=role]")
+    names = pg.locator(".modal select[name=role] option").all_inner_texts()
+    ok(names == ["全科研究员", "定量研究员", "定性研究员", "项目经理", "主持人", "观察员", "客户（只读）", "技术支持", "管理员"], "[team] the role list has the three kinds of researcher, project manager, client and technical support")
+    ok(not pg.locator("#cl").is_visible(), "[team] the client fields (brand, title, contact) are hidden for other roles")
+    pg.select_option(".modal select[name=role]", "viewer|")
+    ok(pg.locator("#cl").is_visible() and "品牌甲QA" in pg.inner_text("#cl"), "[team] choosing client asks for a brand, a title and a contact")
+    audit_page(pg, "team add client dialog/desktop", errs)
+    pg.select_option(".modal select[name=brand_id]", label="品牌甲QA")
+    pg.fill(".modal input[name=name]", "客户QA"); pg.fill(".modal input[name=email]", "kehu-qa@client.test"); pg.fill(".modal input[name=password]", "password123")
+    pg.fill(".modal input[name=job_title]", "品牌经理"); pg.fill(".modal input[name=phone]", "+65 8000 1111")
+    pg.click(".modal button.p")
+    ok(wait_until(lambda: "品牌甲QA · 品牌经理 · +65 8000 1111" in pg.inner_text("main"), 8), "[team] the client is listed with brand, title and contact")
+    audit_page(pg, "team page/desktop", errs)
+    ctx.close()
+
+
 def quant_section(br, D):
     """Quantitative results: the owner makes a key, an outside platform pushes a survey with it, the page shows bars; a spreadsheet can be imported; the key can be revoked."""
     adm, pid = D["tok"]["admin"], D["pid"]
@@ -809,8 +834,9 @@ def seed():
     adm = r["token"]
     tok = {"admin": adm}
     ids = {}
+    brand = call("/brands", {"name": "示例品牌"}, adm)["id"]
     for role, name in (("researcher", "李研究"), ("moderator", "小周"), ("observer", "客户张"), ("recruiter", "招募员王"), ("viewer", "客户刘")):
-        u = call("/users", {"name": name, "email": f"{role}@acme.com", "password": "password123", "role": role}, adm)
+        u = call("/users", {"name": name, "email": f"{role}@acme.com", "password": "password123", "role": role, **({"brand_id": brand} if role == "viewer" else {})}, adm)
         ids[role] = u["id"]
         tok[role] = call("/auth/login", {"email": f"{role}@acme.com", "password": "password123"})["token"]
     pid = call("/projects", {"name": "新加坡护肤品牌进入研究", "brief": "了解新加坡消费者如何选购海外护肤品牌", "market": "SG", "language": "en"}, adm)["id"]
@@ -1442,6 +1468,7 @@ def run():
         listening_section(br, D)
         recruit_section(br, D)
         wizard_section(br, D)
+        team_section(br, D)
         quant_section(br, D)
         pool_section(br, D)
         admin_data_section(br, D)

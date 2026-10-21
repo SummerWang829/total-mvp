@@ -25,7 +25,7 @@ LANG_CODE = {"中文": "zh", "英语": "en", "马来语": "ms", "泰米尔语": 
 COUNTRY_NAMES = {"SG": "新加坡", "MY": "马来西亚", "ID": "印尼", "VN": "越南", "TH": "泰国", "PH": "菲律宾", "CN": "中国", "JP": "日本", "KR": "韩国",
                  "DE": "德国", "SA": "沙特", "AE": "阿联酋", "US": "美国", "GB": "英国", "IN": "印度"}
 PLAN_ROLES = (*STAFF, "recruiter")  # the project manager works on the plan too (a recruiter never sees interview content)
-UNLOCKERS = ("admin", "recruiter")
+UNLOCKERS = ("admin", "support", "recruiter")
 EDITABLE = ("draft", "review", "approved")  # editing a plan under review or approved sends it back to draft (it must be reviewed again)
 
 
@@ -70,7 +70,7 @@ def plan_out(project: Project, plan: ProjectPlan | None) -> dict:
 
 
 @router.post("/projects/draft", status_code=201)
-def create_draft(body: NewDraft, ctx: Ctx = Depends(require_roles(*PLAN_ROLES)), db: Session = Depends(get_db)):
+def create_draft(body: NewDraft, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
     """A new project in draft: it exists (so the wizard can save into it) but is not usable until the plan is published."""
     p = Project(org_id=ctx.org_id, created_by=ctx.user.id, name=body.name.strip(), market="SG", language="en", methods=methods_mod.store(["depth"]))
     db.add(p)
@@ -86,6 +86,14 @@ def create_draft(body: NewDraft, ctx: Ctx = Depends(require_roles(*PLAN_ROLES)),
 def get_plan(pid: str, ctx: Ctx = Depends(require_roles(*PLAN_ROLES)), db: Session = Depends(get_db)):
     project, plan = _plan(db, ctx, pid)
     return plan_out(project, plan)
+
+
+@router.get("/projects/{pid}/plan/people")
+def plan_people(pid: str, ctx: Ctx = Depends(require_roles(*PLAN_ROLES)), db: Session = Depends(get_db)):
+    """The company's people the plan can pick from: name, role, kind of researcher (no contact details, so the project manager can use it too)."""
+    get_project(db, ctx, pid)
+    rows = db.scalars(select(User).where(User.org_id == ctx.org_id, User.active.is_(True)).order_by(User.created_at))
+    return [{"id": u.id, "name": u.name, "role": u.role, "active": u.active, "research_kind": u.research_kind or "all"} for u in rows]
 
 
 @router.put("/projects/{pid}/plan")
@@ -261,7 +269,7 @@ def monitor(pid: str, ctx: Ctx = Depends(require_roles(*PLAN_ROLES)), db: Sessio
 
 
 @router.post("/projects/{pid}/copy", status_code=201)
-def copy_project(pid: str, ctx: Ctx = Depends(require_roles(*PLAN_ROLES)), db: Session = Depends(get_db)):
+def copy_project(pid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
     """复制项目：a new draft with this project's plan (same research design, sub-projects, quotas, templates). People, interviews and results are not copied."""
     project, plan = _plan(db, ctx, pid)
     if plan is None:

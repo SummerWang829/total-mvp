@@ -12,13 +12,13 @@ from .models import Interview, InterviewObserver, ProjectMember, User
 from .security import decode_access_token
 
 bearer = HTTPBearer(auto_error=False)
-STAFF = ("admin", "researcher")
+STAFF = ("admin", "researcher", "support")  # 技术支持 works like a researcher inside the projects they are added to (never legal approval)
 # People who belong to a project as members (the project's own list decides what they may open): researchers do everything,
 # a recruiter only recruits, a viewer (the client) only reads the conclusions.
-MEMBER_ROLES = ("researcher", "recruiter", "viewer")
-READERS = ("admin", "researcher", "viewer")        # may read a project's findings, report, monitoring and survey results
-RECRUITERS = ("admin", "researcher", "recruiter")  # may work with the project's people: import, screen, tag, quotas
-ANY_PROJECT_ROLE = ("admin", "researcher", "recruiter", "viewer")
+MEMBER_ROLES = ("researcher", "support", "recruiter", "viewer")
+READERS = ("admin", "researcher", "support", "viewer")        # may read a project's findings, report, monitoring and survey results
+RECRUITERS = ("admin", "researcher", "support", "recruiter")  # may work with the project's people: import, screen, tag, quotas
+ANY_PROJECT_ROLE = ("admin", "researcher", "support", "recruiter", "viewer")
 
 
 @dataclass

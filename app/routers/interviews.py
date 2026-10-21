@@ -235,7 +235,7 @@ def set_pretask(iid: str, body: PreTaskConfig, ctx: Ctx = Depends(require_roles(
 
 
 @router.get("/interviews/{iid}/pretask")
-def get_pretask(iid: str, ctx: Ctx = Depends(require_roles("admin", "researcher", "moderator")), db: Session = Depends(get_db)):
+def get_pretask(iid: str, ctx: Ctx = Depends(require_roles("admin", "researcher", "support", "moderator")), db: Session = Depends(get_db)):
     """The questions and this participant's answers. Moderators see it in the room; observers (clients) never do."""
     itv = visible_interview(db, ctx, iid)
     return pretask.staff_view(db, itv.id, itv.participant_id)
@@ -402,7 +402,7 @@ def room_token(iid: str, request: Request, body: TokenReq | None = None, ctx: Ct
 
 
 @router.post("/interviews/{iid}/start")
-def start_interview(iid: str, ctx: Ctx = Depends(require_roles("admin", "researcher", "moderator")), db: Session = Depends(get_db)):
+def start_interview(iid: str, ctx: Ctx = Depends(require_roles("admin", "researcher", "support", "moderator")), db: Session = Depends(get_db)):
     itv = visible_interview(db, ctx, iid)
     if itv.status == "ended":
         raise HTTPException(409, "访谈已结束")
@@ -424,7 +424,7 @@ def _stop_recording(db: Session, rec: Recording) -> None:
 
 
 @router.post("/interviews/{iid}/end")
-def end_interview(iid: str, ctx: Ctx = Depends(require_roles("admin", "researcher", "moderator")), db: Session = Depends(get_db)):
+def end_interview(iid: str, ctx: Ctx = Depends(require_roles("admin", "researcher", "support", "moderator")), db: Session = Depends(get_db)):
     itv = visible_interview(db, ctx, iid)
     if itv.status != "ended":
         if rec := _active_recording(db, iid):
@@ -439,7 +439,7 @@ def end_interview(iid: str, ctx: Ctx = Depends(require_roles("admin", "researche
 
 # ---------- recording ----------
 @router.post("/interviews/{iid}/recording/start", status_code=201)
-def recording_start(iid: str, ctx: Ctx = Depends(require_roles("admin", "researcher", "moderator")), db: Session = Depends(get_db)):
+def recording_start(iid: str, ctx: Ctx = Depends(require_roles("admin", "researcher", "support", "moderator")), db: Session = Depends(get_db)):
     itv = visible_interview(db, ctx, iid)
     if itv.status != "live":
         raise HTTPException(409, "访谈还没开始")
@@ -458,7 +458,7 @@ def recording_start(iid: str, ctx: Ctx = Depends(require_roles("admin", "researc
 
 
 @router.post("/interviews/{iid}/recording/stop")
-def recording_stop(iid: str, ctx: Ctx = Depends(require_roles("admin", "researcher", "moderator")), db: Session = Depends(get_db)):
+def recording_stop(iid: str, ctx: Ctx = Depends(require_roles("admin", "researcher", "support", "moderator")), db: Session = Depends(get_db)):
     itv = visible_interview(db, ctx, iid)
     rec = _active_recording(db, itv.id)
     if not rec:
@@ -504,7 +504,7 @@ class AdmitBody(BaseModel):
 
 
 @router.post("/interviews/{iid}/admit")
-def admit(iid: str, body: AdmitBody, ctx: Ctx = Depends(require_roles("admin", "researcher", "moderator")), db: Session = Depends(get_db)):
+def admit(iid: str, body: AdmitBody, ctx: Ctx = Depends(require_roles("admin", "researcher", "support", "moderator")), db: Session = Depends(get_db)):
     """Waiting room: let a participant into the room, or ask them to wait a little longer.
 
     A depth interview has one participant. A focus group admits one seat at a time (``participant_id``)."""
@@ -533,7 +533,7 @@ _EXT = {"video/webm": "webm", "audio/webm": "webm", "video/mp4": "mp4", "audio/m
 
 @router.post("/interviews/{iid}/recording/{rid}/chunk", status_code=204)
 async def upload_chunk(iid: str, rid: str, request: Request, seq: int, offset_ms: int = 0, last: int = 0, part: str = "0",
-                       ctx: Ctx = Depends(require_roles("admin", "researcher", "moderator")), db: Session = Depends(get_db)):
+                       ctx: Ctx = Depends(require_roles("admin", "researcher", "support", "moderator")), db: Session = Depends(get_db)):
     """The moderator's browser uploads its own recording in chunks."""
     itv = visible_interview(db, ctx, iid)
     rec = db.get(Recording, rid)
@@ -550,7 +550,7 @@ async def upload_chunk(iid: str, rid: str, request: Request, seq: int, offset_ms
 
 
 @router.post("/interviews/{iid}/recordings/{rid}/play")
-def play_recording(iid: str, rid: str, ctx: Ctx = Depends(require_roles("admin", "researcher", "moderator")), db: Session = Depends(get_db)):
+def play_recording(iid: str, rid: str, ctx: Ctx = Depends(require_roles("admin", "researcher", "support", "moderator")), db: Session = Depends(get_db)):
     """Internal team only: a short-lived link to watch the full recording. Clients never get this."""
     itv = visible_interview(db, ctx, iid)
     rec = db.get(Recording, rid)
@@ -834,7 +834,7 @@ def list_clips(iid: str, ctx: Ctx = Depends(current_ctx), db: Session = Depends(
 
 
 @router.post("/clips/{clip_id}/preview")
-def preview_clip(clip_id: str, ctx: Ctx = Depends(require_roles("admin", "researcher", "moderator")), db: Session = Depends(get_db)):
+def preview_clip(clip_id: str, ctx: Ctx = Depends(require_roles("admin", "researcher", "support", "moderator")), db: Session = Depends(get_db)):
     clip = db.get(Clip, clip_id)
     if not clip or clip.org_id != ctx.org_id:
         raise HTTPException(404, "片段不存在")

@@ -30,7 +30,7 @@ log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["concept"])
 
-OPERATE = ("admin", "researcher", "moderator")
+OPERATE = ("admin", "researcher", "support", "moderator")
 MAX_TEXT = 600
 MAX_LINES_PER_INTERVIEW = 5000
 PARTIAL_TTL_S = 8.0

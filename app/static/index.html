@@ -13,7 +13,7 @@
 let ME = null, PROJECTS = null, DEMO_ORG = false;
 const app = $("#app");
 const route = () => location.hash.replace(/^#/, "") || "/projects";
-const STAFF = () => ["admin", "researcher"].includes(ME.role);
+const STAFF = () => ["admin", "researcher", "support"].includes(ME.role);
 const VIEWER = () => ME.role === "viewer", RECRUITER = () => ME.role === "recruiter";   // a client who only reads, and someone who only recruits
 const when = (iso) => (iso ? new Date(iso + "Z").toLocaleString([], { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "—");
 
@@ -27,7 +27,7 @@ function navHtml(active, p) {
     const M = p.methods || [];
     h += `<div class="sec">当前项目<b>${esc(p.name)}</b></div>` + a(`/p/${p.id}/pool`, "洞察池", "pool", "◈") + (M.includes("listening") ? a(`/p/${p.id}/listening`, "舆情监测", "listening", "◔") : "") + (M.includes("quant") ? a(`/p/${p.id}/quant`, "定量结果", "quant", "▤") : "");
   } else if (p && RECRUITER()) {
-    h += `<div class="sec">当前项目<b>${esc(p.name)}</b></div>` + a(`/p/${p.id}/people`, "甄别设定", "people", "◉");
+    h += `<div class="sec">当前项目<b>${esc(p.name)}</b></div>` + (p.plan_status ? a(`/p/${p.id}/wiz`, "立项向导", "wiz", "✎") : "") + a(`/p/${p.id}/people`, "甄别设定", "people", "◉");
   } else if (p) {
     h += `<div class="sec">当前项目<b>${esc(p.name)}</b></div>`;
     const M = p.methods || ["depth", "group", "async", "listening"], live = M.includes("depth") || M.includes("group");
@@ -108,7 +108,7 @@ async function render() {
       if (!p) throw new Error("找不到这个项目：可能链接已失效，或这个项目没有分配给你。回到“全部项目”重新选择。");
       const setup = p.plan_status && p.plan_status !== "published";  // a project still in the wizard has nothing else to open yet
       const page = setup && STAFF() ? "wiz" : seg[3] || (STAFF() ? "home" : VIEWER() ? "pool" : RECRUITER() ? "people" : "rooms");
-      if (page === "wiz" && STAFF()) return await wizardView(p);
+      if (page === "wiz" && (STAFF() || RECRUITER())) return await wizardView(p);
       if (page === "monitor" && STAFF()) return await monitorView(p);
       if (page === "home" && STAFF()) return await homeView(p);
       if (page === "people" && (STAFF() || RECRUITER())) return await peopleView(p);
@@ -904,7 +904,7 @@ async function membersView(p) {  // who works on this project (admins see every 
   const [d, us] = await Promise.all([api(`/projects/${p.id}/members`), api("/users")]);
   if (stale(my)) return;
   const inProject = new Set(d.members.map((m) => m.user_id));
-  const candidates = us.filter((u) => ["researcher", "recruiter", "viewer"].includes(u.role) && u.active && !inProject.has(u.id));
+  const candidates = us.filter((u) => ["researcher", "support", "recruiter", "viewer"].includes(u.role) && u.active && !inProject.has(u.id));
   const row = (m) => `<tr><td><b>${esc(m.name)}</b>${m.role !== "researcher" ? ` <span class="tag">${ROLE[m.role]}</span>` : ""}${m.user_id === ME.id ? ' <span class="tag">我</span>' : ""}${m.active ? "" : ' <span class="tag">已停用</span>'}</td><td class="mut">${esc(m.email)}</td>
       <td>${m.is_owner ? '<span class="tag ok">项目负责人</span>' : '<span class="tag">成员</span>'}</td>
       <td class="acts">${d.can_manage ? `<button class="s" data-owner="${m.user_id}" data-to="${m.is_owner ? 0 : 1}">${m.is_owner ? "取消负责人" : "设为负责人"}</button> <button class="s warn" data-rm="${m.user_id}">移出项目</button>` : ""}</td></tr>`;
@@ -1300,36 +1300,62 @@ async function clipsTab(iid, staff, my) {
 // ---------------- 设置 ----------------
 async function teamView() {
   if (ME.role !== "admin") { location.hash = "#/projects"; return; }
-  const [us, invs, mailSt] = await Promise.all([api("/users"), api("/users/invites"), api("/mail/status")]);
-  const MAIL = mailSt.configured;
-  const roleOpts = (cur) => ["researcher", "recruiter", "viewer", "moderator", "observer", "admin"].map((r) => `<option value="${r}"${r === cur ? " selected" : ""}>${ROLE[r]}</option>`).join("");
+  const [us, invs, mailSt, brands] = await Promise.all([api("/users"), api("/users/invites"), api("/mail/status"), api("/brands")]);
+  const MAIL = mailSt.configured, brandName = (id) => (brands.find((b) => b.id === id) || {}).name || "";
+  const KIND = { quant: "定量研究员", qual: "定性研究员", all: "全科研究员" };
+  const roleKey = (u) => u.role + "|" + (u.role === "researcher" ? u.research_kind || "all" : "");
+  const roleLabel = (u) => (u.role === "researcher" ? KIND[u.research_kind || "all"] : ROLE[u.role]);
+  const CHOICES = [["researcher|all", "全科研究员"], ["researcher|quant", "定量研究员"], ["researcher|qual", "定性研究员"], ["recruiter|", "项目经理"], ["moderator|", "主持人"], ["observer|", "观察员"], ["viewer|", "客户（只读）"], ["support|", "技术支持"], ["admin|", "管理员"]];
+  const roleOpts = (cur) => CHOICES.map(([k, n]) => `<option value="${k}"${k === cur ? " selected" : ""}>${n}</option>`).join("");
+  const clientInfo = (u) => (u.role === "viewer" ? `<div class="sm mut">${esc(brandName(u.brand_id) || "（没有品牌）")}${u.job_title ? " · " + esc(u.job_title) : ""}${u.phone ? " · " + esc(u.phone) : ""}</div>` : "");
+  const clientFields = `<div id="cl" hidden><label class="f"><span>品牌（客户要先属于一个品牌）</span><select name="brand_id">${brands.length ? brands.map((b) => `<option value="${b.id}">${esc(b.name)}</option>`).join("") : '<option value="">还没有品牌，先到“品牌”里添加</option>'}</select></label>
+      <label class="f"><span>职位</span><input name="job_title" maxlength="100"></label><label class="f"><span>联系方式（电话或其他）</span><input name="phone" maxlength="60"></label></div>`;
+  const wireRole = (m) => { const sel = $("select[name=role]", m), cl = $("#cl", m), upd = () => (cl.hidden = !sel.value.startsWith("viewer")); sel.onchange = upd; upd(); };
+  const splitRole = (fd) => { const [role, kind] = String(fd.role).split("|"); fd.role = role; if (kind) fd.research_kind = kind; if (role !== "viewer") { delete fd.brand_id; delete fd.job_title; delete fd.phone; } return fd; };
   const row = (u) => u.id === ME.id
-    ? `<tr><td><b>${esc(u.name)}</b> <span class="tag">我</span></td><td class="mut">${esc(u.email)}</td><td><span class="tag">${ROLE[u.role]}</span></td><td></td></tr>`
-    : `<tr><td><b>${esc(u.name)}</b>${u.active ? "" : ' <span class="tag">已停用</span>'}</td><td class="mut">${esc(u.email)}</td>
-        <td><select data-role="${u.id}" aria-label="${esc(u.name)}的角色">${roleOpts(u.role)}</select></td>
+    ? `<tr><td><b>${esc(u.name)}</b> <span class="tag">我</span></td><td class="mut">${esc(u.email)}</td><td><span class="tag">${roleLabel(u)}</span></td><td></td></tr>`
+    : `<tr><td><b>${esc(u.name)}</b>${u.active ? "" : ' <span class="tag">已停用</span>'}${clientInfo(u)}</td><td class="mut">${esc(u.email)}</td>
+        <td><select data-role="${u.id}" aria-label="${esc(u.name)}的角色">${roleOpts(roleKey(u))}</select></td>
         <td><button data-reset="${u.id}">重置密码链接</button> ${MAIL ? `<button data-resetmail="${u.id}">邮件发重置链接</button> ` : ""}<button data-act="${u.id}" data-to="${u.active ? 0 : 1}">${u.active ? "停用" : "启用"}</button></td></tr>`;
-  shell(`${head("团队", "成员和角色。观察员（客户）只能隐身旁听被指派的场次，只看已通过的洞察，看不到受访者姓名。", `<button class="p" id="ni">邀请成员</button> <button id="nu">直接添加</button>`)}
+  shell(`${head("团队", "管理员在这里添加成员并赋予身份：全科/定量/定性研究员、项目经理、主持人、观察员、客户、技术支持。客户要先添加品牌，再填职位和联系方式；观察员只能隐身旁听被指派的场次，看不到受访者姓名。", `<button class="p" id="ni">邀请成员</button> <button id="nu">直接添加</button> <button id="nb">品牌</button>`)}
     <div class="card scroll" style="padding:6px 10px"><table class="tbl rc"><thead><tr><th>姓名</th><th>邮箱</th><th>角色</th><th>操作</th></tr></thead><tbody>${us.map(row).join("")}</tbody></table></div>
     ${invs.length ? `<h2>等待加入（链接 7 天有效）</h2><div class="card scroll" style="padding:6px 10px"><table class="tbl rc"><thead><tr><th>邮箱</th><th>角色</th><th>类型</th><th></th></tr></thead><tbody>${invs.map((i) => `<tr><td>${esc(i.email)}</td><td><span class="tag">${ROLE[i.role]}</span></td><td class="mut">${i.kind === "join" ? "新成员" : "重置密码"}</td><td><button data-rv="${i.id}">作废</button></td></tr>`).join("")}</tbody></table></div>` : ""}`, { active: "team", title: "团队" });
   const showLink = (r, what) => modal(`<h2>${what}</h2>${r.emailed ? `<p class="sm" role="status">已经发邮件给 ${esc(r.email)}（几分钟内到达，可能进垃圾邮件箱）。</p>` : ""}<code class="copy">${esc(location.origin + r.invite_path)}</code><p class="sm mut" style="margin:8px 0 0">${r.emailed ? "也可以把这条链接直接发给" : "把链接发给"} ${esc(r.email)}（7 天内有效，只能用一次）。这个链接只显示这一次。</p>`);
   $("#ni").onclick = () => {
     const m = modal(`<h2>邀请成员</h2><form id="f"><label class="f"><span>邮箱</span><input name="email" type="email" required></label>
-      <label class="f"><span>角色</span><select name="role">${roleOpts("researcher")}</select></label>
+      <label class="f"><span>角色</span><select name="role">${roleOpts("researcher|all")}</select></label>${clientFields}
       <p class="sm mut">会生成一条一次性链接；对方自己填姓名和密码，你不用知道密码。</p>
       ${MAIL ? `<label class="chk"><input type="checkbox" name="send_email" checked><span>同时用邮件发给对方</span></label>` : `<p class="sm mut">还没有开通发信服务，链接需要你复制后自己发给对方。</p>`}
       <div class="row"><button class="p">${MAIL ? "发送邀请" : "生成链接"}</button><button type="button" id="c">取消</button></div></form>`);
-    $("#c", m).onclick = () => m.remove();
-    $("#f", m).onsubmit = guard(async (e) => { e.preventDefault(); const fd = Object.fromEntries(new FormData(e.target)); fd.send_email = !!fd.send_email; const r = await api("/users/invites", { method: "POST", body: fd }); m.remove(); showLink(r, "邀请链接"); });
+    $("#c", m).onclick = () => m.remove(); wireRole(m);
+    $("#f", m).onsubmit = guard(async (e) => { e.preventDefault(); const fd = splitRole(Object.fromEntries(new FormData(e.target))); fd.send_email = !!fd.send_email; const r = await api("/users/invites", { method: "POST", body: fd }); m.remove(); showLink(r, "邀请链接"); });
   };
   $("#nu").onclick = () => {
     const m = modal(`<h2>直接添加成员</h2><form id="f"><label class="f"><span>姓名</span><input name="name" required></label><label class="f"><span>邮箱</span><input name="email" type="email" required></label>
       <label class="f"><span>初始密码（至少 8 位）</span><input name="password" minlength="8" required></label>
-      <label class="f"><span>角色</span><select name="role">${roleOpts("researcher")}</select></label>
+      <label class="f"><span>角色</span><select name="role">${roleOpts("researcher|all")}</select></label>${clientFields}
       <div class="row"><button class="p">添加</button><button type="button" id="c">取消</button></div></form>`);
-    $("#c", m).onclick = () => m.remove();
-    $("#f", m).onsubmit = guard(async (e) => { e.preventDefault(); await api("/users", { method: "POST", body: Object.fromEntries(new FormData(e.target)) }); m.remove(); render(); });
+    $("#c", m).onclick = () => m.remove(); wireRole(m);
+    $("#f", m).onsubmit = guard(async (e) => { e.preventDefault(); await api("/users", { method: "POST", body: splitRole(Object.fromEntries(new FormData(e.target))) }); m.remove(); render(); });
   };
-  document.querySelectorAll("[data-role]").forEach((el) => el.onchange = guard(async () => { try { await api(`/users/${el.dataset.role}`, { method: "PATCH", body: { role: el.value } }); } finally { render(); } }));
+  $("#nb").onclick = () => {  // brands: a client is always added under one
+    const m = modal(`<h2>品牌</h2>${brands.length ? `<ul class="feed">${brands.map((b) => `<li><span><b>${esc(b.name)}</b> <span class="mut">· ${b.clients} 位客户</span></span> <button class="s" data-bd="${b.id}" type="button">删除</button></li>`).join("")}</ul>` : '<p class="mut">还没有品牌。</p>'}
+      <form id="f" class="row" style="margin-top:12px"><input name="name" placeholder="新品牌名称" aria-label="新品牌名称" maxlength="100" required><button class="p">添加品牌</button></form><div class="row" style="margin-top:12px"><button type="button" id="c">关闭</button></div>`);
+    $("#c", m).onclick = () => m.remove();
+    $("#f", m).onsubmit = guard(async (e) => { e.preventDefault(); await api("/brands", { method: "POST", body: { name: new FormData(e.target).get("name") } }); m.remove(); render(); });
+    m.querySelectorAll("[data-bd]").forEach((b) => (b.onclick = guard(async () => { await api(`/brands/${b.dataset.bd}`, { method: "DELETE" }); m.remove(); render(); })));
+  };
+  document.querySelectorAll("[data-role]").forEach((el) => el.onchange = guard(async () => {
+    const [role, kind] = el.value.split("|"), uid = el.dataset.role;
+    try {
+      if (role !== "viewer") { await api(`/users/${uid}`, { method: "PATCH", body: kind ? { role, research_kind: kind } : { role } }); return; }
+      await new Promise((done) => {  // becoming a client: choose the brand first
+        const m = modal(`<h2>改为客户</h2><form id="f">${clientFields.replace(" hidden", "")}<div class="row"><button class="p">确定</button><button type="button" id="c">取消</button></div></form>`);
+        $("#c", m).onclick = () => { m.remove(); done(); };
+        $("#f", m).onsubmit = guard(async (e) => { e.preventDefault(); const fd = Object.fromEntries(new FormData(e.target)); await api(`/users/${uid}`, { method: "PATCH", body: { role, ...fd } }); m.remove(); done(); });
+      });
+    } finally { render(); }
+  }));
   document.querySelectorAll("[data-act]").forEach((b) => b.onclick = guard(async () => { await api(`/users/${b.dataset.act}`, { method: "PATCH", body: { active: b.dataset.to === "1" } }); render(); }));
   document.querySelectorAll("[data-reset]").forEach((b) => b.onclick = guard(async () => showLink(await api(`/users/${b.dataset.reset}/reset-link`, { method: "POST" }), "重置密码链接")));
   document.querySelectorAll("[data-resetmail]").forEach((b) => b.onclick = guard(async () => showLink(await api(`/users/${b.dataset.resetmail}/reset-link?send_email=true`, { method: "POST" }), "重置密码链接")));

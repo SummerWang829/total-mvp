@@ -15,7 +15,7 @@ from ..models import Interview, Stimulus
 from .public import resolve_join  # noqa: PLC2701 — the same invite-token lookup as the rest of the participant flow
 
 router = APIRouter(prefix="/api", tags=["ai-room"])
-STAFF_AND_MODERATOR = ("admin", "researcher", "moderator")  # who may control the AI (observers may not)
+STAFF_AND_MODERATOR = ("admin", "researcher", "support", "moderator")  # who may control the AI (observers may not)
 
 
 def _run(db: Session, fn, *args) -> None:

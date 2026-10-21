@@ -9,7 +9,10 @@ from test_project_members import second_researcher
 
 def person(org, role, name=None):
     email = f"{role}x@acme.com"
-    r = org.c.post("/api/users", headers=org.h("admin"), json={"name": name or role, "email": email, "password": "password123", "role": role})
+    extra = {}
+    if role == "viewer":  # a client is always added under a brand
+        extra["brand_id"] = org.c.post("/api/brands", headers=org.h("admin"), json={"name": "品牌甲"}).json()["id"]
+    r = org.c.post("/api/users", headers=org.h("admin"), json={"name": name or role, "email": email, "password": "password123", "role": role, **extra})
     assert r.status_code == 201, r.text
     login = org.c.post("/api/auth/login", json={"email": email, "password": "password123"}).json()
     return {"id": r.json()["id"], "h": H(login["token"])}
@@ -148,8 +151,9 @@ def test_only_these_roles_can_be_added_to_a_project_and_only_by_owners_and_admin
 
 
 def test_the_new_roles_can_be_invited_and_a_bad_role_is_refused(org):
+    brand = org.c.post("/api/brands", headers=org.h("admin"), json={"name": "品牌乙"}).json()["id"]
     for role in ("viewer", "recruiter"):
-        assert org.c.post("/api/users/invites", headers=org.h("admin"), json={"email": f"{role}@client.com", "role": role}).status_code == 201
+        assert org.c.post("/api/users/invites", headers=org.h("admin"), json={"email": f"{role}@client.com", "role": role, "brand_id": brand}).status_code == 201
     assert org.c.post("/api/users/invites", headers=org.h("admin"), json={"email": "x@client.com", "role": "boss"}).status_code == 422
     assert org.c.post("/api/users", headers=org.h("admin"), json={"name": "x", "email": "x2@client.com", "password": "password123", "role": "boss"}).status_code == 422
 
@@ -159,3 +163,65 @@ def test_viewer_in_another_company_gets_nothing(org, client):
     foreign = Org(client, "Other", "b@other.com")
     assert foreign.c.get(f"/api/projects/{pid}/pool", headers=foreign.h("admin")).status_code == 404
     assert second_researcher(org)["id"]
+
+
+# ---------- researcher kinds, technical support, clients under brands ----------
+def test_a_client_needs_a_brand_and_carries_a_title_and_contact(org):
+    h = org.h("admin")
+    base = {"name": "客户甲", "email": "jia@client.com", "password": "password123", "role": "viewer"}
+    assert org.c.post("/api/users", headers=h, json=base).status_code == 422  # no brand
+    assert org.c.post("/api/users", headers=h, json={**base, "brand_id": "nope"}).status_code == 422
+    b = org.c.post("/api/brands", headers=h, json={"name": "雪花"}).json()
+    assert org.c.post("/api/brands", headers=h, json={"name": "雪花"}).status_code == 409
+    r = org.c.post("/api/users", headers=h, json={**base, "brand_id": b["id"], "job_title": "品牌经理", "phone": "+65 8000 0000"})
+    assert r.status_code == 201 and r.json()["brand_id"] == b["id"] and r.json()["job_title"] == "品牌经理" and r.json()["phone"] == "+65 8000 0000"
+    assert org.c.get("/api/brands", headers=h).json()[0]["clients"] == 1
+    assert org.c.delete(f"/api/brands/{b['id']}", headers=h).status_code == 409  # a client is still under it
+    assert org.c.post("/api/brands", headers=org.h("researcher"), json={"name": "x"}).status_code == 403  # only admins add brands
+
+
+def test_a_researcher_has_a_kind_and_only_researchers(org):
+    h = org.h("admin")
+    mk = lambda email, **kw: org.c.post("/api/users", headers=h, json={"name": email, "email": email, "password": "password123", **kw})
+    assert mk("q@a.com", role="researcher", research_kind="quant").json()["research_kind"] == "quant"
+    assert mk("d@a.com", role="researcher").json()["research_kind"] == "all"
+    assert mk("m@a.com", role="moderator", research_kind="quant").json()["research_kind"] == "all"  # a kind means nothing for other roles
+    assert mk("x@a.com", role="researcher", research_kind="zzz").status_code == 422
+    uid = mk("p@a.com", role="researcher").json()["id"]
+    assert org.c.patch(f"/api/users/{uid}", headers=h, json={"research_kind": "qual"}).json()["research_kind"] == "qual"
+
+
+def test_changing_someone_into_a_client_needs_a_brand(org):
+    h = org.h("admin")
+    uid = org.c.post("/api/users", headers=h, json={"name": "u", "email": "u@a.com", "password": "password123", "role": "researcher"}).json()["id"]
+    assert org.c.patch(f"/api/users/{uid}", headers=h, json={"role": "viewer"}).status_code == 422
+    b = org.c.post("/api/brands", headers=h, json={"name": "B"}).json()["id"]
+    r = org.c.patch(f"/api/users/{uid}", headers=h, json={"role": "viewer", "brand_id": b, "job_title": "总监"})
+    assert r.status_code == 200 and r.json()["role"] == "viewer" and r.json()["brand_id"] == b
+
+
+def test_technical_support_works_like_a_researcher_in_their_projects_only(org):
+    sup = person(org, "support")
+    pid = org.project()
+    assert pid not in [p["id"] for p in org.c.get("/api/projects", headers=sup["h"]).json()]  # not added: does not even see it
+    assert org.c.get(f"/api/projects/{pid}/plan", headers=sup["h"]).status_code == 404
+    assert org.c.post(f"/api/projects/{pid}/members", headers=org.h(), json={"user_id": sup["id"]}).status_code == 201
+    assert pid in [p["id"] for p in org.c.get("/api/projects", headers=sup["h"]).json()]
+    assert org.c.get(f"/api/projects/{pid}/participants", headers=sup["h"]).status_code == 200
+    d = org.c.post("/api/projects/draft", headers=sup["h"], json={"name": "支持建的"}).json()
+    assert org.c.post(f"/api/projects/{d['id']}/plan/approve", headers=sup["h"]).status_code == 403  # legal approval stays with admins
+
+
+def test_the_project_manager_can_unlock_a_plan_but_never_sees_contact_details(org):
+    from test_plans import approved, draft
+    pm = person(org, "recruiter")
+    pid = draft(org)["id"]
+    approved(org, pid)
+    org.c.post(f"/api/projects/{pid}/plan/publish", headers=org.h())
+    assert org.c.post(f"/api/projects/{pid}/plan/unlock", headers=pm["h"]).status_code == 404  # not a member of this project yet
+    org.c.post(f"/api/projects/{pid}/members", headers=org.h(), json={"user_id": pm["id"]})
+    assert org.c.post(f"/api/projects/{pid}/plan/unlock", headers=pm["h"]).json()["status"] == "draft"
+    people = org.c.get(f"/api/projects/{pid}/plan/people", headers=pm["h"]).json()
+    assert people and all(set(x) == {"id", "name", "role", "active", "research_kind"} for x in people)  # names and roles, no email or phone
+    assert org.c.get("/api/users", headers=pm["h"]).status_code == 403
+    assert org.c.post(f"/api/projects/{pid}/plan/approve", headers=pm["h"]).status_code == 403

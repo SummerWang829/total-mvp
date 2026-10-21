@@ -43,9 +43,23 @@ class User(Base):
     org_id: Mapped[str] = mapped_column(ForeignKey("orgs.id"), index=True)
     email: Mapped[str] = mapped_column(String(200), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(100))
-    role: Mapped[str] = mapped_column(String(20))  # admin | researcher | moderator | observer
+    role: Mapped[str] = mapped_column(String(20))  # admin | researcher | moderator | observer | recruiter (项目经理) | viewer (客户) | support (技术支持)
     password_hash: Mapped[str] = mapped_column(String(300))
     active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    research_kind: Mapped[str] = mapped_column(String(10), default="all")  # researchers only: quant (定量) | qual (定性) | all (全科); decides the default ticks in the plan
+    brand_id: Mapped[str | None] = mapped_column(String(32), nullable=True)  # clients only: the brand they speak for (Brand)
+    job_title: Mapped[str] = mapped_column(String(100), default="")  # clients: 职位
+    phone: Mapped[str] = mapped_column(String(60), default="")  # clients: 联系方式
+
+
+class Brand(Base):
+    """A client's brand: a client (role viewer) is added under one."""
+    __tablename__ = "brands"
+    __table_args__ = (UniqueConstraint("org_id", "name", name="uq_brand_org_name"),)
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
+    org_id: Mapped[str] = mapped_column(ForeignKey("orgs.id"), index=True)
+    name: Mapped[str] = mapped_column(String(100))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
@@ -596,6 +610,10 @@ class UserInvite(Base):
     role: Mapped[str] = mapped_column(String(20))
     user_id: Mapped[str | None] = mapped_column(String(32), nullable=True)  # reset: whose password
     token_hash: Mapped[str] = mapped_column(String(64), index=True)
+    research_kind: Mapped[str] = mapped_column(String(10), default="all")  # copied to the new account (join links)
+    brand_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    job_title: Mapped[str] = mapped_column(String(100), default="")
+    phone: Mapped[str] = mapped_column(String(60), default="")
     created_by: Mapped[str] = mapped_column(String(32))
     expires_at: Mapped[datetime] = mapped_column(DateTime)
     used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

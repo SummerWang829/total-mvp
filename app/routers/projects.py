@@ -113,7 +113,7 @@ def list_projects(ctx: Ctx = Depends(current_ctx), db: Session = Depends(get_db)
             mine = mine.where(Interview.id.in_(select(InterviewObserver.interview_id).where(InterviewObserver.user_id == ctx.user.id)))
         q = q.where(Project.id.in_(mine))
         return [project_out(p, status.get(p.id, ""), setups.get(p.id), edits.get(p.id, "")) for p in db.scalars(q)]
-    if ctx.user.role == "researcher":  # a researcher sees only the projects they belong to
+    if ctx.user.role in ("researcher", "support"):  # a researcher (or technical support) sees only the projects they belong to
         q = q.where(Project.id.in_(select(ProjectMember.project_id).where(ProjectMember.user_id == ctx.user.id)))
     from .overview import project_summary  # staff project cards: participants, sessions, next session
     return [{**project_out(p, status.get(p.id, ""), setups.get(p.id), edits.get(p.id, "")), "summary": project_summary(db, p)} for p in db.scalars(q)]
@@ -270,7 +270,7 @@ def add_member(pid: str, body: NewMember, ctx: Ctx = Depends(require_roles(*STAF
     if user.role == "admin":
         raise HTTPException(422, "管理员可以看到所有项目，不需要添加")
     if user.role not in MEMBER_ROLES:
-        raise HTTPException(422, "只有研究员、招募员和客户（只读）可以加入项目；主持人和观察员是按场次指派的")
+        raise HTTPException(422, "只有研究员、技术支持、项目经理和客户（只读）可以加入项目；主持人和观察员是按场次指派的")
     if not db.scalar(select(ProjectMember.id).where(ProjectMember.project_id == proj.id, ProjectMember.user_id == user.id)):
         db.add(ProjectMember(org_id=ctx.org_id, project_id=proj.id, user_id=user.id, added_by=ctx.user.id))
         audit(db, ctx.org_id, ctx.actor, "project.member.add", proj.id, user=user.id)

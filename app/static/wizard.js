@@ -20,10 +20,10 @@ const WZ_TYPES = {
 const WZ_LANGS = ["中文", "英语", "马来语", "泰米尔语"];
 const WZ_STATUS = { draft: ["草稿", "o"], review: ["审查中", "o"], approved: ["审查通过，可发布", ""], published: ["暂时锁定", ""] };
 const WZ_PERMS = {  // what each account role can do in a project (shown as the permission preview)
-  admin: ["招募", "邀请", "看个人信息", "写洞察"], researcher: ["招募", "邀请", "看个人信息", "写洞察"], recruiter: ["招募", "邀请"],
+  admin: ["招募", "邀请", "看个人信息", "写洞察"], support: ["招募", "邀请", "看个人信息", "写洞察"], researcher: ["招募", "邀请", "看个人信息", "写洞察"], recruiter: ["招募", "邀请"],
   moderator: ["发言", "观察"], observer: ["观察"], viewer: ["只读成果"],
 };
-const WZ_ROLE = { admin: "管理员", researcher: "研究员", recruiter: "项目经理", moderator: "主持人", observer: "观察员", viewer: "客户（只读）" };
+const WZ_ROLE = { admin: "管理员", researcher: "研究员", recruiter: "项目经理", moderator: "主持人", observer: "观察员", viewer: "客户（只读）", support: "技术支持" };
 const WZ_KIND = { quant: "定量研究员", qual: "定性研究员", all: "全科研究员" };
 const WZ = { p: null, plan: null, cfg: null, step: 0, tab: "q", users: [], timer: null, saving: null, picks: {}, known: [], estNote: "" };
 
@@ -46,7 +46,7 @@ const wzCheck = (ok) => (ok ? `<span class="pill">✓ 通过</span>` : `<span cl
 
 async function wizardView(p) {
   const my = renderSeq;
-  const [plan, users] = await Promise.all([api(`/projects/${p.id}/plan`), api("/users")]);
+  const [plan, users] = await Promise.all([api(`/projects/${p.id}/plan`), api(`/projects/${p.id}/plan/people`)]);
   if (stale(my)) return;
   if (plan.legacy) {
     shell(`${head("立项向导", "这个项目创建时还没有立项向导，所以没有立项记录。新建项目会从向导开始。")}<div class="card empty"><b>没有立项记录</b><span>老项目照常使用，不受影响。</span><a class="btn p" href="#/p/${p.id}/home">回到项目总览</a></div>`, { active: "wiz", p });
@@ -91,7 +91,7 @@ function wzDesignView() {
 }
 
 function wzSubs() {
-  const c = WZ.cfg, pms = [["", "未指定"], ...WZ.users.filter((u) => ["admin", "researcher", "recruiter"].includes(u.role)).map((u) => [u.id, u.name])];
+  const c = WZ.cfg, pms = [["", "未指定"], ...WZ.users.filter((u) => ["admin", "researcher", "support", "recruiter"].includes(u.role)).map((u) => [u.id, u.name])];
   const single = c.split === "single";
   return `<div><b>子项目</b>
     <div class="row" style="margin:6px 0"><label class="chk"><input type="radio" name="split" data-split="country" ${single ? "" : "checked"}>按国家拆成子项目（日本、韩国……各一个）</label>
@@ -149,7 +149,7 @@ function wzImportSubs(text) {
 
 function wzDefault(u) {  // the ticks a person gets when they are added, from their role (and for a researcher, the kind of researcher)
   const all = { q: true, i: true, f: true, l: true }, k = u.research_kind || "all";
-  if (u.role === "admin" || u.role === "viewer") return all;
+  if (u.role === "admin" || u.role === "viewer" || u.role === "support") return all;
   if (u.role === "researcher") return k === "quant" ? { q: true, i: false, f: false, l: true } : k === "qual" ? { q: false, i: true, f: true, l: true } : all;
   if (u.role === "moderator" || u.role === "observer") return { q: false, i: true, f: true, l: false };
   return { q: false, i: false, f: false, l: false };  // the project manager: ticked one by one by the researcher
