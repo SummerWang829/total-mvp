@@ -66,11 +66,20 @@ def anonymize_participant(db: Session, p: Participant) -> None:
     screener.erase(db, p.id)  # the questionnaire answers are personal data too
 
 
+def days_of(project: Project) -> int:
+    """How many days after the project closes its personal data is deleted: the project's own choice (plan: 30/60/120/180), never above the platform's."""
+    return min(project.retention_days or settings.retention_days, settings.retention_days)
+
+
+def _closed_due(project: Project, now) -> bool:
+    return project.closed_at is not None and project.closed_at + timedelta(days=days_of(project)) < now
+
+
 def purge_date(project: Project):
     """When this project's personal data will be deleted (None until the project is closed); an admin's hold can push it later."""
     if not project.closed_at:
         return None
-    due = project.closed_at + timedelta(days=settings.retention_days)
+    due = project.closed_at + timedelta(days=days_of(project))
     return max(due, project.purge_hold_until) if project.purge_hold_until else due
 
 
@@ -92,21 +101,25 @@ def run_retention(db: Session, now=None) -> int:
     """Delete personal data 180 days after the PROJECT closed. Projects never closed hit the backstop
     (RETENTION_BACKSTOP_DAYS after each interview ended) so data cannot be kept forever by forgetting to close."""
     now = now or utcnow()
-    close_cut = now - timedelta(days=settings.retention_days)
     back_cut = now - timedelta(days=settings.retention_backstop_days)
     q = (select(Interview).join(Project, Project.id == Interview.project_id)
          .where(Interview.purged_at.is_(None), Interview.ended_at.is_not(None))
-         .where((Project.closed_at < close_cut) | ((Project.closed_at.is_(None)) & (Interview.ended_at < back_cut))))
+         .where((Project.closed_at.is_not(None)) | (Interview.ended_at < back_cut)))
     q = q.where((Project.purge_hold_until.is_(None)) | (Project.purge_hold_until < now))   # an admin's hold keeps the data until its date
-    due = db.scalars(q).all()
+    due = []
+    for itv in db.scalars(q).all():
+        proj = db.get(Project, itv.project_id)
+        if proj.closed_at is None or _closed_due(proj, now):  # a project that never closed was already filtered by the backstop above
+            due.append(itv)
     for itv in due:
-        closed = db.get(Project, itv.project_id).closed_at is not None
+        proj = db.get(Project, itv.project_id)
         people = [s.participant for s in itv.group_participants] if itv.kind == "group" else [itv.participant]
-        purge_interview(db, itv, f"retention:{settings.retention_days}d-after-project-close" if closed else f"retention-backstop:{settings.retention_backstop_days}d")
+        purge_interview(db, itv, f"retention:{days_of(proj)}d-after-project-close" if proj.closed_at is not None else f"retention-backstop:{settings.retention_backstop_days}d")
         for person in people:
             anonymize_participant(db, person)
-    for proj in db.scalars(select(Project).where(Project.closed_at < close_cut, (Project.purge_hold_until.is_(None)) | (Project.purge_hold_until < now))).all():
-        purge_project_extras(db, proj, "system", f"retention:{settings.retention_days}d-after-project-close")
+    for proj in db.scalars(select(Project).where(Project.closed_at.is_not(None), (Project.purge_hold_until.is_(None)) | (Project.purge_hold_until < now))).all():
+        if _closed_due(proj, now):
+            purge_project_extras(db, proj, "system", f"retention:{days_of(proj)}d-after-project-close")
     db.commit()
     return len(due)
 

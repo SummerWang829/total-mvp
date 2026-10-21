@@ -22,7 +22,8 @@ def plan(org: Org, pid: str, role: str = "researcher") -> dict:
 def good_config(base: dict, **over) -> dict:
     """A config that passes every check: confirmations ticked, quotas add up, the sending language matches."""
     cfg = copy.deepcopy(base)
-    cfg["methods"] = over.pop("methods", ["depth", "group"])
+    design, listening = over.pop("design", "i"), over.pop("listening", False)  # the methods follow the sub-projects: 仅深访 by default
+    cfg["subs"] = [{**s, "design": design, "listening": listening} for s in over.pop("subs", cfg["subs"])]
     cfg["cons"] = {k: True for k in cfg["cons"]}
     cfg["n"] = {"q": 0, "i": 5, "f": 0, "fs": 6}
     cfg["lt"] = {"dims": ["国家"], "rows": [{"id": "r1", "vs": ["s1"], "t": 0, "i": 5, "f": 0}]}
@@ -73,7 +74,8 @@ def test_unknown_keys_and_impossible_numbers_are_refused(org):
     assert save(org, pid, {**base, "n": {**base["n"], "fs": 2}}).status_code == 422  # a group needs at least 3 people
     assert save(org, pid, {**base, "lt": {"dims": ["不存在的变量"], "rows": []}}).status_code == 422
     assert save(org, pid, {**base, "lt": {"dims": ["国家"], "rows": [{"id": "r", "vs": ["nope"], "i": 1}]}}).status_code == 422
-    assert save(org, pid, {**base, "methods": []}).status_code == 422
+    assert save(org, pid, {**base, "subs": [{**base["subs"][0], "design": "zz"}]}).status_code == 422  # not one of the 8 research orders
+    assert save(org, pid, {**base, "retention": 90}).status_code == 422  # only 30 / 60 / 120 / 180
     assert save(org, pid, {**base, "split": "single", "subs": base["subs"] * 2}).status_code == 422
 
 
@@ -88,7 +90,7 @@ def test_the_compliance_list_has_14_items_and_4_more_when_interviews_are_used(or
     pid = draft(org)["id"]
     cfg = plan(org, pid)["config"]
     assert len(plan(org, pid)["compliance"]) == 18  # depth is on by default
-    only = save(org, pid, {**cfg, "methods": ["listening"]}).json()
+    only = save(org, pid, {**cfg, "subs": [{**cfg["subs"][0], "design": "q"}]}).json()  # 仅定量: no interviews
     assert len(only["compliance"]) == 14 and not any(c["id"].startswith("q") for c in only["compliance"])
 
 
@@ -153,7 +155,7 @@ def test_publishing_applies_methods_language_and_team_and_then_locks_the_plan(or
     cfg = plan(org, pid)["config"]
     team = [{"user_id": org.users["researcher"], "q": False, "i": True, "f": False}, {"user_id": org.users["moderator"], "q": False, "i": True, "f": False}]
     subs = [{**cfg["subs"][0], "lang": "中文"}]
-    approved(org, pid, methods=["depth", "listening"], team=team, subs=subs, langs={"中文": True, "英语": False, "马来语": False, "泰米尔语": False})
+    approved(org, pid, listening=True, team=team, subs=subs, langs={"中文": True, "英语": False, "马来语": False, "泰米尔语": False})
     assert org.c.post(f"/api/projects/{pid}/plan/publish", headers=org.h()).status_code == 200
     p = org.c.get(f"/api/projects/{pid}", headers=org.h("admin")).json()
     assert p["methods"] == ["depth", "listening"] and p["language"] == "zh" and p["plan_status"] == "published"
@@ -240,3 +242,76 @@ def test_copying_a_project_makes_a_draft_with_the_same_plan_and_no_confirmations
     assert not any(new["config"]["cons"].values())  # the new project must be confirmed again
     assert org.c.post(f"/api/projects/{org.project()}/copy", headers=org.h()).status_code == 409  # a project without a plan cannot be copied
     assert org.c.post(f"/api/projects/{pid}/copy", headers=org.h("observer")).status_code == 403
+
+
+# ---------- research orders, retention, unlocking ----------
+def test_each_sub_project_has_its_own_research_order_and_the_methods_follow(org):
+    pid = draft(org)["id"]
+    cfg = plan(org, pid)["config"]
+    subs = [{**cfg["subs"][0], "design": "fq"}, {"id": "s2", "name": "日本", "lang": "英语", "pm": "", "design": "i", "listening": True, "async_ai": True}]
+    got = save(org, pid, {**cfg, "subs": subs, "vars": {**cfg["vars"], "国家": [{"id": "s1", "name": "新加坡"}, {"id": "s2", "name": "日本"}]}}).json()
+    assert got["config"]["methods"] == ["depth", "group", "async", "listening", "quant"]  # derived from the sub-projects, whatever the client sends
+    assert set(plans.DESIGNS) == {"fq", "iq", "qi", "i", "f", "q", "fi", "if"}
+    assert plans.PlanConfig.model_validate({"subs": [{"id": "a", "name": "x", "design": "sw"}]}).subs[0].design == "iq"  # the first version's orders are mapped onto the new list
+
+
+def test_a_method_nobody_uses_does_not_need_its_quota(org):
+    pid = draft(org)["id"]
+    cfg = plan(org, pid)["config"]
+    only_depth = save(org, pid, {**cfg, "subs": [{**cfg["subs"][0], "design": "i"}], "n": {**cfg["n"], "q": 50}}).json()
+    assert not any("定量配额" in b for b in only_depth["blockers"])
+    with_quant = save(org, pid, {**cfg, "subs": [{**cfg["subs"][0], "design": "iq"}], "n": {**cfg["n"], "q": 50}}).json()
+    assert any("定量配额合计 0 与目标 50" in b for b in with_quant["blockers"])
+
+
+def test_retention_is_chosen_in_the_plan_and_the_consent_text_names_it(org):
+    from app.consent import consent_for
+    pid = draft(org)["id"]
+    approved(org, pid, retention=60)
+    pub = org.c.post(f"/api/projects/{pid}/plan/publish", headers=org.h()).json()
+    assert pub["retention_days"] == 60 and org.c.get(f"/api/projects/{pid}", headers=org.h("admin")).json()["retention_days"] == 60
+    assert "60 days" in consent_for("en", "Acme", retention_days=60)["text"] and "60 天" in consent_for("zh", "Acme", retention_days=60)["text"]
+    assert "180 days" in consent_for("en", "Acme")["text"]
+
+
+def test_an_unlocked_plan_must_be_reviewed_again_and_the_project_keeps_running_on_the_published_version(org):
+    pid = draft(org)["id"]
+    cfg = approved(org, pid)
+    org.c.post(f"/api/projects/{pid}/plan/publish", headers=org.h())
+    assert org.c.post(f"/api/projects/{pid}/plan/unlock", headers=org.h()).status_code == 403  # a researcher cannot unlock
+    open_ = org.c.post(f"/api/projects/{pid}/plan/unlock", headers=org.h("admin")).json()
+    assert open_["status"] == "draft" and open_["live"] is True and open_["version"] == 1
+    p = org.c.get(f"/api/projects/{pid}", headers=org.h("admin")).json()
+    assert p["plan_status"] == "published" and p["editing"] == "draft"  # the project stays usable
+    bigger = {**cfg, "n": {**cfg["n"], "i": 9}, "lt": {"dims": ["国家"], "rows": [{"id": "r1", "vs": ["s1"], "t": 0, "i": 9, "f": 0}]}}
+    assert save(org, pid, bigger).status_code == 200
+    mon = org.c.get(f"/api/projects/{pid}/monitor", headers=org.h()).json()
+    assert mon["published"] and mon["i"]["target"] == 5  # monitoring still follows the published version
+    assert org.c.post(f"/api/projects/{pid}/plan/publish", headers=org.h()).status_code == 409  # not reviewed again
+    org.c.post(f"/api/projects/{pid}/plan/submit", headers=org.h())
+    org.c.post(f"/api/projects/{pid}/plan/approve", headers=org.h("admin"))
+    assert org.c.post(f"/api/projects/{pid}/plan/publish", headers=org.h()).json()["version"] == 2
+    assert org.c.get(f"/api/projects/{pid}/monitor", headers=org.h()).json()["i"]["target"] == 9  # now it follows the new one
+
+
+def test_after_publishing_retention_can_only_be_shortened(org):
+    pid = draft(org)["id"]
+    cfg = approved(org, pid, retention=120)
+    org.c.post(f"/api/projects/{pid}/plan/publish", headers=org.h())
+    org.c.post(f"/api/projects/{pid}/plan/unlock", headers=org.h("admin"))
+    assert save(org, pid, {**cfg, "retention": 180}).status_code == 422  # people agreed to 120 days
+    assert save(org, pid, {**cfg, "retention": 60}).status_code == 200
+
+
+def test_data_is_deleted_after_each_projects_own_retention_period(org):
+    from datetime import timedelta
+    from app.db import SessionLocal
+    from app.models import Project, utcnow
+    from app.retention import days_of, purge_date
+    pid = org.project()
+    with SessionLocal() as db:
+        p = db.get(Project, pid)
+        p.retention_days, p.closed_at = 30, utcnow()
+        assert days_of(p) == 30 and purge_date(p) - p.closed_at == timedelta(days=30)
+        p.retention_days = 999
+        assert days_of(p) == 180  # never above the platform's

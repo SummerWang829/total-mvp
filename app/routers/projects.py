@@ -11,7 +11,7 @@ from ..db import get_db
 from ..deps import ANY_PROJECT_ROLE, MEMBER_ROLES, RECRUITERS, STAFF, Ctx, can_see_project, current_ctx, ensure_project, require_roles
 from ..models import Interview, InterviewObserver, Participant, Project, ProjectMember, ProjectPlan, User
 from ..models import utcnow
-from ..retention import erase_participant, purge_date
+from ..retention import days_of, erase_participant, purge_date
 
 router = APIRouter(prefix="/api", tags=["projects"])
 
@@ -49,12 +49,13 @@ class ScreenerBody(BaseModel):
     text: str = Field(max_length=20000)
 
 
-def project_out(p: Project, plan_status: str = "", setup: dict | None = None) -> dict:
-    """`plan_status`: "" for a project made before plans existed (it counts as published), else draft / review / approved / published."""
+def project_out(p: Project, plan_status: str = "", setup: dict | None = None, editing: str = "") -> dict:
+    """`plan_status`: "" for a project made before plans existed (it counts as published), else draft / review / approved / published (a plan that was
+    published stays "published" while it is unlocked; `editing` then says where the unlocked plan stands: draft / review / approved)."""
     pd = purge_date(p)
     return {"id": p.id, "name": p.name, "brief": p.brief, "market": p.market, "language": p.language, "created_at": p.created_at.isoformat(),
             "closed_at": p.closed_at.isoformat() if p.closed_at else None, "purge_at": pd.isoformat() if pd else None,
-            "retention_days": settings.retention_days, "methods": methods_mod.of(p), "plan_status": plan_status, "setup": setup}
+            "retention_days": days_of(p), "methods": methods_mod.of(p), "plan_status": plan_status, "setup": setup, "editing": editing}
 
 
 def participant_out(p: Participant, screener_count: int = 0) -> dict:
@@ -97,12 +98,13 @@ def create_project(body: NewProject, ctx: Ctx = Depends(require_roles(*STAFF)), 
 @router.get("/projects")
 def list_projects(ctx: Ctx = Depends(current_ctx), db: Session = Depends(get_db)):
     q = select(Project).where(Project.org_id == ctx.org_id).order_by(Project.created_at.desc())
-    rows = db.execute(select(ProjectPlan.project_id, ProjectPlan.status, ProjectPlan.config_json).where(ProjectPlan.org_id == ctx.org_id)).all()
-    status = {pid: st for pid, st, _ in rows}
-    setups = {pid: plans.summary(cj) for pid, _, cj in rows}
+    rows = db.scalars(select(ProjectPlan).where(ProjectPlan.org_id == ctx.org_id)).all()
+    status = {r.project_id: plans.public_status(r) for r in rows}
+    setups = {r.project_id: plans.summary(plans.live_json(r)) for r in rows}
+    edits = {r.project_id: r.status for r in rows if r.version > 0 and r.status != "published"}
     if ctx.user.role in ("recruiter", "viewer"):  # recruiters and viewers see the projects they were added to, without the staff cards
         q = q.where(Project.id.in_(select(ProjectMember.project_id).where(ProjectMember.user_id == ctx.user.id)))
-        return [project_out(p, status.get(p.id, ""), setups.get(p.id)) for p in db.scalars(q)]
+        return [project_out(p, status.get(p.id, ""), setups.get(p.id), edits.get(p.id, "")) for p in db.scalars(q)]
     if ctx.user.role not in STAFF:  # moderators / observers only see projects they are assigned to
         mine = select(Interview.project_id).where(Interview.org_id == ctx.org_id)
         if ctx.user.role == "moderator":
@@ -110,18 +112,18 @@ def list_projects(ctx: Ctx = Depends(current_ctx), db: Session = Depends(get_db)
         else:
             mine = mine.where(Interview.id.in_(select(InterviewObserver.interview_id).where(InterviewObserver.user_id == ctx.user.id)))
         q = q.where(Project.id.in_(mine))
-        return [project_out(p, status.get(p.id, ""), setups.get(p.id)) for p in db.scalars(q)]
+        return [project_out(p, status.get(p.id, ""), setups.get(p.id), edits.get(p.id, "")) for p in db.scalars(q)]
     if ctx.user.role == "researcher":  # a researcher sees only the projects they belong to
         q = q.where(Project.id.in_(select(ProjectMember.project_id).where(ProjectMember.user_id == ctx.user.id)))
     from .overview import project_summary  # staff project cards: participants, sessions, next session
-    return [{**project_out(p, status.get(p.id, ""), setups.get(p.id)), "summary": project_summary(db, p)} for p in db.scalars(q)]
+    return [{**project_out(p, status.get(p.id, ""), setups.get(p.id), edits.get(p.id, "")), "summary": project_summary(db, p)} for p in db.scalars(q)]
 
 
 @router.get("/projects/{pid}")
 def project_detail(pid: str, ctx: Ctx = Depends(require_roles(*ANY_PROJECT_ROLE)), db: Session = Depends(get_db)):
     p = get_project(db, ctx, pid)
     plan = db.get(ProjectPlan, pid)
-    return project_out(p, plan.status if plan else "", plans.summary(plan.config_json) if plan else None)
+    return project_out(p, plans.public_status(plan) if plan else "", plans.summary(plans.live_json(plan)) if plan else None, plan.status if plan and plan.version > 0 and plan.status != "published" else "")
 
 
 @router.post("/projects/{pid}/close")

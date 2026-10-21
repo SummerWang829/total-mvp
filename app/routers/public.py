@@ -19,8 +19,9 @@ from ..db import get_db
 from ..deps import client_ip
 from ..livekit import build_room_token, url_for_client, verify_webhook
 from ..media import cut_clip
-from ..models import Clip, Consent, Evidence, Insight, Interview, Org, Participant, Recording, ShareLink, utcnow
+from ..models import Clip, Consent, Evidence, Insight, Interview, Org, Participant, Project, Recording, ShareLink, utcnow
 from ..recording import elapsed_ms, save_chunk
+from ..retention import days_of
 from ..security import sign_media, token_hash, verify_media
 
 router = APIRouter(prefix="/api/public", tags=["public"])
@@ -53,6 +54,11 @@ def public_config():
     return {"allowed_countries": sorted(settings.allowed_countries), "languages": list(settings.languages), "asr": settings.asr_provider, "llm": settings.llm_provider, "video": bool(settings.livekit_url)}
 
 
+def _days(db: Session, itv) -> int:
+    """The retention period the project chose: the consent text names it."""
+    return days_of(db.get(Project, itv.project_id))
+
+
 @router.get("/join/{token}")
 def join_info(token: str, db: Session = Depends(get_db)):
     j = resolve_join(db, token)
@@ -62,7 +68,7 @@ def join_info(token: str, db: Session = Depends(get_db)):
     return {"org": org.name, "scheduled_at": itv.scheduled_at.isoformat() if itv.scheduled_at else None,
             "status": itv.status, "can_enter_now": _window_ok(itv), "consented": consent is not None,
             "device_ok": seat.device_ok_at is not None, "async": itv.kind == "async",
-            "consent": consent_for(itv.language, org.name, ai=itv.moderation == ModerationMode.AI.value, text_only=itv.kind == "async"),
+            "consent": consent_for(itv.language, org.name, ai=itv.moderation == ModerationMode.AI.value, text_only=itv.kind == "async", retention_days=_days(db, itv)),
             "pretask": pretask.participant_view(db, itv.id, j.participant.id), "timeslots": scheduling.public_view(db, itv, j.participant.id)}
 
 
@@ -121,7 +127,7 @@ def give_consent(token: str, body: ConsentBody, request: Request, db: Session = 
     if ai and ai_moderation_blocker():  # never let anyone agree to a text that cannot name who receives their words
         raise HTTPException(409, MSG_AI_INTERVIEW_NOT_READY)
     org = db.get(Org, itv.org_id)
-    c = consent_for(itv.language, org.name, ai=ai, text_only=itv.kind == "async")
+    c = consent_for(itv.language, org.name, ai=ai, text_only=itv.kind == "async", retention_days=_days(db, itv))
     part.country = country
     db.add(Consent(org_id=itv.org_id, interview_id=itv.id, participant_id=part.id, version=c["version"], text_sha256=c["sha256"],
                    recording=True, observers=True, cross_border=True, ai_moderation=ai, country=country, ip=client_ip(request)))

@@ -11,19 +11,25 @@ import json
 import re
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 from . import methods as methods_mod
 
 STATUSES = ("draft", "review", "approved", "published")
-DESIGNS = {"ql": "先定性，后定量", "qt": "先定量，后定性", "sw": "定性、定量、定性"}
+# Research order of one sub-project (a country): which methods it runs and in what order. depth = 深访, group = 座谈会, quant = 定量.
+DESIGN_STAGES = {"fq": ("先座谈会，后定量", ("group", "quant")), "iq": ("先深访，后定量", ("depth", "quant")), "qi": ("先定量，后深访", ("quant", "depth")),
+                 "i": ("仅深访", ("depth",)), "f": ("仅座谈会", ("group",)), "q": ("仅定量", ("quant",)),
+                 "fi": ("先座谈会，后深访", ("group", "depth")), "if": ("先深访，后座谈会", ("depth", "group"))}
+DESIGNS = {k: v[0] for k, v in DESIGN_STAGES.items()}
+LEGACY_DESIGNS = {"ql": "iq", "qt": "qi", "sw": "iq"}  # the three orders the first version offered (the "sandwich" is gone: its closest is 先深访，后定量)
+RETENTION_CHOICES = (30, 60, 120, 180)
 TYPES = ("使用习惯与态度", "概念测试", "视频与广告测试", "售后与体验", "产品与包装测试")
 SOURCES = ("pool", "rec", "panel")
 PLACEHOLDERS = ("purpose", "unsubscribe")
 MAX_ROWS = 60
 MAX_VALUES = 40
 MAX_VARIABLES = 8
-RETENTION_DAYS = 180  # fixed by the platform (the consent text says so), shown in the wizard but not chosen there
+RETENTION_DAYS = 180  # the longest the platform allows; a project may choose less (RETENTION_CHOICES), never more
 DEFAULT_TQ = "您好，邀请您参加一项约 8 分钟的调研。目的：{{purpose}}。退订请回复：{{unsubscribe}}。"
 DEFAULT_TL = "您好，邀请您参加一场 45 分钟的线上访谈。目的：{{purpose}}。同意录制后可预约时间，退订：{{unsubscribe}}。"
 COUNTRY_VAR = "国家"
@@ -39,7 +45,14 @@ class Sub(BaseModel):
     name: str = Field(min_length=1, max_length=40)
     lang: str = Field(default="英语", max_length=20)
     pm: str = Field(default="", max_length=40)  # a user id, or empty
-    design: Literal["ql", "qt", "sw"] = "ql"
+    design: Literal["fq", "iq", "qi", "i", "f", "q", "fi", "if"] = "iq"
+    listening: bool = False  # this sub-project also does social listening (舆情)
+    async_ai: bool = False  # ... and asynchronous AI studies (recruiting with the AI moderator means this)
+
+    @field_validator("design", mode="before")
+    @classmethod
+    def _legacy(cls, v):
+        return LEGACY_DESIGNS.get(v, v)
 
 
 class Member(BaseModel):
@@ -50,6 +63,7 @@ class Member(BaseModel):
     q: bool = False
     i: bool = False
     f: bool = False
+    l: bool = False  # social listening
 
 
 class Value(BaseModel):
@@ -106,8 +120,8 @@ class PlanConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
     type: str = TYPES[0]
-    design: Literal["ql", "qt", "sw"] = "ql"
-    methods: list[str] = Field(default_factory=lambda: ["depth"])
+    retention: Literal[30, 60, 120, 180] = 180  # days after the project closes until personal data is deleted (the consent text says this number)
+    methods: list[str] = Field(default_factory=lambda: ["depth", "quant"])  # derived from the sub-projects' research orders; whatever is sent is replaced
     split: Literal["country", "single"] = "country"
     subs: list[Sub] = Field(default_factory=lambda: [Sub(id="s1", name="新加坡", lang="英语")], max_length=30)
     team: list[Member] = Field(default_factory=list, max_length=80)
@@ -130,20 +144,24 @@ class PlanConfig(BaseModel):
     langs: dict[str, bool] = Field(default_factory=dict)
     cons: Cons = Field(default_factory=Cons)
 
+    @model_validator(mode="before")
+    @classmethod
+    def _drop_derived(cls, data):
+        if isinstance(data, dict):
+            data = {k: v for k, v in data.items() if k not in ("design",)}  # the project-wide order of the first version: each sub-project has its own now
+        return data
+
+    @model_validator(mode="after")
+    def _derive_methods(self):
+        self.methods = methods_for(self.subs)
+        return self
+
     @field_validator("type")
     @classmethod
     def _type(cls, v: str) -> str:
         if v not in TYPES:
             raise ValueError("unknown research type")
         return v
-
-    @field_validator("methods")
-    @classmethod
-    def _methods(cls, v: list[str]) -> list[str]:
-        try:
-            return methods_mod.clean(v)
-        except methods_mod.MethodsError as e:
-            raise ValueError(str(e)) from e
 
     @field_validator("langs")
     @classmethod
@@ -160,10 +178,23 @@ class PlanConfig(BaseModel):
         return v
 
 
+def methods_for(subs: list) -> list[str]:
+    """The research methods a plan uses: what its sub-projects' research orders run, plus listening / async studies where a sub-project ticks them."""
+    got: set[str] = set()
+    for s in subs:
+        got.update(DESIGN_STAGES[s.design][1])
+        if s.listening:
+            got.add("listening")
+        if s.async_ai:
+            got.add("async")
+    return methods_mod.clean(got or ["depth"])
+
+
 def default_config(name: str = "") -> dict:
     """A new plan's starting point: one sub-project, the country variable, three empty quota tables."""
     del name
     cfg = PlanConfig()
+    cfg.methods = methods_for(cfg.subs)
     cfg.langs = {lang: lang == "英语" for lang in LANG_CHOICES}
     cfg.vars = {COUNTRY_VAR: [Value(id="s1", name="新加坡")], **{k: [Value(id=f"{k}{i}", name=n) for i, n in enumerate(vs)] for k, vs in EXTRA_VARS.items()}}
     return cfg.model_dump()
@@ -210,6 +241,16 @@ def quota_sums(cfg: PlanConfig) -> dict[str, int]:
     return {"q": sum(r.t for r in cfg.qt.rows), "i": sum(r.i for r in cfg.lt.rows), "f": sum(r.f for r in cfg.ft.rows)}
 
 
+def public_status(plan) -> str:
+    """What the rest of the app sees: a plan that has been published stays "published" (the project keeps running) while it is unlocked and edited."""
+    return "published" if plan.version > 0 else plan.status
+
+
+def live_json(plan) -> str:
+    """The config the project actually runs on: the last published one while an unlocked plan is being edited, otherwise the plan as it stands."""
+    return plan.published_json or plan.config_json if plan.version > 0 else plan.config_json
+
+
 def uses_interviews(cfg: PlanConfig) -> bool:
     return any(m in cfg.methods for m in ("depth", "group", "async"))
 
@@ -224,7 +265,7 @@ def compliance(cfg: PlanConfig) -> list[dict]:
         ("c1", "告知义务", "GDPR / PIPL", tq_ok, "邀请首句说明目的和控制者身份，落地页展示隐私声明"),
         ("c2", "同意有效性", "GDPR", True, "同意与服务条款分开勾选，不默认勾选（受访者同意页已这样做）"),
         ("c3", "数据最小化", "PIPL", True, "只采集研究需要的字段"),
-        ("c4", "留存期限", "GDPR", True, f"项目结项后 {RETENTION_DAYS} 天自动删除个人数据，洞察结论保留（平台统一规定，同意书里写明）"),
+        ("c4", "留存期限", "GDPR", True, f"项目结项后 {cfg.retention} 天自动删除个人数据，洞察结论保留（同意书里写明这个天数）"),
         ("c5", "假名化存储", "PIPL", True, "研究侧、观察员和客户只见受访者编号，不见姓名和联系方式"),
         ("c6", "跨境数据传输", "数据传输法", cfg.cons.xb, "数据存放在新加坡，由中国团队访问；需要签署标准合同或完成评估（请勾选确认）"),
         ("c7", "子处理者管理", "GDPR", True, "转写、翻译、AI 模型供应商均需有处理协议（同意书里写明数据发给谁）"),
@@ -251,8 +292,9 @@ def blockers(cfg: PlanConfig) -> list[str]:
     failed = [c["title"] for c in compliance(cfg) if not c["passed"]]
     out = ["合规项未通过：" + "、".join(failed)] if failed else []
     sums = quota_sums(cfg)
+    used = {"q": "quant" in cfg.methods, "i": "depth" in cfg.methods, "f": "group" in cfg.methods}
     for key, label, target in (("q", "定量配额", cfg.n.q), ("i", "深访配额", cfg.n.i), ("f", "座谈会配额", cfg.n.f)):
-        if sums[key] != target:
+        if used[key] and sums[key] != target:
             out.append(f"{label}合计 {sums[key]} 与目标 {target} 不一致")
     if not cfg.subs:
         out.append("至少要有一个子项目")
@@ -271,10 +313,11 @@ def suggest_tags(text: str, known: list[str]) -> list[str]:
 
 
 def summary(config_json: str) -> dict:
-    """What the project bar needs from a plan without parsing all of it: the research order and the sub-projects (id, name)."""
+    """What the project bar and the menu need from a plan without parsing all of it: each sub-project's id, name, research order and extras."""
     try:
         raw = json.loads(config_json or "{}")
-        return {"design": raw.get("design", "ql") if raw.get("design") in DESIGNS else "ql",
-                "subs": [{"id": str(s.get("id", "")), "name": str(s.get("name", ""))} for s in raw.get("subs", [])][:30]}
+        subs = [{"id": str(s.get("id", "")), "name": str(s.get("name", "")), "design": LEGACY_DESIGNS.get(s.get("design"), s.get("design")) if LEGACY_DESIGNS.get(s.get("design"), s.get("design")) in DESIGNS else "iq",
+                 "listening": bool(s.get("listening")), "async_ai": bool(s.get("async_ai"))} for s in raw.get("subs", [])][:30]
+        return {"subs": subs, "design": subs[0]["design"] if subs else "iq"}
     except (ValueError, AttributeError, TypeError):
-        return {"design": "ql", "subs": []}
+        return {"subs": [], "design": "iq"}

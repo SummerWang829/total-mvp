@@ -9,7 +9,7 @@ import hashlib
 from .config import settings
 from .moderator.compliance import moderator_runs_locally
 
-VERSION = "2026-10-draft-7"  # draft-7: studies done alone, in text, at any time have their own paragraph; draft-6: how things are said (pace, pauses, volume) and emoji are noted; draft-5: the AI also reads the screening answers; draft-4: AI-moderator disclosure (AI interviews only)
+VERSION = "2026-10-draft-8"  # draft-8: the number of days before deletion is the project's own choice (30/60/120/180); draft-7: studies done alone, in text, at any time have their own paragraph; draft-6: how things are said (pace, pauses, volume) and emoji are noted; draft-5: the AI also reads the screening answers; draft-4: AI-moderator disclosure (AI interviews only)
 
 # A study done alone: replaces the picture of a live video call that the base text gives.
 TEXT_ONLY_TEXTS = {
@@ -41,13 +41,13 @@ TEXTS = {
         "This interview is run by TOTAL on behalf of {org}. We will record video and audio, transcribe it and translate it into Chinese "
         "for market research. We will not share your name or contact details with the client without your separate consent. "
         "Client observers may listen silently and you will not see them. Your information is stored on secure servers in Singapore and is accessed by our team in China, where we apply "
-        "protections comparable to those required in Singapore. It is deleted 180 days after the research project ends. "
+        "protections comparable to those required in Singapore. It is deleted {days} days after the research project ends. "
         "You may withdraw your consent, or ask to access, correct or delete your data, at any time by contacting {dpo}."
     ),
     "zh": (
         "本次访谈由星桐代 {org} 进行。我们会录制访谈的视频和声音，转写成文字并翻译成中文，用于市场研究。"
         "未经您另行同意，我们不会把您的姓名或联系方式提供给委托方。委托方的观察员可能静默旁听，您看不到他们。"
-        "您的信息存放在位于新加坡的安全服务器上，并由我们在中国的团队访问，我们会妥善保管，并采取与新加坡要求相当的保护措施。研究项目结束 180 天后删除。"
+        "您的信息存放在位于新加坡的安全服务器上，并由我们在中国的团队访问，我们会妥善保管，并采取与新加坡要求相当的保护措施。研究项目结束 {days} 天后删除。"
         "您可以随时撤回同意，或要求查阅、更正、删除您的数据，联系 {dpo} 即可。"
     ),
     "ms": (
@@ -55,7 +55,7 @@ TEXTS = {
         "ke bahasa Cina untuk kajian pasaran. Nama dan butiran hubungan anda tidak akan dikongsi dengan klien tanpa persetujuan berasingan anda. "
         "Pemerhati klien mungkin mendengar secara senyap dan anda tidak akan melihat mereka. Maklumat anda disimpan di pelayan selamat di Singapura dan diakses oleh pasukan kami di China; "
         "kami menjaganya dengan selamat dan menggunakan perlindungan yang setanding dengan yang diperlukan di Singapura. "
-        "Maklumat itu dipadam 180 hari selepas projek kajian tamat. Anda boleh menarik balik persetujuan, atau meminta akses, pembetulan "
+        "Maklumat itu dipadam {days} hari selepas projek kajian tamat. Anda boleh menarik balik persetujuan, atau meminta akses, pembetulan "
         "atau pemadaman data anda pada bila-bila masa dengan menghubungi {dpo}."
     ),
     "ta": (
@@ -63,7 +63,7 @@ TEXTS = {
         "எழுத்தாக மாற்றி, சீன மொழியில் மொழிபெயர்ப்போம். உங்கள் தனி ஒப்புதல் இல்லாமல் உங்கள் பெயர் அல்லது தொடர்பு விவரங்களை "
         "வாடிக்கையாளருடன் பகிர மாட்டோம். வாடிக்கையாளர் பார்வையாளர்கள் அமைதியாகக் கேட்கலாம்; நீங்கள் அவர்களைப் பார்க்க முடியாது. "
         "உங்கள் தகவல் சிங்கப்பூரில் உள்ள பாதுகாப்பான சேவையகங்களில் சேமிக்கப்பட்டு, சீனாவில் உள்ள எங்கள் குழுவால் அணுகப்படும்; அதைப் பாதுகாப்பாக வைத்து, சிங்கப்பூரில் தேவைப்படும் அளவுக்கு இணையான "
-        "பாதுகாப்புகளைப் பயன்படுத்துவோம். ஆய்வுத் திட்டம் முடிந்த 180 நாட்களுக்குப் பிறகு அது நீக்கப்படும். எந்த நேரத்திலும் "
+        "பாதுகாப்புகளைப் பயன்படுத்துவோம். ஆய்வுத் திட்டம் முடிந்த {days} நாட்களுக்குப் பிறகு அது நீக்கப்படும். எந்த நேரத்திலும் "
         "{dpo} ஐத் தொடர்புகொண்டு ஒப்புதலைத் திரும்பப் பெறலாம், அல்லது உங்கள் தரவைப் பார்க்க, திருத்த, நீக்கக் கோரலாம்."
     ),
 }
@@ -128,20 +128,21 @@ def _ai_disclosure(lang: str) -> str:
     return AI_TEXTS[lang] + sep + AI_PROFILE[lang] + sep + where + sep
 
 
-def consent_for(lang: str, org_name: str, ai: bool = False, text_only: bool = False) -> dict:
+def consent_for(lang: str, org_name: str, ai: bool = False, text_only: bool = False, retention_days: int = 180) -> dict:
     """The consent text a participant agrees to, and the checkbox labels.
 
     Args:
         lang: interview language; anything outside en/zh/ms/ta falls back to English.
         org_name: the client organisation named in the text.
         ai: True for an AI-moderated interview: the AI disclosure comes first and an extra "ai" checkbox is required.
+        retention_days: days after the project ends until the data is deleted (the project's choice; at most 180).
         text_only: a study done alone, in writing, at any time (no video or sound; the team reads the conversation afterwards): says so first.
 
     Returns:
         {"version", "lang", "text", "labels", "ai", "sha256"}; sha256 is stored with the consent so the exact text can be proven later.
     """
     l = "zh" if (lang or "").startswith("zh") else lang if lang in TEXTS else "en"  # anything else: English
-    text = TEXTS[l].format(org=org_name, dpo=settings.dpo_email)
+    text = TEXTS[l].format(org=org_name, dpo=settings.dpo_email, days=retention_days)
     text = text + ("" if l == "zh" else " ") + SIGNALS_TEXTS[l]
     labels = dict(LABELS[l])
     if text_only:

@@ -60,6 +60,7 @@ class Project(Base):
     closed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # retention clock starts here
     purge_hold_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # an admin kept the data longer: nothing is purged before this date
     methods: Mapped[str] = mapped_column(String(100), default="depth,group,async,listening")  # the research methods this project uses (app/methods.py), comma separated
+    retention_days: Mapped[int] = mapped_column(Integer, default=180)  # chosen in the plan (30/60/120/180, never above the platform's); the consent text names it
     created_by: Mapped[str] = mapped_column(String(32))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
@@ -858,7 +859,8 @@ class ProjectPlan(Base):
     org_id: Mapped[str] = mapped_column(String(32), index=True)
     status: Mapped[str] = mapped_column(String(10), default="draft")  # draft | review | approved | published (app/plans.py STATUSES)
     config_json: Mapped[str] = mapped_column(Text, default="{}")
-    version: Mapped[int] = mapped_column(Integer, default=0)  # 1 once published
+    version: Mapped[int] = mapped_column(Integer, default=0)  # 0 until first published, then +1 at each (re)publish
+    published_json: Mapped[str] = mapped_column(Text, default="")  # the config as last published: the project runs on this while an unlocked plan is being edited
     review_hash: Mapped[str] = mapped_column(String(32), default="")  # fingerprint of the config when it was submitted for review
     review_note: Mapped[str] = mapped_column(String(300), default="")  # why a reviewer sent it back
     submitted_by: Mapped[str] = mapped_column(String(32), default="")
