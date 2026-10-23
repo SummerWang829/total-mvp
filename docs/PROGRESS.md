@@ -4,6 +4,12 @@
 > 每条记录写：日期 · 做了什么 · `scripts/qa.sh` 结果数字 · 还差什么 · 风险。最新的写在最上面。
 > qa.sh 数字的顺序：逻辑测试（pytest）/ 全站浏览器检查 / 真实视频访谈 / 一键启动。
 
+## 2026-10-21 · 部署到新加坡测试服务器（提交 8e0fb92，含 LW 第四批：问卷编辑器、发布成链接/二维码、公开作答页）
+- 部署前确认没有进行中的访谈。备份 `total-20261021-082504.db.gz` 已生成，异地备份（COS）成功。`git archive` 覆盖 `/opt/total-mvp`（`deploy/.env` 保留）；`docker compose up -d --build`；三个容器运行，app healthy。没有碰硅谷服务器。
+- 检查：`/api/health`、`/home.js`、`/wizard.js`、`/shell.js`、`/rform.js`、`/screen_run.js` 全 200，`/screen.html?t=nope` 可打开；doctor：视频在线、AI 主持人可用、实时字幕已配置、限流已开，没有必须解决的问题。
+- 数据库自动补了 `recruit_forms` 的 6 列（status/token/published_at/n_qualified/n_out/out_by），没有 “cannot add” 报错；日志没有 error/traceback。
+- 未登录冒烟（没有管理员密码）：问卷编辑、发布成链接/二维码、公开作答页请用户登录后走一遍。
+
 ## 2026-10-21 · 部署到新加坡测试服务器（提交 d4909b2，含 LW 的第一、二、三批）
 - 部署前确认没有进行中（live）的访谈。备份 `total-20261021-072016.db.gz` 已生成，异地备份（COS）上传成功。`git archive` 覆盖 `/opt/total-mvp`（`deploy/.env` 保留）；`docker compose up -d --build`；三个容器运行，app healthy。没有碰硅谷服务器。
 - 检查：`/api/health`、`/home.js`、`/wizard.js`、`/shell.js`、`/rform.js`、`/api/public/config` 全 200；doctor：视频在线、AI 主持人可用、实时字幕已配置、限流已开，没有必须解决的问题。
