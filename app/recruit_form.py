@@ -9,6 +9,7 @@ One saved form per project, two sources:
 The logic runs on the server only (`next_step`): the candidate's page asks "what is next, given these answers" and never sees which answer screens out. The same function
 serves the researcher's test on the right-hand side of the editor, so what they test is what candidates get.
 """
+import json
 import logging
 import math
 import re
@@ -114,6 +115,8 @@ class FormBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
     source: Literal["ai", "html"] = "ai"
     idea: str = Field(default="", max_length=5000)
+    goals: list[str] = Field(default_factory=list, max_length=8)
+    need: str = Field(default="", max_length=1500)
     html_url: str = Field(default="", max_length=MAX_URL)
     questions: list[Question] = Field(default_factory=list, max_length=MAX_QUESTIONS)
 
@@ -121,6 +124,11 @@ class FormBody(BaseModel):
     @classmethod
     def _url(cls, v: str) -> str:
         return clean_url(v) if v.strip() else ""
+
+    @field_validator("goals")
+    @classmethod
+    def _goals(cls, v: list[str]) -> list[str]:
+        return [g.strip()[:300] for g in v if g.strip()]
 
 
 def clean_url(url: str) -> str:
@@ -350,3 +358,81 @@ def generate(chat: ModeratorChatProvider | None, idea: str, language: str, libra
             problem = f"not a valid questionnaire ({type(e).__name__})"
             log.warning("screener draft attempt %d unusable: %s", attempt + 1, type(e).__name__)
     raise FormError("AI 写的问卷不合格（题型、选项或内容不符合要求），请换个说法再试一次")
+
+
+# ---------- the conversation that edits the questionnaire ----------
+MAX_CHAT = 40
+MAX_CHAT_TEXT = 2000
+HISTORY_TURNS = 12
+CHAT_SYSTEM = """You are the assistant inside a recruiting-questionnaire editor for a market research team. You and the researcher talk; you change the questionnaire for them.
+Reply with ONE JSON object and nothing else:
+{"reply": "<what you did or what you ask, 1 to 4 short sentences, in Chinese, plain words>",
+ "questions": null | [<the COMPLETE questionnaire after your change>],
+ "goals": null | ["<research goal>", ...],
+ "need": null | "<the recruiting need: who, how many, and what screens out, 1 to 3 sentences, Chinese>"}
+Use null for anything you did not change. When you change questions, send ALL of them again, keeping the id of every question and option you did not touch.
+A question is {"id": "q1", "type": "single" | "multi" | "text" | "number", "text": "...", "required": true, "options": [{"id": "o1", "text": "...", "goto": "", "tag": ""}], "rules": [{"op": "lt" | "lte" | "gt" | "gte" | "eq", "value": 18, "goto": "end_out"}]}.
+"goto" on an option (or a number rule) says what happens after it: "" = next question, a LATER question's id = jump there, "end_out" = the person is screened out (not eligible), "end_ok" = finish as qualified.
+"tag" is a label the person gets when they choose the option. single/multi need 2 to 12 options; text and number have no options; only number questions have rules. At most 30 questions.
+Write the questions in the language {language}. Questions are neutral, one at a time, never leading, never naming or praising a brand, and never ask for a name, phone number, e-mail, address or any ID (the page asks contact details itself after the person qualifies).
+If asked to draft the questionnaire, use the research background and the reference material: 6 to 10 questions, eligibility first (age 18 or over, country or city, how often they use or buy), then what tells the target groups apart; also fill "goals" (3 to 4) and "need".
+If the request is unclear, ask one short question in "reply" and change nothing."""
+
+
+@dataclass
+class ChatResult:
+    """What one turn of the conversation produced: the reply, and whatever the AI changed (None = unchanged)."""
+
+    reply: str
+    questions: list[Question] | None = None
+    goals: list[str] | None = None
+    need: str | None = None
+
+
+def mock_chat(message: str, questions: list[Question], language: str) -> ChatResult:
+    """The offline assistant used in development and tests: it can draft the fixed questionnaire and delete the last question; anything else it says it cannot do."""
+    if "起草" in message or "draft" in message.lower() or not questions:
+        qs = normalize({"questions": mock_questions(message, language)}).questions
+        return ChatResult("好的，我根据研究背景起草了一份问卷（离线演示版）。你可以继续告诉我怎么改。", qs,
+                          ["了解目标人群的选购习惯和信息来源", "找出购买决策中最看重的因素", "比较不同渠道人群的差异"], "新加坡 · 18 岁以上 · 经常使用这类产品的人；18 岁以下、几乎不用的筛掉。")
+    if "删除最后" in message:
+        return ChatResult("已删除最后一题。", questions[:-1])
+    return ChatResult("（离线演示版只会“起草问卷”和“删除最后一题”；接上 AI 模型后可以按你的话修改。）")
+
+
+def _history_messages(history: list[dict]) -> list[dict]:
+    return [{"role": "assistant" if h.get("role") == "ai" else "user", "content": str(h.get("text", ""))[:MAX_CHAT_TEXT]} for h in history[-HISTORY_TURNS:] if h.get("text")]
+
+
+def chat_turn(chat: ModeratorChatProvider | None, message: str, history: list[dict], questions: list[Question], goals: list[str], need: str, language: str,
+              brief: str = "", library: str = "") -> ChatResult:
+    """One turn: the AI reads the conversation so far, the current questionnaire, the research background and the library, and answers with a reply and the changes.
+    `chat` None means the offline assistant. A change that is not a valid questionnaire is asked for again once with the problem named, then dropped (the reply says so).
+
+    Raises:
+        FormError: the message is empty, or the model service is unavailable.
+        ChatFatalError: the model service refused (bad key, no balance...).
+    """
+    if not message.strip():
+        raise FormError("先说点什么")
+    if chat is None:
+        return mock_chat(message, questions, language)
+    context = (f"Research background from the project plan:\n{brief.strip() or '(none)'}\n\nReference material from the research library:\n{library or '(none)'}\n\n"
+               f"Current questionnaire (JSON):\n{json.dumps([q.model_dump() for q in questions], ensure_ascii=False)}\nCurrent goals: {json.dumps(goals, ensure_ascii=False)}\nCurrent recruiting need: {need or '(none)'}")
+    msgs = [{"role": "system", "content": CHAT_SYSTEM.replace("{language}", language)}, {"role": "user", "content": context}, *_history_messages(history), {"role": "user", "content": message.strip()[:MAX_CHAT_TEXT]}]
+    problem = ""
+    for attempt in range(MAX_ATTEMPTS):
+        try:
+            reply = chat.complete(msgs + ([{"role": "user", "content": f"Your previous change was rejected: {problem}. Answer again with a valid questionnaire."}] if problem else []), temperature=0.3)
+            text = str(reply.get("reply", "")).strip()[:MAX_CHAT_TEXT] or "好的。"
+            new_q = normalize({"questions": reply["questions"][:MAX_QUESTIONS]}).questions if reply.get("questions") else None
+            new_goals = [str(g).strip()[:300] for g in reply["goals"][:8] if str(g).strip()] if reply.get("goals") else None
+            return ChatResult(text, new_q, new_goals, str(reply["need"]).strip()[:1500] if reply.get("need") else None)
+        except ChatFatalError:
+            raise
+        except ChatError as e:
+            raise FormError("AI 暂时无法回复，请稍后再试") from e
+        except (ValueError, KeyError, TypeError, AttributeError) as e:
+            problem = f"not a valid questionnaire ({type(e).__name__}: {str(e)[:120]})"
+            log.warning("questionnaire chat attempt %d unusable: %s", attempt + 1, type(e).__name__)
+    return ChatResult("我这次改出来的问卷不合格（题型、选项或跳转有问题），没有改动。能换个说法再说一次吗？")

@@ -412,20 +412,38 @@ nav.side .dotc{width:7px;height:7px;border-radius:50%;background:var(--sc,#FF6A0
 @media (max-width:700px){.hm-stagelist li{grid-template-columns:28px 1fr auto}.hm-stagelist li .qbar,.hm-stagelist li .sm{grid-column:2/-1}.hm-stagelist li button{grid-column:2/-1;justify-self:start}}
 
 /* ---------- 招募问卷（rform.js）：左边输入、右边题目 ---------- */
-.rf-grid{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:20px;margin-top:12px;align-items:start}
-.rf-l{display:flex;flex-direction:column;gap:10px}
-.rf-r{background:var(--wash);border-radius:var(--r-pan);padding:14px;min-height:200px;display:flex;flex-direction:column;gap:10px}
 .rf-qs{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px}
 .rf-q{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px}
-.rf-edit{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px;margin-bottom:10px}
-.rf-optl{display:flex;flex-direction:column;gap:8px}.rf-optrow{display:flex;gap:6px;flex-wrap:wrap;align-items:center}.rf-optrow>input[data-o=text]{flex:1 1 140px;min-width:0}
-.rf-ai{border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--surface)}.rf-ai summary{cursor:pointer;font-weight:700;min-height:36px;display:flex;align-items:center}
-.rf-ai[open] summary{margin-bottom:8px}.rf-ai>*:not(summary){margin-top:8px}
-.rf-pub{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px;margin-top:6px}
-.rf-link{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap}.rf-link>div{flex:1 1 220px;min-width:0}.rf-link img{border:1px solid var(--line);border-radius:8px;background:#fff;padding:4px}
 .rfurl{word-break:break-all;font-size:13px;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:6px 10px}
 .rf-opts{display:flex;flex-direction:column;gap:6px}
-@media (max-width:900px){.rf-grid{grid-template-columns:1fr}}
+/* ---------- 招募问卷工作台（rform.js）：左边对话、右边实时大纲，各自滚动，整页不滚 ---------- */
+body.rfmode{overflow:hidden}
+body.rfmode main>.head{display:none}  /* the workspace takes the room of the page title: the tabs stay */
+body.rfmode main>.hubtabs:last-of-type{margin-bottom:8px}
+.rf-ws{display:grid;grid-template-columns:minmax(0,4fr) minmax(0,6fr);border:1px solid var(--line);border-radius:14px;overflow:hidden;min-height:380px;background:var(--surface)}
+.rf-pane{display:flex;flex-direction:column;min-height:0;min-width:0}.rf-pane+.rf-pane{border-left:1px solid var(--line)}
+.rf-hd{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--line);flex:none;flex-wrap:wrap;min-height:50px}
+.rf-sc{flex:1;overflow:auto;padding:14px 16px;min-height:0;overscroll-behavior:contain}
+.rf-msg{margin:0 0 12px;line-height:1.7;overflow-wrap:anywhere}.rf-me{margin-left:auto;max-width:88%;background:var(--wash);border-radius:12px;padding:9px 12px}
+.rf-st{font-size:12.5px;color:var(--green);margin:0 0 12px;line-height:1.7}.rf-chips{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}
+.rf-inp{border-top:1px solid var(--line);padding:10px 12px;flex:none}.rf-box{position:relative}.rf-box textarea{width:100%;padding-right:48px;resize:none}
+.rf-send{position:absolute;right:8px;bottom:8px;width:36px;height:36px;border-radius:50%;padding:0}
+.rf-seg{display:inline-flex;border:1px solid var(--line2);border-radius:8px;overflow:hidden}.rf-seg button{border:0;border-radius:0;height:36px;padding:0 14px;background:var(--surface)}.rf-seg button.on{background:var(--ink);color:var(--surface)}
+.rf-h{font-size:13px;margin:16px 0 6px;color:var(--orange-ink)}.rf-h:first-child{margin-top:0}
+.rf-blk{border-left:3px solid var(--orange);padding:4px 0 4px 12px;line-height:1.75;margin:0 0 6px;width:100%;border-top:0;border-right:0;border-bottom:0;border-radius:0;background:transparent;resize:vertical;font:inherit;color:inherit}
+div.rf-blk{overflow-wrap:anywhere}
+.rf-q{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:10px;background:var(--surface);display:flex;flex-direction:column;gap:6px}
+.rf-n{display:inline-flex;width:24px;height:24px;border-radius:50%;background:var(--orange-mid);color:#8A3600;font-size:12px;font-weight:700;align-items:center;justify-content:center}
+.rf-o{font-size:13.5px;margin-left:30px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.rf-lg{font-size:12px;padding:1px 8px;border-radius:999px;background:var(--wash);color:var(--ink2)}.rf-lg.out{background:var(--risk-soft);color:var(--risk-ink)}.rf-lg.ok{background:#FBF1CF;color:#6F560A}.rf-lg.jump{background:var(--green-soft);color:var(--green)}
+.rf-edit{display:flex;flex-direction:column;gap:8px}
+.rf-optl{display:flex;flex-direction:column;gap:8px}.rf-optrow{display:flex;gap:6px;flex-wrap:wrap;align-items:center}.rf-optrow>input[data-o=text]{flex:1 1 140px;min-width:0}
+.rf-pub{background:var(--wash);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px;margin-bottom:14px}
+.rf-link{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap}.rf-link>div{flex:1 1 220px;min-width:0}.rf-link img{border:1px solid var(--line);border-radius:8px;background:#fff;padding:4px}
+.rf-htmlmode{display:flex;flex-direction:column;gap:10px;max-width:640px}
+:root[data-theme="dark"] .rf-lg.ok{background:#332C12;color:#E8CF7A}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .rf-lg.ok{background:#332C12;color:#E8CF7A}}
+@media (max-width:900px){.rf-ws{grid-template-columns:1fr;height:auto!important}.rf-pane{min-height:420px;max-height:80vh}.rf-pane+.rf-pane{border-left:0;border-top:1px solid var(--line)}body.rfmode{overflow:auto}}
 /* ---------- 立项向导（wizard.js）：步骤链、三色样本框、变量与取值、配额表 ---------- */
 .chain{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:10px}
 .step{min-width:0;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:3px;text-align:left;height:auto;font-weight:600;justify-content:center;align-items:flex-start}

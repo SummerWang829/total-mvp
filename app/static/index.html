@@ -90,6 +90,7 @@ const stale = (my) => my !== renderSeq;
 
 async function render() {
   const seq = ++renderSeq;
+  document.body.classList.remove("rfmode");  // the questionnaire workspace fixes the page height only while it is on screen
   const r = route();
   if (r.startsWith("/login")) return loginView();
   if (!store.get("tt_token")) { location.hash = "#/login"; return; }
@@ -264,8 +265,10 @@ async function peopleView(p) {
   const C = rec.counts, anyRules = rec.rules.length > 0, RC = RECRUITER();
   const bar = (q) => `<div style="margin:6px 0"><div class="sm"><b>${esc(q.name)}</b> · 已有 ${q.have} / 目标 ${q.target}${q.full ? " ✓" : ""} · 已安排场次 ${q.invited}</div><div class="qbar" role="img" aria-label="${esc(q.name)} ${q.have} / ${q.target}"><i style="width:${Math.min(100, Math.round((q.have / q.target) * 100))}%"></i></div></div>`;
   const sel = (id, label, opts, cur) => `<label class="f" style="margin:0"><span>${label}</span><select id="${id}"><option value="">全部</option>${opts.map(([v, n]) => `<option value="${esc(v)}"${v === cur ? " selected" : ""}>${esc(n)}</option>`).join("")}</select></label>`;
-  shell(`${head("甄别设定", `先做招募问卷（AI 生成，或导入别的系统做好的问卷），再设置配额；受访者可以手动添加或从表格批量导入。目前只开放新加坡。`, `<button id="imp2">导入表格</button> <button class="p" id="np">添加受访者</button>`)}
-    ${rf.html}
+  const ptab = sessionStorage.getItem("ptab") === "list" ? "list" : "form";  // 招募问卷 is a workspace (the page does not scroll); the quotas and the people are on the other tab
+  shell(`${head("甄别设定", `先做招募问卷（和 AI 对话，或导入别的系统做好的问卷），再设置配额；受访者可以手动添加或从表格批量导入。目前只开放新加坡。`, `<span id="pactions" ${ptab === "form" ? "hidden" : ""}><button id="imp2">导入表格</button> <button class="p" id="np">添加受访者</button></span>`)}
+    <div class="hubtabs" role="tablist" aria-label="甄别设定"><a href="#" role="tab" id="ptab-form-t" class="${ptab === "form" ? "on" : ""}" aria-selected="${ptab === "form"}">招募问卷</a><a href="#" role="tab" id="ptab-list-t" class="${ptab === "list" ? "on" : ""}" aria-selected="${ptab === "list"}">配额与受访者名单</a></div>
+    <div id="ptab-form" ${ptab === "form" ? "" : "hidden"}>${rf.html}</div><div id="ptab-list" ${ptab === "list" ? "" : "hidden"}>
     <div class="card"><div class="row" style="align-items:flex-start">${anyRules ? `<div style="flex:1;min-width:240px"><h3 style="margin-top:0">旧版资格规则 <span class="tag">第 ${rec.rules_version} 版 · ${rec.rules.length} 条</span></h3>
       <p class="sm" style="margin:0">${anyRules ? `<span class="tag ok">符合 ${C.qualified}</span> <span class="tag bad">不符合 ${C.disqualified}</span> <span class="tag live">待人工看 ${C.review}</span>${C.not_screened ? ` <span class="tag">未筛 ${C.not_screened}</span>` : ""}` : "还没有设规则：所有人都算符合。"}</p>
       <p class="sm mut" style="margin:4px 0 0">资格规则已被招募问卷取代；这个项目以前设过规则，所以还在生效，清空后就不再显示。</p>
@@ -280,7 +283,17 @@ async function peopleView(p) {
         <td>${x.screening === "blocked_region" ? `<span class="tag bad">地区暂未开放</span>` : x.anonymized ? `<span class="tag">已匿名</span>` : x.screen_result ? `<span class="tag ${SCREEN[x.screen_result][1]}" ${x.screen_reason ? `title="${esc(x.screen_reason)}"` : ""}>${SCREEN[x.screen_result][0]}</span>${x.screen_reason ? `<div class="sm mut">${esc(x.screen_reason)}</div>` : ""}` : `<span class="tag ok">可邀请</span>`}</td>
         <td class="acts">${RC ? "" : `${x.screening === "eligible" && !x.anonymized ? `<button class="s" data-inv="${x.id}">邀请到场次</button> ` : ""}${x.anonymized ? "" : `<button class="s warn" data-erase="${x.id}">删除数据</button>`}`}</td></tr>`).join("")}</tbody></table></div>
       ${shown.length ? "" : `<div class="card empty"><b>没有符合筛选条件的人。</b></div>`}`
-      : `<div class="card empty"><b>还没有受访者。</b><span>点右上角“添加受访者”手动添加，或“导入表格”一次导入很多人。</span></div>`}`, { active: "people", p });
+      : `<div class="card empty"><b>还没有受访者。</b><span>点右上角“添加受访者”手动添加，或“导入表格”一次导入很多人。</span></div>`}</div>`, { active: "people", p });
+  const showTab = (name) => {
+    sessionStorage.setItem("ptab", name);
+    $("#ptab-form").hidden = name !== "form"; $("#ptab-list").hidden = name !== "list"; $("#pactions").hidden = name !== "list";
+    $("#ptab-form-t").classList.toggle("on", name === "form"); $("#ptab-list-t").classList.toggle("on", name === "list");
+    $("#ptab-form-t").setAttribute("aria-selected", name === "form"); $("#ptab-list-t").setAttribute("aria-selected", name === "list");
+    document.body.classList.toggle("rfmode", name === "form"); if (name === "form") rf.fit();
+  };
+  $("#ptab-form-t").onclick = (e) => { e.preventDefault(); showTab("form"); };
+  $("#ptab-list-t").onclick = (e) => { e.preventDefault(); showTab("list"); };
+  document.body.classList.toggle("rfmode", ptab === "form");
   const bind = (id, key) => { const e = $(id); if (e) e.onchange = () => { PEOPLE_F = { ...PEOPLE_F, [key]: e.value }; render(); }; };
   bind("#f_screen", "screen"); bind("#f_tag", "tag"); bind("#f_country", "country"); bind("#f_language", "language");
   const picks = () => [...app.querySelectorAll(".pick:checked")].map((c) => c.value);

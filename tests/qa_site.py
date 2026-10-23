@@ -157,6 +157,7 @@ def new_page(br, w, h=860, token=None, room_theme=None, **kw):
     ctx = br.new_context(viewport={"width": w, "height": h}, device_scale_factor=1, **kw)
     if token:
         ctx.add_init_script(f"try{{localStorage.setItem('tt_token','{token}')}}catch(e){{}}")
+    ctx.add_init_script("try{if(sessionStorage.getItem('ptab')===null)sessionStorage.setItem('ptab','list')}catch(e){}")  # the people page opens on the list; the questionnaire tests ask for their own tab
     if room_theme:  # the video room remembers the chosen colours in this browser
         ctx.add_init_script(f"try{{localStorage.setItem('tt_room_theme','{room_theme}')}}catch(e){{}}")
     pg = ctx.new_page()
@@ -419,34 +420,48 @@ def recruit_section(br, D):
     rs, pid = D["tok"]["researcher"], D["pid"]
     ctx, pg, errs = new_page(br, 1280, token=rs)
     pg.on("dialog", lambda d: d.accept())
-    pg.goto(B + f"/#/p/{pid}/people"); pg.wait_for_selector("#imp2")
-    ok(pg.locator("#rules").count() == 0 and pg.locator("#quotas").count() == 1, "[recruit] eligibility rules are gone from the page (the questionnaire replaces them); quotas stay")
-    # the recruiting questionnaire: write it on the left (the AI can draft it), test it on the right, publish it as a link and a QR code
-    ok(pg.locator("h3", has_text="招募问卷").count() == 1 and pg.locator("#rfidea").count() == 1 and ("不会发给其他公司" in pg.inner_text(".rf") or "发送给" in pg.inner_text(".rf")), "[recruit] the questionnaire card shows the idea box and says where the text goes")
-    ok(pg.locator("#rfimport").count() == 0 and pg.locator("#rflib").count() == 0 and "自动结合" in pg.inner_text(".rf-ai"), "[recruit] the AI draft has no import button and no library tick: it combines the idea, the plan's background and the library by itself")
-    pg.fill("#rfidea", "想了解新加坡年轻人如何选购护肤品牌，重点是购买渠道。"); pg.click("#rfgen")
-    pg.wait_for_selector(".rf-edit", timeout=15000)
-    ok(pg.locator(".rf-edit").count() >= 5 and pg.locator(".rf-edit [data-o=goto]").count() >= 8, "[recruit] the AI's draft opens in the editor: questions with options, each with what happens after it")
-    ok(pg.locator("#rfrun .rf-q").count() == 1 and pg.locator("#rfrun input[type=radio]").count() >= 3, "[recruit] the right side shows the first question, ready to be tested")
-    # editing: add a number question with a rule, move it, then delete it again
-    pg.click("[data-add=number]"); pg.wait_for_selector(".rf-edit >> nth=5")
-    last = pg.locator(".rf-edit").last
-    last.locator("[data-f=text]").fill("您的年龄是多少？"); last.locator("[data-f=text]").dispatch_event("change")
-    last.locator("[data-radd]").click(); pg.wait_for_selector(".rf-edit [data-r=op]")
-    ok(pg.locator(".rf-edit [data-r=goto]").last.input_value() == "end_out", "[recruit] a number rule defaults to ending as not qualified")
-    pg.locator(".rf-edit").last.locator("[data-del]").click(); pg.wait_for_timeout(300)
-    ok(pg.locator(".rf-edit").count() == 5, "[recruit] a question can be deleted")
-    audit_page(pg, "recruiting questionnaire editor/desktop", errs)
+    pg.goto(B + "/"); pg.evaluate("sessionStorage.setItem('ptab','form')")  # (the storage belongs to the site, so open it first)
+    pg.goto(B + f"/#/p/{pid}/people"); pg.wait_for_selector("#rfws")
+    # the workspace: the conversation on the left, the live outline on the right, each scrolls inside its own frame and the page itself does not scroll
+    ok(pg.locator("#rfchat").count() == 1 and pg.locator("#rfout").count() == 1 and pg.evaluate("document.body.classList.contains('rfmode')"), "[recruit] the questionnaire is a workspace: conversation on the left, outline on the right")
+    ok(pg.evaluate("getComputedStyle(document.querySelector('#rfchat')).overflowY") == "auto" and pg.evaluate("getComputedStyle(document.querySelector('#rfout')).overflowY") == "auto" and pg.evaluate("document.documentElement.scrollHeight <= innerHeight + 2"), "[recruit] the two frames scroll on their own and the page does not scroll")
+    lw, rw = pg.evaluate("document.querySelector('.rf-pane').getBoundingClientRect().width"), pg.evaluate("document.querySelector('#rfright').getBoundingClientRect().width")
+    ok(rw > lw * 1.3, "[recruit] the outline gets more width than the conversation")
+    ok("不会发给其他公司" in pg.inner_text(".rf-inp") or "发送给" in pg.inner_text(".rf-inp"), "[recruit] the conversation says where what is typed goes")
+    ok(pg.locator("#rfimport").count() == 0 and pg.locator("#rflib").count() == 0 and pg.locator("#rfidea").count() == 0, "[recruit] the old idea box, import button and library tick are gone")
+    audit_page(pg, "recruiting workspace empty/desktop", errs)
+    # draft by talking: the questions, goals and need appear in the outline
+    pg.click("[data-chip=draft]"); pg.wait_for_selector("#rfout .rf-q", timeout=15000)
+    ok(pg.locator("#rfout .rf-q").count() >= 5 and "起草" in pg.inner_text("#rfchat") and pg.input_value("#rfgoals").strip() != "" and pg.input_value("#rfneed").strip() != "", "[recruit] saying 帮我起草问卷 fills the outline: questions, research goals and recruiting need")
+    ok(pg.locator("#rfout .rf-lg.out").count() >= 1 and pg.locator("#rfout h3", has_text="研究背景").count() == 1, "[recruit] the outline shows the logic of each option and starts with the research background")
+    n0 = pg.locator("#rfout .rf-q").count()
+    # a message typed by hand
+    pg.fill("#rfmsg", "随便说说"); pg.press("#rfmsg", "Enter")
+    ok(wait_until(lambda: "离线演示版" in pg.inner_text("#rfchat"), 10), "[recruit] a typed message gets an answer in the conversation (Enter sends)")
+    # editing by hand: add a number question with a rule, delete it, undo, redo
+    pg.click("[data-add=number]"); pg.wait_for_selector("#rfout .rf-edit")
+    pg.locator("#rfout .rf-edit [data-f=text]").fill("您的年龄是多少？"); pg.locator("#rfout .rf-edit [data-f=text]").dispatch_event("change")
+    pg.locator("#rfout .rf-edit [data-radd]").click(); pg.wait_for_selector("#rfout .rf-edit [data-r=op]")
+    ok(pg.locator("#rfout .rf-edit [data-r=goto]").input_value() == "end_out", "[recruit] a number rule defaults to ending as not qualified")
+    pg.locator("#rfout .rf-edit [data-del]").click(); pg.wait_for_timeout(300)
+    ok(pg.locator("#rfout .rf-q").count() == n0, "[recruit] a question can be deleted")
+    pg.click("#rfundo"); ok(wait_until(lambda: pg.locator("#rfout .rf-q").count() == n0 + 1, 5), "[recruit] undo brings the deleted question back")
+    pg.click("#rfredo"); ok(wait_until(lambda: pg.locator("#rfout .rf-q").count() == n0, 5), "[recruit] redo deletes it again")
+    pg.locator("#rfout [data-edit]").first.click(); pg.wait_for_selector("#rfout .rf-edit [data-done]"); pg.locator("#rfout .rf-edit [data-done]").click()
+    audit_page(pg, "recruiting workspace outline/desktop", errs)
     pg.screenshot(path=os.path.join(ROOT, "qa_shots", "recruit_form_1280.png"), full_page=True)
-    # testing on the right: the first option ("Under 18") screens the person out
+    # testing: the first option ("Under 18") screens the person out
+    pg.click("[data-seg=test]"); pg.wait_for_selector("#rfrun input[type=radio]")
     pg.locator("#rfrun input[type=radio]").first.check(); pg.click("#scrnext")
     ok(wait_until(lambda: pg.is_visible("#rfresult") and "筛掉" in pg.inner_text("#rfresult"), 8), "[recruit] testing the questionnaire: an ending option says the person is screened out")
+    audit_page(pg, "recruiting workspace test/desktop", errs)
+    pg.click("[data-seg=outline]"); pg.wait_for_selector("#rfgoals")
     # publish: a link and a QR code
     pg.click("#rfpub"); pg.wait_for_selector("#rflink", timeout=15000)
     link = pg.input_value("#rflink")
     ok("/screen.html?t=" in link and wait_until(lambda: (pg.locator("#rfqr").get_attribute("src") or "").startswith("blob:"), 8), "[recruit] publishing gives a link and a QR code")
-    ok("发布中" in pg.inner_text(".rf-pub"), "[recruit] the questionnaire shows as published")
-    audit_page(pg, "recruiting questionnaire published/desktop", errs)
+    ok("发布中" in pg.inner_text("#rfright"), "[recruit] the questionnaire shows as published")
+    audit_page(pg, "recruiting workspace published/desktop", errs)
     # a candidate on a phone: screened out first, then a qualified run that leaves contact details
     c2, pg2, errs2 = new_page(br, 390)
     pg2.goto(link); pg2.wait_for_selector("#scrgo")
@@ -473,17 +488,22 @@ def recruit_section(br, D):
     pg2.check("#cf [name=consent]"); pg2.click("#cf button.p")
     pg2.wait_for_selector("text=We have your details", timeout=10000)
     c2.close()
-    pg.reload(); pg.wait_for_selector("td:has-text('QA候选人')", timeout=15000)
-    ok(pg.locator("tr", has_text="QA候选人").locator(".tag", has_text="符合条件").count() == 1, "[recruit] a candidate who qualified is in the list, already marked as qualified")
-    ok("已合格 1 人" in pg.inner_text(".rf-pub") and "被筛掉 1 人" in pg.inner_text(".rf-pub"), "[recruit] the publish box counts who qualified and who was screened out")
+    pg.reload(); pg.wait_for_selector("#rfws")
+    ok("已合格 1 人" in pg.inner_text("#rfout") and "被筛掉 1 人" in pg.inner_text("#rfout"), "[recruit] the publish box counts who qualified and who was screened out")
+    pg.click("#ptab-list-t"); pg.wait_for_selector("td:has-text('QA候选人')", timeout=15000)
+    ok(pg.locator("tr", has_text="QA候选人").locator(".tag", has_text="符合条件").count() == 1 and pg.locator("#rfws").is_hidden(), "[recruit] a candidate who qualified is in the list (other tab), already marked as qualified")
     pg.locator("tr", has_text="QA候选人").locator("[data-scr]").click(); pg.wait_for_selector("textarea[name=text]")
     ok("价格和成分" in pg.input_value("textarea[name=text]"), "[recruit] the candidate's answers are kept with them")
     pg.click("#c")
+    pg.click("#ptab-form-t"); pg.wait_for_selector("#rfclose")
+    ok(not pg.evaluate("document.documentElement.scrollHeight > innerHeight + 2"), "[recruit] switching back keeps the page from scrolling")
     pg.click("#rfclose"); pg.wait_for_selector("#rfpub")
     pg.locator("input[name=rfmode][value=html]").check(); pg.wait_for_selector("#rfurl")
     pg.fill("#rfurl", "https://survey.example.com/s/qa"); pg.click("#rfsave"); pg.wait_for_selector("#rftest")
     ok(pg.locator("#rftest").is_visible() and "survey.example.com" in pg.inner_text(".rf"), "[recruit] an HTML questionnaire link is saved and can be opened for testing")
     audit_page(pg, "recruiting html link/desktop", errs)
+    pg.click("#ptab-list-t"); pg.wait_for_selector("#quotas")
+    ok(pg.locator("#rules").count() == 0 and pg.locator("#quotas").count() == 1, "[recruit] eligibility rules are gone from the page (the questionnaire replaces them); quotas stay")
     call(f"/projects/{pid}/recruiting/rules", {"rules": [{"field": "country", "op": "in", "value": "SG", "effect": "require"}]}, rs, method="PUT")  # a project that already had a rule keeps it
     pg.reload(); pg.wait_for_selector("#rules")
     audit_page(pg, "recruiting/desktop", errs)
@@ -527,6 +547,9 @@ def recruit_section(br, D):
     ctx, pg, errs = new_page(br, 390, token=rs)
     pg.goto(B + f"/#/p/{pid}/people"); pg.wait_for_selector("#imp2")
     audit_page(pg, "recruiting/phone", errs)
+    call(f"/projects/{pid}/recruiting/form", {"source": "ai", "questions": [{"type": "text", "text": "最近一次购买时看重什么？"}]}, rs, method="PUT")  # (the form was left on the HTML link: back to written questions)
+    pg.evaluate("sessionStorage.setItem('ptab','form')"); pg.reload(); pg.wait_for_selector("#rfws")
+    audit_page(pg, "recruiting workspace/phone", errs)
     ctx.close()
 
 

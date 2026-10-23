@@ -1,14 +1,17 @@
-/* 甄别设定页的“招募问卷”：左边编写（单选、多选、文字填空、数字填空，带逻辑：下一题 / 跳题 / 结束·不符合 / 结束·符合），右边直接填写测试，
-   写好后发布成链接和二维码；候选人在 screen.html 作答，合格的人自动进受访者名单。AI 可以根据研究想法（和研究库）起草。
-   也可以改成导入在别的系统里做好的 HTML 问卷链接。依赖 index.html 里的 api / esc / toast / guard / $ / CONFIG（app.js）和 screen_run.js。 */
+/* 甄别设定页的“招募问卷”工作台：左边和 AI 对话（说一句话，问卷就跟着改），右边是实时大纲（研究背景、研究目标、招募需求、问卷流程），
+   左右两个框各自滚动，整页不滚。大纲里每道题也能直接点开手动改（题型、选项、跳转、标签）。切到“测试答题”就是候选人看到的样子；
+   写好发布成链接和二维码，候选人在 screen.html 作答，合格的人自动进受访者名单。也可以改成导入在别的系统里做好的 HTML 问卷链接。
+   依赖 index.html 里的 api / esc / toast / guard / $ / CONFIG（app.js）和 screen_run.js。 */
 const RF_TYPE = { single: "单选", multi: "多选", text: "文字填空", number: "数字填空" };
 const RF_OP = { lt: "小于", lte: "不大于", gt: "大于", gte: "不小于", eq: "等于" };
-const rfAiNotice = () => (CONFIG && CONFIG.ai_local ? "AI 运行在我们自己的服务器上，这段文字不会发给其他公司。"
-  : `这段文字会发送给 AI 服务商${CONFIG && CONFIG.ai_vendor ? `“${CONFIG.ai_vendor}”` : ""}来生成内容，只用来写问卷和建议。请不要写入受访者的姓名、电话等个人信息。`);
+const rfAiNotice = () => (CONFIG && CONFIG.ai_local ? "AI 运行在我们自己的服务器上，对话内容不会发给其他公司。"
+  : `你说的话、立项里的研究背景和本项目研究库里的资料，会发送给 AI 服务商${CONFIG && CONFIG.ai_vendor ? `“${CONFIG.ai_vendor}”` : ""}来改问卷。请不要写入受访者的姓名、电话等个人信息。`);
 
-/** 整个“招募问卷”卡片，返回 { html, wire }。 */
+/** 整个“招募问卷”卡片，返回 { html, wire, fit }。 */
 function rfCard(p, form) {
-  let f = form, mode = form.source === "html" ? "html" : "ai", Q = JSON.parse(JSON.stringify(form.questions || [])), timer = null;
+  let f = form, mode = form.source === "html" ? "html" : "ai", seg = "outline", Q = JSON.parse(JSON.stringify(form.questions || [])), goals = [...(form.goals || [])], need = form.need || "";
+  let timer = null, sending = false, pending = "", hist = [], redo = [], editing = new Set();
+  const snap = () => JSON.stringify({ Q, goals, need });
   const nextId = () => { let n = 0; Q.forEach((q) => { const m = /^q(\d+)$/.exec(q.id); if (m) n = Math.max(n, +m[1]); }); return "q" + (n + 1); };
   const optId = (q) => { let n = 0; q.options.forEach((o) => { const m = /^o(\d+)$/.exec(o.id); if (m) n = Math.max(n, +m[1]); }); return "o" + (n + 1); };
   const blank = () => [{ id: "o1", text: "", goto: "", tag: "" }, { id: "o2", text: "", goto: "", tag: "" }];
@@ -19,56 +22,94 @@ function rfCard(p, form) {
     });
   };
   const incomplete = () => Q.some((q) => !q.text.trim() || q.options.some((o) => !o.text.trim()) || (q.rules || []).some((r) => !Number.isFinite(+r.value)));  // an empty question or option is not sent anywhere yet
-  const body = () => ({ source: "ai", idea: ($("#rfidea") || {}).value ?? f.idea, questions: Q });
+  const body = () => ({ source: "ai", idea: f.idea || "", goals, need, questions: Q });
   const stat = (t) => { const s = $("#rfstat"); if (s) s.textContent = t; };
   // an unfinished option or question is only reported in the status line; publishing checks it again
   const save = () => { clearTimeout(timer); if (incomplete()) return stat("有题目或选项还没写完，写完会自动保存"); timer = setTimeout(async () => { try { f = { ...f, ...(await api(`/projects/${p.id}/recruiting/form`, { method: "PUT", body: body() })) }; stat("已保存"); } catch (e) { stat("还没保存：" + e.message); } }, 700); stat("保存中…"); };
+  const pushHist = () => { hist.push(snap()); if (hist.length > 30) hist.shift(); redo = []; syncUndo(); };
+  const apply = (s) => { const o = JSON.parse(s); Q = o.Q; goals = o.goals; need = o.need; editing = new Set(); };
+  const syncUndo = () => { const u = $("#rfundo"), r = $("#rfredo"); if (u) u.disabled = !hist.length; if (r) r.disabled = !redo.length; };
+  const changed = () => { fix(); save(); drawRight(); };  // after a manual edit
+  const ref = (g) => (g === "end_out" ? "结束 · 不符合" : g === "end_ok" ? "结束 · 符合" : g ? `跳到第 ${Q.findIndex((x) => x.id === g) + 1} 题` : "");
   const actions = (i, cur, allowNext) => `<option value="" ${cur === "" ? "selected" : ""}>${allowNext ? "下一题" : "选择处理方式"}</option>${Q.slice(i + 1).map((x, k) => `<option value="${x.id}" ${cur === x.id ? "selected" : ""}>跳到第 ${i + k + 2} 题</option>`).join("")}<option value="end_out" ${cur === "end_out" ? "selected" : ""}>结束 · 不符合（筛掉）</option><option value="end_ok" ${cur === "end_ok" ? "selected" : ""}>结束 · 符合</option>`;
+  const badge = (g) => (g === "end_out" ? `<span class="rf-lg out">结束 · 不符合</span>` : g === "end_ok" ? `<span class="rf-lg ok">结束 · 符合</span>` : g ? `<span class="rf-lg jump">${ref(g)}</span>` : "");
 
-  function qCard(q, i) {
+  /* ---------- left: the conversation ---------- */
+  function chatHtml() {
+    const used = [f.brief && f.brief.trim() ? "✓ 已读取立项里的研究背景" : "· 立项里还没有研究背景（可以到立项向导第 1 步写）", `${f.library_docs ? "✓" : "·"} 研究库里本项目的资料 ${f.library_docs || 0} 份`];
+    const hello = `<div class="rf-msg">你好！我可以根据研究背景和研究库资料帮你设计招募问卷，也可以按你说的修改，比如“年龄放最前面，18 岁以下筛掉”“每天都用的人跳过频率题”“把第 3 题改成多选”。先说“帮我起草问卷”试试？</div><div class="rf-st">${used.join("<br>")}</div>`;
+    const msgs = (f.chat || []).map((m) => (m.role === "user" ? `<div class="rf-msg rf-me">${esc(m.text)}</div>` : `<div class="rf-msg">${esc(m.text)}</div>`)).join("");
+    const chips = Q.length ? `<div class="rf-chips"><button class="s" type="button" data-chip="test">测试这份问卷</button>${f.link ? "" : `<button class="s" type="button" data-chip="pub">发布成链接和二维码</button>`}</div>` : `<div class="rf-chips"><button class="s" type="button" data-chip="draft">帮我起草问卷</button></div>`;
+    return hello + msgs + (pending ? `<div class="rf-msg rf-me">${esc(pending)}</div><div class="rf-msg mut">AI 正在想…</div>` : chips);
+  }
+  const drawChat = () => { const c = $("#rfchat"); if (!c) return; c.innerHTML = chatHtml(); c.scrollTop = c.scrollHeight; wireChips(); };
+  async function send(text) {
+    text = (text || "").trim(); if (!text || sending) return;
+    if (incomplete()) return toast("有题目或选项还没写完，先写完再对话", true);
+    sending = true; pending = text; $("#rfmsg").value = ""; $("#rfsend").disabled = true; drawChat();
+    const before = snap();
+    try {
+      const r = await api(`/projects/${p.id}/recruiting/form/chat`, { method: "POST", body: { message: text, questions: Q, goals, need } });
+      if (r.changed || JSON.stringify(r.goals) !== JSON.stringify(goals) || r.need !== need) { hist.push(before); if (hist.length > 30) hist.shift(); redo = []; }
+      f = { ...f, ...r }; Q = JSON.parse(JSON.stringify(r.questions)); goals = [...(r.goals || [])]; need = r.need || ""; editing = new Set();
+    } catch (e) { f = { ...f, chat: [...(f.chat || []), { role: "user", text }, { role: "ai", text: "没有成功：" + e.message }] }; toast(e.message, true); }
+    sending = false; pending = ""; const b = $("#rfsend"); if (b) b.disabled = false; syncUndo(); drawChat(); drawRight();
+  }
+  function wireChips() {
+    document.querySelectorAll("[data-chip]").forEach((b) => (b.onclick = () => { const c = b.dataset.chip; if (c === "draft") send("帮我起草问卷"); else if (c === "test") { seg = "test"; drawRight(); } else if (c === "pub") publish(); }));
+  }
+
+  /* ---------- right: the outline / the test ---------- */
+  function qEditor(q, i) {
     const opts = q.type === "single" || q.type === "multi";
     return `<div class="rf-edit" data-qi="${i}"><div class="row"><b>${i + 1}.</b><select data-f="type" aria-label="第 ${i + 1} 题题型">${Object.entries(RF_TYPE).map(([k, n]) => `<option value="${k}" ${q.type === k ? "selected" : ""}>${n}</option>`).join("")}</select>
       <label class="chk"><input type="checkbox" data-f="required" ${q.required ? "checked" : ""}>必答</label><span class="sp"></span>
-      <button class="s" type="button" data-mv="-1" ${i ? "" : "disabled"} aria-label="上移">↑</button><button class="s" type="button" data-mv="1" ${i < Q.length - 1 ? "" : "disabled"} aria-label="下移">↓</button><button class="s warn" type="button" data-del="1">删除</button></div>
+      <button class="s" type="button" data-mv="-1" ${i ? "" : "disabled"} aria-label="上移">↑</button><button class="s" type="button" data-mv="1" ${i < Q.length - 1 ? "" : "disabled"} aria-label="下移">↓</button><button class="s warn" type="button" data-del="1">删除</button><button class="s" type="button" data-done="1">完成</button></div>
       <input data-f="text" value="${esc(q.text)}" maxlength="300" placeholder="题目" aria-label="第 ${i + 1} 题题目">
       ${opts ? `<div class="rf-optl">${q.options.map((o, j) => `<div class="rf-optrow" data-oj="${j}"><input data-o="text" value="${esc(o.text)}" maxlength="120" placeholder="选项" aria-label="选项 ${j + 1}">
         <select data-o="goto" aria-label="选了之后">${actions(i, o.goto, true)}</select><input data-o="tag" value="${esc(o.tag || "")}" maxlength="30" placeholder="标签（选填）" aria-label="选了就打上的标签" style="max-width:140px">
         <button class="s" type="button" data-odel="${j}" aria-label="删除选项" ${q.options.length > 2 ? "" : "disabled"}>×</button></div>`).join("")}<button class="s" type="button" data-oadd="1" ${q.options.length >= 12 ? "disabled" : ""}>+ 添加选项</button></div>` : ""}
       ${q.type === "number" ? `<div class="rf-optl">${(q.rules || []).map((r, j) => `<div class="rf-optrow" data-rj="${j}"><span>如果数字</span><select data-r="op" aria-label="条件">${Object.entries(RF_OP).map(([k, n]) => `<option value="${k}" ${r.op === k ? "selected" : ""}>${n}</option>`).join("")}</select>
         <input data-r="value" type="number" step="any" value="${r.value}" aria-label="数值" style="max-width:110px"><select data-r="goto" aria-label="就">${actions(i, r.goto, false)}</select><button class="s" type="button" data-rdel="${j}" aria-label="删除规则">×</button></div>`).join("")}
-        <button class="s" type="button" data-radd="1" ${(q.rules || []).length >= 4 ? "disabled" : ""}>+ 添加规则（例如 小于 18 → 结束 · 不符合）</button></div>` : ""}
-      ${q.type === "text" ? `<p class="sm mut" style="margin:0">文字填空：答什么都进入下一题（答案会记在受访者资料里）。</p>` : ""}</div>`;
+        <button class="s" type="button" data-radd="1" ${(q.rules || []).length >= 4 ? "disabled" : ""}>+ 添加规则（例如 小于 18 → 结束 · 不符合）</button></div>` : ""}</div>`;
   }
-  const editor = () => `<div id="rfqs">${Q.length ? Q.map(qCard).join("") : `<div class="empty"><b>还没有题目</b><span>点下面的按钮添加，或让 AI 根据研究想法起草。</span></div>`}</div>
-    <div class="row"><button class="s" type="button" data-add="single">+ 单选</button><button class="s" type="button" data-add="multi">+ 多选</button><button class="s" type="button" data-add="text">+ 文字填空</button><button class="s" type="button" data-add="number">+ 数字填空</button></div>`;
-
-  const publishBox = () => {
+  function qCard(q, i) {
+    if (editing.has(q.id)) return `<div class="rf-q" data-qid="${q.id}">${qEditor(q, i)}</div>`;
+    const lines = q.type === "single" || q.type === "multi"
+      ? q.options.map((o) => `<div class="rf-o">${q.type === "single" ? "○" : "☐"} ${esc(o.text || "（空选项）")} ${badge(o.goto)}${o.tag ? `<span class="rf-lg jump">标签：${esc(o.tag)}</span>` : ""}</div>`).join("")
+      : q.type === "number" ? (q.rules || []).map((r) => `<div class="rf-o">如果数字${RF_OP[r.op]} ${r.value} ${badge(r.goto)}</div>`).join("") : "";
+    return `<div class="rf-q" data-qid="${q.id}"><div class="row"><span class="rf-n">${i + 1}</span><b>${esc(q.text || "（还没写题目）")}</b><span class="sp"></span><span class="tag nw">${RF_TYPE[q.type]}${q.required ? " · 必答" : ""}</span><button class="s" type="button" data-edit="${q.id}">编辑</button></div>${lines}</div>`;
+  }
+  function publishBox() {
     const live = f.status === "published", n = f.stats || { qualified: 0, out: 0, out_by: {} };
     const outBy = Object.entries(n.out_by || {}).map(([id, c]) => `第 ${Q.findIndex((q) => q.id === id) + 1} 题 ${c} 人`).join("、");
-    return `<div class="rf-pub"><div class="row"><b>发布</b><span class="pill ${live ? "" : "o"}">${live ? "发布中" : f.status === "closed" ? "已停止" : "草稿"}</span><span class="sp"></span>
-      ${live ? `<button class="s" type="button" id="rfclose">停止收集</button>` : `<button class="p" type="button" id="rfpub" ${Q.length ? "" : "disabled"}>${f.status === "closed" ? "重新发布" : "发布成链接和二维码"}</button>`}</div>
-      ${f.link ? `<div class="rf-link"><div><input id="rflink" readonly value="${esc(location.origin + f.link)}" aria-label="问卷链接"><div class="row" style="margin-top:6px"><button class="s" type="button" id="rfcopy">复制链接</button><a class="btn s" href="${esc(f.link)}" target="_blank" rel="noopener">打开答题页</a></div>
-        <p class="sm mut" style="margin:8px 0 0">合格的人填完联系方式后，自动进下面的受访者名单（已标记“符合”，带上答案和标签）；被筛掉的人只计数，不保存任何信息。</p></div><img id="rfqr" alt="问卷二维码" width="132" height="132"></div>
-        <div class="sm">已合格 <b>${n.qualified}</b> 人 · 被筛掉 <b>${n.out}</b> 人${outBy ? `（${esc(outBy)}）` : ""}</div>` : `<p class="sm mut" style="margin:0">发布后会得到一个链接和二维码，发给候选人就能作答。</p>`}</div>`;
-  };
-
-  function panels() {
-    if (mode === "html") return `<div class="rf-grid"><div class="rf-l"><label class="field">问卷链接（https://）<input id="rfurl" type="url" value="${esc(f.html_url)}" placeholder="https://…（在别的系统里做好的问卷）" maxlength="500"></label>
-      <div class="note">问卷在别的系统里制作和托管，这里只保存链接，点右边的按钮在新窗口里测试；不会嵌进本页面。</div><div class="row"><button class="p" id="rfsave" type="button">保存链接</button></div></div>
-      <div class="rf-r">${f.html_url ? `<div class="empty"><b>测试链接</b><code class="rfurl">${esc(f.html_url)}</code><button class="p" id="rftest" type="button">打开测试窗口</button></div>` : `<div class="empty"><b>还没有链接</b><span>把问卷链接贴在左边并保存，这里就能打开测试。</span></div>`}</div></div>`;
-    return `<div class="rf-grid"><div class="rf-l">
-      <details class="rf-ai" ${Q.length ? "" : "open"}><summary>让 AI 起草（可选）</summary><label class="field">研究想法（补充说明，选填）<textarea id="rfidea" rows="5" placeholder="例如：想了解新加坡 18-34 岁女性如何选购防晒产品，重点是购买渠道和决策因素。">${esc(f.idea)}</textarea></label>
-        <div class="note">点“AI 起草问卷”后，系统会自动结合这里写的研究想法、立项里的研究背景和本项目研究库里的资料（${f.library_docs || 0} 份），在后台生成符合项目背景的问卷。${esc(rfAiNotice())}研究想法、研究背景和研究库资料都会一起发送。</div>
-        <div class="row"><button class="p" id="rfgen" type="button">AI 起草问卷</button></div></details>
-      <div class="sm mut" id="rfstat" role="status" aria-live="polite">${f.version ? `第 ${f.version} 版` : "改动会自动保存。"}</div>${editor()}</div>
-      <div class="rf-r"><div class="row"><b>预览与测试</b><span class="sp"></span><button class="s" type="button" id="rfretest">重新测试</button></div><p class="sm mut" style="margin:0">就是候选人看到的样子：直接填写，看会走到哪里。</p>
-        <div id="rfrun"></div><div class="note" id="rfresult" role="status" aria-live="polite" hidden></div>${publishBox()}</div></div>`;
+    return f.link ? `<div class="rf-pub"><div class="rf-link"><div><div class="sm mut">${live ? "候选人通过这个链接或二维码作答" : "已停止收集（重新发布后链接不变）"}</div><input id="rflink" readonly value="${esc(location.origin + f.link)}" aria-label="问卷链接">
+      <div class="row" style="margin-top:6px"><button class="s" type="button" id="rfcopy">复制链接</button><a class="btn s" href="${esc(f.link)}" target="_blank" rel="noopener">打开答题页</a></div></div><img id="rfqr" alt="问卷二维码" width="120" height="120"></div>
+      <div class="sm">已合格 <b>${n.qualified}</b> 人（已进受访者名单） · 被筛掉 <b>${n.out}</b> 人${outBy ? `（${esc(outBy)}）` : ""}</div></div>` : "";
   }
-
-  const draw = () => { $("#rfbody").innerHTML = panels(); wire(); };
+  function outline() {
+    return `${publishBox()}
+      <h3 class="rf-h">研究背景</h3><div class="rf-blk">${f.brief && f.brief.trim() ? `${esc(f.brief)} <span class="mut sm">（来自立项向导）</span>` : '<span class="mut">还没有研究背景。到立项向导第 1 步写，或在左边对话里告诉 AI。</span>'}</div>
+      <h3 class="rf-h">研究目标</h3><textarea id="rfgoals" class="rf-blk" rows="3" placeholder="每行一条。可以让 AI 根据研究背景整理，也可以自己写。" aria-label="研究目标">${esc(goals.join("\n"))}</textarea>
+      <h3 class="rf-h">招募需求</h3><textarea id="rfneed" class="rf-blk" rows="2" placeholder="谁、多少人、哪些情况要筛掉。可以让 AI 整理，也可以自己写。" aria-label="招募需求">${esc(need)}</textarea>
+      <h3 class="rf-h">问卷流程（共 ${Q.length} 题）</h3>${Q.length ? Q.map(qCard).join("") : `<div class="empty"><b>还没有题目</b><span>在左边说“帮我起草问卷”，或点下面的按钮自己加。</span></div>`}
+      <div class="row"><button class="s" type="button" data-add="single">+ 单选</button><button class="s" type="button" data-add="multi">+ 多选</button><button class="s" type="button" data-add="text">+ 文字填空</button><button class="s" type="button" data-add="number">+ 数字填空</button></div>`;
+  }
+  const rightHead = () => {
+    const live = f.status === "published";
+    return `<div class="rf-hd"><div class="rf-seg" role="tablist"><button type="button" role="tab" data-seg="outline" class="${seg === "outline" ? "on" : ""}" aria-selected="${seg === "outline"}">大纲</button><button type="button" role="tab" data-seg="test" class="${seg === "test" ? "on" : ""}" aria-selected="${seg === "test"}">测试答题</button></div>
+      <span class="sp"></span><span class="sm mut" id="rfstat" role="status" aria-live="polite">${f.version ? `第 ${f.version} 版` : ""}</span><span class="pill ${live ? "" : "o"}">${live ? "发布中" : f.status === "closed" ? "已停止" : "草稿"}</span>
+      ${live ? `<button class="s" type="button" id="rfclose">停止收集</button>` : `<button class="p" type="button" id="rfpub" ${Q.length ? "" : "disabled"}>${f.status === "closed" ? "重新发布" : "发布成链接和二维码"}</button>`}</div>`;
+  };
+  function drawRight() {
+    const r = $("#rfright"); if (!r) return;
+    const keep = $("#rfout") ? $("#rfout").scrollTop : 0;
+    r.innerHTML = rightHead() + `<div class="rf-sc" id="rfout">${seg === "outline" ? outline() : `<p class="sm mut" style="margin:0">就是候选人看到的样子：直接填写，看会走到哪里。</p><div id="rfrun"></div><div class="note" id="rfresult" role="status" aria-live="polite" hidden></div>`}</div>`;
+    $("#rfout").scrollTop = keep; wireRight(); syncUndo();
+  }
   const retest = () => {
     const host = $("#rfrun"); if (!host) return; const res = $("#rfresult"); res.hidden = true;
-    if (!Q.length) { host.innerHTML = `<div class="empty"><b>还没有题目</b><span>左边添加题目后，这里直接测试。</span></div>`; return; }
+    if (!Q.length) { host.innerHTML = `<div class="empty"><b>还没有题目</b><span>先在左边让 AI 起草，或到“大纲”里自己添加。</span></div>`; return; }
     if (incomplete()) { host.innerHTML = `<div class="empty"><b>有题目还没写完</b><span>题目和选项都写好后，这里就能测试。</span></div>`; return; }
     scrRunner(host, {
       lang: "zh",
@@ -80,53 +121,71 @@ function rfCard(p, form) {
     const img = $("#rfqr"); if (!img || !f.link) return;
     try { const r = await fetch(`/api/projects/${p.id}/recruiting/form/qr.svg`, { headers: { Authorization: "Bearer " + store.get("tt_token") } }); if (r.ok) img.src = URL.createObjectURL(await r.blob()); } catch { /* the link still works without the picture */ }
   };
-  const structure = () => { fix(); save(); draw(); };
+  const publish = guard(async () => {
+    clearTimeout(timer); if (incomplete()) throw new Error("有题目或选项还没写完，写完再发布");
+    f = { ...f, ...(await api(`/projects/${p.id}/recruiting/form`, { method: "PUT", body: body() })) };
+    f = { ...f, ...(await api(`/projects/${p.id}/recruiting/form/publish`, { method: "POST" })) }; drawChat(); drawRight(); toast("已发布，可以把链接或二维码发给候选人");
+  });
+
+  function wireRight() {
+    document.querySelectorAll("[data-seg]").forEach((b) => (b.onclick = () => { seg = b.dataset.seg; drawRight(); }));
+    const pub = $("#rfpub"); if (pub) pub.onclick = publish;
+    const cl = $("#rfclose"); if (cl) cl.onclick = guard(async () => { f = { ...f, ...(await api(`/projects/${p.id}/recruiting/form/close`, { method: "POST" })) }; drawRight(); toast("已停止收集"); });
+    if (seg === "test") return retest();
+    loadQr();
+    const cp = $("#rfcopy"); if (cp) cp.onclick = async () => { try { await navigator.clipboard.writeText($("#rflink").value); toast("链接已复制"); } catch { $("#rflink").select(); toast("请按 Ctrl+C 复制", true); } };
+    const g = $("#rfgoals"); if (g) g.onchange = () => { pushHist(); goals = g.value.split("\n").map((x) => x.trim()).filter(Boolean).slice(0, 8); save(); };
+    const n = $("#rfneed"); if (n) n.onchange = () => { pushHist(); need = n.value.trim(); save(); };
+    document.querySelectorAll("[data-add]").forEach((b) => (b.onclick = () => {
+      pushHist(); const type = b.dataset.add, q = { id: nextId(), type, text: "", required: true, options: type === "single" || type === "multi" ? blank() : [], rules: [] };
+      Q.push(q); editing.add(q.id); changed();
+    }));
+    document.querySelectorAll("[data-edit]").forEach((b) => (b.onclick = () => { editing.add(b.dataset.edit); drawRight(); }));
+    document.querySelectorAll(".rf-q .rf-edit").forEach((card) => {
+      const i = +card.dataset.qi, q = Q[i];
+      card.querySelectorAll("[data-f]").forEach((el) => (el.onchange = () => {
+        const k = el.dataset.f; pushHist();
+        if (k === "type") { q.type = el.value; if ((q.type === "single" || q.type === "multi") && q.options.length < 2) q.options = blank(); if (q.type !== "number") q.rules = []; return changed(); }
+        q[k] = k === "required" ? el.checked : el.value; save();
+      }));
+      card.querySelectorAll("[data-mv]").forEach((b) => (b.onclick = () => { pushHist(); const j = i + +b.dataset.mv; [Q[i], Q[j]] = [Q[j], Q[i]]; changed(); }));
+      card.querySelector("[data-del]").onclick = () => { pushHist(); editing.delete(q.id); Q.splice(i, 1); changed(); };
+      card.querySelector("[data-done]").onclick = () => { editing.delete(q.id); drawRight(); };
+      card.querySelectorAll(".rf-optrow[data-oj]").forEach((row) => { const o = q.options[+row.dataset.oj]; row.querySelectorAll("[data-o]").forEach((el) => (el.onchange = () => { pushHist(); o[el.dataset.o] = el.value; save(); })); });
+      card.querySelectorAll("[data-odel]").forEach((b) => (b.onclick = () => { pushHist(); q.options.splice(+b.dataset.odel, 1); changed(); }));
+      const oa = card.querySelector("[data-oadd]"); if (oa) oa.onclick = () => { pushHist(); q.options.push({ id: optId(q), text: "", goto: "", tag: "" }); changed(); };
+      card.querySelectorAll(".rf-optrow[data-rj]").forEach((row) => { const r = q.rules[+row.dataset.rj]; row.querySelectorAll("[data-r]").forEach((el) => (el.onchange = () => { pushHist(); r[el.dataset.r] = el.dataset.r === "value" ? Number(el.value) : el.value; save(); })); });
+      card.querySelectorAll("[data-rdel]").forEach((b) => (b.onclick = () => { pushHist(); q.rules.splice(+b.dataset.rdel, 1); changed(); }));
+      const ra = card.querySelector("[data-radd]"); if (ra) ra.onclick = () => { pushHist(); (q.rules = q.rules || []).push({ op: "lt", value: 18, goto: "end_out" }); changed(); };
+    });
+  }
+
+  /* ---------- the whole card ---------- */
+  function panels() {
+    if (mode === "html") return `<div class="rf-htmlmode"><label class="field">问卷链接（https://）<input id="rfurl" type="url" value="${esc(f.html_url)}" placeholder="https://…（在别的系统里做好的问卷）" maxlength="500"></label>
+      <div class="note">问卷在别的系统里制作和托管，这里只保存链接，点下面的按钮在新窗口里测试；不会嵌进本页面。</div><div class="row"><button class="p" id="rfsave" type="button">保存链接</button>${f.html_url ? `<button class="s" id="rftest" type="button">打开测试窗口</button>` : ""}</div>${f.html_url ? `<code class="rfurl">${esc(f.html_url)}</code>` : ""}</div>`;
+    return `<div class="rf-ws" id="rfws"><div class="rf-pane"><div class="rf-hd"><b>对话</b><span class="sp"></span><button class="s" type="button" id="rfundo" disabled>撤销</button><button class="s" type="button" id="rfredo" disabled>重做</button></div>
+      <div class="rf-sc" id="rfchat"></div>
+      <div class="rf-inp"><div class="sm mut" style="margin-bottom:6px">${esc(rfAiNotice())}</div><div class="rf-box"><textarea id="rfmsg" rows="2" maxlength="2000" placeholder="说说你想怎么改，或直接说“帮我起草问卷”" aria-label="对话输入"></textarea><button class="p rf-send" type="button" id="rfsend" aria-label="发送">↑</button></div></div></div>
+      <div class="rf-pane" id="rfright"></div></div>`;
+  }
+  const draw = () => { $("#rfbody").innerHTML = panels(); wire(); };
+  const fit = () => { const w = $("#rfws"); if (w && w.offsetParent) w.style.height = Math.max(380, innerHeight - w.getBoundingClientRect().top - 96) + "px"; };
 
   function wire() {
     document.querySelectorAll("input[name=rfmode]").forEach((r) => (r.onchange = () => { mode = r.value; draw(); }));
     const sv = $("#rfsave"); if (sv) sv.onclick = guard(async () => { f = { ...f, ...(await api(`/projects/${p.id}/recruiting/form`, { method: "PUT", body: { source: "html", html_url: $("#rfurl").value.trim() } })) }; draw(); toast("链接已保存"); });
     const tt = $("#rftest"); if (tt) tt.onclick = () => window.open(f.html_url, "_blank", "noopener,noreferrer");
     if (mode !== "ai") return;
-    retest(); loadQr();
-    $("#rfretest").onclick = retest;
-    const gen = $("#rfgen");
-    gen.onclick = guard(async () => {
-      const idea = $("#rfidea").value.trim();
-      if (Q.length && !confirm("AI 起草会替换现在所有的题目，确定吗？")) return;
-      gen.disabled = true; stat("正在生成，大约要几秒…");
-      try { f = { ...f, ...(await api(`/projects/${p.id}/recruiting/form/generate`, { method: "POST", body: { idea } })) }; Q = JSON.parse(JSON.stringify(f.questions)); draw(); toast("已起草，可以继续修改"); }
-      finally { const b = $("#rfgen"); if (b) b.disabled = false; }
-    });
-    document.querySelectorAll("[data-add]").forEach((b) => (b.onclick = () => {
-      const type = b.dataset.add, q = { id: nextId(), type, text: "", required: true, options: type === "single" || type === "multi" ? blank() : [], rules: [] };
-      Q.push(q); structure();
-    }));
-    document.querySelectorAll(".rf-edit").forEach((card) => {
-      const i = +card.dataset.qi, q = Q[i];
-      card.querySelectorAll("[data-f]").forEach((el) => (el.onchange = () => {
-        const k = el.dataset.f;
-        if (k === "type") { q.type = el.value; if ((q.type === "single" || q.type === "multi") && q.options.length < 2) q.options = blank(); if (q.type !== "number") q.rules = []; return structure(); }
-        q[k] = k === "required" ? el.checked : el.value; save(); retest();
-      }));
-      card.querySelectorAll("[data-mv]").forEach((b) => (b.onclick = () => { const j = i + +b.dataset.mv; [Q[i], Q[j]] = [Q[j], Q[i]]; structure(); }));
-      card.querySelector("[data-del]").onclick = () => { Q.splice(i, 1); structure(); };
-      card.querySelectorAll(".rf-optrow[data-oj]").forEach((row) => { const o = q.options[+row.dataset.oj]; row.querySelectorAll("[data-o]").forEach((el) => (el.onchange = () => { o[el.dataset.o] = el.value; save(); retest(); })); });
-      card.querySelectorAll("[data-odel]").forEach((b) => (b.onclick = () => { q.options.splice(+b.dataset.odel, 1); structure(); }));
-      const oa = card.querySelector("[data-oadd]"); if (oa) oa.onclick = () => { q.options.push({ id: optId(q), text: "", goto: "", tag: "" }); structure(); };
-      card.querySelectorAll(".rf-optrow[data-rj]").forEach((row) => { const r = q.rules[+row.dataset.rj]; row.querySelectorAll("[data-r]").forEach((el) => (el.onchange = () => { r[el.dataset.r] = el.dataset.r === "value" ? Number(el.value) : el.value; save(); retest(); })); });
-      card.querySelectorAll("[data-rdel]").forEach((b) => (b.onclick = () => { q.rules.splice(+b.dataset.rdel, 1); structure(); }));
-      const ra = card.querySelector("[data-radd]"); if (ra) ra.onclick = () => { (q.rules = q.rules || []).push({ op: "lt", value: 18, goto: "end_out" }); structure(); };
-    });
-    const pub = $("#rfpub"); if (pub) pub.onclick = guard(async () => {
-      clearTimeout(timer); if (incomplete()) throw new Error("有题目或选项还没写完，写完再发布");
-      f = { ...f, ...(await api(`/projects/${p.id}/recruiting/form`, { method: "PUT", body: body() })) };
-      f = { ...f, ...(await api(`/projects/${p.id}/recruiting/form/publish`, { method: "POST" })) }; draw(); toast("已发布，可以把链接或二维码发给候选人");
-    });
-    const cl = $("#rfclose"); if (cl) cl.onclick = guard(async () => { f = { ...f, ...(await api(`/projects/${p.id}/recruiting/form/close`, { method: "POST" })) }; draw(); toast("已停止收集"); });
-    const cp = $("#rfcopy"); if (cp) cp.onclick = async () => { try { await navigator.clipboard.writeText($("#rflink").value); toast("链接已复制"); } catch { $("#rflink").select(); toast("请按 Ctrl+C 复制", true); } };
+    drawChat(); drawRight(); fit();
+    const m = $("#rfmsg");
+    $("#rfsend").onclick = () => send(m.value);
+    m.onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(m.value); } };
+    $("#rfundo").onclick = () => { const s = hist.pop(); if (!s) return; redo.push(snap()); apply(s); syncUndo(); changed(); };
+    $("#rfredo").onclick = () => { const s = redo.pop(); if (!s) return; hist.push(snap()); apply(s); syncUndo(); changed(); };
   }
-  const html = `<div class="card rf"><h3 style="margin-top:0">招募问卷</h3><p class="sm mut" style="margin:0 0 8px">先有问卷，再设置配额。在这里编写（可让 AI 起草），右边直接测试，写好发布成链接或二维码；也可以导入在别的系统里做好的问卷链接。</p>
-    <div class="row" role="radiogroup" aria-label="问卷来源"><label class="chk"><input type="radio" name="rfmode" value="ai" ${mode === "ai" ? "checked" : ""}>在这里编写</label><label class="chk"><input type="radio" name="rfmode" value="html" ${mode === "html" ? "checked" : ""}>导入问卷链接（HTML）</label></div>
-    <div id="rfbody">${panels()}</div></div>`;
-  return { html, wire };
+  addEventListener("resize", fit);
+  const html = `<div class="card rf" style="padding:12px 14px"><div class="row" role="radiogroup" aria-label="问卷来源"><b>招募问卷</b><label class="chk"><input type="radio" name="rfmode" value="ai" ${mode === "ai" ? "checked" : ""}>在这里编写（和 AI 对话）</label><label class="chk"><input type="radio" name="rfmode" value="html" ${mode === "html" ? "checked" : ""}>导入问卷链接（HTML）</label></div>
+    <div id="rfbody" style="margin-top:10px">${panels()}</div></div>`;
+  return { html, wire, fit };
 }

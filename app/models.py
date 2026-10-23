@@ -706,6 +706,9 @@ class RecruitForm(Base):
     n_qualified: Mapped[int] = mapped_column(Integer, default=0)  # people who finished and qualified (they are in the participant list)
     n_out: Mapped[int] = mapped_column(Integer, default=0)  # people screened out (nothing about them is kept)
     out_by: Mapped[dict] = mapped_column(JSON, default=dict)  # question id -> how many were screened out there
+    goals: Mapped[list] = mapped_column(JSON, default=list)  # the research goals the outline shows (written by the AI from the background, editable)
+    need: Mapped[str] = mapped_column(Text, default="")  # the recruiting need in words (who, how many, what screens out)
+    chat: Mapped[list] = mapped_column(JSON, default=list)  # the conversation with the AI that edits the questionnaire: [{"role": "user" | "ai", "text"}], the latest 40
 
 
 class ListeningSource(Base):
