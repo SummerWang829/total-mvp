@@ -159,3 +159,21 @@ def test_the_research_background_goes_to_the_library_and_from_there_to_the_ai(or
     with SessionLocal() as db:
         text, n = library_context.library_text(db, pid)
     assert n == 1 and "改了一版" in text
+
+
+def test_the_ai_draft_combines_the_idea_the_plan_background_and_the_library(org):
+    from app import library_context
+    from app.moderator.providers import MockModeratorChat
+    from app.recruit_form import generate
+    chat = MockModeratorChat(script=[{"questions": [{"type": "text", "text": "好的问题？"}]}])
+    generate(chat, "补充：重点看购买渠道", "zh", library="## 旧报告\n去年的发现", brief="新品防晒霜进入新加坡市场")
+    prompt = chat.calls[0][1]["content"]
+    assert "补充：重点看购买渠道" in prompt and "新品防晒霜进入新加坡市场" in prompt and "去年的发现" in prompt
+    from test_plans import draft, plan
+    pid = draft(org)["id"]
+    cfg = plan(org, pid)["config"]
+    assert org.c.post(f"/api/projects/{pid}/recruiting/form/generate", headers=org.h(), json={"idea": ""}).status_code == 422  # nothing written anywhere
+    org.c.put(f"/api/projects/{pid}/plan", headers=org.h(), json={"brief": "新品防晒霜进入新加坡市场，了解年轻人的购买决策", "config": cfg})
+    r = org.c.post(f"/api/projects/{pid}/recruiting/form/generate", headers=org.h(), json={"idea": ""})  # the background alone is enough
+    assert r.status_code == 200 and r.json()["questions"]
+    assert library_context.BRIEF_TITLE  # (the background reaches the library through the wizard; the library text is always handed over)

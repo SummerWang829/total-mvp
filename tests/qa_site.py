@@ -423,6 +423,7 @@ def recruit_section(br, D):
     ok(pg.locator("#rules").count() == 0 and pg.locator("#quotas").count() == 1, "[recruit] eligibility rules are gone from the page (the questionnaire replaces them); quotas stay")
     # the recruiting questionnaire: write it on the left (the AI can draft it), test it on the right, publish it as a link and a QR code
     ok(pg.locator("h3", has_text="招募问卷").count() == 1 and pg.locator("#rfidea").count() == 1 and ("不会发给其他公司" in pg.inner_text(".rf") or "发送给" in pg.inner_text(".rf")), "[recruit] the questionnaire card shows the idea box and says where the text goes")
+    ok(pg.locator("#rfimport").count() == 0 and pg.locator("#rflib").count() == 0 and "自动结合" in pg.inner_text(".rf-ai"), "[recruit] the AI draft has no import button and no library tick: it combines the idea, the plan's background and the library by itself")
     pg.fill("#rfidea", "想了解新加坡年轻人如何选购护肤品牌，重点是购买渠道。"); pg.click("#rfgen")
     pg.wait_for_selector(".rf-edit", timeout=15000)
     ok(pg.locator(".rf-edit").count() >= 5 and pg.locator(".rf-edit [data-o=goto]").count() >= 8, "[recruit] the AI's draft opens in the editor: questions with options, each with what happens after it")

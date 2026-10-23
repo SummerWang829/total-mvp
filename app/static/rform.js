@@ -4,7 +4,7 @@
 const RF_TYPE = { single: "单选", multi: "多选", text: "文字填空", number: "数字填空" };
 const RF_OP = { lt: "小于", lte: "不大于", gt: "大于", gte: "不小于", eq: "等于" };
 const rfAiNotice = () => (CONFIG && CONFIG.ai_local ? "AI 运行在我们自己的服务器上，这段文字不会发给其他公司。"
-  : `这段文字会发送给 AI 服务商${CONFIG && CONFIG.ai_vendor ? `“${CONFIG.ai_vendor}”` : ""}来生成内容，只用来写问卷和建议。勾选“参考研究库”时，本项目研究库里的资料也会一起发送。请不要写入受访者的姓名、电话等个人信息。`);
+  : `这段文字会发送给 AI 服务商${CONFIG && CONFIG.ai_vendor ? `“${CONFIG.ai_vendor}”` : ""}来生成内容，只用来写问卷和建议。请不要写入受访者的姓名、电话等个人信息。`);
 
 /** 整个“招募问卷”卡片，返回 { html, wire }。 */
 function rfCard(p, form) {
@@ -57,9 +57,9 @@ function rfCard(p, form) {
       <div class="note">问卷在别的系统里制作和托管，这里只保存链接，点右边的按钮在新窗口里测试；不会嵌进本页面。</div><div class="row"><button class="p" id="rfsave" type="button">保存链接</button></div></div>
       <div class="rf-r">${f.html_url ? `<div class="empty"><b>测试链接</b><code class="rfurl">${esc(f.html_url)}</code><button class="p" id="rftest" type="button">打开测试窗口</button></div>` : `<div class="empty"><b>还没有链接</b><span>把问卷链接贴在左边并保存，这里就能打开测试。</span></div>`}</div></div>`;
     return `<div class="rf-grid"><div class="rf-l">
-      <details class="rf-ai" ${Q.length ? "" : "open"}><summary>让 AI 起草（可选）</summary><label class="field">研究想法<textarea id="rfidea" rows="5" placeholder="例如：想了解新加坡 18-34 岁女性如何选购防晒产品，重点是购买渠道和决策因素。">${esc(f.idea)}</textarea></label>
-        <div class="note">${esc(rfAiNotice())}</div><label class="chk"><input type="checkbox" id="rflib" ${f.library_docs ? "checked" : "disabled"}><span>参考研究库里本项目的资料（${f.library_docs || 0} 份）</span></label>
-        <div class="row"><button class="s" id="rfimport" type="button">从立项向导导入研究背景</button><button class="p" id="rfgen" type="button">AI 起草问卷</button></div></details>
+      <details class="rf-ai" ${Q.length ? "" : "open"}><summary>让 AI 起草（可选）</summary><label class="field">研究想法（补充说明，选填）<textarea id="rfidea" rows="5" placeholder="例如：想了解新加坡 18-34 岁女性如何选购防晒产品，重点是购买渠道和决策因素。">${esc(f.idea)}</textarea></label>
+        <div class="note">点“AI 起草问卷”后，系统会自动结合这里写的研究想法、立项里的研究背景和本项目研究库里的资料（${f.library_docs || 0} 份），在后台生成符合项目背景的问卷。${esc(rfAiNotice())}研究想法、研究背景和研究库资料都会一起发送。</div>
+        <div class="row"><button class="p" id="rfgen" type="button">AI 起草问卷</button></div></details>
       <div class="sm mut" id="rfstat" role="status" aria-live="polite">${f.version ? `第 ${f.version} 版` : "改动会自动保存。"}</div>${editor()}</div>
       <div class="rf-r"><div class="row"><b>预览与测试</b><span class="sp"></span><button class="s" type="button" id="rfretest">重新测试</button></div><p class="sm mut" style="margin:0">就是候选人看到的样子：直接填写，看会走到哪里。</p>
         <div id="rfrun"></div><div class="note" id="rfresult" role="status" aria-live="polite" hidden></div>${publishBox()}</div></div>`;
@@ -94,10 +94,9 @@ function rfCard(p, form) {
       const idea = $("#rfidea").value.trim();
       if (Q.length && !confirm("AI 起草会替换现在所有的题目，确定吗？")) return;
       gen.disabled = true; stat("正在生成，大约要几秒…");
-      try { f = { ...f, ...(await api(`/projects/${p.id}/recruiting/form/generate`, { method: "POST", body: { idea, use_library: !!($("#rflib") && $("#rflib").checked) } })) }; Q = JSON.parse(JSON.stringify(f.questions)); draw(); toast("已起草，可以继续修改"); }
+      try { f = { ...f, ...(await api(`/projects/${p.id}/recruiting/form/generate`, { method: "POST", body: { idea } })) }; Q = JSON.parse(JSON.stringify(f.questions)); draw(); toast("已起草，可以继续修改"); }
       finally { const b = $("#rfgen"); if (b) b.disabled = false; }
     });
-    $("#rfimport").onclick = () => { if (!(p.brief || "").trim()) return toast("立项向导的“研究背景”还是空的", true); $("#rfidea").value = p.brief; };
     document.querySelectorAll("[data-add]").forEach((b) => (b.onclick = () => {
       const type = b.dataset.add, q = { id: nextId(), type, text: "", required: true, options: type === "single" || type === "multi" ? blank() : [], rules: [] };
       Q.push(q); structure();

@@ -314,22 +314,25 @@ def mock_questions(idea: str, language: str) -> list[dict]:
             {"type": "text", "text": "What mattered most the last time you bought it?"}]
 
 
-def generate(chat: ModeratorChatProvider | None, idea: str, language: str, library: str = "") -> list[Question]:
-    """The AI writes the questions from the research idea. `chat` None means the offline mock questionnaire.
+def generate(chat: ModeratorChatProvider | None, idea: str, language: str, library: str = "", brief: str = "") -> list[Question]:
+    """The AI writes the questions from what the team wrote (the idea box), the plan's research background and the project's research library, together.
+    `chat` None means the offline mock questionnaire.
 
     Raises:
         FormError: the idea is too short, or no usable questionnaire after MAX_ATTEMPTS tries / the model service is unavailable.
         ChatFatalError: the model service refused (bad key, no balance...): never hidden behind a made-up questionnaire.
     """
-    if len(idea.strip()) < MIN_IDEA_CHARS:
-        raise FormError("先写一下研究想法（至少一两句话），再生成问卷")
+    if len(idea.strip()) + len(brief.strip()) < MIN_IDEA_CHARS:
+        raise FormError("先写一下研究想法，或在立项向导里写好研究背景（至少一两句话），再生成问卷")
     problem = ""
     for attempt in range(MAX_ATTEMPTS):
         try:
             if chat is None:
                 reply = {"questions": mock_questions(idea, language)}
             else:
-                user = f"Research idea (internal): {idea.strip()}\nQuestionnaire language: {language}"
+                user = f"Research idea (internal): {idea.strip() or '(none given)'}\nQuestionnaire language: {language}"
+                if brief.strip():
+                    user += f"\n\nResearch background from the project plan (internal):\n{brief.strip()}"
                 if library:
                     user += f"\n\nReference material from this project's research library (internal):\n{library}"
                 if problem:

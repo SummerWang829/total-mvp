@@ -37,7 +37,7 @@ class PreviewBody(BaseModel):
 
 class IdeaBody(BaseModel):
     idea: str = Field(default="", max_length=5000)
-    use_library: bool = False  # also hand the project's research library to the AI
+    use_library: bool = True  # kept for older pages: the project's research library always goes along now
 
 
 def _ai_chat():
@@ -218,9 +218,9 @@ def generate_form(pid: str, body: IdeaBody, ctx: Ctx = Depends(require_roles(*RE
     """The AI writes the questionnaire from the research idea and it replaces the saved questions. The idea is sent to the AI service (the page says so); takes several seconds."""
     proj = get_project(db, ctx, pid)
     chat = _ai_chat()
-    library = library_context.library_text(db, proj.id)[0] if body.use_library else ""
+    library = library_context.library_text(db, proj.id)[0]  # the idea, the plan's research background and the library are combined, always
     try:
-        questions = recruit_form.generate(chat, body.idea, proj.language, library)
+        questions = recruit_form.generate(chat, body.idea, proj.language, library, proj.brief or "")
     except ChatFatalError as e:
         raise HTTPException(502, f"AI 模型服务拒绝了请求：{e.reason}") from e
     except recruit_form.FormError as e:
@@ -231,7 +231,7 @@ def generate_form(pid: str, body: IdeaBody, ctx: Ctx = Depends(require_roles(*RE
         db.add(f)
     f.source, f.idea, f.html_url, f.questions = "ai", body.idea.strip(), "", [q.model_dump() for q in questions]
     f.generated_by, f.version, f.updated_at = chat.name if chat else "mock", (f.version or 0) + 1, utcnow()
-    audit(db, ctx.org_id, ctx.actor, "recruit.form_generate", proj.id, model=f.generated_by, questions=len(f.questions), library=bool(library))  # the idea itself is not written to the log
+    audit(db, ctx.org_id, ctx.actor, "recruit.form_generate", proj.id, model=f.generated_by, questions=len(f.questions), library=bool(library), brief=bool((proj.brief or "").strip()))  # the idea itself is not written to the log
     db.commit()
     return _form_out(f)
 
