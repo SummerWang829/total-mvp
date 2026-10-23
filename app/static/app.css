@@ -402,6 +402,12 @@ nav.side .dotc{width:7px;height:7px;border-radius:50%;background:var(--sc,#FF6A0
 .hm-stagelist{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:10px}
 .hm-stagelist li{display:grid;grid-template-columns:28px minmax(70px,auto) auto minmax(90px,auto) minmax(80px,1fr) auto;gap:10px;align-items:center}
 .hm-stagelist .sic{display:inline-flex;width:24px;height:24px;border-radius:50%;border:1.5px solid var(--orange);color:var(--orange-ink);font-size:12px;font-weight:700;align-items:center;justify-content:center}
+.hm-stage{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,7fr);gap:16px;border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px;background:var(--surface)}
+.hm-l{display:flex;flex-direction:column;gap:6px;min-width:0}.hm-name{font-size:17px;font-weight:700;text-decoration:none;color:var(--ink)}.hm-name:hover{text-decoration:underline}
+.hm-r{background:var(--wash);border-radius:var(--r-pan);padding:12px 14px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.hm-row{display:grid;grid-template-columns:minmax(90px,150px) minmax(0,1fr) auto;gap:10px;align-items:center;font-size:13px}.hm-row>span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hm-sub{margin:8px 0 6px}
+@media (max-width:800px){.hm-stage{grid-template-columns:1fr}.hm-row{grid-template-columns:1fr auto}.hm-row .qbar{grid-column:1/-1;order:3}}
 .hm-stages{margin-bottom:12px}
 @media (max-width:700px){.hm-stagelist li{grid-template-columns:28px 1fr auto}.hm-stagelist li .qbar,.hm-stagelist li .sm{grid-column:2/-1}.hm-stagelist li button{grid-column:2/-1;justify-self:start}}
 

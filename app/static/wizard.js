@@ -25,7 +25,7 @@ const WZ_PERMS = {  // what each account role can do in a project (shown as the 
 };
 const WZ_ROLE = { admin: "管理员", researcher: "研究员", recruiter: "项目经理", moderator: "主持人", observer: "观察员", viewer: "客户（只读）", support: "技术支持" };
 const WZ_KIND = { quant: "定量研究员", qual: "定性研究员", all: "全科研究员" };
-const WZ = { p: null, plan: null, cfg: null, step: 0, tab: "q", users: [], timer: null, saving: null, picks: {}, known: [], estNote: "" };
+const WZ = { p: null, plan: null, cfg: null, step: 0, tab: "q", users: [], timer: null, saving: null, picks: {}, known: [], estNote: "", sugState: "", sugBrief: "", sugError: "" };
 
 const wzLocked = () => WZ.plan.status === "published";
 const wzMethods = () => {  // what the sub-projects use (the server derives the same list)
@@ -53,7 +53,7 @@ async function wizardView(p) {
     shell(`${head("立项向导", "这个项目创建时还没有立项向导，所以没有立项记录。新建项目会从向导开始。")}<div class="card empty"><b>没有立项记录</b><span>老项目照常使用，不受影响。</span><a class="btn p" href="#/p/${p.id}/home">回到项目总览</a></div>`, { active: "wiz", p });
     return;
   }
-  Object.assign(WZ, { p, plan, cfg: plan.config, users: users.filter((u) => u.active), picks: {}, known: [], step: Math.min(WZ.p && WZ.p.id === p.id ? WZ.step : 0, 6), estNote: "" });
+  Object.assign(WZ, { p, plan, cfg: plan.config, users: users.filter((u) => u.active), picks: {}, known: [], step: Math.min(WZ.p && WZ.p.id === p.id ? WZ.step : 0, 6), estNote: "", sugState: WZ.p && WZ.p.id === p.id ? WZ.sugState : "", sugBrief: WZ.p && WZ.p.id === p.id ? WZ.sugBrief : "" });
   wzDraw();
 }
 
@@ -91,12 +91,34 @@ function wzDesignView() {
     </tbody></table></div></div>`;
 }
 
-function wzSuggest() {  // what the AI suggests from the research background (to read and take over by hand; nothing is applied by itself)
-  const s = WZ.plan.suggest, list = (a) => `<ul style="margin:4px 0 0 18px">${a.map((t) => `<li><b>${esc(t.title)}</b>：${t.questions.map(esc).join(" / ")}</li>`).join("")}</ul>`;
-  return `<div class="row"><button class="s" id="wzlib" type="button">存入研究库</button><label class="chk"><input type="checkbox" id="wzuselib" ${WZ.plan.library_docs ? "checked" : "disabled"}><span>参考研究库里本项目的资料（${WZ.plan.library_docs || 0} 份）</span></label>
-      <button class="s" id="wzsug" type="button">根据研究背景生成建议</button><span class="sm mut" id="wzsugstat" role="status" aria-live="polite">${s ? "下面是上次生成的建议，仅供参考，需要的内容请自己复制到对应的地方。" : "生成深访提纲、座谈会大纲、配额和舆情关键词的建议。"}</span></div>
+function wzNotice() {  // where the research background goes: the AI service (and the project's research library comes along)
+  return CONFIG && CONFIG.ai_local ? "AI 运行在我们自己的服务器上，这段文字不会发给其他公司。"
+    : `这段文字会发送给 AI 服务商${CONFIG && CONFIG.ai_vendor ? `“${CONFIG.ai_vendor}”` : ""}来生成内容，只用来写问卷和建议；本项目研究库里已有的资料也会一起发送。请不要写入受访者的姓名、电话等个人信息。`;
+}
+
+/** Leaving step 1 with a research background: it goes into the project's research library and the AI writes its suggestions in the background (shown on step 2). */
+function wzAutoSuggest() {
+  const brief = (WZ.brief_edit ?? WZ.plan.brief ?? "").trim();
+  if (wzLocked() || brief.length < 8 || brief === WZ.sugBrief) return;
+  WZ.sugBrief = brief; WZ.sugState = "running";
+  (async () => {
+    try {
+      await api(`/projects/${WZ.p.id}/plan/brief-to-library`, { method: "POST" });
+      WZ.plan.suggest = await api(`/projects/${WZ.p.id}/plan/suggest?use_library=true`, { method: "POST" }); WZ.sugState = "done";
+    } catch (e) { WZ.sugState = "error"; WZ.sugError = e.message; WZ.sugBrief = ""; }
+    if (WZ.step === 1 && $("#wzsug")) { const y = scrollY; wzDraw(); scrollTo(0, y); }
+  })();
+}
+
+function wzSuggest() {  // step 2: what the AI suggests from the research background (to read and take over by hand; nothing is applied by itself)
+  const s = WZ.plan.suggest, st = WZ.sugState, list = (a) => `<ul style="margin:4px 0 0 18px">${a.map((t) => `<li><b>${esc(t.title)}</b>：${t.questions.map(esc).join(" / ")}</li>`).join("")}</ul>`;
+  if (!s && st !== "running" && st !== "error") return "";
+  const pill = st === "running" ? `<span class="pill o">生成中…</span>` : st === "error" ? `<span class="pill r">没生成成功</span>` : `<span class="pill">已生成</span>`;
+  return `<div class="card" id="wzsug" style="display:flex;flex-direction:column;gap:8px"><div class="row"><b>AI 建议（根据研究背景，后台生成）</b>${pill}</div>
+    ${st === "error" ? `<div class="note">${esc(WZ.sugError || "")}。回到第 1 步改一下研究背景再点“下一步”会重新生成。</div>` : ""}
     ${s ? `<div class="grid"><div class="card"><h3>深访提纲建议</h3>${list(s.depth_topics)}</div><div class="card"><h3>座谈会大纲建议</h3>${list(s.group_topics)}</div>
-      <div class="card"><h3>配额建议</h3><p class="sm" style="margin:6px 0 0">${esc(s.quota_hint)}</p></div><div class="card"><h3>舆情关键词建议</h3><div style="margin-top:6px">${s.listening_keywords.map((k) => `<span class="tag">${esc(k)}</span>`).join("")}</div></div></div>` : ""}`;
+      <div class="card"><h3>配额建议</h3><p class="sm" style="margin:6px 0 0">${esc(s.quota_hint)}</p></div><div class="card"><h3>舆情关键词建议</h3><div style="margin-top:6px">${s.listening_keywords.map((k) => `<span class="tag">${esc(k)}</span>`).join("")}</div></div></div>
+    <div class="sm mut">仅供参考，需要的内容自己复制；招募问卷会自动参考研究库里的这份研究背景。</div>` : ""}</div>`;
 }
 
 function wzSubs() {
@@ -268,9 +290,9 @@ function wzBody() {
   switch (WZ.step) {
     case 0: return `<div class="grid"><label class="field">主项目名称${wzInp('data-meta="name" aria-label="主项目名称"', WZ.name_edit ?? WZ.plan.name)}</label>
       <label class="field">数据留存期限${wzSel('data-w="retention" aria-label="数据留存期限"', c.retention, WZ_RETENTION.map((d) => [d, `${d} 天${d === 180 ? "（平台上限）" : ""}`]))}<span class="mut" style="font-weight:400">同意书里写明的就是这个期限：项目结项后 ${c.retention} 天自动删除个人数据，洞察结论保留。${WZ.plan.live ? "已发布过的项目只能缩短，不能延长。" : ""}</span></label></div>
-      <label class="field">研究背景（选填，只给团队看）<textarea data-meta="brief" rows="3" placeholder="写清这个项目要解决什么问题、做给谁看。">${esc(WZ.brief_edit ?? WZ.plan.brief ?? "")}</textarea><span class="mut" style="font-weight:400">先“存入研究库”，再从研究库出发：生成深访提纲、座谈会大纲、配额建议和舆情关键词，招募问卷也会参考它。</span></label>
-      <div class="note">${esc(rfAiNotice())}</div>${wzSuggest()}${wzSubs()}`;
-    case 1: return `${wzDesignView()}<label class="field" style="max-width:360px">研究类型（带出模板）${wzSel('data-w="type"', c.type, Object.keys(WZ_TYPES).map((x) => [x, x]))}</label>
+      <label class="field">研究背景（选填，只给团队看）<textarea data-meta="brief" rows="3" placeholder="写清这个项目要解决什么问题、做给谁看。">${esc(WZ.brief_edit ?? WZ.plan.brief ?? "")}</textarea><span class="mut" style="font-weight:400">点“下一步”后，系统会自动把它存入研究库，并在后台生成深访提纲、座谈会大纲、配额建议和舆情关键词的建议，生成好后在“研究设计”页查看；招募问卷也会参考它。</span></label>
+      <div class="note">${esc(wzNotice())}</div>${wzSubs()}`;
+    case 1: return `${wzSuggest()}${wzDesignView()}<label class="field" style="max-width:360px">研究类型（带出模板）${wzSel('data-w="type"', c.type, Object.keys(WZ_TYPES).map((x) => [x, x]))}</label>
       <div class="note">选“${esc(c.type)}”会预置：${WZ_TYPES[c.type]}。</div>`;
     case 2: return wzRoles();
     case 3: return wzSample();
@@ -302,9 +324,9 @@ function wzRedraw(keepScroll = true) {  // never redraw inside the event that ca
 
 function wzWire() {
   const root = $("main");
-  root.querySelectorAll("[data-step]").forEach((b) => (b.onclick = guard(async () => { await wzSave(true); WZ.step = +b.dataset.step; wzDraw(); scrollTo(0, 0); })));
+  root.querySelectorAll("[data-step]").forEach((b) => (b.onclick = guard(async () => { await wzSave(true); if (WZ.step === 0 && +b.dataset.step > 0) wzAutoSuggest(); WZ.step = +b.dataset.step; wzDraw(); scrollTo(0, 0); })));
   $("#wzprev").onclick = guard(async () => { await wzSave(true); WZ.step--; wzDraw(); scrollTo(0, 0); });
-  const nx = $("#wznext"); if (nx) nx.onclick = guard(async () => { await wzSave(true); WZ.step++; wzDraw(); scrollTo(0, 0); });
+  const nx = $("#wznext"); if (nx) nx.onclick = guard(async () => { await wzSave(true); if (WZ.step === 0) wzAutoSuggest(); WZ.step++; wzDraw(); scrollTo(0, 0); });
   root.addEventListener("change", wzChange);
   root.onclick = (e) => { const t = e.target.closest("button"); if (t) wzClick(t, e); };
 }
@@ -373,14 +395,6 @@ function wzClick(b, e) {
   if (d.col) { const [j, on] = d.col.split("|"), k = ["q", "i", "f", "l"][+j]; wzMutate(() => c.team.forEach((m) => (m[k] = on === "1"))); return wzRedraw(); }
   if (b.id === "memadd") { const id = $("#memsel").value, u = WZ.users.find((x) => x.id === id); if (!u) return toast("先选一位同事", true); wzMutate(() => c.team.push({ user_id: id, ...wzDefault(u) })); return wzRedraw(); }
   if (d.memdel) { wzMutate(() => (c.team = c.team.filter((m) => m.user_id !== d.memdel))); return wzRedraw(); }
-  if (b.id === "wzlib") return guard(async () => {  // the research background goes into the project's research library; the AI tools and the team read it from there
-    await wzSave(true); const r = await api(`/projects/${WZ.p.id}/plan/brief-to-library`, { method: "POST" });
-    WZ.plan.library_docs = r.library_docs; wzRedraw(); toast("已存入研究库（研究库里可以看到“研究背景（立项）”）");
-  })();
-  if (b.id === "wzsug") return guard(async () => {
-    await wzSave(true); b.disabled = true; const st = $("#wzsugstat"); if (st) st.textContent = "正在生成，大约要几秒…";
-    try { WZ.plan.suggest = await api(`/projects/${WZ.p.id}/plan/suggest?use_library=${$("#wzuselib") && $("#wzuselib").checked}`, { method: "POST" }); wzRedraw(); toast("建议已生成"); } finally { b.disabled = false; }
-  })();
   if (b.id === "subtpl") return wzSubTemplate();
   if (b.id === "subimp") return $("#subfile").click();
   if (b.id === "wzconfirmn") return guard(async () => { await wzSave(true); wzRedraw(); toast("样本量已确认并保存"); })();

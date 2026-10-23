@@ -227,7 +227,7 @@ async function homeView(p) {
   if (stale(my)) return;
   const pct = (a, b) => (b ? Math.round((a / b) * 100) : 0);
   const meter = (label, a, b, cls = "") => `<div class="meter"><dt>${label}</dt><dd class="pbar6 ${cls}" role="img" aria-label="${label} ${a} / ${b}"><i style="width:${pct(a, b)}%"></i></dd><dd>${a} / ${b}</dd></div>`;
-  shell(`${head("项目总览", "这个项目用了哪些研究方法、各做到哪一步、下一步做什么。", `<button class="s" id="rep">下载研究报告（Word）</button>`)}
+  shell(`${head("项目总览", "这个项目用了哪些研究方法、各做到哪一步、下一步做什么。", `<button class="s" id="rep">下载研究报告（Word）</button>${h ? ` <button class="s" id="hmcopy" type="button">复制项目</button>` : ""}`)}
     ${h ? h.html : starmapHtml(p, o.starmap)}
     ${!h && (o.methods.includes("depth") || o.methods.includes("group")) ? `<div class="hero">
       <div class="card"><div class="hero-k">已完成的深访</div><div class="hero-n"><b>${s.done}</b><span>/ ${s.sessions} 场</span></div>
