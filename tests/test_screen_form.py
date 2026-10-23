@@ -230,3 +230,38 @@ def test_the_ai_conversation_gets_the_background_the_library_the_questionnaire_a
     bad = MockModeratorChat(script=[{"reply": "x", "questions": [{"type": "single", "text": "?", "options": [{"text": "a"}]}]}])
     gone = chat_turn(bad, "改一下", [], current, [], "", "zh")
     assert gone.questions is None and "没有改动" in gone.reply and len(bad.calls) == 2
+
+
+# ---------- options that cannot be chosen together ----------
+def multi(excl_a=None):
+    return [{"id": "m", "type": "multi", "text": "去过哪些地方？", "options": [{"id": "a", "text": "尖沙咀", "excl": excl_a or []}, {"id": "b", "text": "旺角"}, {"id": "c", "text": "中环"},
+                                                                          {"id": "z", "text": "都没去过", "goto": "end_out", "excl": ["a", "b", "c"]}]}]
+
+
+def test_exclusion_is_two_way_and_only_for_multiple_choice():
+    from app.recruit_form import normalize
+    q = normalize({"questions": multi()}).questions[0]
+    by = {o.id: o.excl for o in q.options}
+    assert by["z"] == ["a", "b", "c"] and by["a"] == ["z"] and by["b"] == ["z"] and by["c"] == ["z"]  # one side said it, the other side follows
+    q2 = normalize({"questions": [{"id": "s", "type": "single", "text": "单选？", "options": [{"id": "a", "text": "甲", "excl": ["b"]}, {"id": "b", "text": "乙"}]}]}).questions[0]
+    assert all(o.excl == [] for o in q2.options)  # a single choice has nothing to exclude
+    q3 = normalize({"questions": [{"id": "m", "type": "multi", "text": "多选？", "options": [{"id": "a", "text": "甲", "excl": ["a", "nope"]}, {"id": "b", "text": "乙"}]}]}).questions[0]
+    assert all(o.excl == [] for o in q3.options)  # never with itself, never with an option that does not exist
+
+
+def test_two_options_that_exclude_each_other_cannot_be_answered_together():
+    qs_ = [Question.model_validate(q) for q in __import__("app.recruit_form", fromlist=["normalize"]).normalize({"questions": multi()}).questions]
+    assert next_step(qs_, {"m": ["a", "b"]}).result == "qualified"
+    for bad in (["a", "z"], ["z", "c"], ["b", "z", "a"]):
+        with pytest.raises(AnswerError):
+            next_step(qs_, {"m": bad})
+    assert next_step(qs_, {"m": ["z"]}).result == "out"  # on its own it is fine (and ends the questionnaire)
+
+
+def test_candidates_see_which_options_go_together_but_not_what_screens_out(client, org):
+    pid = org.project()
+    org.c.put(url(pid), headers=org.h(), json={"source": "ai", "questions": multi()})
+    tok = org.c.post(url(pid, "/publish"), headers=org.h()).json()["link"].split("t=")[1]
+    q = client.post(f"/api/public/screen/{tok}/step", json={"answers": {}}).json()["question"]
+    assert {o["id"]: o["excl"] for o in q["options"]}["z"] == ["a", "b", "c"] and "goto" not in str(q)
+    assert client.post(f"/api/public/screen/{tok}/step", json={"answers": {"m": ["a", "z"]}}).status_code == 422  # the server refuses the pair even if a page sends it

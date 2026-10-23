@@ -30,6 +30,13 @@ function rfCard(p, form) {
   const apply = (s) => { const o = JSON.parse(s); Q = o.Q; goals = o.goals; need = o.need; editing = new Set(); };
   const syncUndo = () => { const u = $("#rfundo"), r = $("#rfredo"); if (u) u.disabled = !hist.length; if (r) r.disabled = !redo.length; };
   const changed = () => { fix(); save(); drawRight(); };  // after a manual edit
+  const openEx = new Set();  // option ids whose 互斥 picker is open
+  const code = (q, o) => q.options.findIndex((x) => x.id === o.id) + 1;
+  const exLabel = (q, o) => (o.excl || []).map((id) => q.options.findIndex((x) => x.id === id) + 1).filter(Boolean).sort((a, b) => a - b).join("、");
+  const setExcl = (q, o, other, on) => {  // two-way: ticking "3 cannot go with 10" also ticks "10 cannot go with 3"
+    const add = (a, b) => { a.excl = (a.excl || []).filter((x) => x !== b.id); if (on) a.excl.push(b.id); };
+    add(o, other); add(other, o);
+  };
   const ref = (g) => (g === "end_out" ? "结束 · 不符合" : g === "end_ok" ? "结束 · 符合" : g ? `跳到第 ${Q.findIndex((x) => x.id === g) + 1} 题` : "");
   const actions = (i, cur, allowNext) => `<option value="" ${cur === "" ? "selected" : ""}>${allowNext ? "下一题" : "选择处理方式"}</option>${Q.slice(i + 1).map((x, k) => `<option value="${x.id}" ${cur === x.id ? "selected" : ""}>跳到第 ${i + k + 2} 题</option>`).join("")}<option value="end_out" ${cur === "end_out" ? "selected" : ""}>结束 · 不符合（筛掉）</option><option value="end_ok" ${cur === "end_ok" ? "selected" : ""}>结束 · 符合</option>`;
   const badge = (g) => (g === "end_out" ? `<span class="rf-lg out">结束 · 不符合</span>` : g === "end_ok" ? `<span class="rf-lg ok">结束 · 符合</span>` : g ? `<span class="rf-lg jump">${ref(g)}</span>` : "");
@@ -66,9 +73,11 @@ function rfCard(p, form) {
       <label class="chk"><input type="checkbox" data-f="required" ${q.required ? "checked" : ""}>必答</label><span class="sp"></span>
       <button class="s" type="button" data-mv="-1" ${i ? "" : "disabled"} aria-label="上移">↑</button><button class="s" type="button" data-mv="1" ${i < Q.length - 1 ? "" : "disabled"} aria-label="下移">↓</button><button class="s warn" type="button" data-del="1">删除</button><button class="s" type="button" data-done="1">完成</button></div>
       <input data-f="text" value="${esc(q.text)}" maxlength="300" placeholder="题目" aria-label="第 ${i + 1} 题题目">
-      ${opts ? `<div class="rf-optl">${q.options.map((o, j) => `<div class="rf-optrow" data-oj="${j}"><input data-o="text" value="${esc(o.text)}" maxlength="120" placeholder="选项" aria-label="选项 ${j + 1}">
-        <select data-o="goto" aria-label="选了之后">${actions(i, o.goto, true)}</select><input data-o="tag" value="${esc(o.tag || "")}" maxlength="30" placeholder="标签（选填）" aria-label="选了就打上的标签" style="max-width:140px">
-        <button class="s" type="button" data-odel="${j}" aria-label="删除选项" ${q.options.length > 2 ? "" : "disabled"}>×</button></div>`).join("")}<button class="s" type="button" data-oadd="1" ${q.options.length >= 12 ? "disabled" : ""}>+ 添加选项</button></div>` : ""}
+      ${opts ? `<div class="rf-optl">${q.options.map((o, j) => `<div class="rf-optrow" data-oj="${j}"><span class="rf-code" title="选项编号">${j + 1}</span><input data-o="text" value="${esc(o.text)}" maxlength="120" placeholder="选项" aria-label="选项 ${j + 1}">
+        <select data-o="goto" aria-label="选了之后">${actions(i, o.goto, true)}</select>${q.type === "multi" ? `<button class="s rf-ex ${(o.excl || []).length || openEx.has(o.id) ? "on" : ""}" type="button" data-ex="${j}" aria-expanded="${openEx.has(o.id)}">${(o.excl || []).length ? `互斥：${exLabel(q, o)}` : "互斥"}</button>` : ""}
+        <button class="s" type="button" data-odel="${j}" aria-label="删除选项" ${q.options.length > 2 ? "" : "disabled"}>×</button></div>${q.type === "multi" && openEx.has(o.id) ? `<div class="rf-expanel">“${esc(o.text || "（空选项）")}”（${j + 1}）不能和哪些选项同时选？点编号勾选（紫色 = 不能同时选）：
+          <div class="rf-chs">${q.options.map((x, k) => (x.id === o.id ? "" : `<button class="s rf-ch ${(o.excl || []).includes(x.id) ? "on" : ""}" type="button" data-exo="${j}|${k}" aria-pressed="${(o.excl || []).includes(x.id)}" title="${esc(x.text)}">${k + 1}</button>`)).join("")}</div>
+          <div class="sm mut" style="margin-top:6px">互斥是双向的：勾了“${j + 1} 与 3 互斥”，3 那一行也会自动显示“与 ${j + 1} 互斥”。一个都不勾 = 不互斥。</div></div>` : ""}`).join("")}<button class="s" type="button" data-oadd="1" ${q.options.length >= 12 ? "disabled" : ""}>+ 添加选项</button></div>` : ""}
       ${q.type === "number" ? `<div class="rf-optl">${(q.rules || []).map((r, j) => `<div class="rf-optrow" data-rj="${j}"><span>如果数字</span><select data-r="op" aria-label="条件">${Object.entries(RF_OP).map(([k, n]) => `<option value="${k}" ${r.op === k ? "selected" : ""}>${n}</option>`).join("")}</select>
         <input data-r="value" type="number" step="any" value="${r.value}" aria-label="数值" style="max-width:110px"><select data-r="goto" aria-label="就">${actions(i, r.goto, false)}</select><button class="s" type="button" data-rdel="${j}" aria-label="删除规则">×</button></div>`).join("")}
         <button class="s" type="button" data-radd="1" ${(q.rules || []).length >= 4 ? "disabled" : ""}>+ 添加规则（例如 小于 18 → 结束 · 不符合）</button></div>` : ""}</div>`;
@@ -76,20 +85,12 @@ function rfCard(p, form) {
   function qCard(q, i) {
     if (editing.has(q.id)) return `<div class="rf-q" data-qid="${q.id}">${qEditor(q, i)}</div>`;
     const lines = q.type === "single" || q.type === "multi"
-      ? q.options.map((o) => `<div class="rf-o">${q.type === "single" ? "○" : "☐"} ${esc(o.text || "（空选项）")} ${badge(o.goto)}${o.tag ? `<span class="rf-lg jump">标签：${esc(o.tag)}</span>` : ""}</div>`).join("")
+      ? q.options.map((o, j) => `<div class="rf-o"><span class="rf-code">${j + 1}</span>${q.type === "single" ? "○" : "☐"} ${esc(o.text || "（空选项）")} ${badge(o.goto)}${o.tag ? `<span class="rf-lg jump">标签：${esc(o.tag)}</span>` : ""}${(o.excl || []).length ? `<span class="rf-lg exb">互斥：${exLabel(q, o)}</span>` : ""}</div>`).join("")
       : q.type === "number" ? (q.rules || []).map((r) => `<div class="rf-o">如果数字${RF_OP[r.op]} ${r.value} ${badge(r.goto)}</div>`).join("") : "";
     return `<div class="rf-q" data-qid="${q.id}"><div class="row"><span class="rf-n">${i + 1}</span><b>${esc(q.text || "（还没写题目）")}</b><span class="sp"></span><span class="tag nw">${RF_TYPE[q.type]}${q.required ? " · 必答" : ""}</span><button class="s" type="button" data-edit="${q.id}">编辑</button></div>${lines}</div>`;
   }
-  function publishBox() {
-    const live = f.status === "published", n = f.stats || { qualified: 0, out: 0, out_by: {} };
-    const outBy = Object.entries(n.out_by || {}).map(([id, c]) => `第 ${Q.findIndex((q) => q.id === id) + 1} 题 ${c} 人`).join("、");
-    return f.link ? `<div class="rf-pub"><div class="rf-link"><div><div class="sm mut">${live ? "候选人通过这个链接或二维码作答" : "已停止收集（重新发布后链接不变）"}</div><input id="rflink" readonly value="${esc(location.origin + f.link)}" aria-label="问卷链接">
-      <div class="row" style="margin-top:6px"><button class="s" type="button" id="rfcopy">复制链接</button><a class="btn s" href="${esc(f.link)}" target="_blank" rel="noopener">打开答题页</a></div></div><img id="rfqr" alt="问卷二维码" width="120" height="120"></div>
-      <div class="sm">已合格 <b>${n.qualified}</b> 人（已进受访者名单） · 被筛掉 <b>${n.out}</b> 人${outBy ? `（${esc(outBy)}）` : ""}</div></div>` : "";
-  }
   function outline() {
-    return `${publishBox()}
-      <h3 class="rf-h">研究背景</h3><div class="rf-blk">${f.brief && f.brief.trim() ? `${esc(f.brief)} <span class="mut sm">（来自立项向导）</span>` : '<span class="mut">还没有研究背景。到立项向导第 1 步写，或在左边对话里告诉 AI。</span>'}</div>
+    return `<h3 class="rf-h">研究背景</h3><div class="rf-blk">${f.brief && f.brief.trim() ? `${esc(f.brief)} <span class="mut sm">（来自立项向导）</span>` : '<span class="mut">还没有研究背景。到立项向导第 1 步写，或在左边对话里告诉 AI。</span>'}</div>
       <h3 class="rf-h">研究目标</h3><textarea id="rfgoals" class="rf-blk" rows="3" placeholder="每行一条。可以让 AI 根据研究背景整理，也可以自己写。" aria-label="研究目标">${esc(goals.join("\n"))}</textarea>
       <h3 class="rf-h">招募需求</h3><textarea id="rfneed" class="rf-blk" rows="2" placeholder="谁、多少人、哪些情况要筛掉。可以让 AI 整理，也可以自己写。" aria-label="招募需求">${esc(need)}</textarea>
       <h3 class="rf-h">问卷流程（共 ${Q.length} 题）</h3>${Q.length ? Q.map(qCard).join("") : `<div class="empty"><b>还没有题目</b><span>在左边说“帮我起草问卷”，或点下面的按钮自己加。</span></div>`}
@@ -104,7 +105,7 @@ function rfCard(p, form) {
   function drawRight() {
     const r = $("#rfright"); if (!r) return;
     const keep = $("#rfout") ? $("#rfout").scrollTop : 0;
-    r.innerHTML = rightHead() + `<div class="rf-sc" id="rfout">${seg === "outline" ? outline() : `<p class="sm mut" style="margin:0">就是候选人看到的样子：直接填写，看会走到哪里。</p><div id="rfrun"></div><div class="note" id="rfresult" role="status" aria-live="polite" hidden></div>`}</div>`;
+    r.innerHTML = rightHead() + `<div class="rf-sc" id="rfout"><div class="rf-col">${seg === "outline" ? outline() : `<p class="sm mut" style="margin:0">就是候选人看到的样子：直接填写，看会走到哪里。</p><div id="rfrun"></div><div class="note" id="rfresult" role="status" aria-live="polite" hidden></div>`}</div></div>`;
     $("#rfout").scrollTop = keep; wireRight(); syncUndo();
   }
   const retest = () => {
@@ -117,14 +118,11 @@ function rfCard(p, form) {
       onEnd: (result) => { res.hidden = false; res.textContent = result === "out" ? "测试结果：这位候选人会被筛掉（不符合），问卷到此结束。" : "测试结果：这位候选人符合，会进入留联系方式的步骤。"; },
     }).start();
   };
-  const loadQr = async () => {
-    const img = $("#rfqr"); if (!img || !f.link) return;
-    try { const r = await fetch(`/api/projects/${p.id}/recruiting/form/qr.svg`, { headers: { Authorization: "Bearer " + store.get("tt_token") } }); if (r.ok) img.src = URL.createObjectURL(await r.blob()); } catch { /* the link still works without the picture */ }
-  };
   const publish = guard(async () => {
     clearTimeout(timer); if (incomplete()) throw new Error("有题目或选项还没写完，写完再发布");
     f = { ...f, ...(await api(`/projects/${p.id}/recruiting/form`, { method: "PUT", body: body() })) };
-    f = { ...f, ...(await api(`/projects/${p.id}/recruiting/form/publish`, { method: "POST" })) }; drawChat(); drawRight(); toast("已发布，可以把链接或二维码发给候选人");
+    f = { ...f, ...(await api(`/projects/${p.id}/recruiting/form/publish`, { method: "POST" })) }; toast("已发布，链接和二维码在“配额与受访者名单”页");
+    sessionStorage.setItem("ptab", "list"); render();
   });
 
   function wireRight() {
@@ -132,8 +130,6 @@ function rfCard(p, form) {
     const pub = $("#rfpub"); if (pub) pub.onclick = publish;
     const cl = $("#rfclose"); if (cl) cl.onclick = guard(async () => { f = { ...f, ...(await api(`/projects/${p.id}/recruiting/form/close`, { method: "POST" })) }; drawRight(); toast("已停止收集"); });
     if (seg === "test") return retest();
-    loadQr();
-    const cp = $("#rfcopy"); if (cp) cp.onclick = async () => { try { await navigator.clipboard.writeText($("#rflink").value); toast("链接已复制"); } catch { $("#rflink").select(); toast("请按 Ctrl+C 复制", true); } };
     const g = $("#rfgoals"); if (g) g.onchange = () => { pushHist(); goals = g.value.split("\n").map((x) => x.trim()).filter(Boolean).slice(0, 8); save(); };
     const n = $("#rfneed"); if (n) n.onchange = () => { pushHist(); need = n.value.trim(); save(); };
     document.querySelectorAll("[data-add]").forEach((b) => (b.onclick = () => {
@@ -145,14 +141,16 @@ function rfCard(p, form) {
       const i = +card.dataset.qi, q = Q[i];
       card.querySelectorAll("[data-f]").forEach((el) => (el.onchange = () => {
         const k = el.dataset.f; pushHist();
-        if (k === "type") { q.type = el.value; if ((q.type === "single" || q.type === "multi") && q.options.length < 2) q.options = blank(); if (q.type !== "number") q.rules = []; return changed(); }
+        if (k === "type") { q.type = el.value; if ((q.type === "single" || q.type === "multi") && q.options.length < 2) q.options = blank(); if (q.type !== "number") q.rules = []; if (q.type !== "multi") q.options.forEach((o) => { o.excl = []; }); return changed(); }
         q[k] = k === "required" ? el.checked : el.value; save();
       }));
       card.querySelectorAll("[data-mv]").forEach((b) => (b.onclick = () => { pushHist(); const j = i + +b.dataset.mv; [Q[i], Q[j]] = [Q[j], Q[i]]; changed(); }));
       card.querySelector("[data-del]").onclick = () => { pushHist(); editing.delete(q.id); Q.splice(i, 1); changed(); };
       card.querySelector("[data-done]").onclick = () => { editing.delete(q.id); drawRight(); };
       card.querySelectorAll(".rf-optrow[data-oj]").forEach((row) => { const o = q.options[+row.dataset.oj]; row.querySelectorAll("[data-o]").forEach((el) => (el.onchange = () => { pushHist(); o[el.dataset.o] = el.value; save(); })); });
-      card.querySelectorAll("[data-odel]").forEach((b) => (b.onclick = () => { pushHist(); q.options.splice(+b.dataset.odel, 1); changed(); }));
+      card.querySelectorAll("[data-odel]").forEach((b) => (b.onclick = () => { pushHist(); const gone = q.options.splice(+b.dataset.odel, 1)[0]; q.options.forEach((x) => { x.excl = (x.excl || []).filter((id) => id !== gone.id); }); changed(); }));
+      card.querySelectorAll("[data-ex]").forEach((b) => (b.onclick = () => { const o = q.options[+b.dataset.ex]; openEx.has(o.id) ? openEx.delete(o.id) : openEx.add(o.id); drawRight(); }));
+      card.querySelectorAll("[data-exo]").forEach((b) => (b.onclick = () => { const [j, k] = b.dataset.exo.split("|").map(Number), o = q.options[j], other = q.options[k]; pushHist(); setExcl(q, o, other, !(o.excl || []).includes(other.id)); changed(); }));
       const oa = card.querySelector("[data-oadd]"); if (oa) oa.onclick = () => { pushHist(); q.options.push({ id: optId(q), text: "", goto: "", tag: "" }); changed(); };
       card.querySelectorAll(".rf-optrow[data-rj]").forEach((row) => { const r = q.rules[+row.dataset.rj]; row.querySelectorAll("[data-r]").forEach((el) => (el.onchange = () => { pushHist(); r[el.dataset.r] = el.dataset.r === "value" ? Number(el.value) : el.value; save(); })); });
       card.querySelectorAll("[data-rdel]").forEach((b) => (b.onclick = () => { pushHist(); q.rules.splice(+b.dataset.rdel, 1); changed(); }));
@@ -162,30 +160,41 @@ function rfCard(p, form) {
 
   /* ---------- the whole card ---------- */
   function panels() {
-    if (mode === "html") return `<div class="rf-htmlmode"><label class="field">问卷链接（https://）<input id="rfurl" type="url" value="${esc(f.html_url)}" placeholder="https://…（在别的系统里做好的问卷）" maxlength="500"></label>
+    if (mode === "html") return `<div class="rf-htmlmode"><div>${modeSwitch()}</div><label class="field">问卷链接（https://）<input id="rfurl" type="url" value="${esc(f.html_url)}" placeholder="https://…（在别的系统里做好的问卷）" maxlength="500"></label>
       <div class="note">问卷在别的系统里制作和托管，这里只保存链接，点下面的按钮在新窗口里测试；不会嵌进本页面。</div><div class="row"><button class="p" id="rfsave" type="button">保存链接</button>${f.html_url ? `<button class="s" id="rftest" type="button">打开测试窗口</button>` : ""}</div>${f.html_url ? `<code class="rfurl">${esc(f.html_url)}</code>` : ""}</div>`;
-    return `<div class="rf-ws" id="rfws"><div class="rf-pane"><div class="rf-hd"><b>对话</b><span class="sp"></span><button class="s" type="button" id="rfundo" disabled>撤销</button><button class="s" type="button" id="rfredo" disabled>重做</button></div>
+    return `<div class="rf-ws" id="rfws"><div class="rf-pane"><div class="rf-hd">${modeSwitch()}<span class="sp"></span><button class="s" type="button" id="rfundo" disabled>撤销</button><button class="s" type="button" id="rfredo" disabled>重做</button></div>
       <div class="rf-sc" id="rfchat"></div>
       <div class="rf-inp"><div class="sm mut" style="margin-bottom:6px">${esc(rfAiNotice())}</div><div class="rf-box"><textarea id="rfmsg" rows="2" maxlength="2000" placeholder="说说你想怎么改，或直接说“帮我起草问卷”" aria-label="对话输入"></textarea><button class="p rf-send" type="button" id="rfsend" aria-label="发送">↑</button></div></div></div>
-      <div class="rf-pane" id="rfright"></div></div>`;
+      <div class="rf-split" id="rfsplit" role="separator" aria-orientation="vertical" aria-label="拖动调整对话和大纲的宽度（双击恢复）" tabindex="0"><i></i></div><div class="rf-pane" id="rfright"></div></div>`;
   }
+  const modeSwitch = () => `<div class="rf-seg" role="radiogroup" aria-label="问卷来源"><button type="button" role="radio" data-mode="ai" class="${mode === "ai" ? "on" : ""}" aria-checked="${mode === "ai"}">对话编写</button><button type="button" role="radio" data-mode="html" class="${mode === "html" ? "on" : ""}" aria-checked="${mode === "html"}">导入问卷链接</button></div>`;
   const draw = () => { $("#rfbody").innerHTML = panels(); wire(); };
-  const fit = () => { const w = $("#rfws"); if (w && w.offsetParent) w.style.height = Math.max(380, innerHeight - w.getBoundingClientRect().top - 96) + "px"; };
+  const fit = () => { const w = $("#rfws"); if (w && w.offsetParent) w.style.height = Math.max(380, innerHeight - w.getBoundingClientRect().top - 18) + "px"; };
 
   function wire() {
-    document.querySelectorAll("input[name=rfmode]").forEach((r) => (r.onchange = () => { mode = r.value; draw(); }));
+    document.querySelectorAll("[data-mode]").forEach((b) => (b.onclick = () => { mode = b.dataset.mode; draw(); }));
     const sv = $("#rfsave"); if (sv) sv.onclick = guard(async () => { f = { ...f, ...(await api(`/projects/${p.id}/recruiting/form`, { method: "PUT", body: { source: "html", html_url: $("#rfurl").value.trim() } })) }; draw(); toast("链接已保存"); });
     const tt = $("#rftest"); if (tt) tt.onclick = () => window.open(f.html_url, "_blank", "noopener,noreferrer");
     if (mode !== "ai") return;
-    drawChat(); drawRight(); fit();
+    drawChat(); drawRight(); fit(); wireSplit();
     const m = $("#rfmsg");
     $("#rfsend").onclick = () => send(m.value);
     m.onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(m.value); } };
     $("#rfundo").onclick = () => { const s = hist.pop(); if (!s) return; redo.push(snap()); apply(s); syncUndo(); changed(); };
     $("#rfredo").onclick = () => { const s = redo.pop(); if (!s) return; hist.push(snap()); apply(s); syncUndo(); changed(); };
   }
+  const ratioKey = "rf_left_pct", setRatio = (pct) => { const w = $("#rfws"); if (w) w.style.setProperty("--rfl", Math.min(60, Math.max(30, pct)) + "%"); };
+  function wireSplit() {  // drag the divider to change the share of the conversation (30% to 60%); double click restores 42%; the choice is kept in this browser
+    const s = $("#rfsplit"), w = $("#rfws"); if (!s || !w) return;
+    let saved = 42; try { saved = +localStorage.getItem(ratioKey) || 42; } catch { /* no storage: the default */ }
+    setRatio(saved);
+    const move = (e) => { const r = w.getBoundingClientRect(); setRatio(((e.clientX - r.left) / r.width) * 100); };
+    const done = () => { removeEventListener("pointermove", move); removeEventListener("pointerup", done); try { localStorage.setItem(ratioKey, parseFloat(w.style.getPropertyValue("--rfl")) || 42); } catch { /* no storage */ } };
+    s.onpointerdown = (e) => { e.preventDefault(); addEventListener("pointermove", move); addEventListener("pointerup", done); };
+    s.ondblclick = () => { setRatio(42); try { localStorage.removeItem(ratioKey); } catch { /* no storage */ } };
+    s.onkeydown = (e) => { if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return; e.preventDefault(); const cur = parseFloat(w.style.getPropertyValue("--rfl")) || 42; setRatio(cur + (e.key === "ArrowRight" ? 2 : -2)); try { localStorage.setItem(ratioKey, parseFloat(w.style.getPropertyValue("--rfl")) || 42); } catch { /* no storage */ } };
+  }
   addEventListener("resize", fit);
-  const html = `<div class="card rf" style="padding:12px 14px"><div class="row" role="radiogroup" aria-label="问卷来源"><b>招募问卷</b><label class="chk"><input type="radio" name="rfmode" value="ai" ${mode === "ai" ? "checked" : ""}>在这里编写（和 AI 对话）</label><label class="chk"><input type="radio" name="rfmode" value="html" ${mode === "html" ? "checked" : ""}>导入问卷链接（HTML）</label></div>
-    <div id="rfbody" style="margin-top:10px">${panels()}</div></div>`;
+  const html = `<div class="rf" style="padding:0"><div id="rfbody">${panels()}</div></div>`;
   return { html, wire, fit };
 }

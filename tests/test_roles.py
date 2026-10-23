@@ -102,7 +102,7 @@ def test_a_recruiter_works_with_the_projects_people_and_nothing_else(org):
     itv, pid, r = project_with(org, "recruiter")
     assert org.c.get("/api/projects", headers=r["h"]).json()[0]["id"] == pid
     assert org.c.post(f"/api/projects/{pid}/participants", headers=r["h"], json={"name": "新人", "country": "SG", "language": "zh"}).status_code == 201
-    imp = org.c.post(f"/api/projects/{pid}/participants/import", headers=r["h"], json={"csv": "name,country,年龄\n导入的人,SG,30\n"})
+    imp = org.c.post(f"/api/projects/{pid}/participants/import", headers=r["h"], json={"csv": "name,country,年龄\n导入的人,SG,30\n", "source_name": "测试名单", "confirm_basis": True})
     assert imp.status_code == 200 and imp.json()["created"] == 1
     people = org.c.get(f"/api/projects/{pid}/participants", headers=r["h"]).json()
     assert {p["name"] for p in people} >= {"新人", "导入的人"}

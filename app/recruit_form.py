@@ -59,6 +59,7 @@ class Option(BaseModel):
     text: str = Field(min_length=1, max_length=120)
     goto: str = Field(default="", max_length=20)  # "" = next question | a later question's id | END_OUT | END_OK
     tag: str = Field(default="", max_length=30)  # a label the participant gets when they choose this (matches the quota tables)
+    excl: list[str] = Field(default_factory=list, max_length=MAX_OPTIONS)  # ids of the options of the same multiple-choice question that cannot be chosen together with this one (always two-way)
 
     @model_validator(mode="before")
     @classmethod
@@ -148,6 +149,19 @@ def new_token() -> str:
     return secrets.token_urlsafe(18)
 
 
+def _link_exclusions(q: Question) -> None:
+    """Make "cannot be chosen together" two-way and drop anything that makes no sense: only multiple choice has it, only between options of this question, never with itself."""
+    ids = [o.id for o in q.options]
+    if q.type != "multi":
+        for o in q.options:
+            o.excl = []
+        return
+    pairs = {(o.id, x) for o in q.options for x in o.excl if x in ids and x != o.id}
+    pairs |= {(b, a) for a, b in pairs}
+    for o in q.options:
+        o.excl = [x for x in ids if (o.id, x) in pairs]
+
+
 def _check_logic(questions: list[Question]) -> None:
     """Every jump goes forward to a question that exists (so no loop is possible); ids are unique."""
     ids = [q.id for q in questions]
@@ -181,6 +195,7 @@ def normalize(raw: dict) -> FormBody:
             o.id = o.id or f"o{j}"
         if len({o.id for o in q.options}) != len(q.options):
             raise FormError("选项编号重复")
+        _link_exclusions(q)
     _check_logic(body.questions)
     if body.source == "html" and not body.html_url:
         raise FormError("请填写问卷链接")
@@ -209,11 +224,12 @@ class Step:
     tags: list[str] = field(default_factory=list)
     items: list[tuple[str, str]] = field(default_factory=list)  # (question, answer in words) of what was answered, for the participant's screening record
     ended_at: str = ""  # id of the question whose answer ended it
+    chosen: dict = field(default_factory=dict)  # question id -> the option id(s) or number answered on the path (for the anonymous tallies)
 
 
 def public_question(q: Question, index: int, total: int) -> dict:
     """What a candidate may see of a question: no jumps, no tags, nothing about which answer screens out."""
-    return {"id": q.id, "type": q.type, "text": q.text, "required": q.required, "options": [{"id": o.id, "text": o.text} for o in q.options], "index": index, "total": total}
+    return {"id": q.id, "type": q.type, "text": q.text, "required": q.required, "options": [{"id": o.id, "text": o.text, "excl": o.excl} for o in q.options], "index": index, "total": total}
 
 
 def _check_answer(q: Question, raw) -> object:
@@ -235,6 +251,8 @@ def _check_answer(q: Question, raw) -> object:
     if q.type == "multi":
         if not isinstance(raw, list) or not all(isinstance(x, str) and x in ids for x in raw) or len(set(raw)) != len(raw):
             raise AnswerError("option")
+        if any(x in raw for o in q.options if o.id in raw for x in o.excl):
+            raise AnswerError("exclusive")  # two options that cannot be chosen together
         return raw
     if q.type == "text":
         if not isinstance(raw, str):
@@ -292,6 +310,7 @@ def next_step(questions: list[Question], answers: dict) -> Step:
             return step
         ans = _check_answer(q, answers[q.id])
         if ans is not None:
+            step.chosen[q.id] = ans
             step.items.append((q.text, _words(q, ans)))
             step.tags += [o.tag for o in q.options if o.tag and ((ans == o.id) if q.type == "single" else (q.type == "multi" and o.id in ans))]
         act = _action(q, ans, pos)
@@ -371,9 +390,9 @@ Reply with ONE JSON object and nothing else:
  "goals": null | ["<research goal>", ...],
  "need": null | "<the recruiting need: who, how many, and what screens out, 1 to 3 sentences, Chinese>"}
 Use null for anything you did not change. When you change questions, send ALL of them again, keeping the id of every question and option you did not touch.
-A question is {"id": "q1", "type": "single" | "multi" | "text" | "number", "text": "...", "required": true, "options": [{"id": "o1", "text": "...", "goto": "", "tag": ""}], "rules": [{"op": "lt" | "lte" | "gt" | "gte" | "eq", "value": 18, "goto": "end_out"}]}.
+A question is {"id": "q1", "type": "single" | "multi" | "text" | "number", "text": "...", "required": true, "options": [{"id": "o1", "text": "...", "goto": "", "tag": "", "excl": []}], "rules": [{"op": "lt" | "lte" | "gt" | "gte" | "eq", "value": 18, "goto": "end_out"}]}.
 "goto" on an option (or a number rule) says what happens after it: "" = next question, a LATER question's id = jump there, "end_out" = the person is screened out (not eligible), "end_ok" = finish as qualified.
-"tag" is a label the person gets when they choose the option. single/multi need 2 to 12 options; text and number have no options; only number questions have rules. At most 30 questions.
+"tag" is a label the person gets when they choose the option. "excl" (multi only) lists the ids of options that cannot be chosen together with this one; set it yourself for options like "none of these", "elsewhere", "prefer not to say" (exclusive with every other option) and for any options that plainly contradict each other. single/multi need 2 to 12 options; text and number have no options; only number questions have rules. At most 30 questions.
 Write the questions in the language {language}. Questions are neutral, one at a time, never leading, never naming or praising a brand, and never ask for a name, phone number, e-mail, address or any ID (the page asks contact details itself after the person qualifies).
 If asked to draft the questionnaire, use the research background and the reference material: 6 to 10 questions, eligibility first (age 18 or over, country or city, how often they use or buy), then what tells the target groups apart; also fill "goals" (3 to 4) and "need".
 If the request is unclear, ask one short question in "reply" and change nothing."""

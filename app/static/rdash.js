@@ -1,0 +1,45 @@
+/* “配额与受访者名单”页顶部的看板：问卷发布（链接和二维码）、一眼看数据、漏斗、人从哪里来、人在哪一题被筛掉、配额进度、合格的人的共同点、
+   合格和被筛掉的每题对比。数字来自 GET /projects/{id}/recruiting/dashboard；被筛掉的人只有匿名的选项人数，没有任何个人信息。
+   依赖 index.html 里的 api / esc / toast / guard / $ / store / render。 */
+const rdPct = (a, b) => (b ? Math.min(100, Math.round((a / b) * 100)) : 0);
+const rdBar = (label, n, max, cls = "", suffix = "") => `<div class="rd-bar"><span title="${esc(label)}">${esc(label)}</span><span class="rd-t" role="img" aria-label="${esc(label)} ${n}"><i class="${cls}" style="width:${rdPct(n, max)}%"></i></span><b>${n}${suffix}</b></div>`;
+
+/** 看板的 HTML 和事件；返回 { html, wire }。`rec` 是 /recruiting 的返回（配额编辑还用它）。 */
+async function rdBuild(p, rec) {
+  const d = await api(`/projects/${p.id}/recruiting/dashboard`), k = d.kpi, f = d.form || {}, live = f.status === "published", n = f.stats || { qualified: 0, out: 0 };
+  const maxF = Math.max(1, ...d.funnel.map((x) => x.n)), maxS = Math.max(1, ...d.sources.map((x) => x.n)), maxO = Math.max(1, ...d.out_by.map((x) => x.n));
+  const publish = f.link
+    ? `<div class="rd-pub"><div><div class="sm mut">${live ? "候选人通过这个链接或二维码作答" : "已停止收集（到“招募问卷”页点“重新发布”，链接不变）"}</div><input id="rdlink" readonly value="${esc(location.origin + f.link)}" aria-label="问卷链接">
+        <div class="row" style="margin-top:6px"><button class="s" type="button" id="rdcopy">复制链接</button><a class="btn s" href="${esc(f.link)}" target="_blank" rel="noopener">打开答题页</a>${live ? `<button class="s" type="button" id="rdclose">停止收集</button>` : ""}</div></div><img id="rdqr" alt="问卷二维码" width="108" height="108"></div>`
+    : `<div class="empty" style="padding:14px"><b>${d.has_form ? "问卷还没有发布" : "还没有招募问卷"}</b><span>到“招募问卷”页对话编写、测试，点“发布成链接和二维码”，链接和二维码就出现在这里。</span><button class="s" type="button" id="rdgo">去招募问卷</button></div>`;
+  const kpi = (v, l, cls = "") => `<div class="rd-k ${cls}"><b>${v}</b><span>${l}</span></div>`;
+  const quotas = rec.quotas.length ? rec.quotas.map((q) => rdBar(q.name, q.have, q.target, q.full ? "g" : "", ` / ${q.target}`)).join("") : `<p class="sm mut" style="margin:0">还没有配额。例如“新加坡 10 人”“女性 5 人”。</p>`;
+  const rules = d.rules.count ? `<div class="sm" style="margin-top:6px"><button class="lnk" type="button" id="rules">旧版资格规则（${d.rules.count} 条）· 编辑或清空</button> <button class="lnk" type="button" id="reapply">重新筛一遍</button></div>` : "";
+  const traits = (xs, cls, none) => (xs.length ? xs.map((t) => `<span class="rd-chip ${cls}">${esc(t)}</span>`).join("") : `<span class="sm mut">${none}</span>`);
+  const cmp = d.compare.length ? `<div class="scroll"><table class="tbl"><thead><tr><th>题目 / 选项</th><th>合格</th><th>被筛掉</th><th>差异</th></tr></thead><tbody>${d.compare.map((r) => `<tr><td>${esc(r.question)} · <b>${esc(r.option)}</b></td>
+      <td>${rdBar("合格", r.qualified, 100, "g", "%")}</td><td>${rdBar("被筛掉", r.out, 100, "r", "%")}</td><td><span class="rd-chip">差 ${r.gap} 个百分点</span></td></tr>`).join("")}</tbody></table></div>
+      <div class="sm mut" style="margin-top:6px">差异越大，说明这个条件越能区分“合格”和“不合格”；也能看出投放该往哪类人群去。被筛掉的人只统计选了哪个选项的人数，不保存个人信息。</div>`
+    : `<p class="sm mut" style="margin:0">还没有足够的数据：有人答完问卷后，这里会对比合格和被筛掉的人在每题上的答案。</p>`;
+  const html = `<div class="rd">
+    <div class="rd-row rd-top"><div class="card"><h3>问卷发布 ${live ? `<span class="tag ok">发布中</span>` : f.link ? `<span class="tag">已停止</span>` : ""}</h3>${publish}</div>
+      <div class="card"><h3>一眼看数据</h3><div class="rd-kpis">${kpi(k.started, "开始作答")}${kpi(k.finished, "完成甄别（甄别人数）")}${kpi(k.qualified, "合格（问卷）", "ok")}${kpi(k.pass_rate + "%", "通过率（合格 ÷ 完成）", "warn")}${kpi(k.external, "外部名单导入（直接可邀请）")}${kpi(k.usable, `可邀请总数 · 已邀请 ${k.invited} · 完成访谈 ${k.done}`)}</div></div></div>
+    <div class="rd-row rd-three"><div class="card"><h3>漏斗：从开始到访谈</h3>${d.funnel.map((x, i) => rdBar(x.label, x.n, maxF, i === 3 ? "s" : i >= 2 ? "g" : "", i === 1 && k.started ? ` · ${rdPct(x.n, k.started)}%` : "")).join("")}</div>
+      <div class="card"><h3>人从哪里来（按来源名称）</h3>${d.sources.length ? d.sources.map((x, i) => rdBar(x.name, x.n, maxS, ["", "s", "y", "g", "r"][i % 5])).join("") : `<p class="sm mut" style="margin:0">还没有受访者。</p>`}</div>
+      <div class="card"><h3>人在哪一题被筛掉</h3>${d.out_by.length ? d.out_by.map((x) => rdBar(x.label, x.n, maxO, "r", " 人")).join("") + `<div class="sm mut">卡得最多的一题 = 条件最严的一题，可以回去看这题是否太严。</div>` : `<p class="sm mut" style="margin:0">还没有人被筛掉。</p>`}</div></div>
+    <div class="rd-row rd-two"><div class="card"><h3>配额进度</h3>${quotas}<div class="sm" style="margin-top:6px"><button class="s" id="quotas" type="button">编辑配额</button></div>${rules}</div>
+      <div class="card"><h3>合格的人有什么共同点</h3><div>${traits(d.traits.qualified, "g", "有 3 个以上的人答完后才能看出共同点。")}</div>
+        <div class="sm" style="margin-top:8px">被筛掉的人的共同点：</div><div>${traits(d.traits.out, "r", "暂时看不出。")}</div>
+        <div style="margin-top:8px"><button class="p" type="button" id="rdsum">让 AI 总结人群画像</button> <span class="sm mut">只发统计数字，不含个人信息${CONFIG && !CONFIG.ai_local ? `；会发送给 AI 服务商${CONFIG.ai_vendor ? `“${esc(CONFIG.ai_vendor)}”` : ""}` : ""}</span></div><div class="note" id="rdsumout" role="status" aria-live="polite" hidden></div></div></div>
+    <div class="card"><h3>合格 vs 被筛掉：每题的答案分布对比</h3>${cmp}</div></div>`;
+  const wire = () => {
+    const go = $("#rdgo"); if (go) go.onclick = () => { sessionStorage.setItem("ptab", "form"); render(); };
+    const cl = $("#rdclose"); if (cl) cl.onclick = guard(async () => { await api(`/projects/${p.id}/recruiting/form/close`, { method: "POST" }); toast("已停止收集"); render(); });
+    const cp = $("#rdcopy"); if (cp) cp.onclick = async () => { try { await navigator.clipboard.writeText($("#rdlink").value); toast("链接已复制"); } catch { $("#rdlink").select(); toast("请按 Ctrl+C 复制", true); } };
+    const img = $("#rdqr"); if (img && f.link) fetch(`/api/projects/${p.id}/recruiting/form/qr.svg`, { headers: { Authorization: "Bearer " + store.get("tt_token") } }).then(async (r) => { if (r.ok) img.src = URL.createObjectURL(await r.blob()); }).catch(() => {});
+    const sum = $("#rdsum"); if (sum) sum.onclick = guard(async () => {
+      sum.disabled = true; const out = $("#rdsumout"); out.hidden = false; out.textContent = "正在总结，大约要几秒…";
+      try { out.textContent = (await api(`/projects/${p.id}/recruiting/dashboard/summary`, { method: "POST" })).summary; } catch (e) { out.hidden = true; throw e; } finally { sum.disabled = false; }
+    });
+  };
+  return { html, wire };
+}

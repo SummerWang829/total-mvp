@@ -95,6 +95,8 @@ class Participant(Base):
     screen_result: Mapped[str] = mapped_column(String(14), default="")  # "" (rules not run) | qualified | disqualified | review
     screen_reason: Mapped[str] = mapped_column(String(300), default="")
     screen_version: Mapped[int] = mapped_column(Integer, default=0)  # the version of the project's rules that produced the result
+    source: Mapped[str] = mapped_column(String(12), default="")  # how the person came in: link | import | manual | platform | pool | "" (not recorded)
+    source_name: Mapped[str] = mapped_column(String(120), default="")  # for an imported list: its name and the day, e.g. "客户 A 名单 · 10-23"
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
@@ -708,6 +710,8 @@ class RecruitForm(Base):
     out_by: Mapped[dict] = mapped_column(JSON, default=dict)  # question id -> how many were screened out there
     goals: Mapped[list] = mapped_column(JSON, default=list)  # the research goals the outline shows (written by the AI from the background, editable)
     need: Mapped[str] = mapped_column(Text, default="")  # the recruiting need in words (who, how many, what screens out)
+    n_started: Mapped[int] = mapped_column(Integer, default=0)  # how many people opened the first question
+    tally: Mapped[dict] = mapped_column(JSON, default=dict)  # anonymous: how many chose each option, among people who qualified and people who were screened out (app/recruit_insights.py)
     chat: Mapped[list] = mapped_column(JSON, default=list)  # the conversation with the AI that edits the questionnaire: [{"role": "user" | "ai", "text"}], the latest 40
 
 

@@ -10,6 +10,7 @@
 <script src="/home.js"></script>
 <script src="/screen_run.js"></script>
 <script src="/rform.js"></script>
+<script src="/rdash.js"></script>
 <script src="/logo.js"></script>
 <script>
 let ME = null, PROJECTS = null, DEMO_ORG = false;
@@ -248,7 +249,7 @@ async function homeView(p) {
 }
 
 // ---------------- 受访者招募 ----------------
-let PEOPLE_F = { tag: "", country: "", language: "", screen: "" };   // the filters of the recruiting table (kept while the page redraws)
+let PEOPLE_F = { tag: "", country: "", language: "", screen: "", source: "" };   // the filters of the recruiting table (kept while the page redraws)
 const SCREEN = { qualified: ["符合条件", "ok"], disqualified: ["不符合", "bad"], review: ["待人工看", "live"] };
 const RULE_FIELDS = [["country", "国家"], ["language", "语言"], ["tags", "标签"], ["question", "甄别题（写关键词）"]];
 const RULE_OPS = [["equals", "等于"], ["in", "是其中之一"], ["not_in", "不是其中之一"], ["contains", "包含"], ["not_contains", "不包含"], ["gte", "不小于（数字）"], ["lte", "不大于（数字）"], ["between", "在区间内（如 18,65）"], ["answered", "回答了"]];
@@ -256,37 +257,44 @@ const RULE_EFFECTS = [["require", "必须满足"], ["exclude", "命中就排除"
 async function peopleView(p) {
   const my = renderSeq;
   const [parts, its, rec, form] = await Promise.all([api(`/projects/${p.id}/participants`), api(`/projects/${p.id}/interviews`), api(`/projects/${p.id}/recruiting`), api(`/projects/${p.id}/recruiting/form`)]);
-  const rf = rfCard(p, form);
+  const rf = rfCard(p, form), rd = await rdBuild(p, rec);
   if (stale(my)) return;
   const nIt = (id) => its.filter((i) => i.participant.id === id).length;
   const allTags = [...new Set(parts.flatMap((x) => x.tags))].sort(), countries = [...new Set(parts.map((x) => x.country).filter(Boolean))].sort(), langs = [...new Set(parts.map((x) => x.language).filter(Boolean))];
+  const srcName = (x) => x.source_name || ({ link: "问卷链接 / 二维码", manual: "手动添加", import: "外部名单", platform: "外部问卷平台" })[x.source] || "未记录来源";
   const F = PEOPLE_F;
-  const shown = parts.map((x, n) => [x, n]).filter(([x]) => (!F.tag || x.tags.includes(F.tag)) && (!F.country || x.country === F.country) && (!F.language || x.language === F.language) && (!F.screen || x.screen_result === F.screen));
-  const C = rec.counts, anyRules = rec.rules.length > 0, RC = RECRUITER();
-  const bar = (q) => `<div style="margin:6px 0"><div class="sm"><b>${esc(q.name)}</b> · 已有 ${q.have} / 目标 ${q.target}${q.full ? " ✓" : ""} · 已安排场次 ${q.invited}</div><div class="qbar" role="img" aria-label="${esc(q.name)} ${q.have} / ${q.target}"><i style="width:${Math.min(100, Math.round((q.have / q.target) * 100))}%"></i></div></div>`;
+  const shown = parts.map((x, n) => [x, n]).filter(([x]) => (!F.tag || x.tags.includes(F.tag)) && (!F.country || x.country === F.country) && (!F.language || x.language === F.language) && (!F.screen || x.screen_result === F.screen) && (!F.source || srcName(x) === F.source));
+  const RC = RECRUITER();
+  const tagCount = Object.fromEntries(allTags.map((t) => [t, parts.filter((x) => x.tags.includes(t)).length])), srcCount = {};
+  parts.forEach((x) => { srcCount[srcName(x)] = (srcCount[srcName(x)] || 0) + 1; });
+  const chips = (label, counts, key) => Object.keys(counts).length ? `<div class="rd-chips"><span class="sm mut">${label}</span>${Object.entries(counts).map(([k, n]) => `<button type="button" class="rd-ch ${F[key] === k ? "on" : ""}" data-fchip="${key}" data-v="${esc(k)}" aria-pressed="${F[key] === k}">${esc(k)} ${n}</button>`).join("")}</div>` : "";
   const sel = (id, label, opts, cur) => `<label class="f" style="margin:0"><span>${label}</span><select id="${id}"><option value="">全部</option>${opts.map(([v, n]) => `<option value="${esc(v)}"${v === cur ? " selected" : ""}>${esc(n)}</option>`).join("")}</select></label>`;
   const ptab = sessionStorage.getItem("ptab") === "list" ? "list" : "form";  // 招募问卷 is a workspace (the page does not scroll); the quotas and the people are on the other tab
-  shell(`${head("甄别设定", `先做招募问卷（和 AI 对话，或导入别的系统做好的问卷），再设置配额；受访者可以手动添加或从表格批量导入。目前只开放新加坡。`, `<span id="pactions" ${ptab === "form" ? "hidden" : ""}><button id="imp2">导入表格</button> <button class="p" id="np">添加受访者</button></span>`)}
+  shell(`${head("甄别设定", `先做招募问卷（和 AI 对话，或导入别的系统做好的问卷），再看配额和名单；受访者可以来自问卷、手动添加，也可以导入别的渠道的名单。目前只开放新加坡。`)}
     <div class="hubtabs" role="tablist" aria-label="甄别设定"><a href="#" role="tab" id="ptab-form-t" class="${ptab === "form" ? "on" : ""}" aria-selected="${ptab === "form"}">招募问卷</a><a href="#" role="tab" id="ptab-list-t" class="${ptab === "list" ? "on" : ""}" aria-selected="${ptab === "list"}">配额与受访者名单</a></div>
     <div id="ptab-form" ${ptab === "form" ? "" : "hidden"}>${rf.html}</div><div id="ptab-list" ${ptab === "list" ? "" : "hidden"}>
-    <div class="card"><div class="row" style="align-items:flex-start">${anyRules ? `<div style="flex:1;min-width:240px"><h3 style="margin-top:0">旧版资格规则 <span class="tag">第 ${rec.rules_version} 版 · ${rec.rules.length} 条</span></h3>
-      <p class="sm" style="margin:0">${anyRules ? `<span class="tag ok">符合 ${C.qualified}</span> <span class="tag bad">不符合 ${C.disqualified}</span> <span class="tag live">待人工看 ${C.review}</span>${C.not_screened ? ` <span class="tag">未筛 ${C.not_screened}</span>` : ""}` : "还没有设规则：所有人都算符合。"}</p>
-      <p class="sm mut" style="margin:4px 0 0">资格规则已被招募问卷取代；这个项目以前设过规则，所以还在生效，清空后就不再显示。</p>
-      <div class="row" style="margin-top:8px"><button class="s" id="rules">编辑或清空规则</button><button class="s" id="reapply">重新筛一遍</button></div></div>` : ""}
-      <div style="flex:1;min-width:240px"><h3 style="margin-top:0">配额</h3>${rec.quotas.length ? rec.quotas.map(bar).join("") : `<p class="sm mut" style="margin:0">还没有配额。例如“新加坡 10 人”“女性 5 人”。</p>`}<button class="s" id="quotas" style="margin-top:6px">编辑配额</button></div></div></div>
+    ${rd.html}
+    <div class="card"><div class="row rd-tool"><h3 style="margin:0">受访者名单 <span class="sm mut">共 ${parts.length} 人${shown.length !== parts.length ? `，当前显示 ${shown.length}` : ""}</span></h3><span class="sp"></span>
+      <button type="button" id="imp2">导入名单（外部渠道）</button><button type="button" id="np">添加受访者</button><button type="button" id="pcopy"${parts.length ? "" : " disabled"}>复制名单</button>
+      <span class="rd-menu"><button type="button" id="pexp" aria-haspopup="true" aria-expanded="false"${parts.length ? "" : " disabled"}>导出 ▾</button><div class="rd-pop" id="pexpm" role="menu" hidden>
+        <button type="button" role="menuitem" data-exp="all">全部名单（CSV，含联系方式）</button><button type="button" role="menuitem" data-exp="shown">当前筛选结果（CSV）</button><button type="button" role="menuitem" data-exp="picked">已勾选的人（CSV）</button><button type="button" role="menuitem" data-exp="anon">不含姓名和邮箱（给客户看）</button></div></span></div>
+      <p class="sm mut" style="margin:6px 0 0">名单里有受访者的个人信息，只有研究团队能复制或导出，每次都会记入审计日志；请妥善保管导出的文件。</p>
+      ${chips("按标签看", tagCount, "tag")}${chips("按来源看", srcCount, "source")}</div>
     ${parts.length ? `<form class="card row" id="pf" style="align-items:flex-end;flex-wrap:wrap">${sel("f_screen", "资格", [["qualified", "符合条件"], ["disqualified", "不符合"], ["review", "待人工看"]], F.screen)}${sel("f_tag", "标签", allTags.map((t) => [t, t]), F.tag)}${sel("f_country", "国家", countries.map((c) => [c, c]), F.country)}${sel("f_language", "语言", langs.map((l) => [l, LANGS[l] || l]), F.language)}
       <span class="sp"></span>${RC ? "" : `<span class="sm mut" id="selcount">已选 0 人</span><button class="p" type="button" id="batch" disabled>批量邀请到场次</button>`}</form>
-    <div class="card scroll" style="padding:6px 10px"><table class="tbl rc"><thead><tr><th><span class="vh">选择</span><input type="checkbox" id="all" aria-label="全选"></th><th>编号</th><th>姓名</th><th>国家 / 语言</th><th>标签</th><th>甄别题答案</th><th>资格</th><th></th></tr></thead><tbody>
+    <div class="card scroll" style="padding:6px 10px"><table class="tbl rc"><thead><tr><th><span class="vh">选择</span><input type="checkbox" id="all" aria-label="全选"></th><th>编号</th><th>姓名</th><th>国家 / 语言</th><th>标签</th><th>关键回答</th><th>来源</th><th>甄别题答案</th><th>资格</th><th></th></tr></thead><tbody>
       ${shown.map(([x, n]) => `<tr><td><input type="checkbox" class="pick" value="${x.id}" aria-label="选择 ${esc(x.name)}"${x.screening === "eligible" && !x.anonymized && x.screen_result !== "disqualified" ? "" : " disabled"}></td><td class="code">${pcode(n)}</td><td><b>${esc(x.name)}</b>${x.email ? `<div class="sm mut">${esc(x.email)}</div>` : ""}<div class="sm mut">${nIt(x.id) ? `${nIt(x.id)} 场` : "未邀请"}</div></td><td>${esc(x.country || "—")} · ${esc(LANGS[x.language] || x.language || "—")}</td>
         <td>${x.tags.map((t) => `<span class="tag">${esc(t)}</span>`).join(" ")} ${x.anonymized ? "" : `<button class="s" data-tags="${x.id}" data-cur="${esc(x.tags.join(", "))}">标签</button>`}</td>
+        <td>${x.key_answers ? esc(x.key_answers) : `<span class="mut">—</span>`}</td>
+        <td><span class="tag ${x.source === "import" ? "live" : ""}">${esc(srcName(x))}</span></td>
         <td>${x.anonymized ? `<span class="mut">—</span>` : `<button class="s" data-scr="${x.id}">${x.screener ? `${x.screener} 题 · 查看` : "添加答案"}</button>`}</td>
         <td>${x.screening === "blocked_region" ? `<span class="tag bad">地区暂未开放</span>` : x.anonymized ? `<span class="tag">已匿名</span>` : x.screen_result ? `<span class="tag ${SCREEN[x.screen_result][1]}" ${x.screen_reason ? `title="${esc(x.screen_reason)}"` : ""}>${SCREEN[x.screen_result][0]}</span>${x.screen_reason ? `<div class="sm mut">${esc(x.screen_reason)}</div>` : ""}` : `<span class="tag ok">可邀请</span>`}</td>
         <td class="acts">${RC ? "" : `${x.screening === "eligible" && !x.anonymized ? `<button class="s" data-inv="${x.id}">邀请到场次</button> ` : ""}${x.anonymized ? "" : `<button class="s warn" data-erase="${x.id}">删除数据</button>`}`}</td></tr>`).join("")}</tbody></table></div>
       ${shown.length ? "" : `<div class="card empty"><b>没有符合筛选条件的人。</b></div>`}`
-      : `<div class="card empty"><b>还没有受访者。</b><span>点右上角“添加受访者”手动添加，或“导入表格”一次导入很多人。</span></div>`}</div>`, { active: "people", p });
+      : `<div class="card empty"><b>还没有受访者。</b><span>点“添加受访者”手动添加，“导入名单（外部渠道）”导入别处拿来的名单，或把招募问卷发出去。</span></div>`}</div>`, { active: "people", p });
   const showTab = (name) => {
     sessionStorage.setItem("ptab", name);
-    $("#ptab-form").hidden = name !== "form"; $("#ptab-list").hidden = name !== "list"; $("#pactions").hidden = name !== "list";
+    $("#ptab-form").hidden = name !== "form"; $("#ptab-list").hidden = name !== "list";
     $("#ptab-form-t").classList.toggle("on", name === "form"); $("#ptab-list-t").classList.toggle("on", name === "list");
     $("#ptab-form-t").setAttribute("aria-selected", name === "form"); $("#ptab-list-t").setAttribute("aria-selected", name === "list");
     document.body.classList.toggle("rfmode", name === "form"); if (name === "form") rf.fit();
@@ -302,7 +310,29 @@ async function peopleView(p) {
   const all = $("#all"); if (all) all.onchange = () => { app.querySelectorAll(".pick:not(:disabled)").forEach((c) => { c.checked = all.checked; }); syncSel(); };
   const batch = $("#batch"); if (batch) batch.onclick = guard(() => batchInvite(p, picks()));
   $("#imp2").onclick = () => importModal(p);
-  rf.wire();
+  rf.wire(); rd.wire();
+  app.querySelectorAll("[data-fchip]").forEach((b) => b.onclick = () => { const k = b.dataset.fchip; PEOPLE_F = { ...PEOPLE_F, [k]: PEOPLE_F[k] === b.dataset.v ? "" : b.dataset.v }; render(); });
+  const rowsOf = (list) => list.map(([x, n]) => [pcode(n), x.name, x.email || "", x.country || "", x.tags.join("、"), x.screen_result ? SCREEN[x.screen_result][0] : "可邀请", srcName(x), x.key_answers || ""]);
+  const pc = $("#pcopy"); if (pc) pc.onclick = guard(async () => {
+    const chosen = picks(), list = chosen.length ? shown.filter(([x]) => chosen.includes(x.id)) : shown;
+    const text = [["编号", "姓名", "邮箱", "国家", "标签", "资格", "来源", "关键回答"], ...rowsOf(list)].map((r) => r.join("\t")).join("\n");
+    try { await navigator.clipboard.writeText(text); } catch { throw new Error("浏览器不让复制，请改用“导出”"); }
+    await api(`/projects/${p.id}/participants/export-log`, { method: "POST", body: { count: list.length } });
+    toast(`已复制 ${list.length} 人（可直接粘贴到表格）`);
+  });
+  const pm = $("#pexpm"), px = $("#pexp");
+  if (px) {
+    px.onclick = () => { pm.hidden = !pm.hidden; px.setAttribute("aria-expanded", String(!pm.hidden)); };
+    pm.querySelectorAll("[data-exp]").forEach((b) => b.onclick = guard(async () => {
+      pm.hidden = true; px.setAttribute("aria-expanded", "false");
+      const kind = b.dataset.exp, ids = kind === "shown" ? shown.map(([x]) => x.id) : kind === "picked" ? picks() : [];
+      if ((kind === "shown" || kind === "picked") && !ids.length) throw new Error(kind === "picked" ? "先在表格里勾选要导出的人" : "当前筛选结果是空的");
+      const r = await fetch(`/api/projects/${p.id}/participants/export`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + store.get("tt_token") }, body: JSON.stringify({ ids, contacts: kind !== "anon" }) });
+      if (!r.ok) throw new Error("导出失败，请稍后再试");
+      const a = document.createElement("a"); a.href = URL.createObjectURL(await r.blob()); a.download = `${p.name}-受访者名单${kind === "anon" ? "（匿名）" : ""}.csv`; document.body.appendChild(a); a.click(); a.remove();
+      toast("已导出，文件里有个人信息的话请妥善保管");
+    }));
+  }
   const rl = $("#rules"); if (rl) rl.onclick = () => rulesModal(p, rec);
   $("#quotas").onclick = () => quotasModal(p, rec);
   const ra = $("#reapply"); if (ra) ra.onclick = guard(async () => { await api(`/projects/${p.id}/recruiting/apply`, { method: "POST" }); toast("已重新筛选"); render(); });
@@ -334,16 +364,33 @@ async function peopleView(p) {
 }
 
 function importModal(p) {
-  const m = modal(`<h2>从表格导入受访者</h2><form id="f"><p class="sm mut">用 Excel 或 Numbers 另存为 CSV（UTF-8），或直接粘贴。第一行是表头：必须有“姓名”（或 name）；可选 邮箱、国家（如 SG）、语言（en/zh/ms/ta）、标签（用分号隔开）；其余每一列都当作一道甄别题（表头是题目，格子是答案）。一次最多 500 行。</p>
-    <label class="f"><span>选择文件（.csv / .txt）</span><input type="file" id="file" accept=".csv,.txt,text/csv,text/plain"></label>
-    <label class="f"><span>或粘贴内容</span><textarea name="csv" rows="8" required placeholder="姓名,邮箱,国家,语言,标签,年龄&#10;林小雨,lin@example.com,SG,zh,女性;学生,22"></textarea></label>
+  const m = modal(`<h2>导入名单（外部渠道）</h2><form id="f"><p class="sm mut">这批人是从别的渠道拿来的（客户给的、合作方、自己采集的），不是通过我们的问卷筛出来的。导入后会在名单里标明来源。</p>
+    <label class="f"><span>这批名单从哪里来？（必填，会显示在名单的“来源”列）</span><input name="source" required maxlength="60" placeholder="例如：客户 A 老客户名单"></label>
+    <div class="row" style="flex-wrap:wrap;margin:-4px 0 8px">${["客户提供", "合作方 / 社群", "自己采集", "其他"].map((s) => `<button type="button" class="s" data-src="${s}">${s}</button>`).join("")}</div>
+    <p class="sm mut">表头：必须有“姓名”（或 name）；可选 邮箱、国家（如 SG）、语言（en/zh/ms/ta）、标签（用分号隔开）；其余每一列都当作一个关键回答（表头是题目，格子是答案）。一次最多 500 行。<button type="button" class="lnk" id="tpl">下载模板</button></p>
+    <label class="f"><span>选择文件（.csv / .txt，Excel 请另存为 CSV UTF-8）</span><input type="file" id="file" accept=".csv,.txt,text/csv,text/plain"></label>
+    <label class="f"><span>或粘贴内容</span><textarea name="csv" rows="6" required placeholder="姓名,邮箱,国家,语言,标签,年龄&#10;林小雨,lin@example.com,SG,zh,女性;学生,22"></textarea></label>
     <div id="prev" class="sm" role="status" aria-live="polite"></div>
+    <fieldset class="f" style="border:0;padding:0;margin:0 0 8px"><legend class="sm">导入后怎么处理</legend>
+      <label class="sm" style="display:block"><input type="radio" name="mode" value="invite" checked> 直接可邀请（不经问卷）</label>
+      <label class="sm" style="display:block"><input type="radio" name="mode" value="screen"> 先发问卷链接再甄别（仍按旧版资格规则判断）</label></fieldset>
+    <label class="sm" style="display:flex;gap:8px;align-items:flex-start"><input type="checkbox" id="basis"> <span>我确认这批名单有合法的联系依据（对方同意被联系，或有合同 / 合作协议允许）。</span></label>
+    <p class="sm mut">文件里有受访者的个人信息，请妥善保管。导入会记入审计日志。</p>
     <div class="row"><button type="button" id="dry">先预览</button><button class="p" id="impgo">导入</button><button type="button" id="c">取消</button></div></form>`);
   $("#c", m).onclick = () => m.remove();
+  m.querySelectorAll("[data-src]").forEach((b) => b.onclick = () => { const i = $("[name=source]", m); if (!i.value.trim()) i.value = b.dataset.src; i.focus(); });
+  $("#tpl", m).onclick = () => {
+    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(["﻿姓名,邮箱,国家,语言,标签,年龄\n林小雨,lin@example.com,SG,zh,女性;学生,22\n"], { type: "text/csv" })); a.download = "名单模板.csv"; document.body.appendChild(a); a.click(); a.remove();
+  };
   $("#file", m).onchange = async (e) => { const f = e.target.files[0]; if (f) $("[name=csv]", m).value = await f.text(); };
   const show = (r) => { $("#prev", m).innerHTML = `${r.dry_run ? "预览：将新增" : "已新增"} <b>${r.created}</b> 人${r.skipped.length ? `，跳过 ${r.skipped.length} 行：<ul style="margin:4px 0 0 18px">${r.skipped.slice(0, 8).map((s) => `<li>第 ${s.line} 行：${esc(s.why)}</li>`).join("")}${r.skipped.length > 8 ? "<li>…</li>" : ""}</ul>` : ""}`; };
-  $("#dry", m).onclick = guard(async () => show(await api(`/projects/${p.id}/participants/import`, { method: "POST", body: { csv: $("[name=csv]", m).value, dry_run: true } })));
-  $("#f", m).onsubmit = guard(async (e) => { e.preventDefault(); const r = await api(`/projects/${p.id}/participants/import`, { method: "POST", body: { csv: e.target.csv.value, dry_run: false } }); show(r); toast(`已导入 ${r.created} 人`); setTimeout(() => { m.remove(); render(); }, 900); });
+  const body = (dry) => ({ csv: $("[name=csv]", m).value, dry_run: dry, source_name: $("[name=source]", m).value.trim(), mode: m.querySelector("[name=mode]:checked").value, confirm_basis: $("#basis", m).checked });
+  $("#dry", m).onclick = guard(async () => show(await api(`/projects/${p.id}/participants/import`, { method: "POST", body: body(true) })));
+  $("#f", m).onsubmit = guard(async (e) => {
+    e.preventDefault();
+    if (!$("#basis", m).checked) throw new Error("请先勾选“我确认这批名单有合法的联系依据”");
+    const r = await api(`/projects/${p.id}/participants/import`, { method: "POST", body: body(false) }); show(r); toast(`已导入 ${r.created} 人`); setTimeout(() => { m.remove(); render(); }, 900);
+  });
 }
 
 function rulesModal(p, rec) {

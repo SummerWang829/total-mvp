@@ -418,13 +418,21 @@ nav.side .dotc{width:7px;height:7px;border-radius:50%;background:var(--sc,#FF6A0
 .rf-opts{display:flex;flex-direction:column;gap:6px}
 /* ---------- 招募问卷工作台（rform.js）：左边对话、右边实时大纲，各自滚动，整页不滚 ---------- */
 body.rfmode{overflow:hidden}
+body.rfmode main{max-width:none;padding-top:10px;padding-bottom:16px;gap:8px}  /* the workspace uses the whole width (right margin stays) and runs to the bottom of the window */
 body.rfmode main>.head{display:none}  /* the workspace takes the room of the page title: the tabs stay */
 body.rfmode main>.hubtabs:last-of-type{margin-bottom:8px}
-.rf-ws{display:grid;grid-template-columns:minmax(0,4fr) minmax(0,6fr);border:1px solid var(--line);border-radius:14px;overflow:hidden;min-height:380px;background:var(--surface)}
-.rf-pane{display:flex;flex-direction:column;min-height:0;min-width:0}.rf-pane+.rf-pane{border-left:1px solid var(--line)}
-.rf-hd{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--line);flex:none;flex-wrap:wrap;min-height:50px}
+.rf-ws{display:grid;grid-template-columns:minmax(0,var(--rfl,42%)) 10px minmax(0,1fr);border:1px solid var(--line);border-radius:14px;overflow:hidden;min-height:380px;background:var(--surface)}
+.rf-pane{display:flex;flex-direction:column;min-height:0;min-width:0}
+.rf-split{background:var(--wash);border-left:1px solid var(--line);border-right:1px solid var(--line);cursor:col-resize;display:flex;align-items:center;justify-content:center;touch-action:none}.rf-split i{display:block;width:3px;height:36px;border-radius:2px;background:var(--line2)}.rf-split:hover i,.rf-split:focus-visible i{background:var(--orange)}
+.rf-hd{display:flex;align-items:center;gap:8px;padding:0 12px;border-bottom:1px solid var(--line);flex:none;flex-wrap:nowrap;height:52px;white-space:nowrap;overflow:hidden}
 .rf-sc{flex:1;overflow:auto;padding:14px 16px;min-height:0;overscroll-behavior:contain}
-.rf-msg{margin:0 0 12px;line-height:1.7;overflow-wrap:anywhere}.rf-me{margin-left:auto;max-width:88%;background:var(--wash);border-radius:12px;padding:9px 12px}
+.rf-msg{margin:0 0 12px;line-height:1.7;overflow-wrap:anywhere;max-width:560px}.rf-me{margin-left:auto;max-width:min(88%,560px);background:var(--wash);border-radius:12px;padding:9px 12px}
+.rf-col{max-width:880px;margin:0 auto}
+.rf-code{display:inline-flex;min-width:24px;height:24px;border-radius:7px;background:var(--ink);color:var(--surface);font-size:12px;font-weight:700;align-items:center;justify-content:center;flex:none;padding:0 4px}
+.rf-ex{border:1px solid #6A62B8;color:#3F3A7A;background:var(--surface);border-radius:8px;height:36px;padding:0 10px}.rf-ex.on{background:#E6E3F7;font-weight:700}
+.rf-expanel{margin:0 0 8px 32px;padding:8px 10px;background:#F1EFFB;border-radius:10px;font-size:14px;color:#3F3A7A}
+.rf-chs{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}.rf-ch{min-width:36px;height:36px;border:1.5px solid #9aa8a0;border-radius:8px;background:var(--surface);color:var(--ink2);font-weight:700;padding:0 6px}.rf-ch.on{background:#6A62B8;border-color:#6A62B8;color:#fff}
+.rf-lg.exb{background:#E6E3F7;color:#3F3A7A;font-weight:700}
 .rf-st{font-size:12.5px;color:var(--green);margin:0 0 12px;line-height:1.7}.rf-chips{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}
 .rf-inp{border-top:1px solid var(--line);padding:10px 12px;flex:none}.rf-box{position:relative}.rf-box textarea{width:100%;padding-right:48px;resize:none}
 .rf-send{position:absolute;right:8px;bottom:8px;width:36px;height:36px;border-radius:50%;padding:0}
@@ -443,7 +451,7 @@ div.rf-blk{overflow-wrap:anywhere}
 .rf-htmlmode{display:flex;flex-direction:column;gap:10px;max-width:640px}
 :root[data-theme="dark"] .rf-lg.ok{background:#332C12;color:#E8CF7A}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .rf-lg.ok{background:#332C12;color:#E8CF7A}}
-@media (max-width:900px){.rf-ws{grid-template-columns:1fr;height:auto!important}.rf-pane{min-height:420px;max-height:80vh}.rf-pane+.rf-pane{border-left:0;border-top:1px solid var(--line)}body.rfmode{overflow:auto}}
+@media (max-width:900px){.rf-ws{grid-template-columns:1fr;height:auto!important}.rf-split{display:none}.rf-pane{min-height:420px;max-height:80vh}.rf-pane+.rf-pane{border-left:0;border-top:1px solid var(--line)}body.rfmode{overflow:auto}}
 /* ---------- 立项向导（wizard.js）：步骤链、三色样本框、变量与取值、配额表 ---------- */
 .chain{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:10px}
 .step{min-width:0;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:3px;text-align:left;height:auto;font-weight:600;justify-content:center;align-items:flex-start}
@@ -652,3 +660,30 @@ main.enter .pbar6 i{animation:grow 1s var(--ease) .15s both}@keyframes grow{from
 .note{font-size:14px}
 
 .wzbody input[type=radio],.wzbody input[type=checkbox]{width:18px;height:18px;accent-color:#FF6A00;flex:none;margin:2px 0 0}
+
+/* 配额与受访者名单：看板（rdash.js） */
+.rd{display:flex;flex-direction:column;gap:12px}
+.rd-row{display:grid;gap:12px}.rd-row>.card{margin:0;min-width:0}
+.rd-top{grid-template-columns:minmax(0,5fr) minmax(0,7fr)}.rd-three{grid-template-columns:repeat(3,minmax(0,1fr))}.rd-two{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+.rd h3{font-size:16px;margin:0 0 8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.rd-pub{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap}.rd-pub>div{flex:1 1 220px;min-width:0}.rd-pub img{border:1px solid var(--line);border-radius:8px;background:#fff;padding:4px}
+.rd-kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.rd-k{background:var(--wash);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.rd-k b{font-size:26px;line-height:32px;color:var(--ink)}.rd-k span{font-size:13px;color:var(--muted)}
+.rd-k.ok b{color:var(--green)}.rd-k.warn b{color:var(--orange-ink)}
+.rd-bar{display:grid;grid-template-columns:minmax(70px,34%) minmax(0,1fr) auto;gap:8px;align-items:center;margin:6px 0;font-size:13px}
+.rd-bar>span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rd-bar b{font-size:13px;white-space:nowrap}
+.rd-t{height:10px;border-radius:999px;background:var(--wash);overflow:hidden;display:block}.rd-t i{display:block;height:100%;border-radius:999px;background:var(--brand)}
+.rd-t i.s{background:var(--orange)}.rd-t i.y{background:var(--gold)}.rd-t i.g{background:var(--green)}.rd-t i.r{background:var(--risk)}
+.rd-chip{display:inline-flex;align-items:center;padding:3px 10px;margin:2px 4px 2px 0;border-radius:999px;font-size:13px;background:var(--wash);color:var(--ink2)}
+.rd-chip.g{background:var(--green-soft);color:var(--green)}.rd-chip.r{background:var(--risk-soft);color:var(--risk-ink)}
+.rd-tool{align-items:center;flex-wrap:wrap;gap:8px}
+.rd-menu{position:relative;display:inline-block}
+.rd-pop{position:absolute;right:0;top:100%;margin-top:4px;z-index:20;min-width:240px;background:var(--surface);border:1px solid var(--line2);border-radius:12px;padding:6px;box-shadow:0 8px 24px rgba(6,35,25,.18);display:flex;flex-direction:column;gap:2px}
+.rd-pop button{justify-content:flex-start;text-align:left;border:0;background:none;height:auto;min-height:36px;white-space:nowrap}
+.rd-chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px}
+.rd-ch{height:auto;min-height:36px;padding:3px 12px;border-radius:999px;font-size:13px;background:var(--wash);border:1px solid var(--line)}
+.rd-ch.on{background:var(--orange-mid);color:#8A3600;border-color:var(--orange)}
+@media (max-width:900px){.rd-top,.rd-three,.rd-two{grid-template-columns:minmax(0,1fr)}.rd-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.rd button.lnk{min-height:36px}

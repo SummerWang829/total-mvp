@@ -7,6 +7,7 @@ Exit code 1 if anything fails; a report is written to qa_report.md.
 """
 import json
 import os
+import pathlib
 import socket
 import subprocess
 import sys
@@ -435,6 +436,22 @@ def recruit_section(br, D):
     ok(pg.locator("#rfout .rf-q").count() >= 5 and "起草" in pg.inner_text("#rfchat") and pg.input_value("#rfgoals").strip() != "" and pg.input_value("#rfneed").strip() != "", "[recruit] saying 帮我起草问卷 fills the outline: questions, research goals and recruiting need")
     ok(pg.locator("#rfout .rf-lg.out").count() >= 1 and pg.locator("#rfout h3", has_text="研究背景").count() == 1, "[recruit] the outline shows the logic of each option and starts with the research background")
     n0 = pg.locator("#rfout .rf-q").count()
+    # layout: one-row headers, the mode switch on the left (with the conversation), the workspace runs to the bottom of the window, a divider between the frames
+    tops = pg.evaluate("[...document.querySelectorAll('.rf-hd')].map((h) => h.getBoundingClientRect().height)")
+    ok(len(tops) == 2 and all(h <= 56 for h in tops) and pg.locator(".rf-pane .rf-hd [data-mode=ai]").count() == 1 and pg.locator("input[name=rfmode]").count() == 0, "[recruit] both frame headers are a single row and the mode switch (对话编写 / 导入问卷链接) sits in the conversation's header")
+    ok(pg.evaluate("(() => { const b = document.querySelector('#rfws').getBoundingClientRect().bottom; return b >= innerHeight - 40 && b <= innerHeight; })()"), "[recruit] the workspace runs to the bottom of the window")
+    ok(pg.evaluate("(() => { const m = document.querySelector('#rfmsg').closest('.rf-pane').getBoundingClientRect(), r = document.querySelector('#rfright').getBoundingClientRect(); const x = m.width / (m.width + r.width); return x > 0.38 && x < 0.46; })()"), "[recruit] the conversation takes about 42% and the outline the rest")
+    ok(pg.evaluate("[...document.querySelectorAll('#rfchat .rf-msg')].every((m) => m.getBoundingClientRect().width <= 561)"), "[recruit] a conversation message is never wider than 560px")
+    box = pg.locator("#rfsplit").bounding_box(); w0 = pg.evaluate("document.querySelector('#rfmsg').closest('.rf-pane').getBoundingClientRect().width")
+    pg.mouse.move(box["x"] + 5, box["y"] + box["height"] / 2); pg.mouse.down(); pg.mouse.move(box["x"] + 5 + 120, box["y"] + box["height"] / 2, steps=6); pg.mouse.up()
+    w1 = pg.evaluate("document.querySelector('#rfmsg').closest('.rf-pane').getBoundingClientRect().width")
+    ok(w1 > w0 + 60, "[recruit] dragging the divider makes the conversation wider")
+    pg.dblclick("#rfsplit")
+    ok(abs(pg.evaluate("document.querySelector('#rfmsg').closest('.rf-pane').getBoundingClientRect().width") - w0) < 6, "[recruit] a double click on the divider restores the default width")
+    c3, pg3, e3 = new_page(br, 1912, 914, token=rs); pg3.goto(B + "/"); pg3.evaluate("sessionStorage.setItem('ptab','form')")  # a big screen: the workspace is much wider than the old 1240px page, and keeps a margin on the right
+    pg3.goto(B + f"/#/p/{pid}/people"); pg3.wait_for_selector("#rfws")
+    ok(pg3.evaluate("(() => { const r = document.querySelector('#rfws').getBoundingClientRect(); return r.width > 1300 && innerWidth - r.right >= 16 && innerWidth - r.right <= 80; })()"), "[recruit] on a big screen the workspace is wider than before and keeps a margin on the right")
+    c3.close()
     # a message typed by hand
     pg.fill("#rfmsg", "随便说说"); pg.press("#rfmsg", "Enter")
     ok(wait_until(lambda: "离线演示版" in pg.inner_text("#rfchat"), 10), "[recruit] a typed message gets an answer in the conversation (Enter sends)")
@@ -447,6 +464,17 @@ def recruit_section(br, D):
     ok(pg.locator("#rfout .rf-q").count() == n0, "[recruit] a question can be deleted")
     pg.click("#rfundo"); ok(wait_until(lambda: pg.locator("#rfout .rf-q").count() == n0 + 1, 5), "[recruit] undo brings the deleted question back")
     pg.click("#rfredo"); ok(wait_until(lambda: pg.locator("#rfout .rf-q").count() == n0, 5), "[recruit] redo deletes it again")
+    # options that cannot be chosen together: the multiple-choice question gets option codes and a 互斥 picker that lists the other codes
+    ok(pg.locator("#rfout .rf-q .rf-o .rf-code").count() >= 8, "[recruit] every option in the outline carries its code number")
+    mq = pg.locator("#rfout .rf-q", has_text="Where do you usually buy"); mq.locator("[data-edit]").click(); pg.wait_for_selector("#rfout .rf-edit [data-ex]")
+    ok(pg.locator("#rfout .rf-edit .rf-optrow .rf-code").count() == 3 and pg.locator("#rfout .rf-edit [data-ex]").count() == 3 and pg.locator("#rfout .rf-edit [data-f=tag], #rfout .rf-edit [data-o=tag]").count() == 0, "[recruit] the editor shows option codes and a 互斥 button for a multiple-choice question, and no tag box")
+    pg.locator("#rfout .rf-edit [data-ex='0']").click(); pg.wait_for_selector("#rfout .rf-expanel")
+    ok(pg.locator("#rfout .rf-expanel .rf-ch").count() == 2, "[recruit] the 互斥 picker lists the codes of the other options (2 and 3 for option 1)")
+    pg.locator("#rfout .rf-expanel .rf-ch").first.click()
+    ok(wait_until(lambda: "互斥：2" in pg.locator("#rfout .rf-edit [data-ex='0']").inner_text() and "互斥：1" in pg.locator("#rfout .rf-edit [data-ex='1']").inner_text(), 5), "[recruit] marking 1 as exclusive with 2 marks 2 as exclusive with 1 too (two-way)")
+    audit_page(pg, "recruiting exclusion picker/desktop", errs)
+    pg.locator("#rfout .rf-edit [data-done]").click()
+    ok(pg.locator("#rfout .rf-lg.exb").count() >= 2 and "互斥：2" in pg.locator("#rfout .rf-q", has_text="Where do you usually buy").inner_text(), "[recruit] the outline shows 互斥 with the codes after the option's badges")
     pg.locator("#rfout [data-edit]").first.click(); pg.wait_for_selector("#rfout .rf-edit [data-done]"); pg.locator("#rfout .rf-edit [data-done]").click()
     audit_page(pg, "recruiting workspace outline/desktop", errs)
     pg.screenshot(path=os.path.join(ROOT, "qa_shots", "recruit_form_1280.png"), full_page=True)
@@ -457,11 +485,11 @@ def recruit_section(br, D):
     audit_page(pg, "recruiting workspace test/desktop", errs)
     pg.click("[data-seg=outline]"); pg.wait_for_selector("#rfgoals")
     # publish: a link and a QR code
-    pg.click("#rfpub"); pg.wait_for_selector("#rflink", timeout=15000)
-    link = pg.input_value("#rflink")
-    ok("/screen.html?t=" in link and wait_until(lambda: (pg.locator("#rfqr").get_attribute("src") or "").startswith("blob:"), 8), "[recruit] publishing gives a link and a QR code")
-    ok("发布中" in pg.inner_text("#rfright"), "[recruit] the questionnaire shows as published")
-    audit_page(pg, "recruiting workspace published/desktop", errs)
+    pg.click("#rfpub"); pg.wait_for_selector("#rdlink", timeout=15000)  # publishing opens the quotas-and-list page, where the link and the QR code live
+    link = pg.input_value("#rdlink")
+    ok("/screen.html?t=" in link and wait_until(lambda: (pg.locator("#rdqr").get_attribute("src") or "").startswith("blob:"), 8), "[recruit] publishing gives a link and a QR code on the quotas-and-list page")
+    ok("发布中" in pg.inner_text(".rd-top") and pg.locator("#rflink").count() == 0 and pg.locator("#rfws").is_hidden(), "[recruit] the page jumped to the list tab, shows the questionnaire as published, and the outline no longer holds the link")
+    audit_page(pg, "recruiting dashboard published/desktop", errs)
     # a candidate on a phone: screened out first, then a qualified run that leaves contact details
     c2, pg2, errs2 = new_page(br, 390)
     pg2.goto(link); pg2.wait_for_selector("#scrgo")
@@ -476,7 +504,10 @@ def recruit_section(br, D):
     pg2.locator("input[type=radio]").nth(1).check(); pg2.click("#scrnext")                    # 18-34
     pg2.wait_for_selector("text=Where do you live"); pg2.locator("input[type=radio]").first.check(); pg2.click("#scrnext")  # Singapore
     pg2.wait_for_selector("text=How often"); pg2.locator("input[type=radio]").first.check(); pg2.click("#scrnext")        # every day
-    pg2.wait_for_selector("text=Where do you usually buy"); pg2.locator("input[type=checkbox]").first.check(); pg2.click("#scrnext")
+    pg2.wait_for_selector("text=Where do you usually buy")
+    boxes = pg2.locator("input[type=checkbox]"); boxes.first.check(); boxes.nth(1).check()
+    ok(not boxes.first.is_checked() and boxes.nth(1).is_checked(), "[screen] choosing an option that cannot go with the one already chosen unticks the first")
+    boxes.first.check(); pg2.click("#scrnext")
     pg2.wait_for_selector("textarea"); pg2.click("#scrnext")
     ok(pg2.locator("#screrr").is_visible(), "[screen] a required question cannot be skipped")
     pg2.fill("textarea", "价格和成分"); pg2.click("#scrnext")
@@ -488,8 +519,11 @@ def recruit_section(br, D):
     pg2.check("#cf [name=consent]"); pg2.click("#cf button.p")
     pg2.wait_for_selector("text=We have your details", timeout=10000)
     c2.close()
-    pg.reload(); pg.wait_for_selector("#rfws")
-    ok("已合格 1 人" in pg.inner_text("#rfout") and "被筛掉 1 人" in pg.inner_text("#rfout"), "[recruit] the publish box counts who qualified and who was screened out")
+    pg.reload(); pg.wait_for_selector(".rd-k")
+    kpi = [pg.locator(".rd-k b").nth(i).inner_text() for i in range(4)]
+    ok(kpi[:3] == ["2", "2", "1"] and kpi[3] == "50%", f"[recruit] the dashboard counts who started, finished and qualified, and the pass rate (got {kpi})")
+    ok(pg.locator(".rd-bar", has_text="完成访谈").count() == 1 and "问卷链接" in pg.inner_text(".rd-three"), "[recruit] the funnel and the 'where from' bars are drawn")
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "recruiting_dashboard_1280.png"), full_page=True)
     pg.click("#ptab-list-t"); pg.wait_for_selector("td:has-text('QA候选人')", timeout=15000)
     ok(pg.locator("tr", has_text="QA候选人").locator(".tag", has_text="符合条件").count() == 1 and pg.locator("#rfws").is_hidden(), "[recruit] a candidate who qualified is in the list (other tab), already marked as qualified")
     pg.locator("tr", has_text="QA候选人").locator("[data-scr]").click(); pg.wait_for_selector("textarea[name=text]")
@@ -498,7 +532,7 @@ def recruit_section(br, D):
     pg.click("#ptab-form-t"); pg.wait_for_selector("#rfclose")
     ok(not pg.evaluate("document.documentElement.scrollHeight > innerHeight + 2"), "[recruit] switching back keeps the page from scrolling")
     pg.click("#rfclose"); pg.wait_for_selector("#rfpub")
-    pg.locator("input[name=rfmode][value=html]").check(); pg.wait_for_selector("#rfurl")
+    pg.click("[data-mode=html]"); pg.wait_for_selector("#rfurl")
     pg.fill("#rfurl", "https://survey.example.com/s/qa"); pg.click("#rfsave"); pg.wait_for_selector("#rftest")
     ok(pg.locator("#rftest").is_visible() and "survey.example.com" in pg.inner_text(".rf"), "[recruit] an HTML questionnaire link is saved and can be opened for testing")
     audit_page(pg, "recruiting html link/desktop", errs)
@@ -509,12 +543,16 @@ def recruit_section(br, D):
     audit_page(pg, "recruiting/desktop", errs)
     nl = chr(10)
     pg.click("#imp2"); pg.wait_for_selector("[name=csv]")
+    pg.fill("[name=source]", "QA客户名单"); pg.check("[name=mode][value=screen]")
     pg.fill("[name=csv]", "姓名,邮箱,国家,语言,标签,年龄" + nl + "林小雨QA,qa1@example.com,SG,zh,女性;学生,22" + nl + "王大明QA,qa2@example.com,SG,zh,,17" + nl)
     pg.click("#dry")
     ok(wait_until(lambda: "将新增" in pg.inner_text("#prev") and "2" in pg.inner_text("#prev"), 8), "[recruit] the preview says how many people would be added")
     audit_page(pg, "recruiting import/desktop", errs)
-    pg.click("#impgo")
+    pg.click("#impgo"); pg.wait_for_timeout(500)
+    ok(pg.locator("#f").count() == 1 and pg.locator("td:has-text('林小雨QA')").count() == 0, "[recruit] an import without the confirmation of a lawful basis is refused")
+    pg.check("#basis"); pg.click("#impgo")
     pg.wait_for_selector("td:has-text('林小雨QA')", timeout=15000)
+    ok(pg.locator("tr", has_text="林小雨QA").locator(".tag", has_text="QA客户名单 · ").count() == 1, "[recruit] an imported person carries the source name in the list")
     ok(pg.locator("tr", has_text="林小雨QA").locator(".tag", has_text="女性").count() == 1, "[recruit] the imported tags are shown")
     pg.click("#rules"); pg.wait_for_selector("#addr"); pg.click("#addr")
     row = pg.locator(".rrow").last
@@ -541,8 +579,23 @@ def recruit_section(br, D):
     qrow = pg.locator(".qrow").last
     qrow.locator(".q-f").select_option("tag"); qrow.locator(".q-v").fill("女性"); qrow.locator(".q-t").fill("2")
     pg.click("#f button.p")
-    pg.wait_for_selector(".qbar", timeout=10000)
-    ok("1 / 目标 2" in pg.inner_text("main") or "已有 1 / 目标 2" in pg.inner_text("main"), "[recruit] the quota shows progress against the target")
+    pg.wait_for_selector(".rd-bar:has-text('女性')", timeout=10000)
+    ok("1 / 2" in pg.locator(".rd-bar", has_text="女性").inner_text(), "[recruit] the quota shows progress against the target")
+    pg.click("#pexp"); pg.wait_for_selector("[data-exp=all]")
+    with pg.expect_download() as dl:
+        pg.click("[data-exp=all]")
+    csv_text = pathlib.Path(dl.value.path()).read_text(encoding="utf-8-sig")
+    ok("林小雨QA" in csv_text and "qa1@example.com" in csv_text and "QA客户名单" in csv_text, "[recruit] exporting the list gives a CSV with contacts and the source")
+    pg.click("#pexp")
+    with pg.expect_download() as dl2:
+        pg.click("[data-exp=anon]")
+    anon = pathlib.Path(dl2.value.path()).read_text(encoding="utf-8-sig")
+    ok("qa1@example.com" not in anon and "林小雨QA" not in anon and "QA客户名单" in anon, "[recruit] the anonymous export leaves out names and e-mails")
+    pg.locator("[data-fchip=source]", has_text="QA客户名单").click()
+    ok(wait_until(lambda: pg.locator("[data-fchip=source].on").count() == 1 and pg.locator("tr", has_text="QA候选人").count() == 0 and pg.locator("tr", has_text="林小雨QA").count() == 1, 8), "[recruit] clicking a source chip filters the list to that source")
+    pg.locator("[data-fchip=source].on").click()
+    ok(wait_until(lambda: pg.locator("[data-fchip=source].on").count() == 0 and pg.locator("[data-fchip=source]").count() >= 2, 8), "[recruit] clicking the chip again clears the filter")
+
     ctx.close()
     ctx, pg, errs = new_page(br, 390, token=rs)
     pg.goto(B + f"/#/p/{pid}/people"); pg.wait_for_selector("#imp2")
@@ -1564,26 +1617,26 @@ def run():
 
 
         # ---------- C3. AI moderation in the room (Sprint 5): participant chat, the team's AI panel, observer, alerts; both colour themes, desktop + phone ----------
-        ai_room_section(br, D)
-        concept_room_section(br, D)
-        pretask_section(br, D)
-        timeslot_section(br, D)
-        marks_section(br, D)
-        group_section(br, D)
-        members_section(br, D)
-        studies_section(br, D)
-        repo_section(br, D)
-        listening_section(br, D)
-        recruit_section(br, D)
-        wizard_section(br, D)
-        team_section(br, D)
-        quant_section(br, D)
-        pool_section(br, D)
-        admin_data_section(br, D)
-        segcode_section(br, D)
-        vote_section(br, D)
-        gmap_section(br, D)
-        reel_section(br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "ai_room_section": ai_room_section(br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "concept_room_section": concept_room_section(br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "pretask_section": pretask_section(br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "timeslot_section": timeslot_section(br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "marks_section": marks_section(br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "group_section": group_section(br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "members_section": members_section(br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "studies_section": studies_section(br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "repo_section": repo_section(br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "listening_section": listening_section(br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "recruit_section": recruit_section(br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "wizard_section": wizard_section(br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "team_section": team_section(br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "quant_section": quant_section(br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "pool_section": pool_section(br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "admin_data_section": admin_data_section(br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "segcode_section": segcode_section(br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "vote_section": vote_section(br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "gmap_section": gmap_section(br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "reel_section": reel_section(br, D)
 
         # ---------- C2. dialogs and expandable panels on the staff pages (both screen sizes) ----------
         for w, vp in ((1280, "desktop"), (390, "phone")):

@@ -4,6 +4,12 @@
 > 每条记录写：日期 · 做了什么 · `scripts/qa.sh` 结果数字 · 还差什么 · 风险。最新的写在最上面。
 > qa.sh 数字的顺序：逻辑测试（pytest）/ 全站浏览器检查 / 真实视频访谈 / 一键启动。
 
+## 2026-10-23 · 选项互斥 + 工作台比例 + “配额与受访者名单”看板（用户看过效果图 v5、v8 后确认）
+- 做了什么：①多选题选项可设“互斥项”（双向，服务器校验，候选人页自动取消另一个）；②招募问卷工作台左右比例可拖、高度撑满；③发布后自动跳到“配额与受访者名单”页，链接/二维码/停止收集在页面顶部；④新看板（`app/recruit_insights.py`、`app/static/rdash.js`）：开始作答/完成甄别/合格/通过率、漏斗、人从哪里来、在哪一题被筛掉、配额、合格者共同点、合格 vs 被筛掉每题对比、AI 画像总结（只发统计数字）；被筛掉的人只存匿名选项人数（`RecruitForm.tally`）；⑤名单：导入外部名单（必须填来源名并确认有合法联系依据；默认直接可邀请，或先发问卷再甄别）、“来源”“关键回答”两列、按标签/来源筛选、复制名单、导出 CSV（含联系方式/当前筛选/已勾选/匿名），研究团队专用并记审计日志。
+- 验证：pytest 1570 通过；qa_site 3151 项 0 失败；e2e_room 326 项；smoke_dev ok。qa_site 现在可用 `QA_ONLY=recruit_section` 只跑一段。
+- 部署注意：数据库自动新增 `participants.source/source_name`、`recruit_forms.n_started/tally` 列；无新依赖。
+- 还差：ms/ta 文案仍待母语/法务复核；`screen.html` 只有 en/zh。
+
 ## 2026-10-21 · 部署到新加坡测试服务器（提交 8e0fb92，含 LW 第四批：问卷编辑器、发布成链接/二维码、公开作答页）
 - 部署前确认没有进行中的访谈。备份 `total-20261021-082504.db.gz` 已生成，异地备份（COS）成功。`git archive` 覆盖 `/opt/total-mvp`（`deploy/.env` 保留）；`docker compose up -d --build`；三个容器运行，app healthy。没有碰硅谷服务器。
 - 检查：`/api/health`、`/home.js`、`/wizard.js`、`/shell.js`、`/rform.js`、`/screen_run.js` 全 200，`/screen.html?t=nope` 可打开；doctor：视频在线、AI 主持人可用、实时字幕已配置、限流已开，没有必须解决的问题。

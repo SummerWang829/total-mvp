@@ -1,11 +1,13 @@
 """Recruiting (staff of the project): import from a spreadsheet, tags, eligibility rules, quotas, and inviting many people to sessions at once."""
+from typing import Literal
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import library_context, recruit, recruit_form
+from .. import library_context, recruit, recruit_form, recruit_insights
 from ..audit import audit
 from ..db import get_db
 from ..deps import RECRUITERS, STAFF, Ctx, require_roles
@@ -22,6 +24,9 @@ MAX_BATCH = 100
 class ImportBody(BaseModel):
     csv: str = Field(min_length=1, max_length=2_000_000)
     dry_run: bool = False
+    source_name: str = Field(default="", max_length=80)  # where the list came from (shown next to every person of the batch)
+    mode: Literal["invite", "screen"] = "invite"  # invite = straight to "can be invited"; screen = still to be screened
+    confirm_basis: bool = False  # the team confirms there is a lawful basis to contact these people
 
 
 class FormIn(BaseModel):
@@ -107,12 +112,15 @@ def import_participants(pid: str, body: ImportBody, ctx: Ctx = Depends(require_r
         rows, problems = recruit.parse_csv(body.csv)
     except recruit.RecruitError as e:
         raise HTTPException(422, str(e)) from e
-    out = recruit.import_rows(db, ctx.org_id, proj.id, rows, proj.language, body.dry_run)
+    label = f"{body.source_name.strip()} · {utcnow():%m-%d}"
+    if not body.dry_run and (not body.source_name.strip() or not body.confirm_basis):
+        raise HTTPException(422, "请写这批名单的来源，并勾选“有合法的联系依据”")
+    out = recruit.import_rows(db, ctx.org_id, proj.id, rows, proj.language, body.dry_run, source="import", source_name=label, invite=body.mode == "invite")
     if not body.dry_run:
         s = _settings(db, proj)
         if s.rules:
             recruit.apply_rules(db, proj.id, s.rules, s.rules_version)
-        audit(db, ctx.org_id, ctx.actor, "participant.import", proj.id, created=out["created"], skipped=len(out["skipped"]) + len(problems))
+        audit(db, ctx.org_id, ctx.actor, "participant.import", proj.id, created=out["created"], skipped=len(out["skipped"]) + len(problems), source=label, mode=body.mode, basis_confirmed=True)
         db.commit()
     return {"dry_run": body.dry_run, "created": out["created"], "skipped": sorted(out["skipped"] + problems, key=lambda x: x["line"])}
 
@@ -195,6 +203,77 @@ def form_qr(pid: str, request: Request, ctx: Ctx = Depends(require_roles(*RECRUI
     buf = io.BytesIO()
     segno.make(f"{request.url.scheme}://{host}/screen.html?t={f.token}", error="m").save(buf, kind="svg", scale=6, border=2, dark="#0B382C")
     return Response(buf.getvalue(), media_type="image/svg+xml", headers={"Cache-Control": "no-store"})
+
+
+@router.get("/projects/{pid}/recruiting/dashboard")
+def dashboard(pid: str, ctx: Ctx = Depends(require_roles(*RECRUITERS)), db: Session = Depends(get_db)):
+    """The numbers of the recruiting page: started / qualified / screened out, the funnel, where people came from, which question stops most, quotas, what the qualified have in common."""
+    proj = get_project(db, ctx, pid)
+    return {**recruit_insights.build(db, proj), "form": _form_out(db.get(RecruitForm, proj.id))}
+
+
+@router.post("/projects/{pid}/recruiting/dashboard/summary")
+def dashboard_summary(pid: str, ctx: Ctx = Depends(require_roles(*RECRUITERS)), db: Session = Depends(get_db)):
+    """The AI reads the aggregate numbers and says in plain words who the qualified people are and where to aim next. Only statistics are sent (no personal data)."""
+    proj = get_project(db, ctx, pid)
+    chat = _ai_chat()
+    try:
+        text = recruit_insights.summarize(chat, recruit_insights.build(db, proj))
+    except ChatFatalError as e:
+        raise HTTPException(502, f"AI 模型服务拒绝了请求：{e.reason}") from e
+    except recruit_form.FormError as e:
+        raise HTTPException(422 if "还没有足够" in str(e) else 502, str(e)) from e
+    audit(db, ctx.org_id, ctx.actor, "recruit.summary", proj.id, model=chat.name if chat else "mock")
+    db.commit()
+    return {"summary": text}
+
+
+class ExportBody(BaseModel):
+    ids: list[str] = Field(default_factory=list, max_length=2000)  # empty = everyone
+    contacts: bool = True  # false: only the number, tags, source and key answers (to show a client)
+
+
+class ExportLog(BaseModel):
+    count: int = Field(ge=0, le=100_000)
+
+
+RESULT_LABEL = {"qualified": "合格", "disqualified": "不合格", "review": "待人工看", "": "未筛"}
+
+
+def _result_label(p: Participant) -> str:
+    if p.screening == "blocked_region":
+        return "地区暂未开放"
+    return "外部名单 · 可邀请" if p.screen_reason == recruit.EXTERNAL_REASON else RESULT_LABEL.get(p.screen_result, "")
+
+
+@router.post("/projects/{pid}/participants/export")
+def export_participants(pid: str, body: ExportBody, ctx: Ctx = Depends(require_roles(*RECRUITERS)), db: Session = Depends(get_db)):
+    """The participant list as a CSV file that Excel opens (UTF-8 with a mark). Everyone, or only the given people; with or without name and e-mail. Recorded in the audit log."""
+    import csv
+    import io
+    proj = get_project(db, ctx, pid)
+    people = db.scalars(select(Participant).where(Participant.project_id == proj.id, Participant.anonymized_at.is_(None)).order_by(Participant.created_at)).all()
+    everyone = db.scalars(select(Participant.id).where(Participant.project_id == proj.id).order_by(Participant.created_at)).all()
+    number = {pid_: f"P-{n + 1:03d}" for n, pid_ in enumerate(everyone)}  # the same numbers the list shows
+    chosen = set(body.ids)
+    rows = [p for p in people if not chosen or p.id in chosen]
+    key = recruit_insights.key_answers(db, [p.id for p in rows])
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["编号", *(["姓名", "邮箱"] if body.contacts else []), "国家", "语言", "标签", "资格", "来源", "关键回答"])
+    for p in rows:
+        w.writerow([number[p.id], *([p.name, p.email] if body.contacts else []), p.country, p.language, "、".join(p.tags or []), _result_label(p), p.source_name or recruit_insights.SOURCE_LABELS.get(p.source, ""), key.get(p.id, "")])
+    audit(db, ctx.org_id, ctx.actor, "participant.export", proj.id, count=len(rows), contacts=body.contacts, scope="selected" if chosen else "all")
+    db.commit()
+    return Response("\ufeff" + buf.getvalue(), media_type="text/csv; charset=utf-8", headers={"Content-Disposition": 'attachment; filename="participants.csv"', "Cache-Control": "no-store"})
+
+
+@router.post("/projects/{pid}/participants/export-log", status_code=204)
+def log_copy(pid: str, body: ExportLog, ctx: Ctx = Depends(require_roles(*RECRUITERS)), db: Session = Depends(get_db)):
+    """The page copied the list to the clipboard: only how many people is written to the audit log (never the content)."""
+    proj = get_project(db, ctx, pid)
+    audit(db, ctx.org_id, ctx.actor, "participant.copy", proj.id, count=body.count)
+    db.commit()
 
 
 @router.get("/projects/{pid}/recruiting/form")

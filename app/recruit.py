@@ -21,6 +21,7 @@ from .config import settings
 from .models import Interview, Participant, ScreenerAnswer
 
 MAX_ROWS = 500
+EXTERNAL_REASON = "外部名单（未经问卷甄别）"  # people brought in from another channel and invited directly: the rules do not judge them again
 MAX_TAGS = 10
 MAX_TAG_CHARS = 30
 MAX_RULES = 30
@@ -105,7 +106,7 @@ def parse_csv(text: str) -> tuple[list[ImportRow], list[dict]]:
     return rows, problems
 
 
-def import_rows(db: Session, org_id: str, project_id: str, rows: list[ImportRow], default_language: str, dry_run: bool) -> dict:
+def import_rows(db: Session, org_id: str, project_id: str, rows: list[ImportRow], default_language: str, dry_run: bool, source: str = "", source_name: str = "", invite: bool = False) -> dict:
     """Create the participants (skipping ones already in the project with the same email, or the same name and country). The caller commits.
 
     Returns {"created": n, "skipped": [{"line", "why"}]}.
@@ -126,7 +127,8 @@ def import_rows(db: Session, org_id: str, project_id: str, rows: list[ImportRow]
         if dry_run:
             continue
         screening = "eligible" if (not r.country or settings.region_open(r.country)) else "blocked_region"
-        p = Participant(org_id=org_id, project_id=project_id, name=r.name, email=r.email, country=r.country, language=r.language or default_language, screening=screening, tags=r.tags)
+        p = Participant(org_id=org_id, project_id=project_id, name=r.name, email=r.email, country=r.country, language=r.language or default_language, screening=screening, tags=r.tags,
+                        source=source, source_name=source_name, screen_result="qualified" if invite else "", screen_reason=EXTERNAL_REASON if invite else "")
         db.add(p)
         db.flush()
         screener.save(db, org_id, p.id, r.answers)
@@ -243,6 +245,9 @@ def apply_rules(db: Session, project_id: str, rules: list[dict], version: int) -
         by_person.setdefault(a.participant_id, []).append((a.question, a.answer))
     counts = {"qualified": 0, "disqualified": 0, "review": 0}
     for p in people:
+        if p.screen_reason == EXTERNAL_REASON:
+            counts["qualified"] += 1
+            continue
         p.screen_result, p.screen_reason = evaluate(rules, p, by_person.get(p.id, []))
         p.screen_version = version
         counts[p.screen_result] += 1

@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import ratelimit, recruit, recruit_form, screener
+from .. import ratelimit, recruit, recruit_form, recruit_insights, screener
 from ..audit import audit
 from ..config import settings
 from ..db import get_db
@@ -62,13 +62,18 @@ def screen_step(token: str, body: StepBody, request: Request, db: Session = Depe
         raise HTTPException(429, ratelimit.MESSAGE, headers={"Retry-After": str(wait)})
     f, _ = _live(db, token)
     _open(f)
+    questions = recruit_form.load(f.questions)
     try:
-        step = recruit_form.next_step(recruit_form.load(f.questions), body.answers)
+        step = recruit_form.next_step(questions, body.answers)
     except recruit_form.AnswerError as e:
         raise HTTPException(422, "Please check your answer / 请检查你的回答") from e
+    if not body.answers:  # the first question was opened
+        f.n_started = (f.n_started or 0) + 1
+        db.commit()
     if step.result == "out":
         f.n_out = (f.n_out or 0) + 1
         f.out_by = {**(f.out_by or {}), step.ended_at: (f.out_by or {}).get(step.ended_at, 0) + 1}
+        f.tally = recruit_insights.record(f.tally, "o", questions, step.chosen)  # only how many chose each option, never who
         db.commit()
     return {"question": step.question, "result": step.result}
 
@@ -89,8 +94,9 @@ def screen_submit(token: str, body: SubmitBody, request: Request, db: Session = 
     email = body.email.strip().lower()
     if not EMAIL.match(email):
         raise HTTPException(422, "Please enter a valid e-mail / 请填写有效的邮箱")
+    questions = recruit_form.load(f.questions)
     try:
-        step = recruit_form.next_step(recruit_form.load(f.questions), body.answers)
+        step = recruit_form.next_step(questions, body.answers)
     except recruit_form.AnswerError as e:
         raise HTTPException(422, "Please check your answers / 请检查你的回答") from e
     if step.result != "qualified":
@@ -101,11 +107,13 @@ def screen_submit(token: str, body: SubmitBody, request: Request, db: Session = 
     same = db.scalar(select(Participant.id).where(Participant.project_id == proj.id, Participant.email == email, Participant.anonymized_at.is_(None)))
     if same is None:
         p = Participant(org_id=proj.org_id, project_id=proj.id, name=body.name.strip(), email=email, country=country, language=proj.language,
-                        tags=recruit.clean_tags(step.tags), screening="eligible", screen_result="qualified", screen_reason=f"招募问卷（第 {f.version} 版）：符合")
+                        tags=recruit.clean_tags(step.tags), screening="eligible", screen_result="qualified", screen_reason=f"招募问卷（第 {f.version} 版）：符合",
+                        source="link", source_name="问卷链接 / 二维码")
         db.add(p)
         db.flush()
         screener.save(db, proj.org_id, p.id, step.items)
         f.n_qualified = (f.n_qualified or 0) + 1
+        f.tally = recruit_insights.record(f.tally, "q", questions, step.chosen)
         audit(db, proj.org_id, "participant:screen", "recruit.form_qualified", proj.id, participant=p.id)
     db.commit()
     return {"ok": True}

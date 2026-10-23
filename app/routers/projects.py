@@ -3,7 +3,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import member_scopes, plans, screener
+from .. import member_scopes, plans, recruit_insights, screener
 from .. import methods as methods_mod
 from ..audit import audit
 from ..config import settings
@@ -58,10 +58,10 @@ def project_out(p: Project, plan_status: str = "", setup: dict | None = None, ed
             "retention_days": days_of(p), "methods": methods_mod.of(p), "plan_status": plan_status, "setup": setup, "editing": editing}
 
 
-def participant_out(p: Participant, screener_count: int = 0) -> dict:
+def participant_out(p: Participant, screener_count: int = 0, key_answers: str = "") -> dict:
     return {"id": p.id, "name": p.name, "email": p.email, "country": p.country, "language": p.language,
             "screening": p.screening, "anonymized": p.anonymized_at is not None, "screener": screener_count,
-            "tags": p.tags or [], "screen_result": p.screen_result, "screen_reason": p.screen_reason}
+            "tags": p.tags or [], "screen_result": p.screen_result, "screen_reason": p.screen_reason, "source": p.source, "source_name": p.source_name, "key_answers": key_answers}
 
 
 def get_project(db: Session, ctx: Ctx, pid: str) -> Project:
@@ -159,7 +159,7 @@ def add_participant(pid: str, body: NewParticipant, ctx: Ctx = Depends(require_r
     country = body.country.upper()
     screening = "eligible" if (not country or settings.region_open(country)) else "blocked_region"  # empty: declared at consent
     p = Participant(org_id=ctx.org_id, project_id=proj.id, name=body.name, email=body.email, country=country,
-                    language=body.language, screening=screening)
+                    language=body.language, screening=screening, source="manual", source_name="手动添加")
     db.add(p)
     db.flush()  # assigns the id, so the audit row points at this participant
     screener.save(db, ctx.org_id, p.id, answers)
@@ -176,7 +176,8 @@ def list_participants(pid: str, tag: str = "", country: str = "", language: str 
     people = [p for p in people if (not tag or tag in (p.tags or [])) and (not country or p.country == country.upper()) and (not language or p.language == language)
               and (not screen or p.screen_result == screen)]
     counted = screener.counts(db, [p.id for p in people])
-    return [participant_out(p, counted.get(p.id, 0)) for p in people]
+    key = recruit_insights.key_answers(db, [p.id for p in people])
+    return [participant_out(p, counted.get(p.id, 0), key.get(p.id, "")) for p in people]
 
 
 def _own_participant(db: Session, ctx: Ctx, part_id: str) -> Participant:

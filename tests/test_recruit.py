@@ -14,7 +14,7 @@ CSV = ("name,email,country,language,tags,年龄,是否使用过 Acme\n"
 
 
 def imp(org, pid, text=CSV, dry=False, headers=None):
-    return org.c.post(f"/api/projects/{pid}/participants/import", headers=headers or org.h(), json={"csv": text, "dry_run": dry})
+    return org.c.post(f"/api/projects/{pid}/participants/import", headers=headers or org.h(), json={"csv": text, "dry_run": dry, "source_name": "测试名单", "confirm_basis": True, "mode": "screen"})
 
 
 def people(org, pid, **params):

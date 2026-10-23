@@ -174,7 +174,7 @@ def upsert_people(db: Session, project: Project, people: list, now: datetime | N
         tags = [_text(t, 30) for t in (p.get("tags") or []) if _text(t, 30)][:10]
         if row is None:
             row = Participant(org_id=project.org_id, project_id=project.id, external_id=ext, name=_text(p["name"], 100), email=email, country=country, language=lang or project.language,
-                              screening="eligible" if (not country or settings.region_open(country)) else "blocked_region", tags=tags)
+                              screening="eligible" if (not country or settings.region_open(country)) else "blocked_region", tags=tags, source="platform", source_name="外部问卷平台")
             db.add(row)
             created += 1
         elif row.anonymized_at is None:

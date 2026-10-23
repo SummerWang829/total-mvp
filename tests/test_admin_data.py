@@ -21,7 +21,7 @@ def closed_project(org, days_ago=0):
 
 
 def add_extras(org, pid):
-    org.c.post(f"/api/projects/{pid}/participants/import", headers=org.h(), json={"csv": "name,email,年龄\n没访谈的人,n@example.com,30\n"})
+    org.c.post(f"/api/projects/{pid}/participants/import", headers=org.h(), json={"csv": "name,email,年龄\n没访谈的人,n@example.com,30\n", "source_name": "测试名单", "confirm_basis": True})
     sid = org.c.post(f"/api/projects/{pid}/listening/sources", headers=org.h(), json={"kind": "mock", "name": "m", "config": {"brand": "A", "lang": "en"}}).json()["id"]
     org.c.post(f"/api/listening/sources/{sid}/run", headers=org.h())
     org.c.post("/api/repo/documents", headers=org.h(), json={"title": "项目文档", "text": "只属于这个项目的笔记", "project_id": pid})

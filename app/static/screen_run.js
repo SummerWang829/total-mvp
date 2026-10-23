@@ -33,6 +33,10 @@ function scrRunner(host, { step, onEnd, lang = "en", onStep }) {
     host.querySelector("#scrnext").onclick = go;
     const b = host.querySelector("#scrback"); if (b) b.onclick = back;
     host.querySelectorAll("input[type=radio]").forEach((r) => (r.onchange = () => (host.querySelector("#screrr").hidden = true)));
+    if (q.type === "multi") host.querySelectorAll(`input[name=scr_${q.id}]`).forEach((c) => (c.onchange = () => {  // choosing one option unticks the ones it cannot go with
+      if (!c.checked) return; const o = q.options.find((x) => x.id === c.value) || { excl: [] };
+      host.querySelectorAll(`input[name=scr_${q.id}]`).forEach((d) => { if (d !== c && (o.excl || []).includes(d.value)) d.checked = false; });
+    }));
   }
   async function run() {
     let r;
