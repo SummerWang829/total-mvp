@@ -394,6 +394,7 @@ nav.side .dotc{width:7px;height:7px;border-radius:50%;background:var(--sc,#FF6A0
 :root[data-theme="dark"] .pill.o,:root[data-theme="dark"] .tag.o{color:#FFB27A}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .pill.o,:root:not([data-theme="light"]) .tag.o{color:#FFB27A}}
 .tag.nw{white-space:nowrap}
+.stagebox{display:flex;flex-direction:column;gap:8px;background:var(--wash);border-radius:10px;padding:10px 12px;margin-top:8px}
 .chk.wzbig{min-width:36px;min-height:36px;justify-content:center;align-items:center}
 .mq{color:var(--green);font-weight:700}.mi{color:var(--orange-ink);font-weight:700}.mf{color:#7A5F00;font-weight:700}
 :root[data-theme="dark"] .mf{color:#E8CF7A}

@@ -3,7 +3,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import plans, screener
+from .. import member_scopes, plans, screener
 from .. import methods as methods_mod
 from ..audit import audit
 from ..config import settings
@@ -243,12 +243,19 @@ def _can_manage(db: Session, ctx: Ctx, pid: str) -> bool:
 def _members_out(db: Session, ctx: Ctx, pid: str) -> dict:
     rows = db.execute(select(ProjectMember, User).join(User, User.id == ProjectMember.user_id).where(ProjectMember.project_id == pid)
                       .order_by(ProjectMember.created_at)).all()
-    return {"can_manage": _can_manage(db, ctx, pid), "admins_see_all": True,
-            "members": [{"user_id": u.id, "name": u.name, "email": u.email, "role": u.role, "active": u.active, "is_owner": m.is_owner} for m, u in rows]}
+    options = member_scopes.stage_options(db, db.get(Project, pid))
+    return {"can_manage": _can_manage(db, ctx, pid), "admins_see_all": True, "stages": options,
+            "members": [{"user_id": u.id, "name": u.name, "email": u.email, "role": u.role, "research_kind": u.research_kind or "all", "active": u.active, "is_owner": m.is_owner,
+                         "scopes": m.scopes or []} for m, u in rows]}
 
 
 class NewMember(BaseModel):
     user_id: str
+    scopes: list[str] | None = None  # the research stages; None = by the person's role
+
+
+class ScopesBody(BaseModel):
+    scopes: list[str] = Field(default_factory=list, max_length=10)
 
 
 @router.get("/projects/{pid}/members")
@@ -271,10 +278,33 @@ def add_member(pid: str, body: NewMember, ctx: Ctx = Depends(require_roles(*STAF
         raise HTTPException(422, "管理员可以看到所有项目，不需要添加")
     if user.role not in MEMBER_ROLES:
         raise HTTPException(422, "只有研究员、技术支持、项目经理和客户（只读）可以加入项目；主持人和观察员是按场次指派的")
+    options = member_scopes.stage_options(db, proj)
+    try:
+        scopes = member_scopes.clean(body.scopes, options) if body.scopes is not None else member_scopes.default_scopes(user, options)
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from e
     if not db.scalar(select(ProjectMember.id).where(ProjectMember.project_id == proj.id, ProjectMember.user_id == user.id)):
-        db.add(ProjectMember(org_id=ctx.org_id, project_id=proj.id, user_id=user.id, added_by=ctx.user.id))
+        db.add(ProjectMember(org_id=ctx.org_id, project_id=proj.id, user_id=user.id, added_by=ctx.user.id, scopes=scopes))
         audit(db, ctx.org_id, ctx.actor, "project.member.add", proj.id, user=user.id)
         db.commit()
+    return _members_out(db, ctx, proj.id)
+
+
+@router.put("/projects/{pid}/members/{uid}/scopes")
+def set_member_scopes(pid: str, uid: str, body: ScopesBody, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    """Change which research stages a member takes part in (an admin or an owner of the project); a person can have several."""
+    proj = get_project(db, ctx, pid)
+    if not _can_manage(db, ctx, proj.id):
+        raise HTTPException(403, "只有项目负责人或管理员能修改成员的研究阶段")
+    m = db.scalar(select(ProjectMember).where(ProjectMember.project_id == proj.id, ProjectMember.user_id == uid))
+    if m is None:
+        raise HTTPException(404, "这位同事不在项目里")
+    try:
+        m.scopes = member_scopes.clean(body.scopes, member_scopes.stage_options(db, proj))
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from e
+    audit(db, ctx.org_id, ctx.actor, "project.member.scopes", proj.id, user=uid, scopes=",".join(m.scopes))
+    db.commit()
     return _members_out(db, ctx, proj.id)
 
 

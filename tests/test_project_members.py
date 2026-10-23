@@ -180,3 +180,39 @@ def test_the_backfill_leaves_a_project_that_already_has_members_alone(org):
     with SessionLocal() as db:
         assert project_members.backfill(db) == 0
         assert db.query(ProjectMember).filter_by(project_id=pid).count() == 1   # only the creator: the second researcher was not added behind anyone's back
+
+
+# ---------- research stages per member ----------
+def test_members_have_research_stages_by_role_and_can_have_several(org):
+    from test_plans import approved, draft
+    pid = draft(org)["id"]
+    approved(org, pid, design="iq", listening=True)
+    org.c.post(f"/api/projects/{pid}/plan/publish", headers=org.h())
+    d = org.c.get(f"/api/projects/{pid}/members", headers=org.h()).json()
+    assert [s["key"] for s in d["stages"]] == ["depth", "quant", "listening"] and d["stages"][0]["where"] == ["新加坡"]
+    quant = org.c.post("/api/users", headers=org.h("admin"), json={"name": "量", "email": "liang@a.com", "password": "password123", "role": "researcher", "research_kind": "quant"}).json()["id"]
+    qual = org.c.post("/api/users", headers=org.h("admin"), json={"name": "性", "email": "xing@a.com", "password": "password123", "role": "researcher", "research_kind": "qual"}).json()["id"]
+    pm = org.c.post("/api/users", headers=org.h("admin"), json={"name": "经", "email": "jing@a.com", "password": "password123", "role": "recruiter"}).json()["id"]
+    for uid in (quant, qual, pm):
+        assert org.c.post(f"/api/projects/{pid}/members", headers=org.h(), json={"user_id": uid}).status_code == 201
+    got = {m["user_id"]: m["scopes"] for m in org.c.get(f"/api/projects/{pid}/members", headers=org.h()).json()["members"]}
+    assert got[quant] == ["quant", "listening"] and got[qual] == ["depth", "listening"] and got[pm] == []  # by role, limited to the stages the project has
+    r = org.c.put(f"/api/projects/{pid}/members/{pm}/scopes", headers=org.h(), json={"scopes": ["quant", "depth"]})
+    assert r.status_code == 200 and {m["user_id"]: m["scopes"] for m in r.json()["members"]}[pm] == ["depth", "quant"]  # several at once, in the standard order
+    assert org.c.put(f"/api/projects/{pid}/members/{pm}/scopes", headers=org.h(), json={"scopes": ["group"]}).status_code == 422  # this project has no focus groups
+    assert org.c.put(f"/api/projects/{pid}/members/nobody/scopes", headers=org.h(), json={"scopes": []}).status_code == 404
+
+
+def test_choosing_stages_when_adding_and_the_plan_seeds_them_at_publish(org):
+    from test_plans import approved, draft
+    pid = draft(org)["id"]
+    team = [{"user_id": org.users["researcher"], "q": True, "i": True, "f": False, "l": False}]
+    approved(org, pid, design="iq", team=team)
+    org.c.post(f"/api/projects/{pid}/plan/publish", headers=org.h())
+    got = {m["user_id"]: m["scopes"] for m in org.c.get(f"/api/projects/{pid}/members", headers=org.h()).json()["members"]}
+    assert got[org.users["researcher"]] == ["depth", "quant"]  # what the plan's people table ticked
+    who = org.c.post("/api/users", headers=org.h("admin"), json={"name": "x", "email": "x@a.com", "password": "password123", "role": "support"}).json()["id"]
+    r = org.c.post(f"/api/projects/{pid}/members", headers=org.h(), json={"user_id": who, "scopes": ["depth"]})
+    assert {m["user_id"]: m["scopes"] for m in r.json()["members"]}[who] == ["depth"]
+    other = org.c.post("/api/users", headers=org.h("admin"), json={"name": "y", "email": "y@a.com", "password": "password123", "role": "support"}).json()["id"]
+    assert org.c.post(f"/api/projects/{pid}/members", headers=org.h(), json={"user_id": other, "scopes": ["zzz"]}).status_code == 422

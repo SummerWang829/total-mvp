@@ -239,13 +239,18 @@ def publish_plan(pid: str, ctx: Ctx = Depends(require_roles(*PLAN_ROLES)), db: S
     project.retention_days = cfg.retention
     if cfg.subs:
         project.language = LANG_CODE.get(cfg.subs[0].lang, project.language)
-    have = {m for (m,) in db.execute(select(ProjectMember.user_id).where(ProjectMember.project_id == project.id))}
+    existing = {m.user_id: m for m in db.scalars(select(ProjectMember).where(ProjectMember.project_id == project.id))}
+    have = set(existing)
     wanted = [m.user_id for m in cfg.team]
     users = {u.id: u for u in db.scalars(select(User).where(User.org_id == ctx.org_id, User.id.in_(wanted)))} if wanted else {}
     for uid_ in dict.fromkeys(wanted):
         u = users.get(uid_)
+        m = next(x for x in cfg.team if x.user_id == uid_)
+        scopes = [k for k, on in (("depth", m.i), ("group", m.f), ("quant", m.q), ("listening", m.l)) if on]  # what the plan's people table ticked for them
+        if uid_ in existing and not existing[uid_].scopes:
+            existing[uid_].scopes = scopes  # a person already on the project (the creator...) who has no stages yet gets the ticked ones
         if u and u.active and u.role in MEMBER_ROLES and uid_ not in have:
-            db.add(ProjectMember(org_id=ctx.org_id, project_id=project.id, user_id=uid_, is_owner=False, added_by=ctx.user.id))
+            db.add(ProjectMember(org_id=ctx.org_id, project_id=project.id, user_id=uid_, is_owner=False, added_by=ctx.user.id, scopes=scopes))
     plan.status, plan.version, plan.published_at = "published", plan.version + 1, utcnow()
     plan.published_json = plan.config_json
     audit(db, ctx.org_id, ctx.actor, "plan.publish", project.id, methods=",".join(cfg.methods), hash=plan.review_hash, version=plan.version)

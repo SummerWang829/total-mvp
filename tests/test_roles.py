@@ -225,3 +225,19 @@ def test_the_project_manager_can_unlock_a_plan_but_never_sees_contact_details(or
     assert people and all(set(x) == {"id", "name", "role", "active", "research_kind"} for x in people)  # names and roles, no email or phone
     assert org.c.get("/api/users", headers=pm["h"]).status_code == 403
     assert org.c.post(f"/api/projects/{pid}/plan/approve", headers=pm["h"]).status_code == 403
+
+
+def test_a_client_can_be_added_with_a_brand_typed_by_name(org):
+    h = org.h("admin")
+    base = {"name": "客户乙", "email": "yi@client.com", "password": "password123", "role": "viewer"}
+    assert org.c.post("/api/users", headers=h, json=base).status_code == 422  # neither a brand id nor a name
+    a = org.c.post("/api/users", headers=h, json={**base, "brand_name": "雪花"}).json()
+    assert a["brand_id"] and [b["name"] for b in org.c.get("/api/brands", headers=h).json()] == ["雪花"]  # a new name creates the brand
+    b = org.c.post("/api/users", headers=h, json={**base, "name": "客户丙", "email": "bing@client.com", "brand_name": "  雪花 "}).json()
+    assert b["brand_id"] == a["brand_id"] and len(org.c.get("/api/brands", headers=h).json()) == 1  # the same name reuses it
+    c = org.c.post("/api/users/invites", headers=h, json={"email": "ding@client.com", "role": "viewer", "brand_name": "新品牌"})
+    assert c.status_code == 201 and len(org.c.get("/api/brands", headers=h).json()) == 2
+    uid = org.c.post("/api/users", headers=h, json={"name": "研", "email": "yan@a.com", "password": "password123", "role": "researcher"}).json()["id"]
+    r = org.c.patch(f"/api/users/{uid}", headers=h, json={"role": "viewer", "brand_name": "雪花"})
+    assert r.status_code == 200 and r.json()["brand_id"] == a["brand_id"]
+    assert org.c.delete(f"/api/brands/{a['brand_id']}", headers=h).status_code == 409  # still protected on the server

@@ -37,6 +37,7 @@ class NewUser(BaseModel):
     role: str
     research_kind: str = "all"
     brand_id: str | None = None
+    brand_name: str = Field(default="", max_length=100)  # a client's brand typed by name: an existing one is reused, a new one is created
     job_title: str = Field(default="", max_length=100)
     phone: str = Field(default="", max_length=60)
 
@@ -46,17 +47,34 @@ def user_out(u: User) -> dict:
             "brand_id": u.brand_id, "job_title": u.job_title or "", "phone": u.phone or ""}
 
 
-def profile(db: Session, ctx: Ctx, role: str, kind: str, brand_id: str | None, title: str, phone: str) -> dict:
-    """The role-specific fields of an account, checked: a researcher's kind, and a client's brand (a client is always added under a brand).
+def _brand_for(db: Session, ctx: Ctx, brand_id: str | None, brand_name: str) -> str | None:
+    """The brand a client belongs to: by id, or by the name typed in (same name in any letter case = the existing brand; a new name creates the brand). None when neither is given."""
+    if brand_id and db.scalar(select(Brand.id).where(Brand.id == brand_id, Brand.org_id == ctx.org_id)):
+        return brand_id
+    name = " ".join((brand_name or "").split())
+    if not name:
+        return None
+    same = next((b for b in db.scalars(select(Brand).where(Brand.org_id == ctx.org_id)) if b.name.lower() == name.lower()), None)
+    if same is None:
+        same = Brand(org_id=ctx.org_id, name=name[:100])
+        db.add(same)
+        db.flush()
+        audit(db, ctx.org_id, ctx.actor, "brand.create", same.id)
+    return same.id
+
+
+def profile(db: Session, ctx: Ctx, role: str, kind: str, brand_id: str | None, title: str, phone: str, brand_name: str = "") -> dict:
+    """The role-specific fields of an account, checked: a researcher's kind, and a client's brand (a client is always added under a brand, typed by name or picked).
 
     Raises:
-        HTTPException: 422 for a kind that does not exist, or a client without a brand of this company.
+        HTTPException: 422 for a kind that does not exist, or a client without a brand.
     """
     if kind not in RESEARCH_KINDS:
         raise HTTPException(422, "研究员类型不对")
     if role == "viewer":
-        if not brand_id or not db.scalar(select(Brand.id).where(Brand.id == brand_id, Brand.org_id == ctx.org_id)):
-            raise HTTPException(422, "客户要先选一个品牌（没有就先添加品牌）")
+        brand_id = _brand_for(db, ctx, brand_id, brand_name)
+        if not brand_id:
+            raise HTTPException(422, "客户要填写品牌")
         return {"research_kind": "all", "brand_id": brand_id, "job_title": title.strip(), "phone": phone.strip()}
     return {"research_kind": kind if role == "researcher" else "all", "brand_id": None, "job_title": "", "phone": ""}
 
@@ -151,7 +169,7 @@ def create_user(body: NewUser, ctx: Ctx = Depends(require_roles("admin")), db: S
     email = body.email.lower()
     if db.scalar(select(User).where(User.email == email)):
         raise HTTPException(409, "邮箱已被使用")
-    extra = profile(db, ctx, body.role, body.research_kind, body.brand_id, body.job_title, body.phone)
+    extra = profile(db, ctx, body.role, body.research_kind, body.brand_id, body.job_title, body.phone, body.brand_name)
     u = User(org_id=ctx.org_id, email=email, name=body.name, role=body.role, password_hash=hash_password(body.password), **extra)
     db.add(u)
     audit(db, ctx.org_id, ctx.actor, "user.create", u.id, role=body.role)
@@ -170,6 +188,7 @@ class Patch(BaseModel):
     active: bool | None = None
     research_kind: str | None = None
     brand_id: str | None = None
+    brand_name: str = Field(default="", max_length=100)
     job_title: str | None = Field(default=None, max_length=100)
     phone: str | None = Field(default=None, max_length=60)
 
@@ -197,9 +216,9 @@ def patch_user(uid: str, body: Patch, ctx: Ctx = Depends(require_roles("admin"))
     if losing_admin and _other_active_admins(db, ctx, u.id) == 0:
         raise HTTPException(409, "公司至少要保留一位管理员")
     new_role = body.role if body.role is not None else u.role
-    if body.role is not None or any(x is not None for x in (body.research_kind, body.brand_id, body.job_title, body.phone)):
+    if body.role is not None or body.brand_name or any(x is not None for x in (body.research_kind, body.brand_id, body.job_title, body.phone)):
         extra = profile(db, ctx, new_role, body.research_kind or u.research_kind or "all", body.brand_id if body.brand_id is not None else u.brand_id,
-                        body.job_title if body.job_title is not None else u.job_title or "", body.phone if body.phone is not None else u.phone or "")
+                        body.job_title if body.job_title is not None else u.job_title or "", body.phone if body.phone is not None else u.phone or "", body.brand_name)
         for k, v in extra.items():
             setattr(u, k, v)
     if body.role is not None and body.role != u.role:
@@ -218,6 +237,7 @@ class InviteIn(BaseModel):
     send_email: bool = False
     research_kind: str = "all"
     brand_id: str | None = None
+    brand_name: str = Field(default="", max_length=100)
     job_title: str = Field(default="", max_length=100)
     phone: str = Field(default="", max_length=60)
 
@@ -297,7 +317,7 @@ def create_invite(body: InviteIn, ctx: Ctx = Depends(require_roles("admin")), db
         raise HTTPException(409, "这个邮箱已经是成员了")
     if body.send_email:
         _need_mail()
-    extra = profile(db, ctx, body.role, body.research_kind, body.brand_id, body.job_title, body.phone)
+    extra = profile(db, ctx, body.role, body.research_kind, body.brand_id, body.job_title, body.phone, body.brand_name)
     inv, token = _make_invite(db, ctx, "join", email, body.role, extra=extra)
     return _maybe_emailed(db, inv, token, body.send_email)
 

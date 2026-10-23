@@ -886,6 +886,7 @@ class ProjectMember(Base):
     project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
     is_owner: Mapped[bool] = mapped_column(Boolean, default=False)  # may add and remove members (an admin always may)
+    scopes: Mapped[list] = mapped_column(JSON, default=list)  # the research stages (methods: depth, group, quant, listening, async) this person takes part in; several at once
     added_by: Mapped[str] = mapped_column(String(32), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 

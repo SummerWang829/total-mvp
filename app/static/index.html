@@ -905,25 +905,45 @@ async function poolView(p) {
   app.querySelectorAll("[data-dn]").forEach((b) => b.onclick = guard(async () => { if (!confirm("删除这条笔记？")) return; await api(`/pool/notes/${b.dataset.dn}`, { method: "DELETE" }); render(); }));
 }
 
-async function membersView(p) {  // who works on this project (admins see every project; moderators and observers are assigned per interview)
+async function membersView(p) {  // who works on this project and in which research stages (admins see every project; moderators and observers are assigned per interview)
   const my = renderSeq;
   const [d, us] = await Promise.all([api(`/projects/${p.id}/members`), api("/users")]);
   if (stale(my)) return;
   const inProject = new Set(d.members.map((m) => m.user_id));
   const candidates = us.filter((u) => ["researcher", "support", "recruiter", "viewer"].includes(u.role) && u.active && !inProject.has(u.id));
-  const row = (m) => `<tr><td><b>${esc(m.name)}</b>${m.role !== "researcher" ? ` <span class="tag">${ROLE[m.role]}</span>` : ""}${m.user_id === ME.id ? ' <span class="tag">我</span>' : ""}${m.active ? "" : ' <span class="tag">已停用</span>'}</td><td class="mut">${esc(m.email)}</td>
+  const stageName = Object.fromEntries(d.stages.map((s) => [s.key, s.label]));
+  const roleName = (m) => (m.role === "researcher" ? { quant: "定量研究员", qual: "定性研究员", all: "全科研究员" }[m.research_kind || "all"] : ROLE[m.role]);
+  const defaults = (u) => {  // the stages a person gets by role (the same rule the server uses; the person adding can change it)
+    const all = d.stages.map((s) => s.key), k = u.research_kind || "all";
+    const want = ["admin", "viewer", "support"].includes(u.role) ? all : u.role === "researcher" ? (k === "quant" ? ["quant", "listening"] : k === "qual" ? ["depth", "group", "listening", "async"] : all) : [];
+    return all.filter((x) => want.includes(x));
+  };
+  const stageBox = (on) => `<div class="stagebox"><div class="sm mut">本项目的研究阶段（可多选，同一个人可以同时负责多个）</div>${d.stages.map((s, i) => `<label class="chk"><input type="checkbox" name="scopes" value="${s.key}" ${on.includes(s.key) ? "checked" : ""}><span><b>${s.label}</b>${s.where.length ? ` <span class="mut sm">${esc(s.where.join("、"))}</span>` : ""}</span></label>`).join("") || '<p class="sm mut" style="margin:0">这个项目还没有研究阶段。</p>'}</div>`;
+  const row = (m) => `<tr><td><b>${esc(m.name)}</b>${m.role !== "researcher" ? ` <span class="tag">${roleName(m)}</span>` : ` <span class="tag">${roleName(m)}</span>`}${m.user_id === ME.id ? ' <span class="tag">我</span>' : ""}${m.active ? "" : ' <span class="tag">已停用</span>'}</td><td class="mut">${esc(m.email)}</td>
       <td>${m.is_owner ? '<span class="tag ok">项目负责人</span>' : '<span class="tag">成员</span>'}</td>
-      <td class="acts">${d.can_manage ? `<button class="s" data-owner="${m.user_id}" data-to="${m.is_owner ? 0 : 1}">${m.is_owner ? "取消负责人" : "设为负责人"}</button> <button class="s warn" data-rm="${m.user_id}">移出项目</button>` : ""}</td></tr>`;
-  shell(`${head("项目成员", "只有加入这个项目的研究员才能看到它。管理员可以看到所有项目；主持人和观察员（客户）按场次指派，不在这里设置。", d.can_manage ? `<button class="p" id="addmem" type="button">添加项目成员</button>` : "")}
-    <div class="card scroll" style="padding:6px 10px"><table class="tbl rc"><thead><tr><th>姓名</th><th>邮箱</th><th>身份</th><th>操作</th></tr></thead><tbody>${d.members.map(row).join("")}</tbody></table></div>
+      <td>${(m.scopes || []).length ? m.scopes.filter((k) => stageName[k]).map((k) => `<span class="tag o nw">${stageName[k]}</span>`).join("") : '<span class="mut sm">未指定</span>'}</td>
+      <td class="acts">${d.can_manage ? `<button class="s" data-scopes="${m.user_id}">改阶段</button> <button class="s" data-owner="${m.user_id}" data-to="${m.is_owner ? 0 : 1}">${m.is_owner ? "取消负责人" : "设为负责人"}</button> <button class="s warn" data-rm="${m.user_id}">移出项目</button>` : ""}</td></tr>`;
+  shell(`${head("项目成员", "只有加入这个项目的研究员才能看到它。管理员可以看到所有项目（自动参与全部阶段）；主持人和观察员（客户）按场次指派，不在这里设置。", d.can_manage ? `<button class="p" id="addmem" type="button">添加项目成员</button>` : "")}
+    <div class="card scroll" style="padding:6px 10px"><table class="tbl rc"><thead><tr><th>姓名</th><th>邮箱</th><th>身份</th><th>负责的阶段</th><th>操作</th></tr></thead><tbody>${d.members.map(row).join("")}</tbody></table></div>
     ${d.can_manage ? "" : `<div class="note">只有项目负责人或管理员能添加和移出成员。</div>`}`, { active: "members", p });
   const redo = guard(async (path, opts) => { const r = await api(path, opts); if (r.left) { toast("你已离开这个项目"); location.hash = "#/projects"; return; } toast("已更新"); render(); });
   const am = $("#addmem"); if (am) am.onclick = () => {
-    const m = modal(`<h2>添加项目成员</h2>${candidates.length ? `<form id="addm"><label class="f"><span>选择同事（研究员、项目经理或客户）</span><select name="user_id" required>${candidates.map((u) => `<option value="${u.id}">${esc(u.name)}（${ROLE[u.role]} · ${esc(u.email)}）</option>`).join("")}</select></label><div class="row" style="margin-top:14px"><button class="p">添加</button><button type="button" id="amc">取消</button></div></form>`
+    const m = modal(`<h2>添加项目成员</h2>${candidates.length ? `<form id="addm"><label class="f"><span>选择同事（研究员、技术支持、项目经理或客户）</span><select name="user_id" required>${candidates.map((u) => `<option value="${u.id}">${esc(u.name)}（${roleName(u)} · ${esc(u.email)}）</option>`).join("")}</select></label>
+        <div id="stg">${stageBox(defaults(candidates[0]))}</div><p class="sm mut">按角色自动勾好，可以改；没有用到的方法不会出现在这里。</p><div class="row" style="margin-top:14px"><button class="p">添加</button><button type="button" id="amc">取消</button></div></form>`
       : `<p class="mut">公司里没有可以添加的同事了。请管理员先在“团队”里添加用户并赋予身份。</p><div class="row"><button type="button" id="amc">知道了</button></div>`}`);
     $("#amc", m).onclick = () => m.remove();
-    const f = $("#addm", m); if (f) f.onsubmit = (e) => { e.preventDefault(); const uid = new FormData(f).get("user_id"); m.remove(); redo(`/projects/${p.id}/members`, { method: "POST", body: { user_id: uid } }); };
+    const f = $("#addm", m);
+    if (f) {
+      f.querySelector("select[name=user_id]").onchange = (e) => { $("#stg", m).innerHTML = stageBox(defaults(candidates.find((u) => u.id === e.target.value))); };
+      f.onsubmit = (e) => { e.preventDefault(); const fd = new FormData(f), uid = fd.get("user_id"), scopes = fd.getAll("scopes"); m.remove(); redo(`/projects/${p.id}/members`, { method: "POST", body: { user_id: uid, scopes } }); };
+    }
   };
+  app.querySelectorAll("[data-scopes]").forEach((b) => b.onclick = () => {
+    const mem = d.members.find((x) => x.user_id === b.dataset.scopes);
+    const m = modal(`<h2>${esc(mem.name)} 负责的阶段</h2><form id="sf">${stageBox(mem.scopes || [])}<div class="row" style="margin-top:14px"><button class="p">保存</button><button type="button" id="sc">取消</button></div></form>`);
+    $("#sc", m).onclick = () => m.remove();
+    $("#sf", m).onsubmit = (e) => { e.preventDefault(); const scopes = new FormData(e.target).getAll("scopes"); m.remove(); redo(`/projects/${p.id}/members/${mem.user_id}/scopes`, { method: "PUT", body: { scopes } }); };
+  });
   app.querySelectorAll("[data-rm]").forEach((b) => b.onclick = () => { if (confirm("移出后，这位同事马上看不到这个项目的任何内容。继续？")) redo(`/projects/${p.id}/members/${b.dataset.rm}`, { method: "DELETE" }); });
   app.querySelectorAll("[data-owner]").forEach((b) => b.onclick = () => redo(`/projects/${p.id}/members/${b.dataset.owner}/owner`, { method: "PUT", body: { is_owner: b.dataset.to === "1" } }));
 }
@@ -1314,16 +1334,16 @@ async function teamView() {
   const CHOICES = [["researcher|all", "全科研究员"], ["researcher|quant", "定量研究员"], ["researcher|qual", "定性研究员"], ["recruiter|", "项目经理"], ["moderator|", "主持人"], ["observer|", "观察员"], ["viewer|", "客户（只读）"], ["support|", "技术支持"], ["admin|", "管理员"]];
   const roleOpts = (cur) => CHOICES.map(([k, n]) => `<option value="${k}"${k === cur ? " selected" : ""}>${n}</option>`).join("");
   const clientInfo = (u) => (u.role === "viewer" ? `<div class="sm mut">${esc(brandName(u.brand_id) || "（没有品牌）")}${u.job_title ? " · " + esc(u.job_title) : ""}${u.phone ? " · " + esc(u.phone) : ""}</div>` : "");
-  const clientFields = `<div id="cl" hidden><label class="f"><span>品牌（客户要先属于一个品牌）</span><select name="brand_id">${brands.length ? brands.map((b) => `<option value="${b.id}">${esc(b.name)}</option>`).join("") : '<option value="">还没有品牌，先到“品牌”里添加</option>'}</select></label>
+  const clientFields = `<div id="cl" hidden><label class="f"><span>品牌（直接输入；没有的会自动新建）</span><input name="brand_name" list="brandlist" maxlength="100" autocomplete="off" placeholder="例如：雪花"><datalist id="brandlist">${brands.map((b) => `<option value="${esc(b.name)}"></option>`).join("")}</datalist></label>
       <label class="f"><span>职位</span><input name="job_title" maxlength="100"></label><label class="f"><span>联系方式（电话或其他）</span><input name="phone" maxlength="60"></label></div>`;
   const wireRole = (m) => { const sel = $("select[name=role]", m), cl = $("#cl", m), upd = () => (cl.hidden = !sel.value.startsWith("viewer")); sel.onchange = upd; upd(); };
-  const splitRole = (fd) => { const [role, kind] = String(fd.role).split("|"); fd.role = role; if (kind) fd.research_kind = kind; if (role !== "viewer") { delete fd.brand_id; delete fd.job_title; delete fd.phone; } return fd; };
+  const splitRole = (fd) => { const [role, kind] = String(fd.role).split("|"); fd.role = role; if (kind) fd.research_kind = kind; if (role !== "viewer") { delete fd.brand_name; delete fd.job_title; delete fd.phone; } return fd; };
   const row = (u) => u.id === ME.id
     ? `<tr><td><b>${esc(u.name)}</b> <span class="tag">我</span></td><td class="mut">${esc(u.email)}</td><td><span class="tag">${roleLabel(u)}</span></td><td></td></tr>`
     : `<tr><td><b>${esc(u.name)}</b>${u.active ? "" : ' <span class="tag">已停用</span>'}${clientInfo(u)}</td><td class="mut">${esc(u.email)}</td>
         <td><select data-role="${u.id}" aria-label="${esc(u.name)}的角色">${roleOpts(roleKey(u))}</select></td>
         <td><button data-reset="${u.id}">重置密码链接</button> ${MAIL ? `<button data-resetmail="${u.id}">邮件发重置链接</button> ` : ""}<button data-act="${u.id}" data-to="${u.active ? 0 : 1}">${u.active ? "停用" : "启用"}</button></td></tr>`;
-  shell(`${head("团队", "管理员在这里添加成员并赋予身份：全科/定量/定性研究员、项目经理、主持人、观察员、客户、技术支持。客户要先添加品牌，再填职位和联系方式；观察员只能隐身旁听被指派的场次，看不到受访者姓名。", `<button class="p" id="ni">邀请成员</button> <button id="nu">直接添加</button> <button id="nb">品牌</button>`)}
+  shell(`${head("团队", "管理员在这里添加成员并赋予身份：全科/定量/定性研究员、项目经理、主持人、观察员、客户、技术支持。客户要填品牌（直接输入，没有的会自动新建）、职位和联系方式；观察员只能隐身旁听被指派的场次，看不到受访者姓名。", `<button class="p" id="ni">邀请成员</button> <button id="nu">直接添加</button>`)}
     <div class="card scroll" style="padding:6px 10px"><table class="tbl rc"><thead><tr><th>姓名</th><th>邮箱</th><th>角色</th><th>操作</th></tr></thead><tbody>${us.map(row).join("")}</tbody></table></div>
     ${invs.length ? `<h2>等待加入（链接 7 天有效）</h2><div class="card scroll" style="padding:6px 10px"><table class="tbl rc"><thead><tr><th>邮箱</th><th>角色</th><th>类型</th><th></th></tr></thead><tbody>${invs.map((i) => `<tr><td>${esc(i.email)}</td><td><span class="tag">${ROLE[i.role]}</span></td><td class="mut">${i.kind === "join" ? "新成员" : "重置密码"}</td><td><button data-rv="${i.id}">作废</button></td></tr>`).join("")}</tbody></table></div>` : ""}`, { active: "team", title: "团队" });
   const showLink = (r, what) => modal(`<h2>${what}</h2>${r.emailed ? `<p class="sm" role="status">已经发邮件给 ${esc(r.email)}（几分钟内到达，可能进垃圾邮件箱）。</p>` : ""}<code class="copy">${esc(location.origin + r.invite_path)}</code><p class="sm mut" style="margin:8px 0 0">${r.emailed ? "也可以把这条链接直接发给" : "把链接发给"} ${esc(r.email)}（7 天内有效，只能用一次）。这个链接只显示这一次。</p>`);
@@ -1343,13 +1363,6 @@ async function teamView() {
       <div class="row"><button class="p">添加</button><button type="button" id="c">取消</button></div></form>`);
     $("#c", m).onclick = () => m.remove(); wireRole(m);
     $("#f", m).onsubmit = guard(async (e) => { e.preventDefault(); await api("/users", { method: "POST", body: splitRole(Object.fromEntries(new FormData(e.target))) }); m.remove(); render(); });
-  };
-  $("#nb").onclick = () => {  // brands: a client is always added under one
-    const m = modal(`<h2>品牌</h2>${brands.length ? `<ul class="feed">${brands.map((b) => `<li><span><b>${esc(b.name)}</b> <span class="mut">· ${b.clients} 位客户</span></span> <button class="s" data-bd="${b.id}" type="button">删除</button></li>`).join("")}</ul>` : '<p class="mut">还没有品牌。</p>'}
-      <form id="f" class="row" style="margin-top:12px"><input name="name" placeholder="新品牌名称" aria-label="新品牌名称" maxlength="100" required><button class="p">添加品牌</button></form><div class="row" style="margin-top:12px"><button type="button" id="c">关闭</button></div>`);
-    $("#c", m).onclick = () => m.remove();
-    $("#f", m).onsubmit = guard(async (e) => { e.preventDefault(); await api("/brands", { method: "POST", body: { name: new FormData(e.target).get("name") } }); m.remove(); render(); });
-    m.querySelectorAll("[data-bd]").forEach((b) => (b.onclick = guard(async () => { await api(`/brands/${b.dataset.bd}`, { method: "DELETE" }); m.remove(); render(); })));
   };
   document.querySelectorAll("[data-role]").forEach((el) => el.onchange = guard(async () => {
     const [role, kind] = el.value.split("|"), uid = el.dataset.role;
