@@ -10,6 +10,12 @@
 - 部署注意：数据库自动新增 `participants.source/source_name`、`recruit_forms.n_started/tally` 列；无新依赖。
 - 还差：ms/ta 文案仍待母语/法务复核；`screen.html` 只有 en/zh。
 
+## 2026-10-23 · 部署到新加坡测试服务器（提交 89fb458，LW 第七批：招募问卷工作台）
+- 本机 pytest 1560 项全过。过程中本机（SW）遇到两个环境问题，都已处理：① Windows 应用控制策略拦截了 SQLAlchemy 的编译扩展（`_processors_cy`，greenlet 同样被拦），pytest 起不来；没有绕过策略，改装 SQLAlchemy 的纯 Python 版本（`DISABLE_SQLALCHEMY_CEXT=1 pip install --no-binary`），功能不受影响；② 本机没装 `segno`（二维码库），装上后 1 项失败的测试通过。
+- 部署前确认没有进行中的访谈；备份 `total-20261023-080629.db.gz` 已生成，异地备份（COS）上传成功。`git archive` 覆盖 `/opt/total-mvp`（`deploy/.env` 保留）；`docker compose up -d --build`；三个容器运行，app healthy。没有碰硅谷服务器。
+- 检查：`/api/health`、`/api/public/config`、`/rform.js`、`/screen_run.js`、`/screen.html`、`/index.html` 全 200；未登录 POST `/api/projects/x/recruiting/form/chat` 返回 401；doctor：视频在线、AI 主持人可用、实时字幕已配置、限流已开，没有必须解决的问题；日志 error/traceback 计数 0；`recruit_forms.goals/need/chat` 三列自动补上，没有 “cannot add” 报错；`.env` 里 `MODERATOR_VENDOR` 已填（只确认有值）。
+- 未登录冒烟：请用户登录后在甄别设定里试对话起草、改题、发布、手机扫码答题。
+
 ## 2026-10-21 · 部署到新加坡测试服务器（提交 8e0fb92，含 LW 第四批：问卷编辑器、发布成链接/二维码、公开作答页）
 - 部署前确认没有进行中的访谈。备份 `total-20261021-082504.db.gz` 已生成，异地备份（COS）成功。`git archive` 覆盖 `/opt/total-mvp`（`deploy/.env` 保留）；`docker compose up -d --build`；三个容器运行，app healthy。没有碰硅谷服务器。
 - 检查：`/api/health`、`/home.js`、`/wizard.js`、`/shell.js`、`/rform.js`、`/screen_run.js` 全 200，`/screen.html?t=nope` 可打开；doctor：视频在线、AI 主持人可用、实时字幕已配置、限流已开，没有必须解决的问题。
