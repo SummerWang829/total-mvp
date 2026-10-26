@@ -4,6 +4,12 @@
 > 每条记录写：日期 · 做了什么 · `scripts/qa.sh` 结果数字 · 还差什么 · 风险。最新的写在最上面。
 > qa.sh 数字的顺序：逻辑测试（pytest）/ 全站浏览器检查 / 真实视频访谈 / 一键启动。
 
+## 2026-10-26 · 部署到新加坡测试服务器（提交 ddb2712，LW 这几批：文本框自动调高、对比表、答案弹窗、配额与名单页大改）
+- **过程中的阻碍**：SW 电脑的 Windows“智能应用控制”拦了 Git 联网用的 `libcurl-4.dll`（没有数字签名），`git pull` 失败；该功能不能单文件放行，也不是我能改的系统安全设置，由用户自己在 Windows 安全中心关掉后恢复。服务器在此期间没有动。
+- 本机 pytest 1578 项全过。部署前确认没有进行中的访谈；备份 `total-20261026-065759.db.gz` 已生成，异地备份（COS）上传成功。`git archive` 覆盖 `/opt/total-mvp`（`deploy/.env` 保留）；`docker compose up -d --build`；三个容器运行，app healthy。没有碰硅谷服务器。
+- 检查：`/api/health`、`/api/public/config`、`/rdash.js`、`/rform.js`、`/wizard.js`、`/shell.js`、`/index.html` 全 200；未登录 GET `/api/projects/x/recruiting/tags` 和 POST `/api/projects/x/participants/delete` 均 401；doctor：视频在线、AI 主持人可用、实时字幕已配置、限流已开，没有必须解决的问题；日志 error/traceback 计数 0；自动补了 4 列（participants.code/tier_override，recruit_settings.tag_lib/tag_hidden），没有 “cannot add” 报错；老受访者已补编号：M- 开头 5 位、Q- 开头 1 位（日志里没有 “numbered” 提示行，以数据库实查为准）。
+- 未登录冒烟：文本框自动调高、配额与名单页（固定页头、折叠看板、编号和来源、正式/备份切换、标签库、批量删除确认、答案弹窗）请用户登录后走一遍。
+
 ## 2026-10-26 · “配额与受访者名单”页大改：固定顶栏、折叠看板、固定编号、正式/备份、标签库、批量删除（用户逐张看过效果图后确认）
 - 做了什么：①项目条和页签固定在顶端，说明文字单行，这一页整体向右拓宽（`body.pgw`）；②看板里“漏斗与来源”“配额与人群画像”“对比表”默认收起，只留一句摘要，箭头固定在最右，另有“全部展开”（状态存本浏览器）；③受访者编号改成固定编号：问卷 Q-001、外部名单 X-001、手动 M-001（另有 E 外部问卷平台、R 受访者库），创建时写入 `Participant.code` 永不改，洞察/导出/AI 背景/搜索等 8 处原来的“按顺序算 P-001”全部改读这个编号（`app/participant_code.py`，启动时给老数据补号）；编号下面显示访谈类型（真人/AI/未邀请），筛选条新增“访谈类型”；④资格改成“正式/备份”：按加入先后、各配额分别算，超出目标的自动备份，手动改过的记 `tier_override`（可恢复自动）；配额进度的“已有”正式+备份一起算，另显示正式/备份/溢出；⑤名单表格 9 列固定宽度、取消左右拖动；标签、关键回答放进大框里的彩色小块（同内容同颜色）；标签框“＋”只列出问卷标签库里这个人还没有的、点选，“－”去掉；“按标签看”那行的“＋/－”管理整个标签库（`RecruitSettings.tag_lib/tag_hidden`）；⑥“批量邀请到场次”改成“批量删除”（`POST /projects/{id}/participants/delete`，仅 STAFF，带确认，记审计）；每行的“邀请到场次”保留。
 - 数据库：`participants.code/tier_override`、`recruit_settings.tag_lib/tag_hidden` 启动时自动新增；老参与者的编号启动时补上。
