@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from .. import ai_room, concept, content_rules, export, groups, jobs, pretask, scheduling
+from .. import ai_room, concept, content_rules, export, groups, jobs, participant_code, pretask, scheduling
 from ..audit import audit
 from ..config import settings
 from ..db import get_db
@@ -750,7 +750,7 @@ def export_insights(pid: str, format: str = "docx", approved_only: bool = False,
     if format not in ("docx", "csv"):
         raise HTTPException(422, "格式只能是 docx 或 csv")
     proj = get_project(db, ctx, pid)
-    code = {p.id: f"P-{n + 1:03d}" for n, p in enumerate(db.scalars(select(Participant).where(Participant.project_id == proj.id).order_by(Participant.created_at)))}
+    code = participant_code.code_map(db, proj.id)
     rows = []
     for itv in db.scalars(select(Interview).where(Interview.project_id == proj.id, Interview.org_id == ctx.org_id).order_by(Interview.created_at)):
         q = select(Insight).where(Insight.interview_id == itv.id).order_by(Insight.created_at)

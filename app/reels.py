@@ -6,6 +6,7 @@ non-downloadable cut that a single shared clip uses. A reel link has its own exp
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from . import participant_code
 from .config import settings
 from .models import Clip, Evidence, Insight, Interview, Participant, Recording, Reel, ReelItem
 from .security import sign_media
@@ -24,7 +25,7 @@ def project_clips(db: Session, project_id: str) -> list[dict]:
     out = []
     rows = db.execute(select(Clip, Interview).join(Interview, Interview.id == Clip.interview_id)
                       .where(Interview.project_id == project_id, Interview.purged_at.is_(None)).order_by(Interview.created_at, Clip.start_ms)).all()
-    code = {p.id: f"P-{n + 1:03d}" for n, p in enumerate(db.scalars(select(Participant).where(Participant.project_id == project_id).order_by(Participant.created_at)))}
+    code = participant_code.code_map(db, project_id)
     for c, itv in rows:
         ev = db.get(Evidence, c.evidence_id) if c.evidence_id else None
         ins = db.get(Insight, ev.insight_id) if ev else None

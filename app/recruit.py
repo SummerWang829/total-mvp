@@ -281,24 +281,51 @@ def validate_quotas(items: list) -> list[dict]:
     return out
 
 
-def quota_progress(db: Session, project_id: str, quotas: list[dict]) -> list[dict]:
-    """For each quota: how many people match (not disqualified), how many of them have a session, and the target."""
-    people = db.scalars(select(Participant).where(Participant.project_id == project_id, Participant.anonymized_at.is_(None), Participant.screen_result != "disqualified")).all()
+def _matches(q: dict, p: Participant, answers: dict[str, list[tuple[str, str]]]) -> bool:
+    """Does the person count towards this quota?"""
+    if q["field"] == "country":
+        return p.country == q["value"]
+    if q["field"] == "language":
+        return p.language == q["value"]
+    if q["field"] == "tag":
+        return q["value"] in (p.tags or [])
+    return any(q["question"].lower() in qu.lower() and q["value"].lower() in an.lower() for qu, an in answers.get(p.id, []))
+
+
+def tiers_and_progress(db: Session, project_id: str, quotas: list[dict]) -> tuple[dict[str, str], list[dict]]:
+    """Who is formal and who is backup, and how each quota stands.
+
+    People are taken in the order they were added. Someone is formal unless a quota they count towards already has its target of formal people,
+    then they are backup. A tier set by hand (`tier_override`) is kept and counts as it says. Without quotas everybody is formal.
+    Per quota: `have` counts formal and backup together, `formal` / `backup` split it, `over` is how many are above the target.
+    """
+    people = db.scalars(select(Participant).where(Participant.project_id == project_id, Participant.anonymized_at.is_(None), Participant.screen_result != "disqualified")
+                        .order_by(Participant.created_at, Participant.id)).all()
     invited = set(db.scalars(select(Interview.participant_id).where(Interview.project_id == project_id)))
     answers: dict[str, list[tuple[str, str]]] = {}
     if any(q["field"] == "answer" for q in quotas) and people:
         for a in db.scalars(select(ScreenerAnswer).where(ScreenerAnswer.participant_id.in_([p.id for p in people]))):
             answers.setdefault(a.participant_id, []).append((a.question, a.answer))
+    formal = [0] * len(quotas)
+    tiers: dict[str, str] = {}
+    hits_of: dict[str, list[int]] = {}
+    for p in people:
+        hits = [i for i, q in enumerate(quotas) if _matches(q, p, answers)]
+        hits_of[p.id] = hits
+        tier = p.tier_override or ("backup" if any(formal[i] >= quotas[i]["target"] for i in hits) else "formal")
+        tiers[p.id] = tier
+        if tier == "formal":
+            for i in hits:
+                formal[i] += 1
     out = []
-    for q in quotas:
-        def match(p: Participant) -> bool:
-            if q["field"] == "country":
-                return p.country == q["value"]
-            if q["field"] == "language":
-                return p.language == q["value"]
-            if q["field"] == "tag":
-                return q["value"] in (p.tags or [])
-            return any(q["question"].lower() in qu.lower() and q["value"].lower() in an.lower() for qu, an in answers.get(p.id, []))
-        hit = [p for p in people if match(p)]
-        out.append({**q, "have": len(hit), "invited": sum(p.id in invited for p in hit), "full": len(hit) >= q["target"]})
-    return out
+    for i, q in enumerate(quotas):
+        hit = [p for p in people if i in hits_of[p.id]]
+        n_formal = sum(tiers[p.id] == "formal" for p in hit)
+        out.append({**q, "have": len(hit), "formal": n_formal, "backup": len(hit) - n_formal, "over": max(0, len(hit) - q["target"]),
+                    "invited": sum(p.id in invited for p in hit), "full": len(hit) >= q["target"]})
+    return tiers, out
+
+
+def quota_progress(db: Session, project_id: str, quotas: list[dict]) -> list[dict]:
+    """For each quota: how many people match (formal and backup, not disqualified), how many are formal, backup and over the target, and how many have a session."""
+    return tiers_and_progress(db, project_id, quotas)[1]

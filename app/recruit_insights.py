@@ -159,6 +159,20 @@ def summarize(chat: ModeratorChatProvider | None, dash: dict) -> str:
         raise recruit_form.FormError("AI 这次没有给出可用的总结，请再试一次") from e
 
 
+def tag_library(db: Session, project_id: str) -> list[str]:
+    """The project's tag library: the questionnaire's tags, the ones added by hand and the ones already on people, minus those taken out."""
+    form = db.get(RecruitForm, project_id)
+    settings = db.get(RecruitSettings, project_id)
+    from_form = [o.tag for q in (recruit_form.load(form.questions) if form else []) for o in q.options if o.tag]
+    used = [t for (tags,) in db.execute(select(Participant.tags).where(Participant.project_id == project_id, Participant.anonymized_at.is_(None))) for t in (tags or [])]
+    hidden = set((settings.tag_hidden if settings else None) or [])
+    out: list[str] = []
+    for t in [*from_form, *((settings.tag_lib if settings else None) or []), *used]:
+        if t and t not in out and t not in hidden:
+            out.append(t)
+    return out
+
+
 def annotate(items: list[dict], questions: list[recruit_form.Question]) -> list[dict]:
     """Add what the questionnaire knows to a participant's saved answers: the question type and the code (1, 2, ...) of each chosen option.
 

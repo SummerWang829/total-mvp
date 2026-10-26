@@ -10,6 +10,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from .. import participant_code
 from ..audit import audit
 from ..db import get_db
 from ..deps import STAFF, Ctx, ensure_project, require_roles, visible_interview
@@ -140,7 +141,7 @@ def suggest(pid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = D
 def analysis(pid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
     """Everything the analysis page draws: the codebook with counts, the interviews, and every insight with its codes."""
     proj = get_project(db, ctx, pid)
-    code_of = {p.id: f"P-{n + 1:03d}" for n, p in enumerate(db.scalars(select(Participant).where(Participant.project_id == proj.id).order_by(Participant.created_at)))}
+    code_of = participant_code.code_map(db, proj.id)
     itvs = db.scalars(select(Interview).where(Interview.project_id == proj.id, Interview.org_id == ctx.org_id).order_by(Interview.created_at)).all()
     codes = db.scalars(select(Code).where(Code.project_id == proj.id).order_by(Code.name)).all()
     links = defaultdict(list)
@@ -205,7 +206,7 @@ def segments_of_code(pid: str, code_id: str, limit: int = 200, ctx: Ctx = Depend
     c = _code(db, ctx, code_id)
     if c.project_id != proj.id:
         raise HTTPException(404, "没有这个编码")
-    code_of = {p.id: f"P-{n + 1:03d}" for n, p in enumerate(db.scalars(select(Participant).where(Participant.project_id == proj.id).order_by(Participant.created_at)))}
+    code_of = participant_code.code_map(db, proj.id)
     rows = db.execute(select(TranscriptSegment, Interview).join(SegmentCode, SegmentCode.segment_id == TranscriptSegment.id).join(Interview, Interview.id == TranscriptSegment.interview_id)
                       .where(SegmentCode.code_id == c.id, Interview.project_id == proj.id, Interview.purged_at.is_(None)).order_by(Interview.created_at, TranscriptSegment.idx).limit(min(limit, 500))).all()
     return {"code": {"id": c.id, "name": c.name}, "segments": [{"id": s.id, "interview_id": i.id, "interview": i.title, "who": code_of.get(i.participant_id, "?"), "speaker": s.speaker,

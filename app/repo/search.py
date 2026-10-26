@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .. import participant_code
 from ..deps import Ctx
 from ..models import Insight, Interview, Participant, Project, ProjectMember, RepoDocument, TranscriptSegment
 from .documents import pieces
@@ -51,8 +52,7 @@ def _codes(db: Session, project_ids: list[str]) -> dict[str, str]:
     """{participant id: "P-001"} per project, in the order participants were added (the same codes as the exports)."""
     out: dict[str, str] = {}
     for pid in project_ids:
-        for n, (part_id,) in enumerate(db.execute(select(Participant.id).where(Participant.project_id == pid).order_by(Participant.created_at))):
-            out[part_id] = f"P-{n + 1:03d}"
+        out.update(participant_code.code_map(db, pid))
     return out
 
 

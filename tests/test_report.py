@@ -39,7 +39,7 @@ def test_an_empty_project_still_gets_an_honest_report(org):
 def test_interview_findings_carry_verbatim_quotes_with_codes_and_never_names(org):
     itv, ins, pid = approved(org)
     t = texts(blocks_of(org, pid))
-    assert "clear halal certification" in t and "P-001" in t and "Wei Ling" not in t
+    assert "clear halal certification" in t and "M-001" in t and "Wei Ling" not in t
     quote = next(b[1] for b in blocks_of(org, pid) if b[0] == "quote")
     assert quote.startswith("“") and re.search(r"\d\d:\d\d$", quote)
     assert "访谈：共 1 场" in t

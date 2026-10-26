@@ -127,11 +127,11 @@ def test_exporting_the_list_gives_a_csv_with_or_without_contacts_and_is_logged(c
     assert r.status_code == 200 and r.headers["content-type"].startswith("text/csv") and r.content.startswith(b"\xef\xbb\xbf")  # Excel reads the Chinese
     rows = list(csv.reader(io.StringIO(r.content.decode("utf-8-sig"))))
     assert rows[0] == ["编号", "姓名", "邮箱", "国家", "语言", "标签", "资格", "来源", "关键回答"] and len(rows) == 3
-    assert rows[1][:3] == ["P-001", "林小雨", "lin@example.com"] and rows[2][6] == "外部名单 · 可邀请" and rows[2][7].startswith("客户 A 名单")
+    assert rows[1][:3] == ["Q-001", "林小雨", "lin@example.com"] and rows[2][6] == "外部名单 · 可邀请" and rows[2][7].startswith("客户 A 名单")
     mine = org.c.post(f"/api/projects/{pid}/participants/export", headers=org.h(), json={"ids": [ids["陈美玲"]], "contacts": False})
     rows2 = list(csv.reader(io.StringIO(mine.content.decode("utf-8-sig"))))
     assert rows2[0] == ["编号", "国家", "语言", "标签", "资格", "来源", "关键回答"] and len(rows2) == 2 and "chen@example.com" not in mine.text and "陈美玲" not in mine.text
-    assert rows2[1][0] == "P-002"  # the same number the list shows
+    assert rows2[1][0] == "X-001"  # the same number the list shows
     assert org.c.post(f"/api/projects/{pid}/participants/export-log", headers=org.h(), json={"count": 2}).status_code == 204
     with SessionLocal() as db:
         actions = [a.action for a in db.scalars(select(AuditLog)).all()]

@@ -9,6 +9,7 @@ from starlette.responses import Response
 from . import jobs, loopwatch, mailer, project_members, ratelimit
 from .listening import service as listening_service
 from .config import settings
+from . import participant_code
 from .db import Base, SessionLocal, engine, ensure_columns
 from .recording import start_worker
 from .routers import admin_data, ai_room, group_analysis as group_analysis_router, analysis, auth, concept, cues, group_metrics, interviews, listening, pool, jobs as jobs_router, plans as plans_router, quant, recruit, screen_public, reels as reels_router, report, signals, studies, repo, overview, projects, public
@@ -19,6 +20,7 @@ async def lifespan(_app):
     ensure_columns()  # a model that gained a column keeps an existing database working
     with SessionLocal() as db:
         project_members.backfill(db)  # nobody loses the access they had before project membership existed
+        participant_code.backfill(db)  # people added before numbers were stored get theirs, in the order they came
     if settings.loop_watch_s > 0:
         loopwatch.start(settings.loop_watch_s)  # names whatever blocks the event loop in the log
     listening_service.start_worker()  # collects due sources and tags new mentions (public-opinion monitoring)

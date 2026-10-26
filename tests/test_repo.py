@@ -70,7 +70,7 @@ def test_search_finds_what_participants_said_with_the_question_before_it_and_a_c
     itv, pid = library(org)
     hits = search(org, "价格太贵")
     assert len(hits) == 1 and hits[0]["type"] == "segment" and "价格太贵" in hits[0]["text"]
-    assert hits[0]["who"] == "P-001" and hits[0]["question_before"] == "你上一次买护肤品是怎么选的？" and hits[0]["interview_id"] == itv["id"]
+    assert hits[0]["who"] == "M-001" and hits[0]["question_before"] == "你上一次买护肤品是怎么选的？" and hits[0]["interview_id"] == itv["id"]
     assert "Wei Ling" not in str(hits) and hits[0]["project"]["id"] == pid
     assert search(org, "你上一次买护肤品是怎么选的") == []   # the interviewer's own lines are not sources
 
@@ -159,7 +159,7 @@ def test_an_answer_is_built_from_claims_each_with_the_verbatim_passages_it_rests
     body = r.json()
     assert r.status_code == 200 and body["insufficient"] is False and body["answer"]
     ev = body["answer"][0]["evidence"][0]
-    assert ev["text"] == LINES[1][1] and ev["who"] == "P-001" and ev["interview_id"] == itv["id"] and ev["project"]["id"] == pid
+    assert ev["text"] == LINES[1][1] and ev["who"] == "M-001" and ev["interview_id"] == itv["id"] and ev["project"]["id"] == pid
 
 
 def test_not_enough_evidence_is_said_plainly_instead_of_guessing(org):

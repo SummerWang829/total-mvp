@@ -97,6 +97,8 @@ class Participant(Base):
     screen_version: Mapped[int] = mapped_column(Integer, default=0)  # the version of the project's rules that produced the result
     source: Mapped[str] = mapped_column(String(12), default="")  # how the person came in: link | import | manual | platform | pool | "" (not recorded)
     source_name: Mapped[str] = mapped_column(String(120), default="")  # for an imported list: its name and the day, e.g. "客户 A 名单 · 10-23"
+    code: Mapped[str] = mapped_column(String(12), default="")  # the permanent number: Q-001 (questionnaire link) / X-001 (imported list) / M-001 (by hand) ... (app/participant_code.py)
+    tier_override: Mapped[str] = mapped_column(String(8), default="")  # "" = decided by the quotas (app/recruit.py tiers); formal | backup = set by hand
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
@@ -687,6 +689,8 @@ class RecruitSettings(Base):
     rules: Mapped[list] = mapped_column(JSON, default=list)
     rules_version: Mapped[int] = mapped_column(Integer, default=0)
     quotas: Mapped[list] = mapped_column(JSON, default=list)
+    tag_lib: Mapped[list] = mapped_column(JSON, default=list)  # tags added to the project's tag library by hand (the questionnaire's tags and tags in use are always in it)
+    tag_hidden: Mapped[list] = mapped_column(JSON, default=list)  # questionnaire tags that were taken out of the library
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 

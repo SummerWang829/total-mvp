@@ -7,13 +7,14 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import library_context, recruit, recruit_form, recruit_insights
+from .. import library_context, participant_code, recruit, recruit_form, recruit_insights
 from ..audit import audit
 from ..db import get_db
 from ..deps import RECRUITERS, STAFF, Ctx, require_roles
 from ..moderator.providers import ChatFatalError
 from ..recruit_form import MAX_CHAT
 from ..models import Participant, Project, RecruitForm, RecruitSettings, utcnow
+from ..retention import erase_participant
 from .interviews import NewInterview, create_interview
 from .projects import _own_participant, get_project, participant_out
 
@@ -253,8 +254,7 @@ def export_participants(pid: str, body: ExportBody, ctx: Ctx = Depends(require_r
     import io
     proj = get_project(db, ctx, pid)
     people = db.scalars(select(Participant).where(Participant.project_id == proj.id, Participant.anonymized_at.is_(None)).order_by(Participant.created_at)).all()
-    everyone = db.scalars(select(Participant.id).where(Participant.project_id == proj.id).order_by(Participant.created_at)).all()
-    number = {pid_: f"P-{n + 1:03d}" for n, pid_ in enumerate(everyone)}  # the same numbers the list shows
+    number = participant_code.code_map(db, proj.id)  # the same numbers the list shows
     chosen = set(body.ids)
     rows = [p for p in people if not chosen or p.id in chosen]
     key = recruit_insights.key_answers(db, [p.id for p in rows])
@@ -399,6 +399,83 @@ def put_quotas(pid: str, body: QuotasBody, ctx: Ctx = Depends(require_roles(*REC
     audit(db, ctx.org_id, ctx.actor, "recruit.quotas", proj.id, quotas=len(quotas))
     db.commit()
     return _overview(db, proj)
+
+
+class TierBody(BaseModel):
+    tier: Literal["formal", "backup", "auto"]  # auto = back to what the quotas say
+
+
+@router.put("/participants/{part_id}/tier")
+def put_tier(part_id: str, body: TierBody, ctx: Ctx = Depends(require_roles(*RECRUITERS)), db: Session = Depends(get_db)):
+    """Set a person formal or backup by hand (kept until set back to auto)."""
+    p = _own_participant(db, ctx, part_id)
+    p.tier_override = "" if body.tier == "auto" else body.tier
+    audit(db, ctx.org_id, ctx.actor, "participant.tier", p.id, tier=body.tier)
+    db.commit()
+    return participant_out(p)
+
+
+class TagBody(BaseModel):
+    tag: str = Field(min_length=1, max_length=40)
+
+
+@router.get("/projects/{pid}/recruiting/tags")
+def tag_library(pid: str, ctx: Ctx = Depends(require_roles(*RECRUITERS)), db: Session = Depends(get_db)):
+    """The tags people in this project can be given, with how many people have each."""
+    proj = get_project(db, ctx, pid)
+    people = db.scalars(select(Participant.tags).where(Participant.project_id == proj.id, Participant.anonymized_at.is_(None))).all()
+    return {"tags": [{"tag": t, "n": sum(t in (x or []) for x in people)} for t in recruit_insights.tag_library(db, proj.id)]}
+
+
+@router.post("/projects/{pid}/recruiting/tags", status_code=201)
+def add_library_tag(pid: str, body: TagBody, ctx: Ctx = Depends(require_roles(*RECRUITERS)), db: Session = Depends(get_db)):
+    """Add a tag to the project's library so it can be picked for anyone."""
+    proj = get_project(db, ctx, pid)
+    tags = recruit.clean_tags([body.tag])
+    if not tags:
+        raise HTTPException(422, "标签不能为空")
+    s = _settings(db, proj)
+    s.tag_hidden = [t for t in (s.tag_hidden or []) if t != tags[0]]
+    if tags[0] not in (s.tag_lib or []):
+        s.tag_lib = [*(s.tag_lib or []), tags[0]]
+    audit(db, ctx.org_id, ctx.actor, "recruit.tag_add", proj.id)
+    db.commit()
+    return tag_library(pid, ctx, db)
+
+
+@router.delete("/projects/{pid}/recruiting/tags")
+def remove_library_tag(pid: str, tag: str, ctx: Ctx = Depends(require_roles(*RECRUITERS)), db: Session = Depends(get_db)):
+    """Take a tag out of the library and off everybody who has it."""
+    proj = get_project(db, ctx, pid)
+    s = _settings(db, proj)
+    s.tag_lib = [t for t in (s.tag_lib or []) if t != tag]
+    if tag not in (s.tag_hidden or []):
+        s.tag_hidden = [*(s.tag_hidden or []), tag]
+    removed = 0
+    for p in db.scalars(select(Participant).where(Participant.project_id == proj.id)):
+        if tag in (p.tags or []):
+            p.tags = [t for t in p.tags if t != tag]
+            removed += 1
+    audit(db, ctx.org_id, ctx.actor, "recruit.tag_remove", proj.id, people=removed)
+    db.commit()
+    return tag_library(pid, ctx, db)
+
+
+class DeleteBody(BaseModel):
+    ids: list[str] = Field(min_length=1, max_length=500)
+
+
+@router.post("/projects/{pid}/participants/delete")
+def delete_participants(pid: str, body: DeleteBody, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    """Erase the data of several participants at once (irreversible; the same as erasing each one)."""
+    proj = get_project(db, ctx, pid)
+    people = db.scalars(select(Participant).where(Participant.project_id == proj.id, Participant.id.in_(set(body.ids)), Participant.anonymized_at.is_(None))).all()
+    if not people:
+        raise HTTPException(404, "没有可删除的受访者")
+    purged = sum(erase_participant(db, p, ctx.actor) for p in people)
+    audit(db, ctx.org_id, ctx.actor, "participant.bulk_erase", proj.id, people=len(people), interviews=purged)
+    db.commit()
+    return {"erased": len(people), "purged_interviews": purged}
 
 
 @router.put("/participants/{part_id}/tags")

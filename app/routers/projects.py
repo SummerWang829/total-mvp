@@ -3,13 +3,13 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import member_scopes, plans, recruit_form, recruit_insights, screener
+from .. import member_scopes, plans, recruit, recruit_form, recruit_insights, screener
 from .. import methods as methods_mod
 from ..audit import audit
 from ..config import settings
 from ..db import get_db
 from ..deps import ANY_PROJECT_ROLE, MEMBER_ROLES, RECRUITERS, STAFF, Ctx, can_see_project, current_ctx, ensure_project, require_roles
-from ..models import Interview, InterviewObserver, Participant, Project, ProjectMember, ProjectPlan, RecruitForm, User
+from ..models import Interview, InterviewObserver, Participant, Project, ProjectMember, ProjectPlan, RecruitForm, RecruitSettings, User
 from ..models import utcnow
 from ..retention import days_of, erase_participant, purge_date
 
@@ -58,10 +58,11 @@ def project_out(p: Project, plan_status: str = "", setup: dict | None = None, ed
             "retention_days": days_of(p), "methods": methods_mod.of(p), "plan_status": plan_status, "setup": setup, "editing": editing}
 
 
-def participant_out(p: Participant, screener_count: int = 0, key_answers: str = "") -> dict:
+def participant_out(p: Participant, screener_count: int = 0, key_answers: str = "", tier: str = "", kind: str = "") -> dict:
     return {"id": p.id, "name": p.name, "email": p.email, "country": p.country, "language": p.language,
             "screening": p.screening, "anonymized": p.anonymized_at is not None, "screener": screener_count,
-            "tags": p.tags or [], "screen_result": p.screen_result, "screen_reason": p.screen_reason, "source": p.source, "source_name": p.source_name, "key_answers": key_answers}
+            "tags": p.tags or [], "screen_result": p.screen_result, "screen_reason": p.screen_reason, "source": p.source, "source_name": p.source_name, "key_answers": key_answers,
+            "code": p.code, "tier": tier, "tier_manual": bool(p.tier_override), "interview_kind": kind}
 
 
 def get_project(db: Session, ctx: Ctx, pid: str) -> Project:
@@ -177,7 +178,13 @@ def list_participants(pid: str, tag: str = "", country: str = "", language: str 
               and (not screen or p.screen_result == screen)]
     counted = screener.counts(db, [p.id for p in people])
     key = recruit_insights.key_answers(db, [p.id for p in people])
-    return [participant_out(p, counted.get(p.id, 0), key.get(p.id, "")) for p in people]
+    rs = db.get(RecruitSettings, proj.id)
+    tiers, _ = recruit.tiers_and_progress(db, proj.id, (rs.quotas if rs else None) or [])
+    moderation: dict[str, set[str]] = {}
+    for part_id, how in db.execute(select(Interview.participant_id, Interview.moderation).where(Interview.project_id == proj.id)):
+        moderation.setdefault(part_id, set()).add("ai" if how == "ai" else "human")
+    kind = {k: ("both" if len(v) > 1 else next(iter(v))) for k, v in moderation.items()}
+    return [participant_out(p, counted.get(p.id, 0), key.get(p.id, ""), tiers.get(p.id, ""), kind.get(p.id, "")) for p in people]
 
 
 def _own_participant(db: Session, ctx: Ctx, part_id: str) -> Participant:

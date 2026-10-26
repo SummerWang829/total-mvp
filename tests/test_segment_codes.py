@@ -36,7 +36,7 @@ def test_tagged_lines_of_a_code_are_listed_across_interviews_with_codes_for_peop
     put(org, part[0]["id"], [a])
     put(org, part[1]["id"], [a, b])
     got = org.c.get(f"/api/projects/{pid}/codes/{a}/segments", headers=org.h()).json()
-    assert got["code"]["name"] == "价格" and len(got["segments"]) == 2 and all(s["who"] == "P-001" and s["interview_id"] == itv["id"] for s in got["segments"])
+    assert got["code"]["name"] == "价格" and len(got["segments"]) == 2 and all(s["who"] == "M-001" and s["interview_id"] == itv["id"] for s in got["segments"])
     assert "Wei Ling" not in str(got) and [s["start_ms"] for s in got["segments"]] == sorted(s["start_ms"] for s in got["segments"])
     assert len(org.c.get(f"/api/projects/{pid}/codes/{b}/segments", headers=org.h()).json()["segments"]) == 1
 

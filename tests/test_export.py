@@ -25,7 +25,7 @@ def test_csv_and_docx_export(org):
     c = org.c.get(f"/api/projects/{pid}/insights/export?format=csv", headers=org.h())
     assert c.status_code == 200 and "attachment" in c.headers["content-disposition"]
     text = c.content.decode("utf-8-sig")
-    assert "clear halal certification" in text and "怕假货" in text and "P-001" in text and "Wei Ling" not in text and "受访者" in text
+    assert "clear halal certification" in text and "怕假货" in text and "M-001" in text and "Wei Ling" not in text and "受访者" in text
     d = org.c.get(f"/api/projects/{pid}/insights/export?format=docx", headers=org.h())
     assert d.status_code == 200
     with zipfile.ZipFile(io.BytesIO(d.content)) as z:

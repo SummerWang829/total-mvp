@@ -25,7 +25,7 @@ def test_codebook_and_manual_coding_feed_the_overview(org):
     d = org.c.get(f"/api/projects/{pid}/analysis", headers=org.h()).json()
     by = {c["name"]: c for c in d["codes"]}
     assert by["信任"]["total"] == 1 and by["信任"]["by_interview"] == {itv["id"]: 1} and by["价格"]["total"] == 0
-    assert d["interviews"][0]["pcode"] == "P-001" and "Wei Ling" not in str(d)
+    assert d["interviews"][0]["pcode"] == "M-001" and "Wei Ling" not in str(d)
     assert d["insights"][0]["codes"] == [{"id": a, "suggested": False}]
 
 

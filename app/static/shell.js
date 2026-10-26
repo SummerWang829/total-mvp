@@ -87,10 +87,12 @@ function shTabs(p, active) {
   if (!hub) return "";
   const ts = hub.tabs.filter((t) => shPageOk(t[0], p));
   if (ts.length < 2) return "";
-  return `<div class="hubtabs" role="tablist" aria-label="${hub.n}">${ts.map(([k, n]) => `<a role="tab" class="${active === k ? "on" : ""}" href="#/p/${p.id}/${k}" aria-selected="${active === k}" ${active === k ? 'aria-current="page"' : ""}>${n}</a>`).join("")}</div>`;
+  return `<div class="hubtabs pin" role="tablist" aria-label="${hub.n}">${ts.map(([k, n]) => `<a role="tab" class="${active === k ? "on" : ""}" href="#/p/${p.id}/${k}" aria-selected="${active === k}" ${active === k ? 'aria-current="page"' : ""}>${n}</a>`).join("")}</div>`;
 }
 
 function shWire(p) {
+  const pinTabs = () => { const c = document.querySelector(".ctx"); if (c) document.documentElement.style.setProperty("--ctxh", c.offsetHeight + "px"); };  // the tab row stays pinned right under the project bar
+  pinTabs(); window.onresize = pinTabs;
   const sel = document.getElementById("subsel");
   if (sel) sel.onchange = () => { sessionStorage.setItem("sub_" + p.id, sel.value); render(); };
   document.querySelectorAll("[data-qmode]").forEach((el) => (el.onclick = () => { sessionStorage.setItem("qmode", el.dataset.qmode); if (location.hash === el.getAttribute("href")) render(); }));
