@@ -434,6 +434,12 @@ def recruit_section(br, D):
     # draft by talking: the questions, goals and need appear in the outline
     pg.click("[data-chip=draft]"); pg.wait_for_selector("#rfout .rf-q", timeout=15000)
     ok(pg.locator("#rfout .rf-q").count() >= 5 and "起草" in pg.inner_text("#rfchat") and pg.input_value("#rfgoals").strip() != "" and pg.input_value("#rfneed").strip() != "", "[recruit] saying 帮我起草问卷 fills the outline: questions, research goals and recruiting need")
+    short = pg.evaluate("(() => { const t = document.querySelector('#rfgoals'); return [t.scrollHeight <= t.clientHeight + 1, getComputedStyle(t).overflowY, getComputedStyle(t).resize]; })()")
+    ok(short[0] and short[1] == "hidden" and short[2] == "none", f"[recruit] the goals box fits its text: no scrollbar and no drag handle while the text is short (got {short})")
+    pg.fill("#rfgoals", chr(10).join(f"目标 {k}" for k in range(1, 13))); pg.dispatch_event("#rfgoals", "input")
+    big = pg.evaluate("(() => { const t = document.querySelector('#rfgoals'); const lh = parseFloat(getComputedStyle(t).lineHeight); return [t.offsetHeight < lh * 9, getComputedStyle(t).overflowY]; })()")
+    ok(big[0] and big[1] == "auto", f"[recruit] a long goals text stops at 8 lines and scrolls inside the box (got {big})")
+    pg.fill("#rfgoals", "了解购买决策"); pg.dispatch_event("#rfgoals", "input"); pg.click("body", position={"x": 5, "y": 5})
     ok(pg.locator("#rfout .rf-lg.out").count() >= 1 and pg.locator("#rfout h3", has_text="研究背景").count() == 1, "[recruit] the outline shows the logic of each option and starts with the research background")
     n0 = pg.locator("#rfout .rf-q").count()
     # layout: one-row headers, the mode switch on the left (with the conversation), the workspace runs to the bottom of the window, a divider between the frames
@@ -624,6 +630,14 @@ def wizard_section(br, D):
     ok(pg.locator("select[data-w=retention] option").count() == 4 and pg.input_value("select[data-w=retention]") == "180" and pg.locator("select[data-sub$='|lang']").count() == 1, "[wizard] retention is chosen from 30/60/120/180 (180 by default) and there is one sub-project")
     pg.select_option("select[data-w=retention]", "60"); pg.wait_for_timeout(1200)  # it saves and redraws
     ok("不会发给其他公司" in pg.inner_text("main") or "发送给" in pg.inner_text("main"), "[wizard] the research background says where the text goes (AI service)")
+    pg.fill("[data-meta=brief]", "新品防晒霜进入新加坡市场，想了解年轻人的购买决策。")
+    h0 = pg.evaluate("document.querySelector('[data-meta=brief]').offsetHeight")
+    pg.fill("[data-meta=brief]", chr(10).join(f"第 {i} 行" for i in range(1, 8)))
+    h7 = pg.evaluate("document.querySelector('[data-meta=brief]').offsetHeight")
+    pg.fill("[data-meta=brief]", chr(10).join(f"第 {i} 行" for i in range(1, 25)))
+    h24 = pg.evaluate("document.querySelector('[data-meta=brief]').offsetHeight")
+    scroll = pg.evaluate("(() => { const t = document.querySelector('[data-meta=brief]'); return t.scrollHeight > t.clientHeight + 2 && getComputedStyle(t).overflowY === 'auto'; })()")
+    ok(h0 < h7 < h24 and h24 - h7 < 22 * 18 and scroll, f"[wizard] the research background box grows with its text (3 lines {h0}px, 7 lines {h7}px), stops at 10 lines ({h24}px) and then scrolls inside")
     pg.fill("[data-meta=brief]", "新品防晒霜进入新加坡市场，想了解年轻人的购买决策。")
     ok(pg.locator("#wzlib").count() == 0 and pg.locator("#wzsug").count() == 0 and pg.locator("#wzuselib").count() == 0, "[wizard] step 1 has no buttons for the research library or the suggestions (they happen by themselves after 下一步)")
     audit_page(pg, "wizard step 1 suggestions/desktop", errs)

@@ -440,6 +440,7 @@ body.rfmode main>.hubtabs:last-of-type{margin-bottom:8px}
 .rf-h{font-size:13px;margin:16px 0 6px;color:var(--orange-ink)}.rf-h:first-child{margin-top:0}
 .rf-blk{border-left:3px solid var(--orange);padding:4px 0 4px 12px;line-height:1.75;margin:0 0 6px;width:100%;border-top:0;border-right:0;border-bottom:0;border-radius:0;background:transparent;resize:vertical;font:inherit;color:inherit}
 div.rf-blk{overflow-wrap:anywhere}
+textarea.rf-blk{resize:none;overflow-y:hidden}
 .rf-q{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:10px;background:var(--surface);display:flex;flex-direction:column;gap:6px}
 .rf-n{display:inline-flex;width:24px;height:24px;border-radius:50%;background:var(--orange-mid);color:#8A3600;font-size:12px;font-weight:700;align-items:center;justify-content:center}
 .rf-o{font-size:13.5px;margin-left:30px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
@@ -485,7 +486,8 @@ fieldset.wzbody:disabled{opacity:1}
 .selbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .field{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--ink2);font-weight:500}
 .field input,.field select,.field textarea,.wzbody select,.wzbody input:not([type=checkbox]):not([type=radio]),.wzbody textarea{font:inherit;font-size:14px;border:1px solid var(--line2);border-radius:var(--r-ctl);background:var(--surface);color:var(--ink);padding:0 10px;height:38px;min-width:0}
-.field textarea,.wzbody textarea{height:auto;padding:8px 10px;width:100%}
+.field textarea,.wzbody textarea{height:auto;padding:8px 10px;width:100%;flex:none}
+.field textarea.autosize{line-height:22px;resize:none;overflow-y:hidden}
 .wzbody input:disabled,.wzbody select:disabled{background:var(--wash);color:var(--muted)}
 .pill{display:inline-flex;align-items:center;gap:4px;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:600;background:var(--green-soft);color:var(--green);white-space:nowrap}
 .pill.o{background:var(--orange-mid);color:#8A3600}

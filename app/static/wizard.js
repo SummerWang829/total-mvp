@@ -290,7 +290,7 @@ function wzBody() {
   switch (WZ.step) {
     case 0: return `<div class="grid"><label class="field">主项目名称${wzInp('data-meta="name" aria-label="主项目名称"', WZ.name_edit ?? WZ.plan.name)}</label>
       <label class="field">数据留存期限${wzSel('data-w="retention" aria-label="数据留存期限"', c.retention, WZ_RETENTION.map((d) => [d, `${d} 天${d === 180 ? "（平台上限）" : ""}`]))}<span class="mut" style="font-weight:400">同意书里写明的就是这个期限：项目结项后 ${c.retention} 天自动删除个人数据，洞察结论保留。${WZ.plan.live ? "已发布过的项目只能缩短，不能延长。" : ""}</span></label></div>
-      <label class="field">研究背景（选填，只给团队看）<textarea data-meta="brief" rows="3" placeholder="写清这个项目要解决什么问题、做给谁看。">${esc(WZ.brief_edit ?? WZ.plan.brief ?? "")}</textarea><span class="mut" style="font-weight:400">点“下一步”后，系统会自动把它存入研究库，并在后台生成深访提纲、座谈会大纲、配额建议和舆情关键词的建议，生成好后在“研究设计”页查看；招募问卷也会参考它。</span></label>
+      <label class="field">研究背景（选填，只给团队看）<textarea class="autosize" data-meta="brief" rows="3"placeholder="写清这个项目要解决什么问题、做给谁看。">${esc(WZ.brief_edit ?? WZ.plan.brief ?? "")}</textarea><span class="mut" style="font-weight:400">点“下一步”后，系统会自动把它存入研究库，并在后台生成深访提纲、座谈会大纲、配额建议和舆情关键词的建议，生成好后在“研究设计”页查看；招募问卷也会参考它。</span></label>
       <div class="note">${esc(wzNotice())}</div>${wzSubs()}`;
     case 1: return `${wzSuggest()}${wzDesignView()}<label class="field" style="max-width:360px">研究类型（带出模板）${wzSel('data-w="type"', c.type, Object.keys(WZ_TYPES).map((x) => [x, x]))}</label>
       <div class="note">选“${esc(c.type)}”会预置：${WZ_TYPES[c.type]}。</div>`;
@@ -328,7 +328,20 @@ function wzWire() {
   $("#wzprev").onclick = guard(async () => { await wzSave(true); WZ.step--; wzDraw(); scrollTo(0, 0); });
   const nx = $("#wznext"); if (nx) nx.onclick = guard(async () => { await wzSave(true); if (WZ.step === 0) wzAutoSuggest(); WZ.step++; wzDraw(); scrollTo(0, 0); });
   root.addEventListener("change", wzChange);
+  root.querySelectorAll("textarea.autosize").forEach(wzAutosize);
   root.onclick = (e) => { const t = e.target.closest("button"); if (t) wzClick(t, e); };
+}
+
+/** A text box that is as tall as its text: at least 3 lines, at most 10, and a scrollbar inside the box beyond that. */
+function wzAutosize(t) {
+  const fit = () => {
+    const cs = getComputedStyle(t), lh = parseFloat(cs.lineHeight) || 22, pad = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom) + parseFloat(cs.borderTopWidth) + parseFloat(cs.borderBottomWidth);
+    t.style.height = "auto";
+    const want = t.scrollHeight + parseFloat(cs.borderTopWidth) + parseFloat(cs.borderBottomWidth), max = lh * 10 + pad, min = lh * 3 + pad;
+    t.style.height = Math.min(Math.max(want, min), max) + "px";
+    t.style.overflowY = want > max + 1 ? "auto" : "hidden";
+  };
+  t.addEventListener("input", fit); fit();
 }
 
 function wzChange(e) {

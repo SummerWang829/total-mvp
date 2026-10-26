@@ -4,6 +4,17 @@
    依赖 index.html 里的 api / esc / toast / guard / $ / CONFIG（app.js）和 screen_run.js。 */
 const RF_TYPE = { single: "单选", multi: "多选", text: "文字填空", number: "数字填空" };
 const RF_OP = { lt: "小于", lte: "不大于", gt: "大于", gte: "不小于", eq: "等于" };
+/** A text box as tall as its text: at least 2 lines, at most 8; beyond that it scrolls inside. */
+function rfAutosize(t) {
+  const fit = () => {
+    const cs = getComputedStyle(t), lh = parseFloat(cs.lineHeight) || 24, pad = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
+    t.style.height = "auto";
+    const max = lh * 8 + pad;
+    t.style.height = Math.min(Math.max(t.scrollHeight, lh * 2 + pad), max) + "px";
+    t.style.overflowY = t.scrollHeight > max + 1 ? "auto" : "hidden";
+  };
+  t.addEventListener("input", fit); fit();
+}
 const rfAiNotice = () => (CONFIG && CONFIG.ai_local ? "AI 运行在我们自己的服务器上，对话内容不会发给其他公司。"
   : `你说的话、立项里的研究背景和本项目研究库里的资料，会发送给 AI 服务商${CONFIG && CONFIG.ai_vendor ? `“${CONFIG.ai_vendor}”` : ""}来改问卷。请不要写入受访者的姓名、电话等个人信息。`);
 
@@ -130,6 +141,7 @@ function rfCard(p, form) {
     const pub = $("#rfpub"); if (pub) pub.onclick = publish;
     const cl = $("#rfclose"); if (cl) cl.onclick = guard(async () => { f = { ...f, ...(await api(`/projects/${p.id}/recruiting/form/close`, { method: "POST" })) }; drawRight(); toast("已停止收集"); });
     if (seg === "test") return retest();
+    [$("#rfgoals"), $("#rfneed")].forEach((box) => { if (box) rfAutosize(box); });
     const g = $("#rfgoals"); if (g) g.onchange = () => { pushHist(); goals = g.value.split("\n").map((x) => x.trim()).filter(Boolean).slice(0, 8); save(); };
     const n = $("#rfneed"); if (n) n.onchange = () => { pushHist(); need = n.value.trim(); save(); };
     document.querySelectorAll("[data-add]").forEach((b) => (b.onclick = () => {
