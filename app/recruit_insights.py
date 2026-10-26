@@ -159,6 +159,28 @@ def summarize(chat: ModeratorChatProvider | None, dash: dict) -> str:
         raise recruit_form.FormError("AI 这次没有给出可用的总结，请再试一次") from e
 
 
+def annotate(items: list[dict], questions: list[recruit_form.Question]) -> list[dict]:
+    """Add what the questionnaire knows to a participant's saved answers: the question type and the code (1, 2, ...) of each chosen option.
+
+    Answers are matched to the questionnaire by the question's text. Answers typed in by hand, imported, or from a questionnaire that was rewritten
+    since get no type and no codes; they still show their number, question and answer.
+    """
+    by_text = {q.text.strip(): q for q in questions}
+    out = []
+    for n, it in enumerate(items, 1):
+        q = by_text.get(it["question"].strip())
+        row = {**it, "n": n, "type": "", "options": []}
+        if q is not None and q.type in ("single", "multi"):
+            codes = {o.text.strip(): j for j, o in enumerate(q.options, 1)}
+            parts = [it["answer"].strip()] if it["answer"].strip() in codes else [x.strip() for x in it["answer"].split("、") if x.strip()]
+            row["type"] = q.type
+            row["options"] = [{"text": x, "code": codes.get(x)} for x in parts]
+        elif q is not None:
+            row["type"] = q.type
+        out.append(row)
+    return out
+
+
 def key_answers(db: Session, ids: list[str]) -> dict[str, str]:
     """A short "key answers" line per person (their first three answers, shortened), for the list."""
     out: dict[str, list[str]] = {}

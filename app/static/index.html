@@ -350,11 +350,16 @@ async function peopleView(p) {
     $("#f", m).onsubmit = guard(async (e) => { e.preventDefault(); await api(`/participants/${b.dataset.tags}/tags`, { method: "PUT", body: { tags: e.target.tags.value.split(/[,，;；|]/).map((t) => t.trim()).filter(Boolean) } }); m.remove(); render(); });
   });
   app.querySelectorAll("[data-scr]").forEach((b) => b.onclick = guard(async () => {
-    const id = b.dataset.scr, r = await api(`/participants/${id}/screener`);
-    const m = modal(`<h2>甄别问卷答案</h2><form id="f"><label class="f"><span>每行一题，写成“题目：答案”。保存后会替换原来的全部答案。</span><textarea name="text" rows="14">${esc(r.text)}</textarea></label>
-      <p class="sm mut">只有研究团队和 AI 主持人能看到。删除受访者数据时会一并清除。</p><div class="row"><button class="p">保存</button><button type="button" id="c">取消</button></div></form>`);
+    const id = b.dataset.scr, r = await api(`/participants/${id}/screener`), TY = { single: "单选", multi: "多选" };
+    const view = r.items.length ? r.items.map((it) => `<div class="sa-it"><span class="sa-n">${it.n}</span><div class="sa-q">${esc(it.question)}${TY[it.type] ? `<span class="sa-ty">${TY[it.type]}</span>` : ""}</div>
+      <div class="sa-a">${it.options.length ? it.options.map((o) => `<span class="sa-o">${esc(o.text)}${o.code ? ` <span class="sa-cd" title="选项 ${o.code}">${o.code}</span>` : ""}</span>`).join("") : esc(it.answer)}</div></div>`).join("") : `<p class="sm mut" style="margin:8px 0">还没有答案。点“编辑答案”添加。</p>`;
+    const m = modal(`<h2>甄别问卷答案</h2><form id="f"><p class="sm mut" id="sasub">每道题一条：题目加粗，答案在下一行。</p>
+      <div class="sa-list" id="saview">${view}</div><label class="f" id="saedit" hidden><span>每行一题，写成“题目：答案”。保存后会替换原来的全部答案。</span><textarea name="text" rows="14">${esc(r.text)}</textarea></label>
+      <p class="sm mut">只有研究团队和 AI 主持人能看到。删除受访者数据时会一并清除。</p><div class="row"><button type="button" id="saeb">编辑答案</button><button class="p" id="sasave" hidden>保存</button><button type="button" id="c">关闭</button></div></form>`);
+    const eb = $("#saeb", m);
     $("#c", m).onclick = () => m.remove();
     $("#f", m).onsubmit = guard(async (e) => { e.preventDefault(); await api(`/participants/${id}/screener`, { method: "PUT", body: { text: e.target.text.value } }); m.remove(); toast("已保存"); render(); });
+    eb.onclick = () => { $("#saedit", m).hidden = false; $("#saview", m).hidden = true; $("#sasub", m).hidden = true; eb.hidden = true; $("#sasave", m).hidden = false; $("#c", m).textContent = "取消"; };
   }));
   app.querySelectorAll("[data-inv]").forEach((b) => b.onclick = () => newSession(p, parts, b.dataset.inv));
   app.querySelectorAll("[data-erase]").forEach((b) => b.onclick = guard(async () => {

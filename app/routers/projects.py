@@ -3,13 +3,13 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import member_scopes, plans, recruit_insights, screener
+from .. import member_scopes, plans, recruit_form, recruit_insights, screener
 from .. import methods as methods_mod
 from ..audit import audit
 from ..config import settings
 from ..db import get_db
 from ..deps import ANY_PROJECT_ROLE, MEMBER_ROLES, RECRUITERS, STAFF, Ctx, can_see_project, current_ctx, ensure_project, require_roles
-from ..models import Interview, InterviewObserver, Participant, Project, ProjectMember, ProjectPlan, User
+from ..models import Interview, InterviewObserver, Participant, Project, ProjectMember, ProjectPlan, RecruitForm, User
 from ..models import utcnow
 from ..retention import days_of, erase_participant, purge_date
 
@@ -193,7 +193,9 @@ def get_screener(part_id: str, ctx: Ctx = Depends(require_roles(*RECRUITERS)), d
     """The participant's screening answers (research team only; clients and observers never see them)."""
     p = _own_participant(db, ctx, part_id)
     items = screener.items_for(db, p.id)
-    return {"items": items, "text": screener.as_text(items)}
+    form = db.get(RecruitForm, p.project_id)
+    shown = recruit_insights.annotate(items, recruit_form.load(form.questions) if form else [])
+    return {"items": shown, "text": screener.as_text(items)}
 
 
 @router.put("/participants/{part_id}/screener")

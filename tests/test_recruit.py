@@ -29,7 +29,8 @@ def test_import_creates_people_with_tags_and_turns_extra_columns_into_screening_
     got = {p["name"]: p for p in people(org, pid)}
     assert got["林小雨"]["tags"] == ["女性", "学生"] and got["林小雨"]["country"] == "SG" and got["Amir"]["country"] == "SG" and got["林小雨"]["screener"] == 2
     answers = org.c.get(f"/api/participants/{got['林小雨']['id']}/screener", headers=org.h()).json()["items"]
-    assert {"question": "年龄", "answer": "22"} in answers and {"question": "是否使用过 Acme", "answer": "是"} in answers
+    plain = [{"question": a["question"], "answer": a["answer"]} for a in answers]  # (the dialog also gets the number, type and option codes)
+    assert {"question": "年龄", "answer": "22"} in plain and {"question": "是否使用过 Acme", "answer": "是"} in plain
 
 
 def test_a_dry_run_changes_nothing_and_repeating_the_import_skips_people_already_there(org):

@@ -148,3 +148,16 @@ def test_only_the_research_team_can_export_copy_or_read_the_dashboard(client, or
         assert org.c.post(f"/api/projects/{pid}/participants/export-log", headers=h, json={"count": 1}).status_code == 403
         assert org.c.get(url(pid, "/dashboard"), headers=h).status_code == 403
         assert org.c.post(url(pid, "/dashboard/summary"), headers=h).status_code == 403
+
+
+def test_the_screener_answers_carry_question_numbers_types_and_option_codes(client, org):
+    pid, tok = publish(org)
+    run(client, tok, {"age": 30, "city": "gba"}, person("林小雨", "lin@example.com"))
+    org.c.post(f"/api/projects/{pid}/participants", headers=org.h(), json={"name": "手填的人", "screener_text": "买过几次：3 次"})
+    people = {p["name"]: p for p in org.c.get(f"/api/projects/{pid}/participants", headers=org.h()).json()}
+    items = org.c.get(f"/api/participants/{people['林小雨']['id']}/screener", headers=org.h()).json()["items"]
+    assert [i["n"] for i in items] == [1, 2]
+    assert items[1]["type"] == "single" and items[1]["options"] == [{"text": "大湾区", "code": 1}]  # the code is the option's place in the questionnaire
+    assert items[0]["type"] == "number" and items[0]["options"] == []
+    by_hand = org.c.get(f"/api/participants/{people['手填的人']['id']}/screener", headers=org.h()).json()["items"]
+    assert by_hand[0]["type"] == "" and by_hand[0]["options"] == [] and by_hand[0]["answer"] == "3 次"  # no matching question: only the plain answer

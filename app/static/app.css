@@ -702,3 +702,13 @@ main.enter .pbar6 i{animation:grow 1s var(--ease) .15s both}@keyframes grow{from
 .rd-cmp .rd-t{display:inline-block;width:calc(100% - 44px);vertical-align:middle}
 .rd-p{display:inline-block;width:40px;text-align:right;font-size:13px}
 .rd-tip{position:absolute;z-index:20;max-width:420px;background:var(--surface);border:1px solid var(--line2);border-radius:10px;padding:8px 12px;font-size:14px;line-height:1.6;box-shadow:0 8px 24px rgba(6,35,25,.18);pointer-events:none}
+
+/* 甄别问卷答案弹窗：题号 + 加粗题目 + 题型，答案在下一行，选项后面带编号 */
+.sa-list{max-height:420px;overflow-y:auto;border:1px solid var(--line);border-radius:10px;padding:2px 14px;margin:6px 0 10px}
+.sa-it{display:grid;grid-template-columns:24px minmax(0,1fr);column-gap:8px;padding:10px 0;border-bottom:1px solid var(--line)}.sa-it:last-child{border-bottom:0}
+.sa-n{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:var(--orange-mid);color:#8A3600;font-size:12px;font-weight:700;margin-top:1px}
+.sa-q{font-weight:700;font-size:14px;line-height:1.6;overflow-wrap:anywhere}
+.sa-ty{display:inline-block;font-size:12px;padding:1px 8px;border-radius:999px;background:var(--green-soft);color:var(--green);font-weight:600;margin-left:6px;white-space:nowrap}
+.sa-a{grid-column:2;margin-top:4px;font-size:14px;line-height:1.6;overflow-wrap:anywhere}
+.sa-o{display:inline-flex;align-items:center;gap:6px;margin:0 12px 2px 0}
+.sa-cd{min-width:20px;height:20px;padding:0 4px;display:inline-flex;align-items:center;justify-content:center;border-radius:5px;background:var(--wash);border:1px solid var(--line2);color:var(--muted);font-size:12px}
