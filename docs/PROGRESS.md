@@ -9,6 +9,11 @@
 - 验证：pytest 1570；qa_site 3154 项 0 失败（含新加的框高度检查）；e2e_room 326；smoke ok。
 - 还差：对比表（题目列 55%、题目/选项上下排、加题型、悬浮显示全文）已确认，下一批做。
 
+## 2026-10-23 · 部署到新加坡测试服务器（提交 411b595，LW 这一批：选项互斥、工作台可拖、配额与名单看板、外部名单导入导出）
+- 本机 pytest 1570 项全过。部署前确认没有进行中的访谈；备份 `total-20261023-111307.db.gz` 已生成，异地备份（COS）上传成功。`git archive` 覆盖 `/opt/total-mvp`（`deploy/.env` 保留）；`docker compose up -d --build`；三个容器运行，app healthy。没有碰硅谷服务器。
+- 检查：`/api/health`、`/api/public/config`、`/rdash.js`、`/rform.js`、`/screen_run.js`、`/screen.html`、`/index.html` 全 200；未登录 GET `/api/projects/x/recruiting/dashboard` 和 POST `/api/projects/x/participants/export` 都是 401（与预期一致）；doctor：视频在线、AI 主持人可用、实时字幕已配置、限流已开，没有必须解决的问题；日志 error/traceback 计数 0；自动补了 4 列（participants.source/source_name、recruit_forms.n_started/tally），没有 “cannot add” 报错；`.env` 里 `MODERATOR_VENDOR` 已填（只确认有值）。
+- 未登录冒烟：互斥项、发布后跳转、看板、外部名单导入（来源名 + 合法联系依据）、名单筛选/复制/导出 CSV（含匿名），请用户登录后走一遍。
+
 ## 2026-10-23 · 选项互斥 + 工作台比例 + “配额与受访者名单”看板（用户看过效果图 v5、v8 后确认）
 - 做了什么：①多选题选项可设“互斥项”（双向，服务器校验，候选人页自动取消另一个）；②招募问卷工作台左右比例可拖、高度撑满；③发布后自动跳到“配额与受访者名单”页，链接/二维码/停止收集在页面顶部；④新看板（`app/recruit_insights.py`、`app/static/rdash.js`）：开始作答/完成甄别/合格/通过率、漏斗、人从哪里来、在哪一题被筛掉、配额、合格者共同点、合格 vs 被筛掉每题对比、AI 画像总结（只发统计数字）；被筛掉的人只存匿名选项人数（`RecruitForm.tally`）；⑤名单：导入外部名单（必须填来源名并确认有合法联系依据；默认直接可邀请，或先发问卷再甄别）、“来源”“关键回答”两列、按标签/来源筛选、复制名单、导出 CSV（含联系方式/当前筛选/已勾选/匿名），研究团队专用并记审计日志。
 - 验证：pytest 1570 通过；qa_site 3151 项 0 失败；e2e_room 326 项；smoke_dev ok。qa_site 现在可用 `QA_ONLY=recruit_section` 只跑一段。
