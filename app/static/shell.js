@@ -91,7 +91,7 @@ function shTabs(p, active) {
 }
 
 function shWire(p) {
-  const pinTabs = () => { const c = document.querySelector(".ctx"); if (c) document.documentElement.style.setProperty("--ctxh", c.offsetHeight + "px"); };  // the tab row stays pinned right under the project bar
+  const pinTabs = () => { const c = document.querySelector(".ctx"), h = document.querySelector("main>.hubtabs.pin"); if (c) document.documentElement.style.setProperty("--ctxh", c.offsetHeight + "px"); if (h) document.documentElement.style.setProperty("--tabh", h.offsetHeight + "px"); };  // the tab row stays pinned right under the project bar
   pinTabs(); window.onresize = pinTabs;
   const sel = document.getElementById("subsel");
   if (sel) sel.onchange = () => { sessionStorage.setItem("sub_" + p.id, sel.value); render(); };

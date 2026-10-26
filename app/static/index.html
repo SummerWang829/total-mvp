@@ -249,9 +249,9 @@ async function homeView(p) {
 }
 
 // ---------------- 受访者招募 ----------------
-let PEOPLE_F = { tag: "", country: "", language: "", tier: "", kind: "", source: "" };   // the filters of the recruiting table (kept while the page redraws)
+let PEOPLE_F = { tier: [], tag: [], country: [], language: [], source: [], kind: [] };   // each filter is a list: several picked = any of them; different filters = all of them   // the filters of the recruiting table (kept while the page redraws)
 const SCREEN = { qualified: ["符合条件", "ok"], disqualified: ["不符合", "bad"], review: ["待人工看", "live"] };
-let LIB_DEL = false, TAG_DEL = new Set();  // "－" pressed: the tag library / this person's tags show a × on every tag
+let TAG_DEL = new Set(), MENU_OPEN = "";  // TAG_DEL: people whose tags show a × ("－" pressed); MENU_OPEN: the filter menu to open again after a redraw
 const LCOLORS = 6, lcolor = (s) => "lc" + ([...String(s)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % LCOLORS);  // the same text is always the same colour
 const RULE_FIELDS = [["country", "国家"], ["language", "语言"], ["tags", "标签"], ["question", "甄别题（写关键词）"]];
 const RULE_OPS = [["equals", "等于"], ["in", "是其中之一"], ["not_in", "不是其中之一"], ["contains", "包含"], ["not_contains", "不包含"], ["gte", "不小于（数字）"], ["lte", "不大于（数字）"], ["between", "在区间内（如 18,65）"], ["answered", "回答了"]];
@@ -266,32 +266,22 @@ async function peopleView(p) {
   const srcName = (x) => x.source_name || ({ link: "问卷链接 / 二维码", manual: "手动添加", import: "外部名单", platform: "外部问卷平台" })[x.source] || "未记录来源";
   const F = PEOPLE_F;
   const KIND = { human: ["真人访谈", "h"], ai: ["AI 访谈", "a"], both: ["真人 + AI", "h"], "": ["未邀请", "n"] };
-  const shown = parts.map((x) => [x]).filter(([x]) => (!F.tag || x.tags.includes(F.tag)) && (!F.country || x.country === F.country) && (!F.language || x.language === F.language) && (!F.tier || x.tier === F.tier)
-    && (!F.kind || (F.kind === "none" ? !x.interview_kind : x.interview_kind === F.kind || x.interview_kind === "both")) && (!F.source || srcName(x) === F.source));
+  const inF = (key, v) => !F[key].length || F[key].includes(v);
+  const matches = (x) => inF("country", x.country) && inF("language", x.language) && inF("tier", x.tier) && inF("source", srcName(x))
+    && (!F.tag.length || F.tag.some((tg) => x.tags.includes(tg)))
+    && (!F.kind.length || F.kind.some((k) => (k === "none" ? !x.interview_kind : x.interview_kind === k || x.interview_kind === "both")));
+  let shown = parts.filter(matches);
   const RC = RECRUITER();
-  const tagCount = Object.fromEntries(lib.tags.map((x) => [x.tag, x.n])), srcCount = {};
-  parts.forEach((x) => { srcCount[srcName(x)] = (srcCount[srcName(x)] || 0) + 1; });
-  const chips = (label, counts, key, extra = "") => Object.keys(counts).length || extra ? `<div class="rd-chips"><span class="sm mut">${label}</span>${Object.entries(counts).map(([k, n]) => `<button type="button" class="rd-ch ${F[key] === k ? "on" : ""}" data-fchip="${key}" data-v="${esc(k)}" aria-pressed="${F[key] === k}">${esc(k)} ${n}${key === "tag" && LIB_DEL ? ` <span class="lx" data-libdel="${esc(k)}" role="button" aria-label="从标签库删除 ${esc(k)}">×</span>` : ""}</button>`).join("")}${extra}</div>` : "";
+  const tagCount = Object.fromEntries(lib.tags.map((x) => [x.tag, x.n]));
   const rerender = async () => { const y = window.scrollY; await render(); window.scrollTo(0, y); };
-  const sel = (id, label, opts, cur) => `<label class="f" style="margin:0"><span>${label}</span><select id="${id}"><option value="">全部</option>${opts.map(([v, n]) => `<option value="${esc(v)}"${v === cur ? " selected" : ""}>${esc(n)}</option>`).join("")}</select></label>`;
-  const ptab = sessionStorage.getItem("ptab") === "list" ? "list" : "form";  // 招募问卷 is a workspace (the page does not scroll); the quotas and the people are on the other tab
-  shell(`${head("甄别设定", `先做招募问卷，再看配额和名单；受访者可来自问卷、手动添加或外部名单。目前只开放新加坡。`)}
-    <div class="hubtabs" role="tablist" aria-label="甄别设定"><a href="#" role="tab" id="ptab-form-t" class="${ptab === "form" ? "on" : ""}" aria-selected="${ptab === "form"}">招募问卷</a><a href="#" role="tab" id="ptab-list-t" class="${ptab === "list" ? "on" : ""}" aria-selected="${ptab === "list"}">配额与受访者名单</a></div>
-    <div id="ptab-form" ${ptab === "form" ? "" : "hidden"}>${rf.html}</div><div id="ptab-list" ${ptab === "list" ? "" : "hidden"}>
-    ${rd.html}
-    <div class="card" id="plist"><div class="row rd-tool"><h3 style="margin:0">受访者名单 <span class="sm mut">共 ${parts.length} 人${shown.length !== parts.length ? `，当前显示 ${shown.length}` : ""}</span></h3><span class="sp"></span>
-      <button type="button" id="imp2">导入名单（外部渠道）</button><button type="button" id="np">添加受访者</button><button type="button" id="pcopy"${parts.length ? "" : " disabled"}>复制名单</button>
-      <span class="rd-menu"><button type="button" id="pexp" aria-haspopup="true" aria-expanded="false"${parts.length ? "" : " disabled"}>导出 ▾</button><div class="rd-pop" id="pexpm" role="menu" hidden>
-        <button type="button" role="menuitem" data-exp="all">全部名单（CSV，含联系方式）</button><button type="button" role="menuitem" data-exp="shown">当前筛选结果（CSV）</button><button type="button" role="menuitem" data-exp="picked">已勾选的人（CSV）</button><button type="button" role="menuitem" data-exp="anon">不含姓名和邮箱（给客户看）</button></div></span></div>
-      <p class="sm mut" style="margin:6px 0 0">名单里有受访者的个人信息，只有研究团队能复制或导出，每次都会记入审计日志；请妥善保管导出的文件。</p>
-      ${chips("按标签看", tagCount, "tag", `<button class="sqb" type="button" id="libadd" aria-label="新增标签到标签库" title="新增标签（所有人都能选）">＋</button><button class="sqb${LIB_DEL ? " on" : ""}" type="button" id="libdel" aria-label="从标签库删除标签" title="删除标签">－</button>`)}${chips("按来源看", srcCount, "source")}
-      <div class="lcf" id="libcf" role="alert" hidden></div></div>
-    ${parts.length ? `<form class="card row" id="pf" style="align-items:flex-end;flex-wrap:wrap">${sel("f_tier", "资格", [["formal", "正式"], ["backup", "备份"]], F.tier)}${sel("f_tag", "标签", lib.tags.map((x) => [x.tag, x.tag]), F.tag)}${sel("f_country", "国家", countries.map((c) => [c, c]), F.country)}${sel("f_language", "语言", langs.map((l) => [l, LANGS[l] || l]), F.language)}${sel("f_kind", "访谈类型", [["human", "真人访谈"], ["ai", "AI 访谈"], ["none", "未邀请"]], F.kind)}
-      <span class="sp"></span>${RC ? "" : `<span class="sm mut" id="selcount">已选 0 人</span><button type="button" id="bdel" class="warn">批量删除</button>`}</form>
-    <div class="lcf" id="bdelcf" role="alert" hidden></div>
-    <div class="card" style="padding:6px 10px"><table class="tbl rc ptbl"><colgroup><col style="width:3%"><col style="width:8%"><col style="width:13%"><col style="width:9%"><col style="width:10%"><col style="width:16%"><col style="width:16%"><col style="width:9%"><col style="width:16%"></colgroup>
-      <thead><tr><th><span class="vh">选择</span><input type="checkbox" id="all" aria-label="全选"></th><th>编号</th><th>姓名</th><th>国家 / 语言</th><th>资格</th><th>标签</th><th>关键回答</th><th>来源</th><th>操作</th></tr></thead><tbody>
-      ${shown.map(([x]) => {
+  const FILTERS = [["tier", "资格", [["formal", "正式"], ["backup", "备份"]]], ["tag", "标签", lib.tags.map((x) => [x.tag, x.tag])], ["country", "国家", countries.map((c) => [c, c])],
+    ["language", "语言", langs.map((l) => [l, LANGS[l] || l])], ["source", "来源", [...new Set(parts.map(srcName))].map((s) => [s, s])], ["kind", "访谈类型", [["human", "真人访谈"], ["ai", "AI 访谈"], ["none", "未邀请"]]]];
+  const filterText = (key, opts) => { const s = F[key].map((v) => (opts.find((o) => o[0] === v) || [v, v])[1]); return s.length ? (s.length > 1 ? `${s[0]} 等 ${s.length} 项` : s[0]) : "全部"; };
+  const msel = ([key, label, opts]) => `<div class="f msel" data-key="${key}" style="margin:0"><span>${label}</span><button type="button" class="msb${F[key].length ? " on" : ""}" aria-haspopup="true" aria-expanded="false">${esc(filterText(key, opts))}</button>
+    <div class="msm" hidden>${opts.length ? opts.map(([v, n]) => `<div class="mso"><label><input type="checkbox" value="${esc(v)}"${F[key].includes(v) ? " checked" : ""}> <span>${esc(n)}</span>${key === "tag" ? ` <span class="sm mut">${tagCount[v] || 0}</span>` : ""}</label>${key === "tag" ? `<button type="button" class="lx" data-libdel="${esc(v)}" aria-label="从标签库删除 ${esc(n)}">×</button>` : ""}</div>`).join("") : `<div class="sm mut" style="padding:6px 8px">还没有可选的</div>`}
+      <div class="mclr"><button type="button" class="lnk" data-clr>清除这一项</button></div>
+      ${key === "tag" ? `<div class="lcf" id="libcf" hidden></div><div class="msec"><p class="sm mut" style="margin:0 0 6px">新增一个标签（所有人都能选）</p><form id="libf" class="row" style="gap:6px;flex-wrap:nowrap"><input name="tag" maxlength="40" placeholder="输入标签，回车添加" aria-label="新标签" required><button class="p">添加</button></form></div>` : ""}</div></div>`;
+  const rowHtml = (x) => {
         const k = KIND[x.interview_kind] || KIND[""], answers = x.key_answers ? x.key_answers.split(" · ") : [];
         const tier = x.screening === "blocked_region" ? `<span class="tag bad">地区暂未开放</span>` : x.anonymized ? `<span class="tag">已匿名</span>` : x.screen_result === "disqualified" ? `<span class="tag bad" title="${esc(x.screen_reason)}">不符合</span><div class="sm mut ell" title="${esc(x.screen_reason)}">${esc(x.screen_reason)}</div>`
           : `<button type="button" class="lch ${x.tier === "backup" ? "st-b" : "st-f"}" data-tier="${x.id}" aria-haspopup="menu" title="${x.screen_reason ? esc(x.screen_reason) : ""}">${x.tier === "backup" ? "备份" : "正式"} ▾</button><div class="sm mut">${x.tier_manual ? "手动" : "自动"} · ${x.screen_result ? SCREEN[x.screen_result][0] : "可邀请"}</div>`;
@@ -302,8 +292,25 @@ async function peopleView(p) {
         <td>${x.anonymized ? "" : `<div class="lbox">${tags || `<span class="sm mut">—</span>`}<span class="lbtns"><button class="sqb" type="button" data-tadd="${x.id}" aria-label="给 ${esc(x.name)} 添加标签">＋</button><button class="sqb${TAG_DEL.has(x.id) ? " on" : ""}" type="button" data-tdel="${x.id}" aria-label="去掉 ${esc(x.name)} 的标签">－</button></span></div>`}</td>
         <td><div class="lbox">${answers.length ? answers.map((a) => `<span class="lch ${lcolor(a)}" title="${esc(a)}">${esc(a)}</span>`).join("") : `<span class="sm mut">—</span>`}</div></td>
         <td><span class="tag ${x.source === "import" ? "live" : ""}">${esc(srcName(x))}</span></td>
-        <td class="acts">${x.anonymized ? "" : `<button class="s" data-scr="${x.id}">${x.screener ? `${x.screener} 题 · 查看` : "添加答案"}</button>`}${RC ? "" : `${x.screening === "eligible" && !x.anonymized && x.screen_result !== "disqualified" ? `<button class="s" data-inv="${x.id}">邀请到场次</button>` : ""}${x.anonymized ? "" : `<button class="s warn" data-erase="${x.id}">删除数据</button>`}`}</td></tr>`; }).join("")}</tbody></table></div>
-      ${shown.length ? "" : `<div class="card empty"><b>没有符合筛选条件的人。</b></div>`}`
+        <td class="acts">${x.anonymized ? "" : x.screener ? `<button class="s" data-scr="${x.id}">${x.screener} 题 · 查看</button>` : `<div class="stn">无答案</div>`}${RC ? "" : x.screening === "eligible" && !x.anonymized && x.screen_result !== "disqualified" ? `<button class="s" data-inv="${x.id}">邀请到场次</button>` : ""}</td>
+        ${RC ? "" : `<td class="c">${x.anonymized ? "" : `<button type="button" class="xdel" data-erase="${x.id}" data-name="${esc(x.name)}" aria-label="删除 ${esc(x.name)} 的数据" title="删除数据">×</button>`}</td>`}</tr>`; };
+  const ptab = sessionStorage.getItem("ptab") === "list" ? "list" : "form";  // 招募问卷 is a workspace (the page does not scroll); the quotas and the people are on the other tab
+  shell(`${head("甄别设定", `先做招募问卷，再看配额和名单；受访者可来自问卷、手动添加或外部名单。目前只开放新加坡。`)}
+    <div class="hubtabs" role="tablist" aria-label="甄别设定"><a href="#" role="tab" id="ptab-form-t" class="${ptab === "form" ? "on" : ""}" aria-selected="${ptab === "form"}">招募问卷</a><a href="#" role="tab" id="ptab-list-t" class="${ptab === "list" ? "on" : ""}" aria-selected="${ptab === "list"}">配额与受访者名单</a></div>
+    <div id="ptab-form" ${ptab === "form" ? "" : "hidden"}>${rf.html}</div><div id="ptab-list" ${ptab === "list" ? "" : "hidden"}>
+    ${rd.html}
+    <div class="card" id="plist"><div class="row rd-tool"><h3 style="margin:0">受访者名单 <span class="sm mut" id="plcount">共 ${parts.length} 人${shown.length !== parts.length ? `，当前显示 ${shown.length}` : ""}</span></h3><span class="sp"></span>
+      <button type="button" id="imp2">导入名单（外部渠道）</button><button type="button" id="np">添加受访者</button><button type="button" id="pcopy"${parts.length ? "" : " disabled"}>复制名单</button>
+      <span class="rd-menu"><button type="button" id="pexp" aria-haspopup="true" aria-expanded="false"${parts.length ? "" : " disabled"}>导出 ▾</button><div class="rd-pop" id="pexpm" role="menu" hidden>
+        <button type="button" role="menuitem" data-exp="all">全部名单（CSV，含联系方式）</button><button type="button" role="menuitem" data-exp="shown">当前筛选结果（CSV）</button><button type="button" role="menuitem" data-exp="picked">已勾选的人（CSV）</button><button type="button" role="menuitem" data-exp="anon">不含姓名和邮箱（给客户看）</button></div></span></div>
+      <p class="sm mut" style="margin:6px 0 0">名单里有受访者的个人信息，只有研究团队能复制或导出，每次都会记入审计日志；请妥善保管导出的文件。</p>
+    ${parts.length ? `<hr class="plhr"><div class="plf" id="pf">${FILTERS.map(msel).join("")}
+      <span class="sp"></span>${RC ? "" : `<span class="sm mut" id="selcount">已选 0 人</span><button type="button" id="bdel" class="warn">批量删除</button>`}<div class="fres" id="fres" style="flex-basis:100%"></div></div>
+    <div class="lcf" id="bdelcf" role="alert" hidden></div>` : ""}</div>
+    ${parts.length ? `<div class="card plbox"><table class="tbl rc ptbl"><colgroup>${RC ? `<col style="width:3%"><col style="width:7%"><col style="width:13%"><col style="width:10%"><col style="width:10%"><col style="width:18%"><col style="width:15%"><col style="width:9%"><col style="width:15%">` : `<col style="width:3%"><col style="width:7%"><col style="width:12%"><col style="width:10%"><col style="width:10%"><col style="width:15%"><col style="width:13%"><col style="width:8%"><col style="width:15%"><col style="width:7%">`}</colgroup>
+      <thead><tr><th><span class="vh">选择</span><input type="checkbox" id="all" aria-label="全选"></th><th>编号</th><th>姓名</th><th>国家 / 语言</th><th>资格</th><th>标签</th><th>关键回答</th><th>来源</th><th>操作</th>${RC ? "" : `<th class="c">数据清理</th>`}</tr></thead><tbody id="prows">
+      ${shown.map(rowHtml).join("")}</tbody></table></div>
+      <div class="card empty" id="pempty" ${shown.length ? "hidden" : ""}><b>没有符合筛选条件的人。</b></div>`
       : `<div class="card empty"><b>还没有受访者。</b><span>点“添加受访者”手动添加，“导入名单（外部渠道）”导入别处拿来的名单，或把招募问卷发出去。</span></div>`}
     <div class="lpop" id="lpop" hidden></div></div>`, { active: "people", p });
   const showTab = (name) => {
@@ -318,55 +325,99 @@ async function peopleView(p) {
   document.body.classList.toggle("rfmode", ptab === "form");
   document.body.classList.add("pgw");  // this page runs the full width
   // ---- the list: filters, picking, tier, tags, bulk delete ----
-  const bind = (id, key) => { const e = $(id); if (e) e.onchange = () => { PEOPLE_F = { ...PEOPLE_F, [key]: e.value }; render(); }; };
-  bind("#f_tier", "tier"); bind("#f_tag", "tag"); bind("#f_country", "country"); bind("#f_language", "language"); bind("#f_kind", "kind");
   const picks = () => [...app.querySelectorAll(".pick:checked")].map((c) => c.value);
   const syncSel = () => { const sc = $("#selcount"); if (sc) sc.textContent = `已选 ${picks().length} 人`; };
-  app.querySelectorAll(".pick").forEach((c) => c.onchange = syncSel);
-  const all = $("#all"); if (all) all.onchange = () => { app.querySelectorAll(".pick:not(:disabled)").forEach((c) => { c.checked = all.checked; }); syncSel(); };
   const pop = $("#lpop"), closePop = () => { pop.hidden = true; pop.innerHTML = ""; };
   const openPop = (anchor, html) => {
     pop.innerHTML = html; pop.hidden = false;
     const host = pop.offsetParent || pop.parentElement, a = anchor.getBoundingClientRect(), h = host.getBoundingClientRect();
     pop.style.left = Math.max(0, Math.min(a.left - h.left, h.width - pop.offsetWidth - 8)) + "px"; pop.style.top = a.bottom - h.top + 4 + "px";
   };
-  document.addEventListener("click", (e) => { if (!pop.hidden && !pop.contains(e.target) && !e.target.closest("[data-tier],[data-tadd],#libadd")) closePop(); });
+  document.addEventListener("click", (e) => { if (!pop.hidden && !pop.contains(e.target) && !e.target.closest("[data-tier],[data-tadd]")) closePop(); });
   const person = (id) => parts.find((x) => x.id === id);
+  const refreshPeople = async () => {   // fetch the people and the quota numbers again and redraw only those two places: no page reload, the scroll position stays
+    const [np, nrec] = await Promise.all([api(`/projects/${p.id}/participants`), api(`/projects/${p.id}/recruiting`)]);
+    parts.splice(0, parts.length, ...np); rec.quotas = nrec.quotas; rd.updateQuotas(nrec.quotas); drawList();
+  };
+  const recount = () => { lib.tags.forEach((x) => { tagCount[x.tag] = parts.filter((y) => !y.anonymized && y.tags.includes(x.tag)).length; });
+    app.querySelectorAll(".msel[data-key=tag] .mso").forEach((o) => { const c = o.querySelector("label .sm"), v = o.querySelector("input").value; if (c) c.textContent = tagCount[v] || 0; }); };
+  const putTags = guard(async (x, tags) => { const r = await api(`/participants/${x.id}/tags`, { method: "PUT", body: { tags } }); x.tags = r.tags; closePop(); recount(); drawList(); });
+  const cf = (box, html, onYes) => { box.hidden = false; box.innerHTML = `${html} <button type="button" class="s warn" data-y>确认删除</button><button type="button" class="s" data-n>取消</button>`; $("[data-n]", box).onclick = () => { box.hidden = true; }; $("[data-y]", box).onclick = guard(async () => { box.hidden = true; await onYes(); }); };
+  const hideBar = () => { const bx = $("#bdelcf"); if (bx) bx.hidden = true; };
+  if (window._barClose) { document.removeEventListener("click", window._barClose); document.removeEventListener("keydown", window._barKey); }
+  window._barClose = (e) => { const bx = $("#bdelcf"); if (bx && !bx.contains(e.target)) hideBar(); }; window._barKey = (e) => { if (e.key === "Escape") hideBar(); };
+  document.addEventListener("click", window._barClose); document.addEventListener("keydown", window._barKey);
+  const bdel = $("#bdel"); if (bdel) bdel.onclick = (e) => { e.stopPropagation();
+    const ids = picks(), box = $("#bdelcf");
+    if (!ids.length) { box.hidden = false; box.textContent = "先在表格里勾选要删除的人。"; return; }
+    cf(box, `将删除 ${ids.length} 位受访者的全部数据（含访谈录制、转写、引文），删除后无法恢复。`, async () => { const r = await api(`/projects/${p.id}/participants/delete`, { method: "POST", body: { ids } }); toast(`已删除 ${r.erased} 人`); await rerender(); });
+  };
+  const wireRows = () => {
+    app.querySelectorAll(".pick").forEach((c) => (c.onchange = syncSel));
   app.querySelectorAll("[data-tier]").forEach((b) => b.onclick = (e) => {
     e.stopPropagation(); const x = person(b.dataset.tier);
     openPop(b, `<div class="lmenu" role="menu"><button type="button" role="menuitem" class="lch st-f" data-set="formal">正式</button><button type="button" role="menuitem" class="lch st-b" data-set="backup">备份</button>${x.tier_manual ? `<button type="button" role="menuitem" class="lnk" data-set="auto">恢复自动</button>` : ""}</div>`);
-    pop.querySelectorAll("[data-set]").forEach((m) => (m.onclick = guard(async () => { await api(`/participants/${x.id}/tier`, { method: "PUT", body: { tier: m.dataset.set } }); closePop(); toast("已更新"); await rerender(); })));
+    pop.querySelectorAll("[data-set]").forEach((m) => (m.onclick = guard(async () => { await api(`/participants/${x.id}/tier`, { method: "PUT", body: { tier: m.dataset.set } }); closePop(); toast("已更新"); await refreshPeople(); })));
   });
-  const putTags = guard(async (x, tags) => { await api(`/participants/${x.id}/tags`, { method: "PUT", body: { tags } }); closePop(); await rerender(); });
   app.querySelectorAll("[data-tadd]").forEach((b) => b.onclick = (e) => {
     e.stopPropagation(); const x = person(b.dataset.tadd), left = lib.tags.map((t) => t.tag).filter((t) => !x.tags.includes(t));
     openPop(b, `<div class="sm mut" style="margin:0 0 6px">点一下就加上（只列出这个人还没有的标签）</div><div class="lbox" style="border:0;background:none;padding:0">${left.length ? left.map((t) => `<button type="button" class="lch ${lcolor(t)}" data-pick="${esc(t)}">＋ ${esc(t)}</button>`).join("") : `<span class="sm mut">这份问卷的标签都已经选上了</span>`}</div>`);
     pop.querySelectorAll("[data-pick]").forEach((m) => (m.onclick = () => putTags(x, [...x.tags, m.dataset.pick])));
   });
-  app.querySelectorAll("[data-tdel]").forEach((b) => b.onclick = () => { const id = b.dataset.tdel; if (TAG_DEL.has(id)) TAG_DEL.delete(id); else TAG_DEL.add(id); rerender(); });
+  app.querySelectorAll("[data-tdel]").forEach((b) => b.onclick = () => { const id = b.dataset.tdel; if (TAG_DEL.has(id)) TAG_DEL.delete(id); else TAG_DEL.add(id); drawList(); });
   app.querySelectorAll("[data-tx]").forEach((x) => x.onclick = () => { const who = person(x.dataset.tx); putTags(who, who.tags.filter((t) => t !== x.dataset.tag)); });
-  const cf = (box, html, onYes) => { box.hidden = false; box.innerHTML = `${html} <button type="button" class="s warn" data-y>确认删除</button><button type="button" class="s" data-n>取消</button>`; $("[data-n]", box).onclick = () => { box.hidden = true; }; $("[data-y]", box).onclick = guard(async () => { box.hidden = true; await onYes(); }); };
-  $("#libadd").onclick = (e) => {
-    e.stopPropagation();
-    openPop(e.currentTarget, `<div class="sm mut" style="margin:0 0 6px">新增一个标签到标签库（所有人都能选）</div><form id="libf" class="row" style="gap:6px;flex-wrap:nowrap"><input name="tag" maxlength="40" placeholder="输入标签" aria-label="新标签" required><button class="p">添加</button></form>`);
-    const f = $("#libf", pop); f.tag.focus(); f.onsubmit = guard(async (ev) => { ev.preventDefault(); await api(`/projects/${p.id}/recruiting/tags`, { method: "POST", body: { tag: f.tag.value } }); closePop(); toast("已添加到标签库"); await rerender(); });
+  app.querySelectorAll("[data-scr]").forEach((b) => b.onclick = guard(async () => {
+    const r = await api(`/participants/${b.dataset.scr}/screener`), TY = { single: "单选", multi: "多选" };
+    const view = r.items.length ? r.items.map((it) => `<div class="sa-it"><span class="sa-n">${it.n}</span><div class="sa-q">${esc(it.question)}${TY[it.type] ? `<span class="sa-ty">${TY[it.type]}</span>` : ""}</div>
+      <div class="sa-a">${it.options.length ? it.options.map((o) => `<span class="sa-o">${esc(o.text)}${o.code ? ` <span class="sa-cd" title="选项 ${o.code}">${o.code}</span>` : ""}</span>`).join("") : esc(it.answer)}</div></div>`).join("") : `<p class="sm mut" style="margin:8px 0">还没有答案。点“编辑答案”添加。</p>`;
+    const m = modal(`<h2>甄别问卷答案</h2><p class="sm mut">每道题一条：题目加粗，答案在下一行。</p><div class="sa-list" id="saview">${view}</div>
+      <p class="sm mut">只能查看，不能在这里修改题目和答案。只有研究团队和 AI 主持人能看到。删除受访者数据时会一并清除。</p><div class="row"><button type="button" id="c">关闭</button></div>`);
+    $("#c", m).onclick = () => m.remove();
+  }));
+  app.querySelectorAll("[data-inv]").forEach((b) => b.onclick = () => newSession(p, parts, b.dataset.inv));
+  app.querySelectorAll("[data-erase]").forEach((b) => (b.onclick = (e) => {
+    e.stopPropagation(); const id = b.dataset.erase;
+    cf($("#bdelcf"), `将删除“${esc(b.dataset.name)}”的全部数据（含访谈录制、转写、引文和分享链接），删除后无法恢复。`, async () => { const r = await api(`/participants/${id}/data`, { method: "DELETE" }); toast(`已清除 ${r.purged_interviews} 场访谈的数据`); await rerender(); });
+  }));
   };
-  $("#libdel").onclick = () => { LIB_DEL = !LIB_DEL; rerender(); };
+  const all = $("#all"); if (all) all.onchange = () => { app.querySelectorAll(".pick:not(:disabled)").forEach((c) => { c.checked = all.checked; }); syncSel(); };
+  // ---- filters: several picked in one menu = any of them; menus stay open while ticking ----
+  const closeMenus = () => app.querySelectorAll(".msm").forEach((m) => { m.hidden = true; m.parentElement.querySelector(".msb").setAttribute("aria-expanded", "false"); });
+  const syncFilterUi = () => {
+    FILTERS.forEach(([key, , opts]) => { const el = app.querySelector(`.msel[data-key=${key}]`); if (!el) return; el.querySelector(".msb").textContent = filterText(key, opts); el.querySelector(".msb").classList.toggle("on", F[key].length > 0); });
+    const on = FILTERS.filter(([key]) => F[key].length), fr = $("#fres");
+    if (fr) fr.innerHTML = on.length ? `<span class="sm mut">已筛选：</span>${on.map(([key, label, opts]) => `<span class="rd-chip">${label}：${esc(F[key].map((v) => (opts.find((o) => o[0] === v) || [v, v])[1]).join(" 或 "))}</span>`).join("")} <button type="button" class="lnk" id="fclr">清除全部筛选</button>` : "";
+    const fc = $("#fclr"); if (fc) fc.onclick = () => { FILTERS.forEach(([key]) => { PEOPLE_F[key] = []; }); app.querySelectorAll(".msm input[type=checkbox]").forEach((c) => { c.checked = false; }); drawList(); };
+  };
+  const drawList = () => {
+    shown = parts.filter(matches);
+    $("#prows").innerHTML = shown.map(rowHtml).join("");
+    $("#plcount").textContent = `共 ${parts.length} 人${shown.length !== parts.length ? `，当前显示 ${shown.length}` : ""}`;
+    $("#pempty").hidden = shown.length > 0;
+    const all2 = $("#all"); if (all2) all2.checked = false;
+    syncFilterUi(); wireRows(); labelTables(); syncSel();
+  };
+  app.querySelectorAll(".msel").forEach((el) => {
+    const key = el.dataset.key, b = el.querySelector(".msb"), m = el.querySelector(".msm");
+    b.onclick = (e) => { e.stopPropagation(); const open = m.hidden; closeMenus(); m.hidden = !open; b.setAttribute("aria-expanded", String(open)); };
+    m.onclick = (e) => e.stopPropagation();
+    m.querySelectorAll("input[type=checkbox]").forEach((c) => (c.onchange = () => { PEOPLE_F[key] = [...m.querySelectorAll("input:checked")].map((i) => i.value); drawList(); }));
+    m.querySelector("[data-clr]").onclick = () => { PEOPLE_F[key] = []; m.querySelectorAll("input[type=checkbox]").forEach((c) => { c.checked = false; }); drawList(); };
+  });
+  if (window._menuClose) document.removeEventListener("click", window._menuClose);
+  window._menuClose = closeMenus; document.addEventListener("click", closeMenus);
   app.querySelectorAll("[data-libdel]").forEach((x) => (x.onclick = (e) => {
     e.stopPropagation(); const tg = x.dataset.libdel, n = tagCount[tg] || 0;
-    cf($("#libcf"), `从标签库删除“${esc(tg)}”，并从 ${n} 位受访者身上去掉？`, async () => { await api(`/projects/${p.id}/recruiting/tags?tag=${encodeURIComponent(tg)}`, { method: "DELETE" }); toast("已删除"); await rerender(); });
+    cf($("#libcf"), `从标签库删除“${esc(tg)}”，并从 ${n} 位受访者身上去掉？`, async () => { PEOPLE_F.tag = F.tag.filter((v) => v !== tg); await api(`/projects/${p.id}/recruiting/tags?tag=${encodeURIComponent(tg)}`, { method: "DELETE" }); toast("已删除"); MENU_OPEN = "tag"; await rerender(); });
   }));
-  const bdel = $("#bdel"); if (bdel) bdel.onclick = () => {
-    const ids = picks(), box = $("#bdelcf");
-    if (!ids.length) { box.hidden = false; box.textContent = "先在表格里勾选要删除的人。"; return; }
-    cf(box, `将删除 ${ids.length} 位受访者的全部数据（含访谈录制、转写、引文），删除后无法恢复。`, async () => { const r = await api(`/projects/${p.id}/participants/delete`, { method: "POST", body: { ids } }); toast(`已删除 ${r.erased} 人`); await rerender(); });
-  };
+  const lf = $("#libf"); if (lf) lf.onsubmit = guard(async (ev) => { ev.preventDefault(); await api(`/projects/${p.id}/recruiting/tags`, { method: "POST", body: { tag: lf.tag.value } }); toast("已添加到标签库"); MENU_OPEN = "tag"; await rerender(); });
+  wireRows(); syncFilterUi();
+  if (MENU_OPEN) { const el = app.querySelector(`.msel[data-key=${MENU_OPEN}]`); if (el) { el.querySelector(".msm").hidden = false; el.querySelector(".msb").setAttribute("aria-expanded", "true"); } MENU_OPEN = ""; }
   $("#imp2").onclick = () => importModal(p);
   rf.wire(); rd.wire();
-  app.querySelectorAll("[data-fchip]").forEach((b) => b.onclick = () => { const k = b.dataset.fchip; PEOPLE_F = { ...PEOPLE_F, [k]: PEOPLE_F[k] === b.dataset.v ? "" : b.dataset.v }; render(); });
-  const rowsOf = (list) => list.map(([x]) => [x.code, x.name, x.email || "", x.country || "", x.tags.join("、"), x.screen_result === "disqualified" ? "不符合" : x.tier === "backup" ? "备份" : "正式", srcName(x), x.key_answers || ""]);
+  const rowsOf = (list) => list.map((x) => [x.code, x.name, x.email || "", x.country || "", x.tags.join("、"), x.screen_result === "disqualified" ? "不符合" : x.tier === "backup" ? "备份" : "正式", srcName(x), x.key_answers || ""]);
   const pc = $("#pcopy"); if (pc) pc.onclick = guard(async () => {
-    const chosen = picks(), list = chosen.length ? shown.filter(([x]) => chosen.includes(x.id)) : shown;
+    const chosen = picks(), list = chosen.length ? shown.filter((x) => chosen.includes(x.id)) : shown;
     const text = [["编号", "姓名", "邮箱", "国家", "标签", "资格", "来源", "关键回答"], ...rowsOf(list)].map((r) => r.join("\t")).join("\n");
     try { await navigator.clipboard.writeText(text); } catch { throw new Error("浏览器不让复制，请改用“导出”"); }
     await api(`/projects/${p.id}/participants/export-log`, { method: "POST", body: { count: list.length } });
@@ -377,7 +428,7 @@ async function peopleView(p) {
     px.onclick = () => { pm.hidden = !pm.hidden; px.setAttribute("aria-expanded", String(!pm.hidden)); };
     pm.querySelectorAll("[data-exp]").forEach((b) => b.onclick = guard(async () => {
       pm.hidden = true; px.setAttribute("aria-expanded", "false");
-      const kind = b.dataset.exp, ids = kind === "shown" ? shown.map(([x]) => x.id) : kind === "picked" ? picks() : [];
+      const kind = b.dataset.exp, ids = kind === "shown" ? shown.map((x) => x.id) : kind === "picked" ? picks() : [];
       if ((kind === "shown" || kind === "picked") && !ids.length) throw new Error(kind === "picked" ? "先在表格里勾选要导出的人" : "当前筛选结果是空的");
       const r = await fetch(`/api/projects/${p.id}/participants/export`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + store.get("tt_token") }, body: JSON.stringify({ ids, contacts: kind !== "anon" }) });
       if (!r.ok) throw new Error("导出失败，请稍后再试");
@@ -396,23 +447,6 @@ async function peopleView(p) {
     $("#c", m).onclick = () => m.remove();
     $("#f", m).onsubmit = guard(async (e) => { e.preventDefault(); await api(`/projects/${p.id}/participants`, { method: "POST", body: Object.fromEntries(new FormData(e.target)) }); m.remove(); toast("已添加"); render(); });
   };
-  app.querySelectorAll("[data-scr]").forEach((b) => b.onclick = guard(async () => {
-    const id = b.dataset.scr, r = await api(`/participants/${id}/screener`), TY = { single: "单选", multi: "多选" };
-    const view = r.items.length ? r.items.map((it) => `<div class="sa-it"><span class="sa-n">${it.n}</span><div class="sa-q">${esc(it.question)}${TY[it.type] ? `<span class="sa-ty">${TY[it.type]}</span>` : ""}</div>
-      <div class="sa-a">${it.options.length ? it.options.map((o) => `<span class="sa-o">${esc(o.text)}${o.code ? ` <span class="sa-cd" title="选项 ${o.code}">${o.code}</span>` : ""}</span>`).join("") : esc(it.answer)}</div></div>`).join("") : `<p class="sm mut" style="margin:8px 0">还没有答案。点“编辑答案”添加。</p>`;
-    const m = modal(`<h2>甄别问卷答案</h2><form id="f"><p class="sm mut" id="sasub">每道题一条：题目加粗，答案在下一行。</p>
-      <div class="sa-list" id="saview">${view}</div><label class="f" id="saedit" hidden><span>每行一题，写成“题目：答案”。保存后会替换原来的全部答案。</span><textarea name="text" rows="14">${esc(r.text)}</textarea></label>
-      <p class="sm mut">只有研究团队和 AI 主持人能看到。删除受访者数据时会一并清除。</p><div class="row"><button type="button" id="saeb">编辑答案</button><button class="p" id="sasave" hidden>保存</button><button type="button" id="c">关闭</button></div></form>`);
-    const eb = $("#saeb", m);
-    $("#c", m).onclick = () => m.remove();
-    $("#f", m).onsubmit = guard(async (e) => { e.preventDefault(); await api(`/participants/${id}/screener`, { method: "PUT", body: { text: e.target.text.value } }); m.remove(); toast("已保存"); render(); });
-    eb.onclick = () => { $("#saedit", m).hidden = false; $("#saview", m).hidden = true; $("#sasub", m).hidden = true; eb.hidden = true; $("#sasave", m).hidden = false; $("#c", m).textContent = "取消"; };
-  }));
-  app.querySelectorAll("[data-inv]").forEach((b) => b.onclick = () => newSession(p, parts, b.dataset.inv));
-  app.querySelectorAll("[data-erase]").forEach((b) => b.onclick = guard(async () => {
-    if (!confirm("这会删除该受访者所有访谈的录制、转写、引文和分享链接，且无法恢复。继续？")) return;
-    const r = await api(`/participants/${b.dataset.erase}/data`, { method: "DELETE" }); toast(`已清除 ${r.purged_interviews} 场访谈的数据`); render();
-  }));
 }
 
 function importModal(p) {

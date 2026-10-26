@@ -23,7 +23,7 @@ async function rdBuild(p, rec) {
   const maxF = Math.max(1, ...d.funnel.map((x) => x.n)), maxS = Math.max(1, ...d.sources.map((x) => x.n)), maxO = Math.max(1, ...d.out_by.map((x) => x.n));
   const publish = f.link
     ? `<div class="rd-pub"><div><div class="sm mut">${live ? "候选人通过这个链接或二维码作答" : "已停止收集（到“招募问卷”页点“重新发布”，链接不变）"}</div><input id="rdlink" readonly value="${esc(location.origin + f.link)}" aria-label="问卷链接">
-        <div class="row" style="margin-top:6px"><button class="s" type="button" id="rdcopy">复制链接</button><a class="btn s" href="${esc(f.link)}" target="_blank" rel="noopener">打开答题页</a>${live ? `<button class="s" type="button" id="rdclose">停止收集</button>` : ""}</div></div><img id="rdqr" alt="问卷二维码" width="108" height="108"></div>`
+        <div class="row" style="margin-top:6px"><button class="s" type="button" id="rdcopy">复制链接</button><a class="btn s" href="${esc(f.link)}" target="_blank" rel="noopener">打开答题页</a>${live ? `<button class="s" type="button" id="rdclose">停止收集</button>` : ""}</div></div><div class="rd-qrc"><img id="rdqr" alt="问卷二维码" width="108" height="108"><button class="s" type="button" id="rdcopyqr">复制二维码</button><span class="sm rd-ok" id="rdqrok" role="status" aria-live="polite"></span></div></div>`
     : `<div class="empty" style="padding:14px"><b>${d.has_form ? "问卷还没有发布" : "还没有招募问卷"}</b><span>到“招募问卷”页对话编写、测试，点“发布成链接和二维码”，链接和二维码就出现在这里。</span><button class="s" type="button" id="rdgo">去招募问卷</button></div>`;
   const kpi = (v, l, cls = "") => `<div class="rd-k ${cls}"><b>${v}</b><span>${l}</span></div>`;
   const quotas = rec.quotas.length ? rec.quotas.map(rdQuota).join("") : `<p class="sm mut" style="margin:0">还没有配额。例如“新加坡 10 人”“女性 5 人”。</p>`;
@@ -34,6 +34,8 @@ async function rdBuild(p, rec) {
       <td>${rdCell(r.qualified, "g")}</td><td>${rdCell(r.out, "r")}</td><td><span class="rd-chip">差 ${r.gap} 点</span></td></tr>`).join("")}</tbody></table><div class="rd-tip" id="rdtip" role="tooltip" hidden></div>
       <div class="sm mut" style="margin-top:6px">差异越大，说明这个条件越能区分“合格”和“不合格”；也能看出投放该往哪类人群去。鼠标移到题目上（手机上点一下）可以看完整内容。被筛掉的人只统计选了哪个选项的人数，不保存个人信息。</div>`
     : `<p class="sm mut" style="margin:0">还没有足够的数据：有人答完问卷后，这里会对比合格和被筛掉的人在每题上的答案。</p>`;
+  const quotaSum = (qs) => `配额 ${qs.length ? qs.map((q) => `${esc(q.name)} ${q.have}/${q.target}${q.over ? `（溢出 ${q.over}）` : ""}`).join("、") : "未设置"} · 合格者共同点：${d.traits.qualified.length ? esc(d.traits.qualified[0]) : "暂无"}`;
+  const updateQuotas = (qs) => { const box = $("#rdquotas"); if (box) box.innerHTML = qs.length ? qs.map(rdQuota).join("") : `<p class="sm mut" style="margin:0">还没有配额。例如“新加坡 10 人”“女性 5 人”。</p>`; const sm = $("[data-sec=quota] .rd-sum"); if (sm) sm.innerHTML = quotaSum(qs); };
   const opened = rdOpenSet();
   const html = `<div class="rd">
     <div class="rd-row rd-top"><div class="card"><h3>问卷发布 ${live ? `<span class="tag ok">发布中</span>` : f.link ? `<span class="tag">已停止</span>` : ""}</h3>${publish}</div>
@@ -43,8 +45,8 @@ async function rdBuild(p, rec) {
       `<div class="rd-row rd-three"><div class="card"><h3>漏斗：从开始到访谈</h3>${d.funnel.map((x, i) => rdBar(x.label, x.n, maxF, i === 3 ? "s" : i >= 2 ? "g" : "", i === 1 && k.started ? ` · ${rdPct(x.n, k.started)}%` : "")).join("")}</div>
       <div class="card"><h3>人从哪里来（按来源名称）</h3>${d.sources.length ? d.sources.map((x, i) => rdBar(x.name, x.n, maxS, ["", "s", "y", "g", "r"][i % 5])).join("") : `<p class="sm mut" style="margin:0">还没有受访者。</p>`}</div>
       <div class="card"><h3>人在哪一题被筛掉</h3>${d.out_by.length ? d.out_by.map((x) => rdBar(x.label, x.n, maxO, "r", " 人")).join("") + `<div class="sm mut">卡得最多的一题 = 条件最严的一题，可以回去看这题是否太严。</div>` : `<p class="sm mut" style="margin:0">还没有人被筛掉。</p>`}</div></div>`, opened.has("funnel"))}
-    ${rdSection("quota", "配额与人群画像", `配额 ${rec.quotas.length ? rec.quotas.map((q) => `${esc(q.name)} ${q.have}/${q.target}${q.over ? `（溢出 ${q.over}）` : ""}`).join("、") : "未设置"} · 合格者共同点：${d.traits.qualified.length ? esc(d.traits.qualified[0]) : "暂无"}`,
-      `<div class="rd-row rd-two"><div class="card"><h3>配额进度</h3>${quotas}<div class="rd-legend"><span class="a">正式</span><span class="b">备份（超出目标的部分）</span></div><div class="sm" style="margin-top:6px"><button class="s" id="quotas" type="button">编辑配额</button></div>${rules}</div>
+    ${rdSection("quota", "配额与人群画像", quotaSum(rec.quotas),
+      `<div class="rd-row rd-two"><div class="card"><h3>配额进度</h3><div id="rdquotas">${quotas}</div><div class="rd-legend"><span class="a">正式</span><span class="b">备份（超出目标的部分）</span></div><div class="sm" style="margin-top:6px"><button class="s" id="quotas" type="button">编辑配额</button></div>${rules}</div>
       <div class="card"><h3>合格的人有什么共同点</h3><div>${traits(d.traits.qualified, "g", "有 3 个以上的人答完后才能看出共同点。")}</div>
         <div class="sm" style="margin-top:8px">被筛掉的人的共同点：</div><div>${traits(d.traits.out, "r", "暂时看不出。")}</div>
         <div style="margin-top:8px"><button class="p" type="button" id="rdsum">让 AI 总结人群画像</button> <span class="sm mut">只发统计数字，不含个人信息${CONFIG && !CONFIG.ai_local ? `；会发送给 AI 服务商${CONFIG.ai_vendor ? `“${esc(CONFIG.ai_vendor)}”` : ""}` : ""}</span></div><div class="note" id="rdsumout" role="status" aria-live="polite" hidden></div></div></div>`, opened.has("quota"))}
@@ -70,10 +72,21 @@ async function rdBuild(p, rec) {
       };
       q.onmouseenter = q.onfocus = q.onclick = show; q.onmouseleave = q.onblur = () => { tip.hidden = true; };
     });
+    const cq = $("#rdcopyqr"); if (cq) cq.onclick = async () => {
+      const ok = $("#rdqrok"), say = (m) => { ok.textContent = m; setTimeout(() => { ok.textContent = ""; }, 3000); };
+      try {
+        if (!img.complete || !img.naturalWidth) throw new Error("二维码还在加载");
+        const cv = document.createElement("canvas"); cv.width = cv.height = 512; const g = cv.getContext("2d");
+        g.fillStyle = "#fff"; g.fillRect(0, 0, 512, 512); g.drawImage(img, 24, 24, 464, 464);   // a white margin round the code so a scanner can read it
+        const blob = await new Promise((res, rej) => cv.toBlob((b) => (b ? res(b) : rej(new Error("no image"))), "image/png"));
+        await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+        say("已复制二维码，可以直接粘贴");
+      } catch { say("这个浏览器不让复制图片，请右键二维码另存为"); }
+    };
     const sum = $("#rdsum"); if (sum) sum.onclick = guard(async () => {
       sum.disabled = true; const out = $("#rdsumout"); out.hidden = false; out.textContent = "正在总结，大约要几秒…";
       try { out.textContent = (await api(`/projects/${p.id}/recruiting/dashboard/summary`, { method: "POST" })).summary; } catch (e) { out.hidden = true; throw e; } finally { sum.disabled = false; }
     });
   };
-  return { html, wire };
+  return { html, wire, updateQuotas };
 }

@@ -416,6 +416,13 @@ def listening_section(br, D):
     ctx.close()
 
 
+def msel_pick(pg, key, text):
+    """Tick one option in a multi-select filter menu of the participant list (the menu stays open)."""
+    if pg.locator(f".msel[data-key={key}] .msm").is_hidden():
+        pg.click(f".msel[data-key={key}] .msb")
+    pg.check(f".msel[data-key={key}] .mso:has-text('{text}') input")
+
+
 def recruit_section(br, D):
     """Recruiting: import a spreadsheet, set a rule, see who qualifies and why, filter, pick people and invite them in one go, set a quota."""
     rs, pid = D["tok"]["researcher"], D["pid"]
@@ -495,6 +502,9 @@ def recruit_section(br, D):
     link = pg.input_value("#rdlink")
     ok("/screen.html?t=" in link and wait_until(lambda: (pg.locator("#rdqr").get_attribute("src") or "").startswith("blob:"), 8), "[recruit] publishing gives a link and a QR code on the quotas-and-list page")
     ok("发布中" in pg.inner_text(".rd-top") and pg.locator("#rflink").count() == 0 and pg.locator("#rfws").is_hidden(), "[recruit] the page jumped to the list tab, shows the questionnaire as published, and the outline no longer holds the link")
+    pg.context.grant_permissions(["clipboard-read", "clipboard-write"], origin=B)
+    pg.click("#rdcopyqr")
+    ok(wait_until(lambda: "已复制" in pg.inner_text("#rdqrok"), 8) and pg.evaluate("navigator.clipboard.read().then(i => i[0].types.includes('image/png'))"), "[recruit] 'copy QR code' puts the QR code picture on the clipboard")
     audit_page(pg, "recruiting dashboard published/desktop", errs)
     # a candidate on a phone: screened out first, then a qualified run that leaves contact details
     c2, pg2, errs2 = new_page(br, 390)
@@ -548,11 +558,10 @@ def recruit_section(br, D):
     pin = pg.evaluate("(() => { const a = document.querySelector('.ctx'), b = document.querySelector('main>.hubtabs.pin'); const cs = getComputedStyle(b); return [getComputedStyle(a).position, cs.position, Math.round(b.getBoundingClientRect().top - a.getBoundingClientRect().bottom)]; })()")
     ok(pin[0] == "sticky" and pin[1] == "sticky" and abs(pin[2]) <= 8, f"[recruit] the project bar and the tab row are pinned at the top (got {pin})")
     pg.locator("tr", has_text="QA候选人").locator("[data-scr]").click(); pg.wait_for_selector(".sa-it")
-    sa = pg.evaluate("(() => { const it = document.querySelector('.sa-it'); const q = it.querySelector('.sa-q'); return [it.querySelector('.sa-n').innerText, getComputedStyle(q).fontWeight, !!q.querySelector('.sa-ty'), document.querySelectorAll('.sa-it').length, document.querySelector('.sa-cd') !== null, document.querySelector('textarea[name=text]').offsetParent === null]; })()")
-    ok(sa[0] == "1" and int(sa[1]) >= 600 and sa[2] and sa[3] >= 5 and sa[4] and sa[5], f"[recruit] the answers dialog shows numbered bold questions with a type tag and option codes, read-only first (got {sa})")
+    sa = pg.evaluate("(() => { const it = document.querySelector('.sa-it'); const q = it.querySelector('.sa-q'); return [it.querySelector('.sa-n').innerText, getComputedStyle(q).fontWeight, !!q.querySelector('.sa-ty'), document.querySelectorAll('.sa-it').length, document.querySelector('.sa-cd') !== null]; })()")
+    ok(sa[0] == "1" and int(sa[1]) >= 600 and sa[2] and sa[3] >= 5 and sa[4], f"[recruit] the answers dialog shows numbered bold questions with a type tag and option codes (got {sa})")
     ok("价格和成分" in pg.inner_text("#saview"), "[recruit] the candidate's answers are kept with them")
-    pg.click("#saeb"); pg.wait_for_selector("textarea[name=text]")
-    ok("价格和成分" in pg.input_value("textarea[name=text]") and pg.locator("#saview").is_hidden() and pg.locator("#sasave").is_visible(), "[recruit] 'edit answers' switches to the text box with the same answers and does not save or close by itself")
+    ok(pg.locator("#saeb, #sasave, textarea[name=text]").count() == 0 and "只能查看" in pg.inner_text(".modal"), "[recruit] the answers dialog is view-only: no edit, no save, no text box")
     pg.click("#c")
     pg.click("#ptab-form-t"); pg.wait_for_selector("#rfclose")
     ok(not pg.evaluate("document.documentElement.scrollHeight > innerHeight + 2"), "[recruit] switching back keeps the page from scrolling")
@@ -591,20 +600,34 @@ def recruit_section(br, D):
     ok(pg.locator("tr", has_text="王大明QA").locator("[data-inv]").count() == 0, "[recruit] a disqualified person cannot be invited")
     audit_page(pg, "recruiting rules applied/desktop", errs)
     pg.screenshot(path=os.path.join(ROOT, "qa_shots", "recruiting_1280.png"), full_page=True)
-    pg.select_option("#f_tier", "formal")
+    msel_pick(pg, "tier", "正式")
     ok(wait_until(lambda: pg.locator("tr", has_text="王大明QA").count() == 0 and pg.locator("tr", has_text="林小雨QA").count() == 1, 8), "[recruit] filtering by qualified hides the disqualified")
-    pg.select_option("#f_tier", ""); pg.wait_for_selector("tr:has-text('王大明QA')")
+    pg.click(".msel[data-key=tier] [data-clr]"); pg.mouse.click(5, 5); pg.wait_for_selector("tr:has-text('王大明QA')")
     pg.locator("tr", has_text="林小雨QA").locator(".pick").check()
     ok(wait_until(lambda: "已选 1" in pg.inner_text("#selcount"), 5) and pg.locator("#batch").count() == 0, "[recruit] picking a person counts them; the bulk invite button is gone")
     pg.click("#bdel"); pg.wait_for_selector("#bdelcf [data-y]")
     ok("无法恢复" in pg.inner_text("#bdelcf") and "1 位" in pg.inner_text("#bdelcf"), "[recruit] bulk delete asks first and says how many people and that it cannot be undone")
     pg.click("#bdelcf [data-n]")
     ok(pg.locator("tr", has_text="林小雨QA").count() == 1, "[recruit] cancelling the bulk delete keeps everyone")
+    pg.click("#bdel"); pg.wait_for_selector("#bdelcf [data-y]"); pg.mouse.click(5, 300)
+    ok(wait_until(lambda: pg.locator("#bdelcf").is_hidden(), 5), "[recruit] clicking anywhere else closes the bulk delete bar without deleting")
+    pg.click("#bdel"); pg.wait_for_selector("#bdelcf [data-y]"); pg.keyboard.press("Escape")
+    ok(wait_until(lambda: pg.locator("#bdelcf").is_hidden(), 5) and pg.locator("tr", has_text="林小雨QA").count() == 1, "[recruit] Esc closes the bulk delete bar too")
+    ok(pg.locator(".ptbl th", has_text="数据清理").count() == 1 and pg.locator(".ptbl .xdel").count() >= 2 and pg.locator("tr", has_text="林小雨QA").locator("[data-erase]").inner_text().strip() == "×", "[recruit] the data cleanup column holds a small × per person")
+    pg.locator("tr", has_text="林小雨QA").locator("[data-erase]").click(); pg.wait_for_selector("#bdelcf [data-y]")
+    ok("林小雨QA" in pg.inner_text("#bdelcf") and "无法恢复" in pg.inner_text("#bdelcf"), "[recruit] × asks first, names the person and says it cannot be undone")
+    pg.mouse.click(5, 300)
+    ok(wait_until(lambda: pg.locator("#bdelcf").is_hidden(), 5) and pg.locator("tr", has_text="林小雨QA").count() == 1, "[recruit] leaving the × confirmation by clicking elsewhere deletes nothing")
+    box = pg.evaluate("(() => { const b = document.querySelector('.plbox'), th = document.querySelector('.ptbl thead th'), h = document.querySelector('#plist'); return [getComputedStyle(b).overflowY, getComputedStyle(th).position, getComputedStyle(h).position, b.scrollHeight <= b.clientHeight + 1 || b.clientHeight <= innerHeight * 0.8]; })()")
+    ok(box[0] == "auto" and box[1] == "sticky" and box[2] == "sticky" and box[3], f"[recruit] the list is a fixed-height box with pinned column names, under a pinned header and filter card (got {box})")
+    ok("无答案" in pg.locator("tr", has_text="王大明QA").inner_text() or pg.locator("tr", has_text="王大明QA").locator("[data-scr]").count() == 1, "[recruit] a person without answers shows 'no answers' instead of an add button")
     # tier: a coloured chip with a menu; a change by hand is marked and can go back to automatic
     row = pg.locator("tr", has_text="林小雨QA")
+    pg.evaluate("document.querySelector('#plist').dataset.mark = 'same-page'; document.querySelector('#ptab-list').dataset.mark = 'same-page'")  # a page redraw would lose these marks
     row.locator("[data-tier]").click(); pg.wait_for_selector("#lpop [data-set=backup]")
     pg.click("#lpop [data-set=backup]")
     ok(wait_until(lambda: pg.locator("tr", has_text="林小雨QA").locator("[data-tier]", has_text="备份").count() == 1 and "手动" in pg.locator("tr", has_text="林小雨QA").inner_text(), 8), "[recruit] the eligibility chip can be set to backup by hand and says it was done by hand")
+    ok(pg.evaluate("document.querySelector('#plist').dataset.mark") == "same-page", "[recruit] changing formal / backup updates the list and the quota numbers in place, the page is not redrawn")
     pg.locator("tr", has_text="林小雨QA").locator("[data-tier]").click(); pg.click("#lpop [data-set=auto]")
     ok(wait_until(lambda: "自动" in pg.locator("tr", has_text="林小雨QA").inner_text(), 8), "[recruit] 'back to automatic' works")
     # tags: the + lists the library tags the person does not have yet (nothing to type); the library's own + adds a tag for everyone
@@ -614,12 +637,12 @@ def recruit_section(br, D):
     if pg.locator("#lpop [data-pick]").count():
         pg.locator("#lpop [data-pick]").first.click()
         ok(wait_until(lambda: pg.locator("tr", has_text="林小雨QA").locator(".lbox").first.locator(".lch").count() == n_before + 1, 8), "[recruit] picking a tag adds it to the person")
-    pg.click("#libadd"); pg.wait_for_selector("#libf [name=tag]"); pg.fill("#libf [name=tag]", "QA新标签"); pg.click("#libf button.p")
-    ok(wait_until(lambda: pg.locator("[data-fchip=tag]", has_text="QA新标签").count() == 1, 8), "[recruit] a tag added to the library shows in the tag row")
-    pg.click("#libdel"); pg.locator("[data-libdel=QA新标签]").click()
+    pg.click(".msel[data-key=tag] .msb"); pg.wait_for_selector("#libf [name=tag]"); pg.fill("#libf [name=tag]", "QA新标签"); pg.click("#libf button.p")
+    ok(wait_until(lambda: pg.locator(".msel[data-key=tag] .mso", has_text="QA新标签").count() == 1 and pg.locator(".msel[data-key=tag] .msm").is_visible(), 8), "[recruit] a tag added in the tag filter shows in its list (and the menu stays open)")
+    pg.locator("[data-libdel=QA新标签]").click()
     ok(wait_until(lambda: pg.is_visible("#libcf"), 5) and "标签库" in pg.inner_text("#libcf"), "[recruit] removing a library tag asks first")
     pg.click("#libcf [data-y]")
-    ok(wait_until(lambda: pg.locator("[data-fchip=tag]", has_text="QA新标签").count() == 0, 8), "[recruit] a removed tag leaves the library")
+    ok(wait_until(lambda: pg.locator(".msel[data-key=tag] .mso", has_text="QA新标签").count() == 0, 8), "[recruit] a removed tag leaves the library")
     pg.locator("tr", has_text="林小雨QA").locator("[data-inv]").click(); pg.wait_for_selector("[name=title]")
     pg.fill("[name=title]", "QA 深访"); pg.click("#f button.p")
     pg.wait_for_selector("code.copy")
@@ -642,10 +665,17 @@ def recruit_section(br, D):
         pg.click("[data-exp=anon]")
     anon = pathlib.Path(dl2.value.path()).read_text(encoding="utf-8-sig")
     ok("qa1@example.com" not in anon and "林小雨QA" not in anon and "QA客户名单" in anon, "[recruit] the anonymous export leaves out names and e-mails")
-    pg.locator("[data-fchip=source]", has_text="QA客户名单").click()
-    ok(wait_until(lambda: pg.locator("[data-fchip=source].on").count() == 1 and pg.locator("tr", has_text="QA候选人").count() == 0 and pg.locator("tr", has_text="林小雨QA").count() == 1, 8), "[recruit] clicking a source chip filters the list to that source")
-    pg.locator("[data-fchip=source].on").click()
-    ok(wait_until(lambda: pg.locator("[data-fchip=source].on").count() == 0 and pg.locator("[data-fchip=source]").count() >= 2, 8), "[recruit] clicking the chip again clears the filter")
+    pg.mouse.click(5, 5)
+    pg.evaluate("document.querySelector('#plist').dataset.mark = 'same-page'")
+    msel_pick(pg, "source", "QA客户名单")
+    ok(pg.evaluate("document.querySelector('#plist').dataset.mark") == "same-page", "[recruit] filtering redraws only the list, not the page")
+    ok(wait_until(lambda: pg.locator("tr", has_text="QA候选人").count() == 0 and pg.locator("tr", has_text="林小雨QA").count() == 1 and "来源：" in pg.inner_text("#fres"), 8), "[recruit] ticking a source in the multi-select filter narrows the list and says what is filtered")
+    msel_pick(pg, "source", "问卷链接")
+    ok(wait_until(lambda: pg.locator("tr", has_text="QA候选人").count() == 1 and pg.locator("tr", has_text="林小雨QA").count() == 1, 8), "[recruit] two sources ticked show people from either (any of them)")
+    msel_pick(pg, "tag", "QA")  if pg.locator(".msel[data-key=tag] .mso:has-text('QA')").count() else None
+    pg.mouse.click(5, 5); pg.click("#fclr")
+    ok(wait_until(lambda: pg.locator("tr", has_text="王大明QA").count() == 1 and pg.locator("#fres .rd-chip").count() == 0, 8), "[recruit] 'clear all filters' brings everybody back")
+    ok(pg.locator("[data-fchip]").count() == 0, "[recruit] the old 'by tag / by source' rows are gone (the filters above replace them)")
 
     ctx.close()
     ctx, pg, errs = new_page(br, 390, token=rs)
