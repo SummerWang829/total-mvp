@@ -529,6 +529,11 @@ def recruit_section(br, D):
     kpi = [pg.locator(".rd-k b").nth(i).inner_text() for i in range(4)]
     ok(kpi[:3] == ["2", "2", "1"] and kpi[3] == "50%", f"[recruit] the dashboard counts who started, finished and qualified, and the pass rate (got {kpi})")
     ok(pg.locator(".rd-bar", has_text="完成访谈").count() == 1 and "问卷链接" in pg.inner_text(".rd-three"), "[recruit] the funnel and the 'where from' bars are drawn")
+    cmp_w = pg.evaluate("(() => { const t = document.querySelector('.rd-cmp'); const w = t.parentElement.clientWidth; const c = t.querySelector('td').getBoundingClientRect().width; return [t.scrollWidth <= t.parentElement.clientWidth + 1, Math.round(c / t.getBoundingClientRect().width * 100)]; })()")
+    ok(cmp_w[0] and 52 <= cmp_w[1] <= 58 and pg.locator(".rd-q .rd-ty").count() >= 1 and pg.locator(".rd-cmp .scroll").count() == 0, f"[recruit] the comparison table fits the card without sideways scrolling, the question column is about 55% and shows the question type (got {cmp_w})")
+    pg.locator(".rd-q").first.hover()
+    ok(wait_until(lambda: pg.is_visible("#rdtip") and "选项" in pg.inner_text("#rdtip"), 5), "[recruit] hovering a question in the comparison table shows its full text and option")
+    pg.mouse.move(5, 5)
     pg.screenshot(path=os.path.join(ROOT, "qa_shots", "recruiting_dashboard_1280.png"), full_page=True)
     pg.click("#ptab-list-t"); pg.wait_for_selector("td:has-text('QA候选人')", timeout=15000)
     ok(pg.locator("tr", has_text="QA候选人").locator(".tag", has_text="符合条件").count() == 1 and pg.locator("#rfws").is_hidden(), "[recruit] a candidate who qualified is in the list (other tab), already marked as qualified")

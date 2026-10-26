@@ -70,7 +70,7 @@ def comparison(questions: list[recruit_form.Question], tally: dict) -> list[dict
             b, nb = _share(tally, "o", q.id, o.id)
             if na + nb == 0:
                 continue
-            rows.append({"question": f"{i}. {q.text}", "option": o.text, "qualified": round(a * 100), "out": round(b * 100), "nq": na, "no": nb, "gap": round(abs(a - b) * 100)})
+            rows.append({"question": f"{i}. {q.text}", "type": q.type, "option": o.text, "qualified": round(a * 100), "out": round(b * 100), "nq": na, "no": nb, "gap": round(abs(a - b) * 100)})
     return sorted(rows, key=lambda r: -r["gap"])[:MAX_COMPARE]
 
 

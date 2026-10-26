@@ -2,6 +2,7 @@
    合格和被筛掉的每题对比。数字来自 GET /projects/{id}/recruiting/dashboard；被筛掉的人只有匿名的选项人数，没有任何个人信息。
    依赖 index.html 里的 api / esc / toast / guard / $ / store / render。 */
 const rdPct = (a, b) => (b ? Math.min(100, Math.round((a / b) * 100)) : 0);
+const rdCell = (n, cls) => `<span class="rd-t" role="img" aria-label="${n}%"><i class="${cls}" style="width:${rdPct(n, 100)}%"></i></span><b class="rd-p">${n}%</b>`;
 const rdBar = (label, n, max, cls = "", suffix = "") => `<div class="rd-bar"><span title="${esc(label)}">${esc(label)}</span><span class="rd-t" role="img" aria-label="${esc(label)} ${n}"><i class="${cls}" style="width:${rdPct(n, max)}%"></i></span><b>${n}${suffix}</b></div>`;
 
 /** 看板的 HTML 和事件；返回 { html, wire }。`rec` 是 /recruiting 的返回（配额编辑还用它）。 */
@@ -16,9 +17,10 @@ async function rdBuild(p, rec) {
   const quotas = rec.quotas.length ? rec.quotas.map((q) => rdBar(q.name, q.have, q.target, q.full ? "g" : "", ` / ${q.target}`)).join("") : `<p class="sm mut" style="margin:0">还没有配额。例如“新加坡 10 人”“女性 5 人”。</p>`;
   const rules = d.rules.count ? `<div class="sm" style="margin-top:6px"><button class="lnk" type="button" id="rules">旧版资格规则（${d.rules.count} 条）· 编辑或清空</button> <button class="lnk" type="button" id="reapply">重新筛一遍</button></div>` : "";
   const traits = (xs, cls, none) => (xs.length ? xs.map((t) => `<span class="rd-chip ${cls}">${esc(t)}</span>`).join("") : `<span class="sm mut">${none}</span>`);
-  const cmp = d.compare.length ? `<div class="scroll"><table class="tbl"><thead><tr><th>题目 / 选项</th><th>合格</th><th>被筛掉</th><th>差异</th></tr></thead><tbody>${d.compare.map((r) => `<tr><td>${esc(r.question)} · <b>${esc(r.option)}</b></td>
-      <td>${rdBar("合格", r.qualified, 100, "g", "%")}</td><td>${rdBar("被筛掉", r.out, 100, "r", "%")}</td><td><span class="rd-chip">差 ${r.gap} 个百分点</span></td></tr>`).join("")}</tbody></table></div>
-      <div class="sm mut" style="margin-top:6px">差异越大，说明这个条件越能区分“合格”和“不合格”；也能看出投放该往哪类人群去。被筛掉的人只统计选了哪个选项的人数，不保存个人信息。</div>`
+  const TYPE = { single: "单选", multi: "多选" };
+  const cmp = d.compare.length ? `<table class="rd-cmp"><colgroup><col style="width:55%"><col style="width:15%"><col style="width:15%"><col style="width:15%"></colgroup><thead><tr><th>题目 / 选项</th><th>合格</th><th>被筛掉</th><th>差异</th></tr></thead><tbody>${d.compare.map((r) => `<tr><td><div class="rd-q" tabindex="0" data-full="${esc(r.question)}" data-type="${TYPE[r.type] || ""}" data-opt="${esc(r.option)}"><div class="rd-qa"><span class="rd-qt">${esc(r.question)}</span>${TYPE[r.type] ? `<span class="rd-ty">${TYPE[r.type]}</span>` : ""}</div><div class="rd-qo">${esc(r.option)}</div></div></td>
+      <td>${rdCell(r.qualified, "g")}</td><td>${rdCell(r.out, "r")}</td><td><span class="rd-chip">差 ${r.gap} 点</span></td></tr>`).join("")}</tbody></table><div class="rd-tip" id="rdtip" role="tooltip" hidden></div>
+      <div class="sm mut" style="margin-top:6px">差异越大，说明这个条件越能区分“合格”和“不合格”；也能看出投放该往哪类人群去。鼠标移到题目上（手机上点一下）可以看完整内容。被筛掉的人只统计选了哪个选项的人数，不保存个人信息。</div>`
     : `<p class="sm mut" style="margin:0">还没有足够的数据：有人答完问卷后，这里会对比合格和被筛掉的人在每题上的答案。</p>`;
   const html = `<div class="rd">
     <div class="rd-row rd-top"><div class="card"><h3>问卷发布 ${live ? `<span class="tag ok">发布中</span>` : f.link ? `<span class="tag">已停止</span>` : ""}</h3>${publish}</div>
@@ -36,6 +38,15 @@ async function rdBuild(p, rec) {
     const cl = $("#rdclose"); if (cl) cl.onclick = guard(async () => { await api(`/projects/${p.id}/recruiting/form/close`, { method: "POST" }); toast("已停止收集"); render(); });
     const cp = $("#rdcopy"); if (cp) cp.onclick = async () => { try { await navigator.clipboard.writeText($("#rdlink").value); toast("链接已复制"); } catch { $("#rdlink").select(); toast("请按 Ctrl+C 复制", true); } };
     const img = $("#rdqr"); if (img && f.link) fetch(`/api/projects/${p.id}/recruiting/form/qr.svg`, { headers: { Authorization: "Bearer " + store.get("tt_token") } }).then(async (r) => { if (r.ok) img.src = URL.createObjectURL(await r.blob()); }).catch(() => {});
+    const tip = $("#rdtip");
+    document.querySelectorAll(".rd-q").forEach((q) => {
+      const show = () => {
+        tip.innerHTML = `${esc(q.dataset.full)}${q.dataset.type ? ` <span class="rd-ty">${q.dataset.type}</span>` : ""}<br><b>选项：${esc(q.dataset.opt)}</b>`; tip.hidden = false;
+        const host = tip.offsetParent || tip.parentElement, a = q.getBoundingClientRect(), h = host.getBoundingClientRect();
+        tip.style.left = Math.max(0, a.left - h.left) + "px"; tip.style.top = a.bottom - h.top + 4 + "px";
+      };
+      q.onmouseenter = q.onfocus = q.onclick = show; q.onmouseleave = q.onblur = () => { tip.hidden = true; };
+    });
     const sum = $("#rdsum"); if (sum) sum.onclick = guard(async () => {
       sum.disabled = true; const out = $("#rdsumout"); out.hidden = false; out.textContent = "正在总结，大约要几秒…";
       try { out.textContent = (await api(`/projects/${p.id}/recruiting/dashboard/summary`, { method: "POST" })).summary; } catch (e) { out.hidden = true; throw e; } finally { sum.disabled = false; }

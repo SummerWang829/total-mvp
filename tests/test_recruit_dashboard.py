@@ -85,7 +85,7 @@ def test_the_dashboard_counts_who_started_qualified_and_was_screened_out_without
     assert {t["tag"]: t["n"] for t in d["tags"]} == {"大湾区": 2, "非大湾区": 1}
     assert org.c.get(f"/api/projects/{pid}/participants", headers=org.h()).json().__len__() == 3  # the two screened out left nothing behind but the tally
     row = next(r for r in d["compare"] if r["option"] == "大湾区")
-    assert row["qualified"] == 67 and row["out"] == 0 and row["gap"] == 67  # 2 of 3 qualified chose it; the one screened out at the city question chose Hong Kong
+    assert row["qualified"] == 67 and row["out"] == 0 and row["gap"] == 67 and row["type"] == "single"  # 2 of 3 qualified chose it; the one screened out at the city question chose Hong Kong
     assert any("67% 选了「大湾区」" in x for x in d["traits"]["qualified"])  # three qualified people are enough to say what they share
 
 

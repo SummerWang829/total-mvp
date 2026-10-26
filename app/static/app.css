@@ -689,3 +689,16 @@ main.enter .pbar6 i{animation:grow 1s var(--ease) .15s both}@keyframes grow{from
 .rd-ch.on{background:var(--orange-mid);color:#8A3600;border-color:var(--orange)}
 @media (max-width:900px){.rd-top,.rd-three,.rd-two{grid-template-columns:minmax(0,1fr)}.rd-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .rd button.lnk{min-height:36px}
+
+.rd .card:has(.rd-cmp){position:relative}
+.rd-cmp{width:100%;table-layout:fixed;border-collapse:collapse}
+.rd-cmp th{font-size:13px;font-weight:500;color:var(--muted);text-align:left;padding:6px 8px;border-bottom:1px solid var(--line)}
+.rd-cmp td{padding:10px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
+.rd-q{border-radius:6px;padding:2px 4px;margin:-2px -4px;outline:none;cursor:default}.rd-q:hover,.rd-q:focus-visible{background:var(--wash)}
+.rd-qa{display:flex;gap:6px;align-items:center;min-width:0}
+.rd-qt{font-size:13px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.rd-ty{flex:none;font-size:12px;padding:1px 8px;border-radius:999px;background:var(--green-soft);color:var(--green);font-weight:600}
+.rd-qo{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rd-cmp .rd-t{display:inline-block;width:calc(100% - 44px);vertical-align:middle}
+.rd-p{display:inline-block;width:40px;text-align:right;font-size:13px}
+.rd-tip{position:absolute;z-index:20;max-width:420px;background:var(--surface);border:1px solid var(--line2);border-radius:10px;padding:8px 12px;font-size:14px;line-height:1.6;box-shadow:0 8px 24px rgba(6,35,25,.18);pointer-events:none}
