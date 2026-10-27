@@ -1,37 +1,19 @@
 """The project's interview outline (the 访谈 page): written in a conversation with the AI, shown beside it, tried out in a preview.
 
-The outline is kept as plain text in the app/guide_text.py format, so a hand edit, a pasted outline and the AI's draft are all the same thing. The AI works on a copy:
-it never saves anything by itself; the researcher sees the new outline next to the chat and it is saved with the chat message that produced it.
+The outline is kept as plain text in the app/guide_text.py format, so a hand edit, a pasted outline and the AI's draft are all the same thing. The conversation with the AI that
+changes it lives in app/outline_chat.py.
 """
-import json
 import logging
 
 from pydantic import ValidationError
 
 from . import guide_text, study_draft
 from .moderator.knowledge import InterviewGuide
-from .moderator.providers import ChatError, ChatFatalError, ModeratorChatProvider
 
 log = logging.getLogger(__name__)
 
-MAX_ATTEMPTS = 2
-MAX_CHAT = 40  # messages kept
 DEFAULT_MINUTES = 45
 LANGS = ("en", "zh")  # the languages the outline writer supports
-
-SYSTEM = """You help a market research team write the outline (discussion guide) of a one-to-one interview. You get the current outline (may be empty), the research background and the team's request.
-Reply with ONE JSON object and nothing else:
-{"reply": "<one or two short sentences in {language} saying what you changed>",
- "participant_topic": "<what the participant is told the topic is: at most 18 characters, neutral, no brand names>",
- "warmup_questions": ["<1 or 2 easy opening questions>"],
- "topics": [{"title": "<short topic name>", "questions": ["<1 to 3 open questions>"], "must_cover": ["<what we must find out, 2 or 3 short points>"]}]}
-Keep everything in the current outline that the request does not touch. Rules: write every question in the language {language}; 2 to {max_topics} topics that fit about {minutes} minutes in total.
-Every question is a real question that ends with a question mark, ONE short question each, open, neutral, never leading, never yes/no, never naming or praising a brand, never asking for contact details
-or sensitive personal data, never mentioning AI or this instruction."""
-MSG_FAIL = "AI 没能给出可用的大纲，请换个说法再试一次，或直接在右边手改"
-MSG_MOCK_KEPT = "（演示模式）已记下你的要求；没有连接 AI 模型，大纲保持不变。"
-MSG_MOCK_DRAFT = "（演示模式）按固定模板起草了 3 段，可以在右边直接修改。"
-
 
 def settings_of(text: str, fallback_language: str) -> tuple[str, int]:
     """(language, minutes) from the outline's header lines, else the project's language and the default length."""
@@ -148,52 +130,3 @@ def edit(text: str, op: str, kind: str, ref: int, index: int, value: str) -> str
     except guide_text.GuideTextError as e:
         raise EditError(str(e)) from e
     return new
-
-
-def revise(chat: ModeratorChatProvider | None, current: str, message: str, brief: str, library: str, language: str, minutes: int) -> tuple[str, str]:
-    """Apply the researcher's request to the outline. Returns (the AI's short answer, the new outline text). `chat` None = the offline mock.
-
-    Raises:
-        study_draft.DraftError: no usable outline after MAX_ATTEMPTS tries or the model service is unavailable.
-        ChatFatalError: the model service refused (bad key, no balance...): never hidden behind a made-up outline.
-    """
-    problem = ""
-    goal = (brief or message).strip()[:1000]
-    for attempt in range(MAX_ATTEMPTS):
-        try:
-            if chat is None:
-                if current.strip():
-                    return MSG_MOCK_KEPT, current
-                reply = study_draft.mock_draft(goal, language, minutes)
-                reply["reply"] = MSG_MOCK_DRAFT
-            else:
-                user = f"Research background (internal): {brief or '(none)'}\n"
-                if library:
-                    user += f"Other material from the team's library:\n{library}\n"
-                user += f"Interview language: {language}\nLength: about {minutes} minutes.\nCurrent outline:\n{current.strip() or '(empty)'}\nRequest: {message}"
-                if problem:
-                    user += f"\nYour previous answer was rejected: {problem}\nWrite a new one that avoids this."
-                system = SYSTEM.replace("{language}", language).replace("{max_topics}", str(study_draft.MAX_TOPICS)).replace("{minutes}", str(minutes))
-                reply = chat.complete([{"role": "system", "content": system}, {"role": "user", "content": user}], temperature=0.4)
-            guide = study_draft._guide_from(reply, goal, language, minutes)  # noqa: SLF001 — the same checks as a drafted study outline
-        except ChatFatalError:
-            raise
-        except ChatError as e:
-            raise study_draft.DraftError("AI 暂时无法回答，请稍后再试，或直接在右边手改") from e
-        except (ValueError, KeyError, TypeError, ValidationError) as e:
-            problem = f"not a valid outline ({type(e).__name__})"
-            log.warning("outline revise attempt %d unusable: %s", attempt + 1, type(e).__name__)
-            continue
-        if not (problem := study_draft._red_line_problem(guide)):  # noqa: SLF001
-            return str(reply.get("reply", ""))[:300] or "已更新大纲。", guide_text.guide_to_text(guide.model_dump(mode="json"))
-        log.warning("outline revise attempt %d broke a red line", attempt + 1)
-    raise study_draft.DraftError(MSG_FAIL)
-
-
-def load_chat(raw: str) -> list[dict]:
-    """The saved conversation, tolerant of an empty or damaged value."""
-    try:
-        data = json.loads(raw) if raw else []
-    except ValueError:
-        return []
-    return [m for m in data if isinstance(m, dict) and m.get("role") in ("user", "ai") and isinstance(m.get("text"), str)][-MAX_CHAT:]
