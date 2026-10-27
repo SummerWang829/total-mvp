@@ -12,6 +12,8 @@
 <script src="/rform.js"></script>
 <script src="/rdash.js"></script>
 <script src="/outline.js"></script>
+<script src="/insights.js"></script>
+<script src="/rooms.js"></script>
 <script src="/invite.js"></script>
 <script src="/logo.js"></script>
 <script>
@@ -375,6 +377,10 @@ async function peopleView(p) {
     openPop(b, `<div class="lbox" style="border:0;background:none;padding:0">${left.length ? left.map((t) => (why(t) ? `<button type="button" class="lch dis" disabled title="与 ${esc(why(t))} 互斥">＋ ${esc(t)}</button>` : `<button type="button" class="lch ${lcolor(t)}" data-pick="${esc(t)}">＋ ${esc(t)}</button>`)).join("") : `<span class="sm mut">这份问卷的标签都已经选上了</span>`}</div>${left.some(why) ? `<div class="sm mut" style="margin-top:6px">灰色的标签和这个人已有的标签互斥，不能同时加。</div>` : ""}`);
     pop.querySelectorAll("[data-pick]").forEach((m) => (m.onclick = () => putTags(x, [...x.tags, m.dataset.pick])));
   });
+  if (window._tagDelOff) { document.removeEventListener("click", window._tagDelOff); document.removeEventListener("keydown", window._tagDelEsc); }
+  window._tagDelOff = (e) => { if (TAG_DEL.size && !e.target.closest(".lbox")) { TAG_DEL.clear(); drawList(); } };   // click anywhere outside the tag boxes: the × marks go away
+  window._tagDelEsc = (e) => { if (e.key === "Escape" && TAG_DEL.size) { TAG_DEL.clear(); drawList(); } };
+  document.addEventListener("click", window._tagDelOff); document.addEventListener("keydown", window._tagDelEsc);
   app.querySelectorAll("[data-tdel]").forEach((b) => b.onclick = () => { const id = b.dataset.tdel; if (TAG_DEL.has(id)) TAG_DEL.delete(id); else TAG_DEL.add(id); drawList(); });
   app.querySelectorAll("[data-tx]").forEach((x) => x.onclick = () => { const who = person(x.dataset.tx); putTags(who, who.tags.filter((t) => t !== x.dataset.tag)); });
   app.querySelectorAll("[data-scr]").forEach((b) => b.onclick = guard(async () => {
@@ -607,6 +613,9 @@ const RM = { tab: "all", wall: false, sel: { who: [], moderator: [], time: [], t
 async function roomsView(p) {
   let its = shFilterInterviews(p, await api(`/projects/${p.id}/interviews`));
   const staff = STAFF(), obs = ME.role === "observer";
+  const canEdit = (i) => staff && rmOpen(i) && i.kind !== "async";   // the moderator and the time can be changed here until the interview has ended
+  let users = []; if (staff) { try { users = await api("/users"); } catch { /* no list: the cells just stay read-only */ } }
+  const mods = users.filter((u) => ["moderator", "researcher", "admin"].includes(u.role)).map((u) => ({ id: u.id, name: u.name }));
   const go = (i, as, label, cls) => `<a class="btn s ${cls}" href="/room.html?i=${i.id}&as=${as}" target="_blank" rel="noopener">${label}</a>`;
   const mod = (i) => (obs ? "—" : i.moderator_name || "未指定");
   const tagsOf = (i) => i.participant.tags || [];
@@ -620,9 +629,9 @@ async function roomsView(p) {
   const card = (i) => `<div class="rmc"><div class="rmc-h"><span class="tag live">进行中</span><span class="sm mut">已进行 ${mins(i)} 分钟</span></div>
     <div class="rmc-r"><span class="sm mut">受访者</span><b>${esc(i.participant.name)}</b></div><div class="rmc-r"><span class="sm mut">主持人</span><span>${esc(mod(i))}</span></div>
     <div class="rmc-r"><span class="sm mut">开始时间</span><span>${startOf(i) ? when(startOf(i)) : "随时可进入"}</span></div><div class="rmc-t">${tagBox(i)}</div><div class="rmc-a">${actions(i)}</div></div>`;
-  shell(its.length ? `<div class="rmtabs" id="rmtabs" role="tablist" aria-label="按状态筛选场次"></div>
-    <div class="card scroll rmbox" style="padding:6px 10px"><table class="tbl rc" id="rmtable"><thead><tr id="rmh"></tr></thead><tbody id="rmb"></tbody></table><div class="rmwall" id="rmwall" hidden></div></div>
-    <div class="card empty" id="rmempty" hidden><b>没有符合筛选条件的场次。</b></div><div class="fres" id="rmres"></div>`
+  shell(its.length ? `<div class="rmws${staff ? " side" : ""}" id="rmws"><div class="rmcol"><div class="rmtabs" id="rmtabs" role="tablist" aria-label="按状态筛选场次"></div><div id="rmban"></div>
+    <div class="rmscroll"><div class="card scroll rmbox" style="padding:6px 10px"><table class="tbl rc" id="rmtable"><thead><tr id="rmh"></tr></thead><tbody id="rmb"></tbody></table><div class="rmwall" id="rmwall" hidden></div></div>
+    <div class="card empty" id="rmempty" hidden><b>没有符合筛选条件的场次。</b></div><div class="fres" id="rmres"></div></div></div>${staff ? `<aside class="rmside" id="rmside" aria-label="提醒和安排"></aside>` : ""}</div>`
     : `<div class="card empty">${staff ? `<b>还没有场次。</b><span>到“甄别设定”的名单里，点受访者那一行的“邀请到场次”新建场次，把邀请链接发给受访者。</span><a class="btn p" href="#/p/${p.id}/people">去甄别设定</a>` : `<b>还没有分配给你的场次。</b><span>研究员把你加入某场访谈后，它会出现在这里。</span>`}</div>`, { active: "rooms", p });
   if (!its.length) return;
   const closeMenus = () => app.querySelectorAll(".rmh-menu").forEach((m) => { m.hidden = true; });
@@ -632,11 +641,15 @@ async function roomsView(p) {
     const wall = RM.wall && RM.tab === "live";
     $("#rmtable").hidden = wall; $("#rmwall").hidden = !wall;
     $("#rmwall").innerHTML = wall ? rows.map(card).join("") : "";
-    const names = ["受访者", "主持人", "开始时间", "标签", ...(showStatus() ? ["状态"] : [])];
+    const names = ["受访者", "主持人", "开始时间", "标签", ...(staff ? ["邀请进度", "时长"] : []), ...(showStatus() ? ["状态"] : [])];
     $("#rmb").innerHTML = rows.map((i) => { const [t, c] = roomState(i);
-      const cells = [`<b>${esc(i.participant.name)}</b>`, `<span class="${i.moderator_name || obs ? "" : "mut"}">${esc(mod(i))}</span>`, `<span class="mut">${startOf(i) ? when(startOf(i)) : "随时可进入"}</span>`, `<div class="lbox" style="border:0;background:none;padding:0">${tagBox(i)}</div>`, ...(showStatus() ? [`<span class="tag ${c}">${t}</span>`] : [])];
+      const [pt, pc] = rmProgress(i), ed = canEdit(i);
+      const modCell = ed ? `<button type="button" class="ed${i.moderator_name ? "" : " none"}" data-edm="${i.id}" aria-label="修改主持人，现在是${esc(mod(i))}">${esc(mod(i))}</button>` : `<span class="${i.moderator_name || obs ? "" : "mut"}">${esc(mod(i))}</span>`;
+      const timeCell = ed ? `<button type="button" class="ed" data-edt="${i.id}" aria-label="修改开始时间">${startOf(i) ? when(startOf(i)) : "随时可进入"}</button>` : `<span class="mut">${startOf(i) ? when(startOf(i)) : "随时可进入"}</span>`;
+      const cells = [`<b>${esc(i.participant.name)}</b>`, modCell, timeCell, `<div class="lbox" style="border:0;background:none;padding:0">${tagBox(i)}</div>`, ...(staff ? [`<span class="tag ${pc}">${pt}</span>`, `<span class="mut">${i.duration_min || 45} 分</span>`] : []), ...(showStatus() ? [`<span class="tag ${c}">${t}</span>`] : [])];
       return `<tr>${cells.map((h, n) => `<td data-l="${names[n]}">${h}</td>`).join("")}<td class="acts">${actions(i)}</td></tr>`; }).join("");
     $("#rmempty").hidden = rows.length > 0;
+    wireEdits();
   };
   const drawRes = () => {
     const on = FIELDS.filter(([k]) => RM.sel[k].length);
@@ -645,7 +658,7 @@ async function roomsView(p) {
     const c = $("#rmclr"); if (c) c.onclick = () => { FIELDS.forEach(([k]) => { RM.sel[k] = []; }); drawHead(); drawBody(); drawRes(); };
   };
   const drawHead = () => {
-    $("#rmh").innerHTML = FIELDS.map(([k, label]) => `<th><button type="button" class="msb hb rmhb" data-k="${k}" aria-haspopup="true" aria-expanded="false">${label}</button><div class="msm rmh-menu" hidden></div></th>`).join("") + (showStatus() ? `<th>状态</th>` : "") + `<th></th>`;
+    $("#rmh").innerHTML = FIELDS.map(([k, label]) => `<th><button type="button" class="msb hb rmhb" data-k="${k}" aria-haspopup="true" aria-expanded="false">${label}</button><div class="msm rmh-menu" hidden></div></th>`).join("") + (staff ? `<th>邀请进度</th><th>时长</th>` : "") + (showStatus() ? `<th>状态</th>` : "") + `<th></th>`;
     FIELDS.forEach(([k, label, get]) => {
       const th = $(`#rmh .rmhb[data-k=${k}]`), menu = th.nextElementSibling;
       menu.innerHTML = `<input class="mss" placeholder="搜索或勾选" aria-label="搜索${esc(label)}"><div class="mso-list"></div>`;
@@ -664,45 +677,52 @@ async function roomsView(p) {
     app.querySelectorAll("#rmtabs .rmt").forEach((b) => (b.onclick = () => { RM.tab = b.dataset.t; if (RM.tab !== "live") RM.wall = false; drawTabs(); drawHead(); drawBody(); drawRes(); }));
     const w = $("#rmwallbtn"); if (w) w.onclick = () => { RM.wall = !RM.wall; drawTabs(); drawBody(); };
   };
+  const drawSide = () => { const s = $("#rmside"); if (s) { s.innerHTML = rmAsideHtml(its, mods); wireSide(); } };
+  const banner = (i, what) => {   // the change is saved and the invitation already shows it; a mail already sent can be followed by an update mail
+    const mail = CONFIG && CONFIG.mail_ready && i.mail_status === "sent" && i.kind !== "group";
+    $("#rmban").innerHTML = `<div class="rmban" role="status"><span>${esc(what)}，邀请函已同步。</span><span class="sp"></span>${mail ? `<label class="chk"><input type="checkbox" id="rmmail" checked><span>同时给受访者发更新邮件</span></label><button type="button" class="p" id="rmsend">发送</button>` : ""}<button type="button" class="s" id="rmbx" aria-label="关闭">×</button></div>`;
+    $("#rmbx").onclick = () => { $("#rmban").innerHTML = ""; };
+    if (mail) $("#rmsend").onclick = guard(async () => { const send = $("#rmmail").checked; $("#rmban").innerHTML = ""; if (!send) return; const r = await api(`/interviews/${i.id}`, { method: "PUT", body: { send_email: true } }); mailNote(i.participant.name, r.mail); });
+    else setTimeout(() => { const b = $("#rmban"); if (b && b.firstChild && !b.querySelector("#rmsend")) b.innerHTML = ""; }, 6000);
+  };
+  const saveOne = (i, what) => guard(async (body, label) => {
+    const r = await api(`/interviews/${i.id}`, { method: "PUT", body });
+    const at = its.findIndex((x) => x.id === i.id); if (at >= 0) its[at] = { ...its[at], ...r, participant: { ...its[at].participant, ...r.participant } };
+    drawBody(); drawSide(); banner(its[at] || i, what(body, label));
+  });
+  const itemOf = (id) => its.find((x) => x.id === id);
+  function wireEdits() {
+    app.querySelectorAll("[data-edm]").forEach((b) => (b.onclick = () => { const i = itemOf(b.dataset.edm); rmPickModerator(b, i, its, mods, saveOne(i, (_, n) => `主持人已改为 ${n}`)); }));
+    app.querySelectorAll("[data-edt]").forEach((b) => (b.onclick = () => { const i = itemOf(b.dataset.edt); rmPickTime(b, i, saveOne(i, (body) => (body.scheduled_at ? "开始时间已更新" : "开始时间已清除"))); }));
+  }
+  function wireSide() {
+    app.querySelectorAll("#rmside [data-asg]").forEach((b) => (b.onclick = () => { const i = itemOf(b.dataset.asg); rmPickModerator(b, i, its, mods, saveOne(i, (_, n) => `主持人已改为 ${n}`)); }));
+    app.querySelectorAll("#rmside [data-resend]").forEach((b) => (b.onclick = guard(async () => { const i = itemOf(b.dataset.resend), r = await api(`/interviews/${i.id}`, { method: "PUT", body: { send_email: true } }); mailNote(i.participant.name, r.mail); })));
+  }
+  document.body.classList.add("rfmode", "pgw");   // the page does not scroll: the table and the side cards scroll inside their own boxes
+  const ws = $("#rmws"), fit = () => { if (ws && ws.offsetParent) ws.style.height = Math.max(380, innerHeight - ws.getBoundingClientRect().top - 18) + "px"; };
+  fit(); addEventListener("resize", fit);
   if (window._rmClose) document.removeEventListener("click", window._rmClose);
   window._rmClose = closeMenus; document.addEventListener("click", closeMenus);
-  drawTabs(); drawHead(); drawBody(); drawRes();
+  drawTabs(); drawHead(); drawBody(); drawRes(); drawSide();
   if (window._rmPoll) clearInterval(window._rmPoll);
   window._rmPoll = setInterval(async () => {   // a moderator or a time changed elsewhere: update the table, keep the filters and the open menu
-    if (document.hidden || !location.hash.endsWith("/rooms") || document.querySelector(".rmh-menu:not([hidden])")) return;
-    try { its = shFilterInterviews(p, await api(`/projects/${p.id}/interviews`)); drawTabs(); drawBody(); drawRes(); } catch { /* the next tick tries again */ }
+    if (document.hidden || !location.hash.endsWith("/rooms") || document.querySelector(".rmh-menu:not([hidden]), .rmpop")) return;
+    try { its = shFilterInterviews(p, await api(`/projects/${p.id}/interviews`)); drawTabs(); drawBody(); drawRes(); drawSide(); } catch { /* the next tick tries again */ }
   }, 10000);
 }
 
 // ---------------- 洞察与片段 ----------------
 async function insightsListView(p) {
   const my = renderSeq;
-  const its = await api(`/projects/${p.id}/interviews`);
-  const counts = await Promise.all(its.map(async (i) => {
-    const [ins, clips] = await Promise.all([api(`/interviews/${i.id}/insights`).catch(() => []), api(`/interviews/${i.id}/clips`).catch(() => [])]);
-    return { ins: ins.length, ok: ins.filter((x) => x.status === "approved").length, review: ins.filter((x) => x.status === "needs_review").length, clips: clips.length };
-  }));
-  if (stale(my)) return;
-  shell(`${head("洞察与片段", ME.role === "observer" ? "研究员审核通过的洞察，每条都附受访者的原话。" : "每条洞察的原话都和转写逐字核对过；点“查看详情”看转写、洞察和片段。", ME.role === "observer" ? "" : `<button id="xw">导出 Word</button> <button id="xc">导出 CSV</button>`)}
-    ${its.length ? `<div class="card scroll" style="padding:6px 10px"><table class="tbl rc"><thead><tr><th>受访者</th><th>场次</th><th>状态</th><th class="num">洞察</th><th class="num">已通过</th><th class="num">片段</th><th></th></tr></thead><tbody>
-      ${its.map((i, n) => { const [t, c] = STATUS[i.status] || [i.status, ""]; const k = counts[n]; return `<tr><td><b>${esc(i.participant.name)}</b></td><td>${esc(i.title)}</td><td><span class="tag ${c}">${t}</span></td>
-        <td class="num">${k.ins}${k.review ? ` <span class="tag bad">${k.review} 条需复核</span>` : ""}</td><td class="num">${k.ok}</td><td class="num">${k.clips}</td><td class="acts"><a class="btn s" href="#/i/${i.id}">查看详情</a></td></tr>`; }).join("")}</tbody></table></div>`
-      : `<div class="card empty"><b>还没有场次。</b><span>访谈结束并转写后，每场的洞察和片段会列在这里。</span></div>`}
-    ${!STAFF() ? "" : `<div class="group"><h2>集锦</h2></div><div id="reels"></div>`}`, { active: "insights", p });
-  if ($("#reels")) reelsSection(p, my);
-  const dl = (fmt) => guard(async () => {  // a download needs the login header, so fetch it and hand the browser a file
-    const r = await fetch(`/api/projects/${p.id}/insights/export?format=${fmt}`, { headers: { Authorization: "Bearer " + store.get("tt_token") } });
-    if (!r.ok) throw new Error("导出失败，请稍后再试");
-    const a = document.createElement("a"); a.href = URL.createObjectURL(await r.blob()); a.download = `${p.name}-洞察.${fmt}`; document.body.appendChild(a); a.click(); a.remove();
-  });
-  if ($("#xw")) { $("#xw").onclick = dl("docx"); $("#xc").onclick = dl("csv"); }
+  await insightsHub(p, my);  // app/static/insights.js: 受访者数据 / 报告 / 问题分析 / 精彩片段 / 对话
 }
 
 // ---------------- 集锦：把多个片段按顺序编成一条，一个链接分享 ----------------
 async function reelsSection(p, my) {
   const list = await api(`/projects/${p.id}/reels`);
   if (stale(my) || !$("#reels")) return;
-  $("#reels").innerHTML = `<div class="card"><div class="row"><span class="mut sm">把几个片段按顺序编成一条，用一个链接分享；每段都带水印、限时、不能下载。</span><span class="sp"></span><button class="p" id="rnew">新建集锦</button></div>
+  $("#reels").innerHTML = `<div class="card"><div class="row"><span class="sp"></span><button class="p" id="rnew">新建集锦</button></div>
     ${list.length ? `<table class="tbl rc" style="margin-top:8px"><thead><tr><th>名称</th><th class="num">片段</th><th></th></tr></thead><tbody>${list.map((r) => `<tr><td data-l="名称"><b>${esc(r.title)}</b></td><td class="num" data-l="片段">${r.clips}</td><td class="acts"><button class="s" data-re="${r.id}">编辑与分享</button></td></tr>`).join("")}</tbody></table>`
       : `<p class="mut" style="margin:10px 0 0">还没有集锦。先在场次详情里把洞察剪成片段，再回来编排。</p>`}</div>`;
   $("#rnew").onclick = () => reelEditor(p, null, my);

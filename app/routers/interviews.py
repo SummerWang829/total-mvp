@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from .. import ai_room, concept, content_rules, export, groups, invites, jobs, participant_code, pretask, scheduling
+from .. import insights_overview as insights_overview_mod, ai_room, concept, content_rules, export, groups, invites, jobs, participant_code, pretask, scheduling
 from ..audit import audit
 from ..config import settings
 from ..db import get_db
@@ -77,7 +77,7 @@ def interview_out(itv: Interview, ctx: Ctx, invite_token: str | None = None, db:
         "started_at": itv.started_at.isoformat() if itv.started_at else None,
         "ended_at": itv.ended_at.isoformat() if itv.ended_at else None,
         "moderator_id": itv.moderator_id, "observer_ids": [o.user_id for o in itv.observers],
-        "participant": {"id": itv.participant.id, "name": itv.participant.name, "country": itv.participant.country, "tags": itv.participant.tags or []} if sees_name
+        "participant": {"id": itv.participant.id, "name": itv.participant.name, "country": itv.participant.country, "tags": itv.participant.tags or [], "availability": list(itv.participant.availability or [])} if sees_name
         else {"name": "受访者"},
         "moderator_name": _moderator_name(db, itv) if sees_name else "",  # the team's own names are not for client observers
         "purged": itv.purged_at is not None, "moderation": itv.moderation, "kind": itv.kind, "study_id": itv.study_id,
@@ -223,6 +223,26 @@ def list_interviews(pid: str, ctx: Ctx = Depends(current_ctx), db: Session = Dep
             continue
         out.append(interview_out(itv, ctx, db=db))
     return out
+
+
+@router.get("/projects/{pid}/insights/overview")
+def insights_overview(pid: str, ctx: Ctx = Depends(current_ctx), db: Session = Depends(get_db)):
+    """The respondent-data tab of the insights page: the numbers on top and one row (with a card) per interview this person may see."""
+    proj = db.get(Project, pid)
+    if not proj or proj.org_id != ctx.org_id:
+        raise HTTPException(404, "项目不存在")
+    if ctx.user.role in STAFF:
+        ensure_project(db, ctx, proj.id)
+    team = ctx.user.role != "observer"
+    codes = participant_code.code_map(db, pid)
+    rows = []
+    for itv in db.scalars(select(Interview).where(Interview.project_id == pid, Interview.purged_at.is_(None)).order_by(Interview.started_at.desc().nullslast(), Interview.scheduled_at.desc().nullslast(), Interview.created_at.desc())).all():
+        try:
+            visible_interview(db, ctx, itv.id)
+        except HTTPException:
+            continue
+        rows.append(insights_overview_mod.row(db, itv, "座谈会" if groups.is_group(itv) else codes.get(itv.participant_id, "?"), team, _moderator_name(db, itv) if team else ""))
+    return {"kpi": insights_overview_mod.kpis(rows), "rows": rows}
 
 
 @router.get("/interviews/{iid}")

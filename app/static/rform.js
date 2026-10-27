@@ -200,6 +200,9 @@ function rfCard(p, form) {
     const tt = $("#rftest"); if (tt) tt.onclick = () => window.open(f.html_url, "_blank", "noopener,noreferrer");
     if (mode !== "ai") return;
     drawChat(); drawRight(); fit(); wireSplit();
+    if (window._rfExOff) document.removeEventListener("click", window._rfExOff);
+    window._rfExOff = (e) => { if (openEx.size && !e.target.closest(".rf-expanel, [data-ex]")) { openEx.clear(); drawRight(); } };   // the 互斥 picker closes when you click anywhere else
+    document.addEventListener("click", window._rfExOff);
     const m = $("#rfmsg");
     $("#rfsend").onclick = () => send(m.value);
     m.onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(m.value); } };
