@@ -12,7 +12,8 @@ from .config import settings
 from . import participant_code
 from .db import Base, SessionLocal, engine, ensure_columns
 from .recording import start_worker
-from .routers import admin_data, ai_room, group_analysis as group_analysis_router, analysis, auth, concept, cues, group_metrics, interviews, listening, outline, pool, jobs as jobs_router, plans as plans_router, quant, recruit, screen_public, reels as reels_router, report, signals, studies, repo, overview, projects, public
+from . import chat_models  # noqa: F401  (registers the chat_threads table)
+from .routers import admin_data, ai_room, group_analysis as group_analysis_router, analysis, auth, concept, cues, group_metrics, interviews, listening, outline, insight_chat as insight_chat_router, pool, jobs as jobs_router, plans as plans_router, quant, recruit, screen_public, reels as reels_router, report, signals, studies, repo, overview, projects, public
 
 @asynccontextmanager
 async def lifespan(_app):
@@ -32,7 +33,7 @@ async def lifespan(_app):
 
 
 app = FastAPI(title="星桐 TOTAL MVP", version="0.1.0", lifespan=lifespan)
-for r in (auth.router, projects.router, interviews.router, overview.router, public.router, ai_room.router, concept.router, analysis.router, group_metrics.router, cues.router, signals.router, studies.router, outline.router, repo.router, listening.router, recruit.router, quant.router, pool.router, report.router, admin_data.router, group_analysis_router.router, reels_router.router, jobs_router.router, plans_router.router, screen_public.router):
+for r in (auth.router, projects.router, interviews.router, overview.router, public.router, ai_room.router, concept.router, analysis.router, group_metrics.router, cues.router, signals.router, studies.router, outline.router, insight_chat_router.router, repo.router, listening.router, recruit.router, quant.router, pool.router, report.router, admin_data.router, group_analysis_router.router, reels_router.router, jobs_router.router, plans_router.router, screen_public.router):
     app.include_router(r)
 app.middleware("http")(ratelimit.middleware)  # no-op unless RATE_LIMIT=1
 if settings.loop_watch_s > 0:
