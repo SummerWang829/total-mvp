@@ -361,7 +361,7 @@ nav.side .dotc{width:7px;height:7px;border-radius:50%;background:var(--sc,#FF6A0
 .hubtabs{display:flex;gap:2px;border-bottom:1px solid var(--line);flex-wrap:wrap;margin:0 0 4px}
 .hubtabs a{display:inline-flex;align-items:center;height:44px;padding:0 16px;color:var(--muted);font-weight:600;font-size:14px;text-decoration:none;border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap}
 .hubtabs a:hover{color:var(--ink)}
-.hubtabs a.on{color:var(--ink);border-bottom-color:var(--orange)}
+.hubtabs a.on{color:var(--ink);border-bottom:3px solid var(--orange);font-size:18px;font-weight:700}
 @media (max-width:820px){.ctx{position:static;backdrop-filter:none}.ctx-modes{margin-left:0}.track li+li::before{width:14px;margin:0 6px}}
 .qbar{height:6px;border-radius:3px;background:var(--line);overflow:hidden;min-width:60px}
 .qbar>i{display:block;height:100%;border-radius:3px;background:var(--green)}
@@ -786,3 +786,26 @@ button.lch{height:auto;min-height:26px;cursor:pointer;border:0}button.lch::befor
 .ptbl td{overflow-wrap:anywhere;word-break:break-word}
 .ptbl th{white-space:nowrap}
 .ptbl .ity,.ptbl .tag{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:top}
+
+/* 页签页面：页签已经写了页面名字，页面里重复的大标题和说明不再显示；有按钮的保留在右侧一条窄行里 */
+.hubpage>.head.dup>div:first-child{display:none}
+.hubpage>.head.dup:not(:has(button,a)){display:none}
+.hubpage>.head.dup{justify-content:flex-end;margin:0}
+/* 直播间：状态按钮、表头筛选、预览卡片 */
+.rmtabs{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:0 0 10px}.rmtabs .sp{flex:1}
+.rmt{display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 14px;border:1px solid transparent;border-radius:10px;background:transparent;color:var(--muted);font-size:15px;font-weight:700}
+.rmt::before{display:none}
+.rmt::after{content:attr(data-n);font-size:12px;min-width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;border-radius:999px;background:var(--wash);border:1px solid var(--line);color:var(--muted);font-weight:500;padding:0 6px}
+.rmt.on{background:var(--surface);border-color:var(--line2);color:var(--ink)}
+#rmh th{position:relative}
+.hb{height:32px;min-width:0;padding:0 8px;border-color:transparent;background:transparent;color:var(--muted);font-weight:700;font-size:13px}
+.hb.on{border-color:var(--orange);background:var(--orange-soft);color:var(--orange-ink)}
+.mss{width:100%;margin:0 0 4px}
+.rmh-menu{min-width:220px}
+.rmwall{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;padding:8px 2px}
+.rmc{border:1px solid var(--line2);border-radius:12px;padding:12px 14px;background:var(--surface);display:flex;flex-direction:column;gap:6px}
+.rmc-h{display:flex;justify-content:space-between;align-items:center}
+.rmc-r{display:flex;justify-content:space-between;gap:8px;font-size:14px}.rmc-r b{font-size:15px}
+.rmc-t{display:flex;flex-wrap:wrap;gap:4px;min-height:24px}
+.rmc-a{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
+@media (max-width:900px){.rmwall{grid-template-columns:1fr}.hubtabs a.on{font-size:16px}}

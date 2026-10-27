@@ -102,3 +102,15 @@ def test_erasing_several_people_at_once_is_logged_and_for_staff_only(client, org
     with SessionLocal() as db:
         logged = db.scalars(select(AuditLog).where(AuditLog.action == "participant.bulk_erase")).all()
     assert logged and logged[-1].meta["people"] == 2
+
+
+def test_the_interview_list_carries_the_moderator_name_and_the_participant_tags_for_the_team_only(client, org):
+    pid = org.project()
+    added = add(org, pid, "甲", tags=["GBA"])
+    org.c.put(f"/api/participants/{added['id']}/tags", headers=org.h(), json={"tags": ["GBA"]})
+    me = org.c.get("/api/me", headers=org.h()).json()
+    org.c.post(f"/api/projects/{pid}/interviews", headers=org.h(), json={"participant_id": added["id"], "title": "房间", "moderator_id": me["id"]})
+    row = org.c.get(f"/api/projects/{pid}/interviews", headers=org.h()).json()[0]
+    assert row["moderator_name"] == me["name"] and row["participant"]["tags"] == ["GBA"]
+    seen = org.c.get(f"/api/projects/{pid}/interviews", headers=org.h("observer")).json()
+    assert seen == [] or (seen[0]["moderator_name"] == "" and "tags" not in seen[0]["participant"])  # a client observer sees neither the team's names nor the tags

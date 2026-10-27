@@ -51,7 +51,7 @@ def next_step(s: dict, closed: bool) -> dict:
     if not s["participants"]:
         return {"text": "先添加受访者（问卷平台接入后会自动进来）。", "page": "people"}
     if not s["sessions"]:
-        return {"text": "给受访者新建场次，并把邀请链接发给他们。", "page": "sessions"}
+        return {"text": "在名单里给受访者点“邀请到场次”，新建场次并把邀请链接发给他们。", "page": "people"}
     if s["waiting"]:
         return {"text": f"有 {s['waiting']} 位受访者在候场室，进入房间放行。", "page": "rooms"}
     if s["live"]:
@@ -61,7 +61,7 @@ def next_step(s: dict, closed: bool) -> dict:
     if s["to_review"]:
         return {"text": f"有 {s['to_review']} 条洞察等待审核。", "page": "insights"}
     if s["upcoming"]:
-        return {"text": f"还有 {s['upcoming']} 场待开始，留意受访者的邀请进度。", "page": "sessions"}
+        return {"text": f"还有 {s['upcoming']} 场待开始，到直播间看看。", "page": "rooms"}
     return {"text": "所有场次都已完成。可以在“洞察与片段”里整理结论。", "page": "insights"}
 
 

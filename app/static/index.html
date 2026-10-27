@@ -55,8 +55,10 @@ function shell(inner, { active, p, title } = {}) {
   const top = proj ? shCtx(p, active) : `<div class="top">${p ? `<span class="crumb"><a href="#/projects">项目总览</a> /</span><span class="pname">${esc(p.name)}</span>` : `<span class="pname">${esc(title || "")}</span>`}<div class="meta">${meta}</div></div>`;
   const navP = p || (STAFF() && CUR_PROJ && ["team", "retention", "audit", "demo"].includes(active) ? (PROJECTS || []).find((x) => x.id === CUR_PROJ) : null);
   app.innerHTML = `<div class="app"><nav class="side" aria-label="主导航">${navHtml(active, navP)}</nav><div class="work">${top}
-    <main class="enter">${proj ? shTabs(p, active) : ""}${notice}${inner}</main></div></div>`;
+    <main class="enter${proj && shTabs(p, active) ? " hubpage" : ""}">${proj ? shTabs(p, active) : ""}${notice}${inner}</main></div></div>`;
   labelTables();
+  const hd = app.querySelector("main.hubpage > .head"), h1 = hd && hd.querySelector("h1"), tabOn = app.querySelector(".hubtabs a.on");
+  if (h1 && tabOn) { const a = h1.textContent.trim(), b = tabOn.textContent.trim(); if (a === b || a === "项目" + b) hd.classList.add("dup"); }  // a title that only repeats the tab's name is dropped; a page with its own title keeps it
   if (proj) shWire(p);
   if (!window._brandShown) { window._brandShown = true; brandPlay(); }
   $("#out").onclick = () => { store.del("tt_token"); ME = null; PROJECTS = null; DEMO_ORG = false; location.hash = "#/login"; render(); };
@@ -116,7 +118,7 @@ async function render() {
       if (page === "monitor" && STAFF()) return await monitorView(p);
       if (page === "home" && STAFF()) return await homeView(p);
       if (page === "people" && (STAFF() || RECRUITER())) return await peopleView(p);
-      if (page === "sessions" && STAFF()) return await sessionsView(p);
+      if (page === "sessions") { location.replace(`#/p/${p.id}/rooms`); return; }  // the sessions-and-invitations page is gone
       if (page === "rooms" && !VIEWER() && !RECRUITER()) return await roomsView(p);
       if (page === "insights" && !VIEWER() && !RECRUITER()) return await insightsListView(p);
       if (page === "analysis" && STAFF()) return await analysisView(p);
@@ -221,7 +223,7 @@ function starmapHtml(p, nodes) {
     <div class="big">${n.big}<span class="sm mut" style="font-size:14px;font-weight:400"> ${esc(n.unit)}</span></div><div class="sm">${esc(n.sub)}</div><div class="sm mut" style="margin-top:6px">下一步：${esc(n.next)}</div></a>`).join("")}</div>`;
 }
 // ---------------- 项目总览：整体进度 + 分项进度 + 下一步 + 最近动态 ----------------
-const PAGE_NAME = { people: "去受访者招募", sessions: "去场次与邀请", rooms: "去直播间", insights: "去洞察与片段" };
+const PAGE_NAME = { people: "去受访者招募", rooms: "去直播间", insights: "去洞察与片段" };
 async function homeView(p) {
   const my = renderSeq;
   const o = await api(`/projects/${p.id}/overview`), s = o.summary;
@@ -261,7 +263,6 @@ async function peopleView(p) {
   const [parts, its, rec, form, lib] = await Promise.all([api(`/projects/${p.id}/participants`), api(`/projects/${p.id}/interviews`), api(`/projects/${p.id}/recruiting`), api(`/projects/${p.id}/recruiting/form`), api(`/projects/${p.id}/recruiting/tags`)]);
   const rf = rfCard(p, form), rd = await rdBuild(p, rec);
   if (stale(my)) return;
-  const nIt = (id) => its.filter((i) => i.participant.id === id).length;
   const countries = [...new Set(parts.map((x) => x.country).filter(Boolean))].sort(), langs = [...new Set(parts.map((x) => x.language).filter(Boolean))];
   const srcName = (x) => x.source_name || ({ link: "问卷链接 / 二维码", manual: "手动添加", import: "外部名单", platform: "外部问卷平台" })[x.source] || "未记录来源";
   const F = PEOPLE_F;
@@ -282,17 +283,16 @@ async function peopleView(p) {
       <div class="mclr"><button type="button" class="lnk" data-clr>清除这一项</button></div>
       ${key === "tag" ? `<div class="lcf" id="libcf" hidden></div><div class="msec"><p class="sm mut" style="margin:0 0 6px">新增一个标签（所有人都能选）</p><form id="libf" class="row" style="gap:6px;flex-wrap:nowrap"><input name="tag" maxlength="40" placeholder="输入标签，回车添加" aria-label="新标签" required><button class="p">添加</button></form></div>` : ""}</div></div>`;
   const rowHtml = (x) => {
-        const k = KIND[x.interview_kind] || KIND[""], answers = x.key_answers ? x.key_answers.split(" · ") : [];
+        const k = KIND[x.interview_kind] || KIND[""];
         const tier = x.screening === "blocked_region" ? `<span class="tag bad">地区暂未开放</span>` : x.anonymized ? `<span class="tag">已匿名</span>` : x.screen_result === "disqualified" ? `<span class="tag bad" title="${esc(x.screen_reason)}">不符合</span><div class="sm mut ell" title="${esc(x.screen_reason)}">${esc(x.screen_reason)}</div>`
           : `<button type="button" class="lch ${x.tier === "backup" ? "st-b" : "st-f"}" data-tier="${x.id}" aria-haspopup="menu" title="${x.screen_reason ? esc(x.screen_reason) : ""}">${x.tier === "backup" ? "备份" : "正式"} ▾</button><div class="sm mut">${x.tier_manual ? "手动" : "自动"} · ${x.screen_result ? SCREEN[x.screen_result][0] : "可邀请"}</div>`;
         const tags = x.tags.map((tg) => `<span class="lch ${lcolor(tg)}">${esc(tg)}${TAG_DEL.has(x.id) ? ` <span class="lx" data-tx="${x.id}" data-tag="${esc(tg)}" role="button" aria-label="去掉标签 ${esc(tg)}">×</span>` : ""}</span>`).join("");
         return `<tr><td><input type="checkbox" class="pick" value="${x.id}" aria-label="选择 ${esc(x.name)}"${x.anonymized ? " disabled" : ""}></td><td><div class="code">${esc(x.code)}</div><span class="ity ${k[1]}">${k[0]}</span></td>
-        <td><b>${esc(x.name)}</b>${x.email ? `<div class="sm mut ell" title="${esc(x.email)}">${esc(x.email)}</div>` : ""}<div class="sm mut">${nIt(x.id) ? `${nIt(x.id)} 场` : "未邀请"}</div></td><td><div>${esc(x.country || "—")}</div><div class="sm mut">${esc(LANGS[x.language] || x.language || "—")}</div></td>
+        <td><b>${esc(x.name)}</b>${x.email ? `<div class="sm mut ell" title="${esc(x.email)}">${esc(x.email)}</div>` : ""}</td><td><div>${esc(x.country || "—")}</div><div class="sm mut">${esc(LANGS[x.language] || x.language || "—")}</div></td>
         <td>${tier}</td>
         <td>${x.anonymized ? "" : `<div class="lbox">${tags || `<span class="sm mut">—</span>`}<span class="lbtns"><button class="sqb" type="button" data-tadd="${x.id}" aria-label="给 ${esc(x.name)} 添加标签">＋</button><button class="sqb${TAG_DEL.has(x.id) ? " on" : ""}" type="button" data-tdel="${x.id}" aria-label="去掉 ${esc(x.name)} 的标签">－</button></span></div>`}</td>
-        <td><div class="lbox">${answers.length ? answers.map((a) => `<span class="lch ${lcolor(a)}" title="${esc(a)}">${esc(a)}</span>`).join("") : `<span class="sm mut">—</span>`}</div></td>
         <td><span class="tag ${x.source === "import" ? "live" : ""}">${esc(srcName(x))}</span></td>
-        <td class="acts">${x.anonymized ? "" : x.screener ? `<button class="s" data-scr="${x.id}">${x.screener} 题 · 查看</button>` : `<div class="stn">无答案</div>`}${RC ? "" : x.screening === "eligible" && !x.anonymized && x.screen_result !== "disqualified" ? `<button class="s" data-inv="${x.id}">邀请到场次</button>` : ""}</td>
+        <td class="acts">${x.anonymized ? "" : x.screener ? `<button class="s" data-scr="${x.id}">查看详情</button>` : `<div class="stn">无答案</div>`}${RC ? "" : x.screening === "eligible" && !x.anonymized && x.screen_result !== "disqualified" ? `<button class="s" data-inv="${x.id}">邀请到场次</button>` : ""}</td>
         ${RC ? "" : `<td class="c">${x.anonymized ? "" : `<button type="button" class="xdel" data-erase="${x.id}" data-name="${esc(x.name)}" aria-label="删除 ${esc(x.name)} 的数据" title="删除数据">×</button>`}</td>`}</tr>`; };
   const ptab = sessionStorage.getItem("ptab") === "list" ? "list" : "form";  // 招募问卷 is a workspace (the page does not scroll); the quotas and the people are on the other tab
   shell(`${head("甄别设定", `先做招募问卷，再看配额和名单；受访者可来自问卷、手动添加或外部名单。目前只开放新加坡。`)}
@@ -307,8 +307,8 @@ async function peopleView(p) {
     ${parts.length ? `<hr class="plhr"><div class="plf" id="pf">${FILTERS.map(msel).join("")}
       <span class="sp"></span>${RC ? "" : `<span class="sm mut" id="selcount">已选 0 人</span><button type="button" id="bdel" class="warn">批量删除</button>`}<div class="fres" id="fres" style="flex-basis:100%"></div></div>
     <div class="lcf" id="bdelcf" role="alert" hidden></div>` : ""}</div>
-    ${parts.length ? `<div class="card plbox"><table class="tbl rc ptbl"><colgroup>${RC ? `<col style="width:3%"><col style="width:7%"><col style="width:13%"><col style="width:10%"><col style="width:10%"><col style="width:18%"><col style="width:15%"><col style="width:9%"><col style="width:15%">` : `<col style="width:3%"><col style="width:7%"><col style="width:12%"><col style="width:10%"><col style="width:10%"><col style="width:15%"><col style="width:13%"><col style="width:8%"><col style="width:15%"><col style="width:7%">`}</colgroup>
-      <thead><tr><th><span class="vh">选择</span><input type="checkbox" id="all" aria-label="全选"></th><th>编号</th><th>姓名</th><th>国家 / 语言</th><th>资格</th><th>标签</th><th>关键回答</th><th>来源</th><th>操作</th>${RC ? "" : `<th class="c">数据清理</th>`}</tr></thead><tbody id="prows">
+    ${parts.length ? `<div class="card plbox"><table class="tbl rc ptbl"><colgroup>${RC ? `<col style="width:3%"><col style="width:8%"><col style="width:15%"><col style="width:11%"><col style="width:10%"><col style="width:27%"><col style="width:12%"><col style="width:14%">` : `<col style="width:3%"><col style="width:7%"><col style="width:14%"><col style="width:10%"><col style="width:10%"><col style="width:23%"><col style="width:11%"><col style="width:15%"><col style="width:7%">`}</colgroup>
+      <thead><tr><th><span class="vh">选择</span><input type="checkbox" id="all" aria-label="全选"></th><th>编号</th><th>姓名</th><th>国家 / 语言</th><th>资格</th><th>标签</th><th>来源</th><th>操作</th>${RC ? "" : `<th class="c">数据清理</th>`}</tr></thead><tbody id="prows">
       ${shown.map(rowHtml).join("")}</tbody></table></div>
       <div class="card empty" id="pempty" ${shown.length ? "hidden" : ""}><b>没有符合筛选条件的人。</b></div>`
       : `<div class="card empty"><b>还没有受访者。</b><span>点“添加受访者”手动添加，“导入名单（外部渠道）”导入别处拿来的名单，或把招募问卷发出去。</span></div>`}
@@ -597,34 +597,10 @@ function showInvite(iid, url, created, sched) {
   $("#cp", m).onclick = () => copy(url);
   $("#ct", m).onclick = () => copy(inviteText(url, sched, false));
   if (sched) { $("#cr", m).onclick = () => copy(inviteText(url, sched, true)); $("#ci", m).onclick = () => downloadIcs("访谈", sched, url); }
-  $("#cx", m).onclick = () => { m.remove(); location.hash.endsWith("/sessions") ? render() : (location.hash = location.hash.replace(/\/people$/, "/sessions")); };
+  $("#cx", m).onclick = () => { m.remove(); render(); };
 }
 
 // ---------------- 场次与邀请 ----------------
-const SESS_FILTERS = ["all", "sent", "opened", "device_ok", "consented", "entered", "done"];
-async function sessionsView(p) {
-  const [itsAll, parts, users] = await Promise.all([api(`/projects/${p.id}/interviews`), api(`/projects/${p.id}/participants`), api("/users")]);
-  const its = shFilterInterviews(p, itsAll);  // the sub-project and the 深访/座谈会 choice in the navigation
-  const uname = Object.fromEntries(users.map((u) => [u.id, u.name]));
-  const code = (id) => (parts.find((x) => x.id === id) || {}).code || "?";
-  const f = sessionStorage.getItem("sessf") || "all";
-  const count = (k) => (k === "all" ? its.length : its.filter((i) => i.invite_state === k).length);
-  const rows = its.filter((i) => f === "all" || i.invite_state === f).sort(newest);
-  shell(`${head("场次与邀请", "每个人的邀请进度一眼看清：已发送 → 已打开 → 检测通过 → 已同意 → 已进入 → 已完成。", `<button class="p" id="ni" ${parts.some((x) => x.screening === "eligible" && !x.anonymized) ? "" : "disabled"}>新建场次</button>`)}
-    <div class="stats" role="group" aria-label="按邀请进度筛选">${SESS_FILTERS.map((k) => `<button data-f="${k}" aria-pressed="${f === k}">${k === "all" ? "全部" : INVITE[k][0]} <b>${count(k)}</b></button>`).join("")}</div>
-    ${rows.length ? `<div class="card scroll" style="padding:6px 10px"><table class="tbl rc"><thead><tr><th>受访者</th><th>场次</th><th>时间</th><th>主持人</th><th>邀请进度</th><th></th></tr></thead><tbody>
-      ${rows.map((i) => { const group = i.kind === "group"; const inv = INVITE[i.invite_state] || ["", ""]; const who = group ? `<b>${esc(i.participant.name)}</b>` : `<span class="code">${code(i.participant.id)}</span> <b>${esc(i.participant.name)}</b>`; return `<tr><td>${who}</td><td>${esc(i.title)}${group ? ` <span class="tag o">座谈会</span>` : ""}${i.moderation === "ai" ? ` <span class="tag o">AI 主持</span>` : ""}</td><td class="mut">${when(i.scheduled_at)}</td>
-        <td>${esc(uname[i.moderator_id] || "未指定")}</td><td>${group ? `<span class="tag o">座谈会</span>` : `<span class="tag ${inv[1]}">${inv[0]}</span>`}</td>
-        <td class="acts">${!group && i.status !== "ended" && !i.purged ? `<button class="s" data-rot="${i.id}" data-sched="${i.scheduled_at || ""}">重新生成邀请链接</button> ` : ""}<a class="btn s" href="#/i/${i.id}">查看</a></td></tr>`; }).join("")}</tbody></table></div>`
-      : `<div class="card empty">${its.length ? `<b>这个进度下没有场次。</b><span>点“全部”看所有场次。</span>` : `<b>还没有场次。</b><span>每个场次对应一位受访者和一个邀请链接。先在“受访者招募”里添加受访者，再点右上角“新建场次”。</span>`}</div>`}`, { active: "sessions", p });
-  app.querySelectorAll("[data-f]").forEach((b) => b.onclick = () => { sessionStorage.setItem("sessf", b.dataset.f); render(); });
-  $("#ni").onclick = () => newSession(p, parts);
-  app.querySelectorAll("[data-rot]").forEach((b) => b.onclick = guard(async () => {
-    if (!confirm("生成新链接后，旧链接会立即失效。继续？")) return;
-    const r = await api(`/interviews/${b.dataset.rot}/invite/rotate`, { method: "POST" }); showInvite(b.dataset.rot, location.origin + r.invite_path, false, b.dataset.sched || null);
-  }));
-}
-
 // ---------------- 直播间 ----------------
 function roomState(i) {
   if (i.purged) return ["已按保留期清除", ""];
@@ -635,18 +611,80 @@ function roomState(i) {
   if (i.invite_state === "consented") return ["已就绪", "o"];
   return ["未就绪", ""];
 }
-const newest = (a, b) => (b.scheduled_at || b.started_at || "").localeCompare(a.scheduled_at || a.started_at || "");
+const startOf = (i) => i.started_at || i.scheduled_at || "";
+function timeBucket(i) {   // which group a session's start time falls in, for the filter
+  const s = startOf(i); if (!s) return "随时可进入";
+  const t = new Date(s + "Z").getTime(), now = new Date(), d0 = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime(), day = 86400000;
+  if (t >= d0 && t < d0 + day) return "今天";
+  const diff = (t - now.getTime()) / day;
+  return diff < -7 ? "更早" : diff > 7 ? "更晚" : "近 7 天";
+}
+const TIME_ORDER = ["今天", "近 7 天", "更晚", "更早", "随时可进入"];
+const RM_TABS = [["all", "全部"], ["scheduled", "待开始"], ["live", "进行中"], ["ended", "已结束"]];
+const RM = { tab: "all", wall: false, sel: { who: [], moderator: [], time: [], tag: [] } };   // the live-room table's choices, kept while the page redraws
 async function roomsView(p) {
   const its = shFilterInterviews(p, await api(`/projects/${p.id}/interviews`));
   const staff = STAFF(), obs = ME.role === "observer";
   const go = (i, as, label, cls) => `<a class="btn s ${cls}" href="/room.html?i=${i.id}&as=${as}" target="_blank" rel="noopener">${label}</a>`;
-  const groups = [["进行中", its.filter((i) => i.status === "live")], ["待开始", its.filter((i) => i.status === "scheduled")], ["已结束", its.filter((i) => i.status === "ended")]];
-  const table = (rows) => `<div class="card scroll" style="padding:6px 10px"><table class="tbl rc"><thead><tr><th>受访者</th><th>场次</th><th>时间</th><th>状态</th><th></th></tr></thead><tbody>
-    ${rows.sort(newest).map((i) => { const [t, c] = roomState(i); const open = i.status !== "ended" && !i.purged; return `<tr><td><b>${esc(i.participant.name)}</b></td><td>${esc(i.title)}</td><td class="mut">${when(i.scheduled_at)}</td><td><span class="tag ${c}">${t}</span></td>
-      <td class="acts">${open ? (obs ? go(i, "observer", "隐身观察", "") : go(i, "moderator", "进入 TA 的房间", "p") + (staff ? " " + go(i, "observer", "隐身观察", "") : "")) : `<a class="btn s" href="#/i/${i.id}">看转写和洞察</a>`}</td></tr>`; }).join("")}</tbody></table></div>`;
-  shell(`${head("直播间", obs ? "隐身进入：受访者看不到你，你不能发言，也不会出现在录制里。" : "深访是一人一间，座谈会最多 10 人。受访者做完设备检测和同意后会进入候场室，你进入房间后放行，对方才能进来。座谈会要逐个放行。")}
-    ${its.length ? groups.filter(([, rows]) => rows.length).map(([name, rows]) => `<div class="group"><h2>${name}</h2><span class="tag">${rows.length}</span></div>${table(rows)}`).join("")
-      : `<div class="card empty">${staff ? `<b>还没有场次。</b><span>先在“场次与邀请”里新建场次，把邀请链接发给受访者。</span><a class="btn p" href="#/p/${p.id}/sessions">去场次与邀请</a>` : `<b>还没有分配给你的场次。</b><span>研究员把你加入某场访谈后，它会出现在这里。</span>`}</div>`}`, { active: "rooms", p });
+  const mod = (i) => (obs ? "—" : i.moderator_name || "未指定");
+  const tagsOf = (i) => i.participant.tags || [];
+  const FIELDS = [["who", "受访者", (i) => [i.participant.name]], ["moderator", "主持人", (i) => [mod(i)]], ["time", "开始时间", (i) => [timeBucket(i)]], ["tag", "标签", tagsOf]];
+  const inTab = (i) => RM.tab === "all" || i.status === RM.tab;
+  const passes = (i) => inTab(i) && FIELDS.every(([k, , get]) => !RM.sel[k].length || get(i).some((v) => RM.sel[k].includes(v)));
+  const options = (k, get) => { const seen = new Set(); its.filter(inTab).forEach((i) => get(i).forEach((v) => seen.add(v))); return k === "time" ? TIME_ORDER.filter((v) => seen.has(v)) : [...seen].sort(); };
+  const tagBox = (i) => (tagsOf(i).length ? tagsOf(i).map((t) => `<span class="lch ${lcolor(t)}">${esc(t)}</span>`).join("") : `<span class="sm mut">—</span>`);
+  const actions = (i) => { const open = i.status !== "ended" && !i.purged; return open ? (obs ? go(i, "observer", "隐身观察", "") : go(i, "moderator", "进入 TA 的房间", "p") + (staff ? " " + go(i, "observer", "隐身观察", "") : "")) : `<a class="btn s" href="#/i/${i.id}">看转写和洞察</a>`; };
+  const mins = (i) => (i.started_at ? Math.max(0, Math.round((Date.now() - new Date(i.started_at + "Z").getTime()) / 60000)) : 0);
+  const card = (i) => `<div class="rmc"><div class="rmc-h"><span class="tag live">进行中</span><span class="sm mut">已进行 ${mins(i)} 分钟</span></div>
+    <div class="rmc-r"><span class="sm mut">受访者</span><b>${esc(i.participant.name)}</b></div><div class="rmc-r"><span class="sm mut">主持人</span><span>${esc(mod(i))}</span></div>
+    <div class="rmc-r"><span class="sm mut">开始时间</span><span>${startOf(i) ? when(startOf(i)) : "随时可进入"}</span></div><div class="rmc-t">${tagBox(i)}</div><div class="rmc-a">${actions(i)}</div></div>`;
+  shell(its.length ? `<div class="rmtabs" id="rmtabs" role="tablist" aria-label="按状态筛选场次"></div>
+    <div class="card scroll rmbox" style="padding:6px 10px"><table class="tbl rc" id="rmtable"><thead><tr id="rmh"></tr></thead><tbody id="rmb"></tbody></table><div class="rmwall" id="rmwall" hidden></div></div>
+    <div class="card empty" id="rmempty" hidden><b>没有符合筛选条件的场次。</b></div><div class="fres" id="rmres"></div>`
+    : `<div class="card empty">${staff ? `<b>还没有场次。</b><span>到“甄别设定”的名单里，点受访者那一行的“邀请到场次”新建场次，把邀请链接发给受访者。</span><a class="btn p" href="#/p/${p.id}/people">去甄别设定</a>` : `<b>还没有分配给你的场次。</b><span>研究员把你加入某场访谈后，它会出现在这里。</span>`}</div>`, { active: "rooms", p });
+  if (!its.length) return;
+  const closeMenus = () => app.querySelectorAll(".rmh-menu").forEach((m) => { m.hidden = true; });
+  const showStatus = () => RM.tab === "all";
+  const drawBody = () => {
+    const rows = its.filter(passes).sort((a, b) => startOf(b).localeCompare(startOf(a)));
+    const wall = RM.wall && RM.tab === "live";
+    $("#rmtable").hidden = wall; $("#rmwall").hidden = !wall;
+    $("#rmwall").innerHTML = wall ? rows.map(card).join("") : "";
+    const names = ["受访者", "主持人", "开始时间", "标签", ...(showStatus() ? ["状态"] : [])];
+    $("#rmb").innerHTML = rows.map((i) => { const [t, c] = roomState(i);
+      const cells = [`<b>${esc(i.participant.name)}</b>`, `<span class="${i.moderator_name || obs ? "" : "mut"}">${esc(mod(i))}</span>`, `<span class="mut">${startOf(i) ? when(startOf(i)) : "随时可进入"}</span>`, `<div class="lbox" style="border:0;background:none;padding:0">${tagBox(i)}</div>`, ...(showStatus() ? [`<span class="tag ${c}">${t}</span>`] : [])];
+      return `<tr>${cells.map((h, n) => `<td data-l="${names[n]}">${h}</td>`).join("")}<td class="acts">${actions(i)}</td></tr>`; }).join("");
+    $("#rmempty").hidden = rows.length > 0;
+  };
+  const drawRes = () => {
+    const on = FIELDS.filter(([k]) => RM.sel[k].length);
+    $("#rmres").innerHTML = on.length ? `<span class="sm mut">已筛选：</span>${on.map(([k, label]) => `<span class="rd-chip">${label}：${esc(RM.sel[k].join(" 或 "))}</span>`).join("")} <button type="button" class="lnk" id="rmclr">清除全部筛选</button>` : "";
+    app.querySelectorAll("#rmh .rmhb").forEach((b) => b.classList.toggle("on", RM.sel[b.dataset.k].length > 0));
+    const c = $("#rmclr"); if (c) c.onclick = () => { FIELDS.forEach(([k]) => { RM.sel[k] = []; }); drawHead(); drawBody(); drawRes(); };
+  };
+  const drawHead = () => {
+    $("#rmh").innerHTML = FIELDS.map(([k, label]) => `<th><button type="button" class="msb hb rmhb" data-k="${k}" aria-haspopup="true" aria-expanded="false">${label}</button><div class="msm rmh-menu" hidden></div></th>`).join("") + (showStatus() ? `<th>状态</th>` : "") + `<th></th>`;
+    FIELDS.forEach(([k, label, get]) => {
+      const th = $(`#rmh .rmhb[data-k=${k}]`), menu = th.nextElementSibling;
+      menu.innerHTML = `<input class="mss" placeholder="搜索或勾选" aria-label="搜索${esc(label)}"><div class="mso-list"></div>`;
+      const list = menu.querySelector(".mso-list"), inp = menu.querySelector(".mss");
+      const fill = () => { const q = inp.value.trim(), os = options(k, get).filter((v) => !q || v.includes(q));
+        list.innerHTML = os.length ? os.map((v) => `<div class="mso"><label><input type="checkbox" value="${esc(v)}"${RM.sel[k].includes(v) ? " checked" : ""}> <span>${esc(v)}</span></label></div>`).join("") : `<div class="sm mut" style="padding:6px 8px">没有匹配的</div>`;
+        list.querySelectorAll("input").forEach((c) => (c.onchange = () => { RM.sel[k] = [...list.querySelectorAll("input:checked")].map((x) => x.value).concat(RM.sel[k].filter((v) => !os.includes(v))); drawBody(); drawRes(); })); };
+      inp.oninput = fill; fill();
+      th.onclick = (e) => { e.stopPropagation(); const open = menu.hidden; closeMenus(); menu.hidden = !open; th.setAttribute("aria-expanded", String(open)); if (open) inp.focus(); };
+      menu.onclick = (e) => e.stopPropagation();
+    });
+  };
+  const drawTabs = () => {
+    $("#rmtabs").innerHTML = RM_TABS.map(([k, label]) => `<button type="button" role="tab" class="rmt${RM.tab === k ? " on" : ""}" data-t="${k}" aria-selected="${RM.tab === k}" data-n="${its.filter((i) => k === "all" || i.status === k).length}">${label}</button>`).join("")
+      + (RM.tab === "live" ? `<span class="sp"></span><button type="button" id="rmwallbtn">${RM.wall ? "返回列表" : "全部预览"}</button>` : "");
+    app.querySelectorAll("#rmtabs .rmt").forEach((b) => (b.onclick = () => { RM.tab = b.dataset.t; if (RM.tab !== "live") RM.wall = false; drawTabs(); drawHead(); drawBody(); drawRes(); }));
+    const w = $("#rmwallbtn"); if (w) w.onclick = () => { RM.wall = !RM.wall; drawTabs(); drawBody(); };
+  };
+  if (window._rmClose) document.removeEventListener("click", window._rmClose);
+  window._rmClose = closeMenus; document.addEventListener("click", closeMenus);
+  drawTabs(); drawHead(); drawBody(); drawRes();
 }
 
 // ---------------- 洞察与片段 ----------------

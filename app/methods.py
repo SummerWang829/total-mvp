@@ -56,8 +56,8 @@ def starmap(db: Session, project: Project) -> list[dict]:
             done = sum(i.status == "ended" for i in mine)
             live = sum(i.status == "live" for i in mine)
             nodes.append({"key": m, "title": LABELS[m], "big": done, "unit": "场已完成", "sub": f"共 {len(mine)} 场" + (f"，{live} 场进行中" if live else ""),
-                          "page": "sessions" if mine else "people", "started": bool(mine),
-                          "next": "新建场次并发出邀请" if not mine else "继续推进场次、看洞察" if done else "等待访谈开始"})
+                          "page": "rooms" if mine else "people", "started": bool(mine),
+                          "next": "在名单里新建场次并发出邀请" if not mine else "继续推进场次、看洞察" if done else "等待访谈开始"})
         elif m == "async":
             studies = db.scalars(select(AsyncStudy).where(AsyncStudy.project_id == project.id)).all()
             mine = [i for i in its if i.kind == "async"]

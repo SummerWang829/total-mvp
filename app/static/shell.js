@@ -5,7 +5,7 @@ const SH_KIND = { depth: "深访", group: "座谈会", quant: "定量" };
 const SH_HUBS = [
   { id: "ov", n: "项目总览", tabs: [["home", "总览"], ["monitor", "执行监控"], ["pool", "洞察池"], ["members", "项目成员"]] },
   { id: "wz", n: "立项向导", tabs: [["wiz", "立项向导"]] },
-  { id: "ql", n: "定性", tabs: [["people", "甄别设定"], ["sessions", "场次与邀请"], ["rooms", "直播间"], ["insights", "洞察与片段"], ["analysis", "编码与分析"], ["studies", "异步研究"]] },
+  { id: "ql", n: "定性", tabs: [["people", "甄别设定"], ["rooms", "直播间"], ["insights", "洞察与片段"], ["analysis", "编码与分析"], ["studies", "异步研究"]] },
   { id: "qt", n: "定量", tabs: [["quant", "定量结果"]] },
   { id: "cr", n: "舆情采集", tabs: [["listening", "舆情监测"]] },
 ];
@@ -15,7 +15,7 @@ const shSetup = (p) => !!p.plan_status && p.plan_status !== "published";
 
 function shPageOk(page, p) {  // which pages this project has (the methods it uses decide)
   const M = p.methods || ["depth", "group", "async", "listening"], live = M.includes("depth") || M.includes("group");
-  return { sessions: live, rooms: live, studies: M.includes("async"), quant: M.includes("quant"), listening: M.includes("listening") }[page] ?? true;
+  return { rooms: live, studies: M.includes("async"), quant: M.includes("quant"), listening: M.includes("listening") }[page] ?? true;
 }
 const shNumber = (p) => { const all = (PROJECTS || []).slice().sort((a, b) => a.created_at.localeCompare(b.created_at)), i = all.findIndex((x) => x.id === p.id); return `${(p.created_at || "").slice(0, 4)}P${String((i < 0 ? all.length : i) + 1).padStart(3, "0")}`; };
 const shStatus = (p) => (shSetup(p) ? [{ draft: "草稿", review: "审查中", approved: "待发布" }[p.plan_status] || "立项中", "o"] : p.closed_at ? ["已结项", "g"] : p.editing ? ["修改中", "o"] : ["进行中", ""]);

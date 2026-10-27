@@ -27,7 +27,9 @@
 
 - 招募问卷工作台与名单看板（2026-10-23）：选项可设“互斥项”（多选题里不能同时选，双向，服务器校验，候选人页选一个会自动取消另一个）；工作台左对话右大纲，中间分隔条可拖。点“发布”后自动跳到“配额与受访者名单”页，链接/二维码/停止收集都在那一页顶部；该页是看板（开始作答、完成甄别、合格、通过率、漏斗、人从哪里来、在哪一题被筛掉、配额、合格者共同点、合格与被筛掉每题对比、AI 画像总结只发统计数字）+ 名单。被筛掉的人只记匿名的选项人数（`RecruitForm.tally`），不保存任何个人信息。外部名单：导入时必须填来源名称并勾选“有合法的联系依据”，默认直接可邀请（不经问卷、规则不再判断）或选“先发问卷再甄别”；名单有“来源”“关键回答”列；复制/导出名单只有研究团队（含项目经理）能做，每次记审计日志（只记人数，不记人），可选不含姓名邮箱的匿名导出。
 
-- 名单页（2026-10-26）：顶部项目条和页签固定；看板三块默认折叠；名单 9 列固定宽度不左右拖动；资格 = 正式/备份（按加入先后、各配额分别算，超出目标自动备份，可手动改、可恢复自动；配额“已有”正式备份都算，另显示溢出）；标签只能从标签库点选（库 = 问卷标签 + 手动添加 + 已在用的 − 已删除的），“按标签看”那行的＋/－管理标签库；“批量邀请”已改成“批量删除”（仅 STAFF，需确认，记审计），每行仍可“邀请到场次”。
+- 名单页（2026-10-26/27）：顶部项目条和页签固定；看板三块默认折叠；名单 9 列固定宽度不左右拖动，没有“关键回答”列（导出里仍有）；资格 = 正式/备份（按加入先后、各配额分别算，超出目标自动备份，可手动改、可恢复自动；配额“已有”正式备份都算，另显示溢出）；标签只能从标签库点选（库 = 问卷标签 + 手动添加 + 已在用的 − 已删除的），标签下拉框里增删标签库（“按标签看”那行已删）；筛选都是多选，只重画名单；标题与筛选合成一个固定在顶栏下的框；“批量邀请”已改成“批量删除”（仅 STAFF，需确认，记审计），每行仍可“邀请到场次”。
+
+- 页签与直播间（2026-10-27）：**“场次与邀请”整页已删除**（以后重新设计，旧链接跳直播间；新建场次从名单里受访者那一行的“邀请到场次”进）。所有页签页面：选中的页签字体放大；和页签名完全一致的大标题/说明不显示（`main.hubpage > .head.dup`）。直播间：状态按钮顺序“全部、待开始、进行中、已结束”（各带数量）；表头受访者/主持人/开始时间/标签是带搜索框的多选筛选，只重画表格；“状态”列只在“全部”页；“进行中”页有“全部预览”卡片墙（只写信息，不带实时画面）；客户观察员看不到主持人姓名和标签。
 
 ## 进度记录（用户 2026-10-12 要求）
 `docs/PROGRESS.md`：每完成一项就更新（日期、做了什么、`scripts/qa.sh` 结果数字、还差什么、风险），**每次向用户汇报前先更新它**。最新的写在最上面。
@@ -73,6 +75,6 @@
 ## 代码地图
 app/livekit.py 角色→权限/清场 · app/recording.py 录制合成 · app/pipeline.py 录像→转写 · app/media.py 片段水印 · app/evidence.py 引文校验 · app/retention.py 清理 · app/providers.py ASR/LLM 接口 · app/consent.py 同意文本 ·
 app/moderator/ AI 主持人（providers 模型接口、compliance 能否启用、constants 常量与枚举、knowledge 提纲、pacing 时间预算、fsm 阶段状态机、memory 上下文、engine 每轮流水线、guardrails 红线 H1–H12、detectors 停止/危机/问是否 AI 的规则识别、operators 追问算子、templates 固定话术（开场披露、危机热线 995/1767、兜底句）、model_calls 结构化输出、prompts/v00N.json 版本化提示词）· eval/guides 示例提纲（提纲里准备的问题本身也必须过红线，引擎启动时检查）· eval/ 评估：`python -m eval.runner`（--brain mock --participant rule 离线跑通；真评估用 .env 里的模型；--split holdout 只验收，不许据此改规则）；scenarios/generate.py 生成版本化场景集 s001（300 个，20% 保留集）；checkers 规则检查；judges 评分模型（未用 30 段人工分校准前不作依据）；报告在 eval_reports/· eval/ 评估 · eval_reports/ 评估报告 ·
-app/recruit_form.py 招募问卷（编写/逻辑/AI 起草/HTML 链接）· app/routers/screen_public.py 候选人作答 · app/library_context.py 研究库→AI· app/plan_suggest.py 研究背景建议 · app/plans.py + app/routers/plans.py 立项向导（项目计划：草稿→审查中→审查通过→发布并锁定→解锁修改→重新审查发布；18 项合规由系统按配置判定；配额监控；每个子项目一个研究顺序；留存期可选）· app/static/wizard.js 7 步立项向导页面和执行监控页 · app/static/shell.js 研究员/管理员的项目外壳（按研究阶段分组的左侧导航、顶部项目条、页签）· app/ai_room.py + app/routers/ai_room.py AI 主持接入直播间（文字聊天：启动/接管/交还/悄悄话/告警，结束后聊天变成转写，AI 的话标“AI 主持人”；引擎在内存里，服务重启后自动交给真人并红色告警）· app/routers/ 接口 · app/static/ 前端（index 研究员端：左侧深绿导航 + 受访者招募/场次与邀请/直播间/洞察与片段；join 受访者流程：邀请→设备检测→同意→候场室；room 房间：研究员深色三栏、受访者明亮单栏；share 分享、logo.js 凤凰动效）
+app/recruit_form.py 招募问卷（编写/逻辑/AI 起草/HTML 链接）· app/routers/screen_public.py 候选人作答 · app/library_context.py 研究库→AI· app/plan_suggest.py 研究背景建议 · app/plans.py + app/routers/plans.py 立项向导（项目计划：草稿→审查中→审查通过→发布并锁定→解锁修改→重新审查发布；18 项合规由系统按配置判定；配额监控；每个子项目一个研究顺序；留存期可选）· app/static/wizard.js 7 步立项向导页面和执行监控页 · app/static/shell.js 研究员/管理员的项目外壳（按研究阶段分组的左侧导航、顶部项目条、页签）· app/ai_room.py + app/routers/ai_room.py AI 主持接入直播间（文字聊天：启动/接管/交还/悄悄话/告警，结束后聊天变成转写，AI 的话标“AI 主持人”；引擎在内存里，服务重启后自动交给真人并红色告警）· app/routers/ 接口 · app/static/ 前端（index 研究员端：左侧深绿导航 + 受访者招募/直播间/洞察与片段；join 受访者流程：邀请→设备检测→同意→候场室；room 房间：研究员深色三栏、受访者明亮单栏；share 分享、logo.js 凤凰动效）
 app/export.py 洞察导出 Word/CSV · app/guide_text.py 文字提纲→AI 提纲 · app/routers/analysis.py 编码与分析 · app/concept.py 概念测试模板（提纲 + 素材清单）· app/routers/concept.py 提纲/素材展示/实时字幕/引用与追问 · app/asr_live.py 腾讯云实时识别的签名地址 · app/loopwatch.py 卡顿诊断（LOOP_WATCH_S）· tests/fake_asr.py 测试用的假识别服务（按官方协议）· deploy/ 线上部署（Docker + Caddy + LiveKit）
 界面和受访者流程以 docs/星桐TOTAL一体化平台v3_设计规范与受访者端交互说明.md 为准（颜色令牌、字号、组件、受访者 9 步旅程）。

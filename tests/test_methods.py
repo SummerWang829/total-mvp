@@ -64,7 +64,7 @@ def test_the_star_map_has_one_node_per_enabled_method_with_real_numbers(org):
     sid = org.c.get(f"/api/projects/{pid}/listening", headers=org.h()).json()["sources"][0]["id"]
     org.c.post(f"/api/listening/sources/{sid}/run", headers=org.h())
     nodes = {n["key"]: n for n in org.c.get(f"/api/projects/{pid}/overview", headers=org.h()).json()["starmap"]}
-    assert nodes["depth"]["started"] is True and "共 1 场" in nodes["depth"]["sub"] and nodes["depth"]["page"] == "sessions"
+    assert nodes["depth"]["started"] is True and "共 1 场" in nodes["depth"]["sub"] and nodes["depth"]["page"] == "rooms"
     assert nodes["async"]["started"] and "1 项研究" in nodes["async"]["sub"]
     assert nodes["listening"]["big"] == 6 and "负面" in nodes["listening"]["sub"] and nodes["listening"]["page"] == "listening"
 

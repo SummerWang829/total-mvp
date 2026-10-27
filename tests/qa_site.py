@@ -169,6 +169,43 @@ def new_page(br, w, h=860, token=None, room_theme=None, **kw):
     return ctx, pg, errs
 
 
+def rooms_section(br, D):
+    """The live room page: status buttons (全部 / 待开始 / 进行中 / 已结束), a 状态 column only under 全部, column header filters that redraw only the table, and the 全部预览 wall."""
+    adm, pid = D["tok"]["admin"], D["pid"]
+    ctx, pg, errs = new_page(br, 1280, token=adm)
+    pg.goto(B + f"/#/p/{pid}/rooms"); pg.wait_for_selector("#rmb tr")
+    labels = [x.strip() for x in pg.locator(".rmt").all_inner_texts()]
+    ok(labels == ["全部", "待开始", "进行中", "已结束"], f"[rooms] the status buttons are in the order 全部, 待开始, 进行中, 已结束 (got {labels})")
+    heads = pg.locator("#rmh th").all_inner_texts()
+    ok("受访者" in heads[0] and "主持人" in heads[1] and "开始时间" in heads[2] and "标签" in heads[3] and "状态" in " ".join(heads), f"[rooms] the columns are 受访者, 主持人, 开始时间, 标签, 状态 under 全部 (got {heads})")
+    ok("场次" not in " ".join(heads), "[rooms] the old 场次 column is gone")
+    audit_page(pg, "rooms all/desktop", errs)
+    pg.locator(".rmt", has_text="已结束").click()
+    ok("状态" not in " ".join(pg.locator("#rmh th").all_inner_texts()), "[rooms] the 状态 column is only under 全部")
+    pg.locator(".rmt", has_text="全部").first.click()
+    pg.evaluate("document.querySelector('#rmtabs').dataset.mark = 'same-page'")
+    pg.click("#rmh .rmhb[data-k=moderator]"); pg.wait_for_selector("#rmh .rmh-menu:not([hidden]) .mss")
+    n_all = pg.locator("#rmb tr").count()
+    ok(pg.locator("#rmh .rmh-menu:not([hidden]) input[type=checkbox]").count() >= 1, "[rooms] a column header opens a search box with a tick list")
+    pg.locator("#rmh .rmh-menu:not([hidden]) input[type=checkbox]").first.check()
+    ok(wait_until(lambda: pg.locator("#rmb tr").count() <= n_all and "主持人：" in pg.inner_text("#rmres"), 5) and pg.evaluate("document.querySelector('#rmtabs').dataset.mark") == "same-page", "[rooms] ticking a filter narrows the table and says so, without redrawing the page")
+    pg.mouse.click(5, 300)
+    pg.click("#rmclr")
+    ok(wait_until(lambda: pg.locator("#rmb tr").count() == n_all, 5), "[rooms] 'clear all filters' brings every session back")
+    pg.locator(".rmt", has_text="进行中").click()
+    if pg.locator("#rmb tr").count():
+        pg.click("#rmwallbtn"); pg.wait_for_selector("#rmwall .rmc")
+        ok(pg.locator("#rmtable").is_hidden() and "受访者" in pg.inner_text("#rmwall") and "主持人" in pg.inner_text("#rmwall"), "[rooms] 全部预览 shows one card per room with the participant and the moderator")
+        audit_page(pg, "rooms wall/desktop", errs)
+        pg.click("#rmwallbtn")
+    ok(pg.locator("#rmwallbtn").count() == 0 or pg.locator(".rmt.on", has_text="进行中").count() == 1, "[rooms] the 全部预览 button belongs to the 进行中 page")
+    ctx.close()
+    ctx, pg, errs = new_page(br, 390, token=adm)
+    pg.goto(B + f"/#/p/{pid}/rooms"); pg.wait_for_selector("#rmb tr")
+    audit_page(pg, "rooms/phone", errs)
+    ctx.close()
+
+
 def group_section(br, D):
     """Focus group (Sprint 2): a session with several participants, a roster, and per-seat admit in the room."""
     adm, mod, pid = D["tok"]["admin"], D["tok"]["moderator"], D["pid"]
@@ -177,16 +214,17 @@ def group_section(br, D):
                                               "moderator_id": D["ids"]["moderator"], "observer_ids": [D["ids"]["observer"]]}, adm)
     iid = it["id"]
     ctx, pg, errs = new_page(br, 1280, token=adm)
-    pg.goto(B + f"/#/p/{pid}/sessions"); pg.wait_for_selector(".tbl")
-    ok("三人座谈会" in pg.inner_text(".tbl"), "[group] the session list shows the focus group")
-    audit_page(pg, "group sessions/desktop", errs)
+    pg.goto(B + f"/#/p/{pid}/rooms"); pg.wait_for_selector("#rmb tr")
+    ok(pg.locator("#rmb tr").count() >= 1 and pg.locator(".rmt", has_text="待开始").count() == 1, "[group] the live room page lists the sessions under status buttons")
+    audit_page(pg, "group rooms/desktop", errs)
     pg.goto(B + f"/#/i/{iid}"); pg.wait_for_selector("#groupcard")
     ok(pg.locator("#groupcard li").count() == 3 and "参与者 ·01" in pg.inner_text("#groupcard"), "[group] the roster lists three numbered seats")
     audit_page(pg, "group roster/desktop", errs)
     pg.screenshot(path=os.path.join(ROOT, "qa_shots", "group_roster_1280.png"), full_page=True)
     ctx.close()
     ctx, pg, errs = new_page(br, 390, token=adm)
-    pg.goto(B + f"/#/p/{pid}/sessions"); pg.wait_for_selector("#ni"); pg.click("#ni"); pg.wait_for_selector("[name=kind]")
+    pg.goto(B + "/"); pg.evaluate("sessionStorage.setItem('ptab', 'list')")  # (the storage belongs to the site, so open it first)
+    pg.goto(B + f"/#/p/{pid}/people"); pg.wait_for_selector("[data-inv]"); pg.locator("[data-inv]").first.click(); pg.wait_for_selector("[name=kind]")
     pg.select_option("[name=kind]", "group")
     ok(pg.locator("#grouppick").is_visible() and not pg.locator("#depthpick").is_visible(), "[group] the new-session dialog switches to a multi-person picker")
     audit_page(pg, "dialog 新建座谈会/phone", errs)
@@ -430,6 +468,7 @@ def recruit_section(br, D):
     pg.on("dialog", lambda d: d.accept())
     pg.goto(B + "/"); pg.evaluate("sessionStorage.setItem('ptab','form')")  # (the storage belongs to the site, so open it first)
     pg.goto(B + f"/#/p/{pid}/people"); pg.wait_for_selector("#rfws")
+    ok(pg.locator("main .head h1").count() == 0 or not pg.locator("main .head h1").first.is_visible(), "[recruit] the 甄别设定 page does not repeat its name as a big title under the tab")
     # the workspace: the conversation on the left, the live outline on the right, each scrolls inside its own frame and the page itself does not scroll
     ok(pg.locator("#rfchat").count() == 1 and pg.locator("#rfout").count() == 1 and pg.evaluate("document.body.classList.contains('rfmode')"), "[recruit] the questionnaire is a workspace: conversation on the left, outline on the right")
     ok(pg.evaluate("getComputedStyle(document.querySelector('#rfchat')).overflowY") == "auto" and pg.evaluate("getComputedStyle(document.querySelector('#rfout')).overflowY") == "auto" and pg.evaluate("document.documentElement.scrollHeight <= innerHeight + 2"), "[recruit] the two frames scroll on their own and the page does not scroll")
@@ -1419,7 +1458,7 @@ def run():
     D = seed()
     mi, pid = D["main"]["id"], D["pid"]
     proj = [f"#/p/{pid}/rooms", f"#/p/{pid}/insights"]
-    staff_routes = [f"#/projects", f"#/p/{pid}/home", f"#/p/{pid}/people", f"#/p/{pid}/sessions", f"#/p/{pid}/analysis", f"#/p/{pid}/members", f"#/p/{pid}/studies", f"#/p/{pid}/listening", f"#/p/{pid}/pool", "#/repo"] + proj + [f"#/i/{mi}", f"#/i/{mi}/insights", f"#/i/{mi}/clips"]
+    staff_routes = [f"#/projects", f"#/p/{pid}/home", f"#/p/{pid}/people", f"#/p/{pid}/analysis", f"#/p/{pid}/members", f"#/p/{pid}/studies", f"#/p/{pid}/listening", f"#/p/{pid}/pool", "#/repo"] + proj + [f"#/i/{mi}", f"#/i/{mi}/insights", f"#/i/{mi}/clips"]
     role_routes = {
         "demo_admin": ["#/projects", f"#/p/{D['demo_pid']}/home", "#/demo"],
         "admin": staff_routes + ["#/team", "#/audit", "#/retention"],
@@ -1516,12 +1555,17 @@ def run():
         ok(settled, "logo animation never settles")
         pg.hover("nav.side .brandsvg"); pg.wait_for_timeout(120); ok(pg.evaluate("document.querySelector('.brandsvg').classList.contains('play')"), "hovering the logo should replay the wings")
         # the side nav marks exactly one current page, and it is the one shown
-        pg.goto(B + f"/#/p/{pid}/sessions"); pg.wait_for_selector("h1:has-text('场次与邀请')")
+        pg.goto(B + f"/#/p/{pid}/rooms"); pg.wait_for_selector(".rmtabs")
         cur = pg.locator("nav.side [aria-current=page]").all_inner_texts()
         tabs = pg.locator(".hubtabs [aria-current=page]").all_inner_texts()
-        ok(tabs == ["场次与邀请"] and len(cur) == 1 and "深访" in cur[0], f"the tab marks 场次与邀请 and the side nav marks exactly one entry (深访 stage), got tab {tabs} nav {cur}")
+        ok(tabs == ["直播间"] and len(cur) == 1 and "深访" in cur[0], f"the tab marks 直播间 and the side nav marks exactly one entry (深访 stage), got tab {tabs} nav {cur}")
+        ok(pg.locator("main .head h1").count() == 0 or not pg.locator("main .head h1").first.is_visible(), "a page under tabs does not repeat its name as a big title")
+        ok(pg.evaluate("parseFloat(getComputedStyle(document.querySelector('.hubtabs a.on')).fontSize) > parseFloat(getComputedStyle(document.querySelector('.hubtabs a:not(.on)')).fontSize)"), "the selected tab is bigger than the others")
+        pg.goto(B + f"/#/p/{pid}/sessions"); pg.wait_for_selector(".rmtabs")
+        ok(pg.url.endswith("/rooms"), "an old link to the sessions-and-invitations page lands on the live rooms")
+        ok(pg.locator(".hubtabs a", has_text="场次与邀请").count() == 0, "there is no 场次与邀请 tab any more")
         # project home: big progress number, a next step that links to the right page, recent activity in plain words
-        pg.goto(B + f"/#/p/{pid}"); pg.wait_for_selector("h1:has-text('项目总览')")
+        pg.goto(B + f"/#/p/{pid}"); pg.wait_for_selector("h1:has-text('项目总览')", state="attached")
         ok(pg.locator(".hero-n b").inner_text().isdigit() and pg.locator(".meters .meter").count() == 3, "project home shows the big number and three progress bars")
         ok(pg.inner_text("#nextstep").strip() != "" and pg.locator(".next a.btn").count() == 1, "project home says what to do next, with one button")
         feed = pg.inner_text(".feed")  # newest 12 events; older ones are covered by test_journey.py
@@ -1548,8 +1592,9 @@ def run():
         # id participant shows 'not open'
         pg.goto(B + f"/#/p/{pid}/people"); pg.wait_for_selector("text=地区暂未开放")
         # rooms are grouped: in progress / upcoming / ended
-        pg.goto(B + f"/#/p/{pid}/rooms"); pg.wait_for_selector(".group h2")
-        groups = pg.locator(".group h2").all_inner_texts(); ok(groups == ["待开始", "已结束"], f"room list grouped by status, got {groups}")
+        pg.goto(B + f"/#/p/{pid}/rooms"); pg.wait_for_selector(".rmt")
+        counts = {b.inner_text().strip(): int(b.get_attribute("data-n")) for b in pg.locator(".rmt").all()}
+        ok(counts["全部"] == counts["待开始"] + counts["进行中"] + counts["已结束"] and counts["待开始"] >= 1 and counts["已结束"] >= 1, f"room list has a button per status with its count, got {counts}")
         # team page: observer role label
         pg.goto(B + "/#/team"); pg.wait_for_selector("text=客户张"); ok("观察员" in pg.inner_text("main"), "team page should show role names")
         ok(pg.locator("nav.side a:has-text('演示数据')").count() == 0, "a real company has no 'clear demo data' entry")
@@ -1584,7 +1629,7 @@ def run():
         ok(see("viewer", f"#/p/{pid}/pool", "#nf, .pick, #imp2") == 0 and see("viewer", f"#/p/{pid}/pool", "#rep") == 1, "[roles] a viewer reads the pool, cannot add notes, and can download the report")
         ok(see("viewer", f"#/p/{pid}/listening", "#addsrc, [data-run], [data-tog], [data-del], [data-dm], [data-au]") == 0, "[roles] a viewer cannot change or take down monitoring content")
         ok(see("recruiter", f"#/p/{pid}/people", "#batch, [data-inv], [data-erase]") == 0 and see("recruiter", f"#/p/{pid}/people", "#imp2") == 1, "[roles] a recruiter can import and screen but not invite or erase")
-        for role, other in (("viewer", f"#/p/{pid}/people"), ("viewer", f"#/p/{pid}/sessions"), ("recruiter", f"#/p/{pid}/pool"), ("recruiter", f"#/p/{pid}/insights")):
+        for role, other in (("viewer", f"#/p/{pid}/people"), ("recruiter", f"#/p/{pid}/pool"), ("recruiter", f"#/p/{pid}/insights")):
             c, g, e = new_page(br, 1280, token=D["tok"][role]); g.goto(B + "/" + other); g.wait_for_selector("main"); g.wait_for_timeout(400)
             ok(("/pool" in g.url) if role == "viewer" else ("/people" in g.url), f"[roles] a {role} opening {other.split('/')[-1]} is sent back to their own page"); c.close()
         ok(see("observer", f"#/i/{mi}/clips", "[data-sh]") == 0, "observer must not see 'share link'")
@@ -1598,7 +1643,7 @@ def run():
         ok(see("observer", f"#/p/{pid}/rooms", "a:has-text('进入 TA 的房间')") == 0 and see("observer", f"#/p/{pid}/rooms", "a:has-text('隐身观察')") >= 1, "observer can only enter rooms hidden")
         ok(see("observer", f"#/p/{pid}/rooms", "text=Wei Ling") == 0, "observer's room list never shows participant names")
         ok(see("moderator", f"#/p/{pid}/rooms", "a:has-text('隐身观察')") == 0, "moderator enters as moderator, not as a hidden observer")
-        ok(see("researcher", f"#/p/{pid}/sessions", ".tag:has-text('未到场')") >= 1, "sessions page shows a participant who never came (ended without entering)")
+        ok(see("observer", f"#/p/{pid}/rooms", "#rmb td:has-text('未指定')") == 0, "[roles] a client observer never sees the team's moderator names or the 'not named' text")
 
         # ---------- C. participant journey (4 languages, phone): invitation -> device test -> consent -> waiting room -> room ----------
         expect = {"en2": ("Interview invitation", "Before you start", "Microphone"), "zh": ("访谈邀请", "开始之前", "麦克风"),
@@ -1712,6 +1757,7 @@ def run():
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "timeslot_section": timeslot_section(br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "marks_section": marks_section(br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "group_section": group_section(br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "rooms_section": rooms_section(br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "members_section": members_section(br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "studies_section": studies_section(br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "repo_section": repo_section(br, D)
@@ -1750,13 +1796,14 @@ def run():
             pg.goto(B + f"/#/p/{pid}/people"); pg.wait_for_selector("#np"); pg.click("#np"); pg.wait_for_selector(".modal form#f")
             audit_page(pg, f"dialog 添加受访者/{vp}", errs)
             pg.keyboard.press("Escape"); ok(pg.locator(".modal").count() == 0, f"[{vp}] Escape closes the dialog")
-            pg.goto(B + f"/#/p/{pid}/sessions"); pg.wait_for_selector("#ni"); pg.click("#ni"); pg.wait_for_selector(".modal form#f [name=participant_id]")
+            pg.evaluate("sessionStorage.setItem('ptab', 'list')"); pg.goto(B + f"/#/p/{pid}/people"); pg.wait_for_selector("[data-inv]"); pg.locator("[data-inv]").first.click(); pg.wait_for_selector(".modal form#f [name=participant_id]")
             audit_page(pg, f"dialog 新建场次/{vp}", errs)
             pg.keyboard.press("Escape")
-            # sessions filter: picking a progress state shows only those rows
-            pg.click("[data-f=done]"); pg.wait_for_selector("[data-f=done][aria-pressed=true]")
-            ok(pg.locator(".tbl tbody tr").count() == 0 or all("已完成" in t for t in pg.locator(".tbl tbody tr").all_inner_texts()), f"[{vp}] sessions filter shows only matching rows")
-            pg.click("[data-f=all]")
+            # the live room page: a status button shows only that status
+            pg.goto(B + f"/#/p/{pid}/rooms"); pg.wait_for_selector(".rmt")
+            pg.locator(".rmt", has_text="已结束").click()
+            ok(pg.locator("#rmb tr").count() == 0 or all("看转写和洞察" in t or "已按保留期" in t for t in pg.locator("#rmb tr").all_inner_texts()), f"[{vp}] the 已结束 button shows only ended sessions")
+            pg.locator(".rmt", has_text="全部").first.click()
             ctx.close()
 
         # ---------- D. keyboard focus visible ----------
@@ -1786,7 +1833,7 @@ def run():
 
         # ---------- F. screenshots for a human glance ----------
         os.makedirs(os.path.join(ROOT, "qa_shots"), exist_ok=True)
-        shots = [("admin", f"#/projects"), ("admin", f"#/p/{pid}/home"), ("admin", f"#/p/{pid}/people"), ("admin", f"#/p/{pid}/sessions"), ("admin", f"#/p/{pid}/rooms"), ("admin", f"#/p/{pid}/insights"),
+        shots = [("admin", f"#/projects"), ("admin", f"#/p/{pid}/home"), ("admin", f"#/p/{pid}/people"), ("admin", f"#/p/{pid}/rooms"), ("admin", f"#/p/{pid}/insights"),
                  ("admin", f"#/i/{mi}/insights"), ("observer", f"#/p/{pid}/rooms"), ("observer", f"#/i/{mi}/insights")]
         for role, r in shots:
             for w in (1280, 390):
