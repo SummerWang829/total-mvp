@@ -1008,3 +1008,12 @@ button.ed:hover:not(:disabled){color:var(--ink);background:var(--orange-soft);bo
 @media (max-width:900px){.rf-nomore{min-height:36px;display:inline-flex;align-items:center}}
 .rf-q.rf-hl{border-color:var(--orange);background:var(--orange-soft)}
 .rf-news{white-space:normal;justify-content:flex-start;text-align:left;padding:6px 12px}
+/* 访谈页的 AI 对话：变更卡、建议卡、已读取的资料、模型名 */
+.ol-mdl{font-size:12px;padding:1px 8px;border-radius:999px;background:var(--green-soft);color:var(--green);font-weight:600}
+.ol-ctx{display:flex;gap:6px;flex-wrap:wrap;padding:6px 12px;border-bottom:1px solid var(--line);flex:none;font-size:12px;color:var(--muted)}.ol-ctx span{border:1px solid var(--line2);border-radius:999px;padding:0 8px}
+.ol-tx{white-space:pre-wrap;overflow-wrap:anywhere}
+.ol-chg{border:1px solid var(--green);background:var(--green-soft);color:var(--green);border-radius:10px;padding:8px 12px;margin-top:8px;font-size:14px;line-height:1.6}.ol-chg ul{margin:4px 0 6px;padding-left:18px}.ol-chg.off{border-color:var(--line2);background:var(--wash);color:var(--muted)}
+.ol-sg{border:1px solid var(--line2);background:var(--surface);border-radius:10px;padding:8px 12px;margin-top:8px;font-size:14px;line-height:1.6}.ol-sg .row{margin-top:6px;gap:6px}
+.ol-q.ol-new{background:var(--green-soft);border-radius:8px;padding-left:6px;padding-right:6px}.ol-q.ol-chd{background:var(--orange-soft);border-radius:8px;padding-left:6px;padding-right:6px}
+.ol-mk{font-style:normal;font-size:12px;margin-left:8px;padding:0 8px;border-radius:999px;background:var(--surface);border:1px solid var(--line2);white-space:nowrap}.ol-new .ol-mk{color:var(--green)}.ol-chd .ol-mk{color:var(--orange-ink)}
+.rf-warn .s{margin-left:8px}

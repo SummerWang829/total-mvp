@@ -115,14 +115,19 @@ def parse_guide_text(text: str) -> dict:
 
 
 def guide_to_text(guide: dict) -> str:
-    """The outline text of a guide (the reverse of :func:`parse_guide_text`), so a drafted guide can be shown and edited as plain text."""
-    out = [f"目标: {guide['research_goal']}", f"受访者话题: {guide.get('participant_topic', '')}", f"语言: {guide['language']}", f"时长: {int(guide['duration_min'])}", "", "## 暖场"]
-    out += [f"- {q}" for q in guide["warmup_questions"]]
+    """The outline text of a guide (the reverse of :func:`parse_guide_text`), so a drafted guide can be shown and edited as plain text.
+
+    Every value is written on one line (line breaks and runs of spaces collapse): a research background with several lines would otherwise put its later lines
+    in the outline as lines that are neither a header nor a question, and the text could not be read back.
+    """
+    one = lambda v: " ".join(str(v).split())  # noqa: E731
+    out = [f"目标: {one(guide['research_goal'])}", f"受访者话题: {one(guide.get('participant_topic', ''))}", f"语言: {guide['language']}", f"时长: {int(guide['duration_min'])}", "", "## 暖场"]
+    out += [f"- {one(q)}" for q in guide["warmup_questions"]]
     for t in guide["topics"]:
-        out += ["", f"## 话题: {t['title']}"] + [f"- {q}" for q in t["questions"]] + [f"* 了解: {m['text']}" for m in t.get("must_cover", [])]
+        out += ["", f"## 话题: {one(t['title'])}"] + [f"- {one(q)}" for q in t["questions"]] + [f"* 了解: {one(m['text'])}" for m in t.get("must_cover", [])]
     for st in guide.get("stimuli", []):
-        out += ["", f"## 素材: {st['id']} | {st['description']}"] + [f"- {q}" for q in st["questions"]]
+        out += ["", f"## 素材: {one(st['id'])} | {one(st['description'])}"] + [f"- {one(q)}" for q in st["questions"]]
     for title, key in (("假设", "hypotheses"), ("禁谈", "forbidden_topics"), ("品牌", "client_brand_names"), ("产品事实", "product_facts")):
         if guide.get(key):
-            out += ["", f"## {title}"] + [f"- {v}" for v in guide[key]]
+            out += ["", f"## {title}"] + [f"- {one(v)}" for v in guide[key]]
     return "\n".join(out) + "\n"

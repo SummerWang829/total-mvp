@@ -1,12 +1,11 @@
 """The 访谈 page's interview outline: read it, save a hand edit, talk to the AI to change it. Staff only (it holds the research goal); nothing here reaches participants."""
-import json
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from .. import guide_text, library_context, outline
+from .. import guide_text, library_context, outline, outline_chat
 from ..audit import audit
 from ..config import settings
 from ..db import get_db
@@ -45,15 +44,27 @@ def _project(db: Session, ctx: Ctx, pid: str) -> Project:
     return proj
 
 
-def _out(proj: Project) -> dict:
+def _model_label() -> str:
+    """Who answers in the chat: the cloud vendor named in .env, the local model, or the offline demo."""
+    if settings.moderator_provider == "mock":
+        return "演示模式"
+    return "本地模型" if moderator_runs_locally() else settings.moderator_vendor.strip()
+
+
+def _out(proj: Project, db: Session) -> dict:
     local = settings.moderator_provider == "mock" or moderator_runs_locally()
-    return {"text": proj.outline_text, "problem": outline.problem_of(proj.outline_text), "summary": outline.summary_of(proj.outline_text), "warning": outline.warning_of(proj.outline_text),
-            "chat": outline.load_chat(proj.outline_chat), "ai_local": local, "ai_vendor": "" if local else settings.moderator_vendor.strip()}
+    history = outline_chat.load(proj.outline_chat)
+    summary = outline.summary_of(proj.outline_text)
+    return {"text": proj.outline_text, "problem": outline.problem_of(proj.outline_text), "summary": summary, "warning": outline.warning_of(proj.outline_text),
+            "chat": outline_chat.view(history, proj.outline_text), "marks": outline_chat.marks(history, proj.outline_text),
+            "context": {"brief": bool((proj.brief or "").strip()), "library_docs": len(library_context.project_documents(db, proj.id)), "parts": len(summary["parts"]) if summary else 0,
+                        "questions": summary["question_count"] if summary else 0},
+            "model": _model_label(), "ai_local": local, "ai_vendor": "" if local else settings.moderator_vendor.strip()}
 
 
 @router.get("/projects/{pid}/outline")
 def get_outline(pid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
-    return _out(_project(db, ctx, pid))
+    return _out(_project(db, ctx, pid), db)
 
 
 @router.put("/projects/{pid}/outline")
@@ -63,7 +74,7 @@ def put_outline(pid: str, body: OutlineBody, ctx: Ctx = Depends(require_roles(*S
     proj.outline_text = body.text
     audit(db, ctx.org_id, ctx.actor, "outline.save", pid)
     db.commit()
-    return _out(proj)
+    return _out(proj, db)
 
 
 @router.post("/projects/{pid}/outline/edit")
@@ -76,12 +87,17 @@ def edit_outline(pid: str, body: EditBody, ctx: Ctx = Depends(require_roles(*STA
         raise HTTPException(422, str(e)) from e
     audit(db, ctx.org_id, ctx.actor, "outline.edit", pid)
     db.commit()
-    return _out(proj)
+    return _out(proj, db)
+
+
+class ActBody(BaseModel):
+    action: Literal["adopt", "dismiss", "undo"]
+    sid: str = Field(default="", max_length=20)
 
 
 @router.post("/projects/{pid}/outline/chat")
 def chat_outline(pid: str, body: ChatBody, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
-    """One turn with the AI: it changes the outline as asked; both messages are kept with the project. The research background (and, if asked, the library) goes to the AI service."""
+    """One turn with the assistant: it answers, suggests, or (when asked) changes the outline at once. Both messages are kept with the project. The research background (and, if asked, the library) goes to the AI service."""
     proj = _project(db, ctx, pid)
     mock = settings.moderator_provider == "mock"
     if not mock and not moderator_runs_locally() and not settings.moderator_vendor.strip():
@@ -89,15 +105,29 @@ def chat_outline(pid: str, body: ChatBody, ctx: Ctx = Depends(require_roles(*STA
     chat = None if mock else get_moderator_chat()
     library = library_context.library_text(db, pid)[0] if body.use_library else ""
     lang, minutes = outline.settings_of(proj.outline_text, proj.language)
+    history, message = outline_chat.load(proj.outline_chat), body.message.strip()
     try:
-        answer, text = outline.revise(chat, proj.outline_text, body.message.strip(), proj.brief, library, lang, minutes)
+        result = outline_chat.converse(chat, history, proj.outline_text, message, proj.brief, library, lang, minutes)
     except ChatFatalError as e:
         raise HTTPException(502, f"AI 模型服务拒绝了请求：{e.reason}") from e
     except DraftError as e:
         raise HTTPException(502, str(e)) from e
-    history = outline.load_chat(proj.outline_chat) + [{"role": "user", "text": body.message.strip()}, {"role": "ai", "text": answer}]
-    proj.outline_text = text
-    proj.outline_chat = json.dumps(history[-outline.MAX_CHAT:], ensure_ascii=False)
-    audit(db, ctx.org_id, ctx.actor, "outline.chat", pid, model="mock" if chat is None else chat.name)  # who and which model; never the message
+    history, proj.outline_text = outline_chat.record_turn(history, message, result, proj.outline_text)
+    proj.outline_chat = outline_chat.dump(history)
+    audit(db, ctx.org_id, ctx.actor, "outline.chat", pid, model="mock" if chat is None else chat.name, mode=result["mode"])  # who, which model and what it did; never the message
     db.commit()
-    return _out(proj)
+    return _out(proj, db)
+
+
+@router.post("/projects/{pid}/outline/chat/{mid}")
+def act_on_chat(pid: str, mid: str, body: ActBody, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    """Adopt or drop a suggestion, or undo a change (refused when the outline was edited after that change, so no hand edit is lost)."""
+    proj = _project(db, ctx, pid)
+    try:
+        history, text = outline_chat.act(outline_chat.load(proj.outline_chat), mid, body.action, body.sid, proj.outline_text)
+    except outline_chat.ActError as e:
+        raise HTTPException(e.status, str(e)) from e
+    proj.outline_text, proj.outline_chat = text, outline_chat.dump(history)
+    audit(db, ctx.org_id, ctx.actor, "outline.act", pid, what=body.action)
+    db.commit()
+    return _out(proj, db)

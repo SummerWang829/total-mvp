@@ -31,41 +31,69 @@ async function outlineView(p) {
   const take = (r) => { S = { ...S, ...r }; };
 
   /* ---------- left: the conversation ---------- */
+  const QUICK = { "给每个核心问题补追问": "给每个核心问题都补一个追问", "检查有没有引导性问题": "检查有没有引导性或带倾向的问题，有就改掉", "缩短到 30 分钟": "把整个访谈缩短到 30 分钟左右", "帮我起草大纲": "帮我起草大纲" };
+  const aiBody = (m) => {   // an assistant message: its words, then a change card (with undo) or the suggestions (adopt / skip)
+    let h = `<div class="ol-tx">${esc(m.text)}</div>`;
+    if (m.kind === "edit") {
+      h += `<div class="ol-chg${m.undone ? " off" : ""}"><b>${m.undone ? "这次修改已撤销" : "已更新大纲"}</b><ul>${m.changes.map((c) => `<li>${esc(c)}</li>`).join("")}</ul>`
+        + (m.can_undo ? `<div class="row"><button class="s" type="button" data-undo="${m.id}">撤销这次修改</button></div>` : m.undone ? "" : `<div class="sm mut">之后大纲又改过，不能直接撤销（会丢掉后面的改动）。</div>`) + `</div>`;
+    }
+    if (m.kind === "suggest") {
+      h += m.suggestions.map((s) => `<div class="ol-sg"><div>${esc(s.title)}</div>${s.state === "open" ? `<div class="row"><button class="p" type="button" data-adopt="${m.id}:${s.id}">采纳</button><button class="s" type="button" data-skip="${m.id}:${s.id}">先不用</button></div>`
+        : `<div class="sm mut">${s.state === "adopted" ? "已采纳" : "已略过"}</div>`}</div>`).join("");
+    }
+    return h;
+  };
+  const ctxHtml = () => {
+    const c = S.context || {}, parts = [c.brief ? "✓ 研究背景" : "· 没有研究背景"];
+    if (useLib) parts.push(c.library_docs ? `✓ 研究库 ${c.library_docs} 份` : "· 研究库里还没有资料");
+    parts.push(c.questions ? `✓ 当前大纲（${c.parts} 段 · ${c.questions} 题）` : "· 还没有大纲");
+    return parts.map((x) => `<span>${x}</span>`).join("");
+  };
   const chatHtml = () => {
-    const hello = `<div class="rf-msg">你好！说说你想了解什么、访谈多长，我来起草访谈大纲；之后也可以直接说怎么改，比如“把第 2 个话题放到最前面”“缩短到 30 分钟”“每个话题加一个追问”。先说“帮我起草大纲”试试？</div>
-      <div class="rf-st">${p.brief && p.brief.trim() ? "✓ 会参考立项里的研究背景" : "· 立项里还没有研究背景（可以到立项向导第 1 步写）"}</div>`;
-    const msgs = S.chat.map((m) => `<div class="rf-msg${m.role === "user" ? " rf-me" : ""}">${esc(m.text)}</div>`).join("");
-    const chips = S.summary ? ["缩短到 30 分钟", "再加一个话题", "检查有没有引导性问题"] : ["帮我起草大纲"];
-    return hello + msgs + (pending ? `<div class="rf-msg rf-me">${esc(pending)}</div><div class="rf-msg mut">AI 正在想…</div>`
+    const hello = `<div class="rf-msg">你好！我是访谈大纲助手。你可以让我起草大纲，也可以直接问我问题、让我解释或给建议；你说“帮我改成……”我就直接改，并写清楚改了什么，不满意可以一键撤销。</div>`;
+    const msgs = S.chat.map((m) => (m.role === "user" ? `<div class="rf-msg rf-me">${esc(m.text)}</div>` : `<div class="rf-msg">${aiBody(m)}</div>`)).join("");
+    const fix = S.problem && !pending ? `<div class="rf-msg"><div class="ol-tx">我发现大纲文字里有一处写得不对，系统看不懂：</div><div class="ol-sg"><div>${esc(S.problem)}</div></div><div class="row"><button class="p" type="button" data-fix="1">帮我修好</button><button class="s" type="button" data-own="1">我自己改</button></div></div>` : "";
+    const chips = S.summary ? ["给每个核心问题补追问", "检查有没有引导性问题", "缩短到 30 分钟"] : ["帮我起草大纲"];
+    return hello + msgs + fix + (pending ? `<div class="rf-msg rf-me">${esc(pending)}</div><div class="rf-msg mut">AI 正在想…</div>`
       : `<div class="rf-chips">${chips.map((c) => `<button class="s" type="button" data-chip="${esc(c)}">${esc(c)}</button>`).join("")}</div>`);
   };
+  const fixMessage = () => `请帮我修好大纲文字里的这个问题：${S.problem}。如果修不了，就按研究背景重新整理一份大纲。`.slice(0, 900);
   const drawChat = () => {
     const c = $("#olchat"); if (!c) return;
     c.innerHTML = chatHtml(); c.scrollTop = c.scrollHeight;
-    c.querySelectorAll("[data-chip]").forEach((b) => (b.onclick = () => send(({ "缩短到 30 分钟": "把整个访谈缩短到 30 分钟左右", "再加一个话题": "再加一个话题", "检查有没有引导性问题": "检查有没有引导性或带倾向的问题，有就改掉" })[b.dataset.chip] || b.dataset.chip)));
+    const x = $("#olctx"); if (x) x.innerHTML = ctxHtml();
+    c.querySelectorAll("[data-chip]").forEach((b) => (b.onclick = () => send(QUICK[b.dataset.chip] || b.dataset.chip)));
+    c.querySelectorAll("[data-undo]").forEach((b) => (b.onclick = () => act(b.dataset.undo, { action: "undo" })));
+    c.querySelectorAll("[data-adopt]").forEach((b) => (b.onclick = () => { const [mid, sid] = b.dataset.adopt.split(":"); act(mid, { action: "adopt", sid }); }));
+    c.querySelectorAll("[data-skip]").forEach((b) => (b.onclick = () => { const [mid, sid] = b.dataset.skip.split(":"); act(mid, { action: "dismiss", sid }); }));
+    c.querySelectorAll("[data-fix]").forEach((b) => (b.onclick = () => send(fixMessage())));
+    c.querySelectorAll("[data-own]").forEach((b) => (b.onclick = () => { seg = "text"; sessionStorage.setItem("ol_seg", seg); drawRight(); }));
   };
+  const act = guard(async (mid, body) => { take(await api(`/projects/${p.id}/outline/chat/${mid}`, { method: "POST", body })); drawChat(); drawRight(); });
   async function send(text) {
     text = (text || "").trim(); if (!text || sending) return;
     sending = true; pending = text; $("#olmsg").value = ""; $("#olsend").disabled = true; drawChat();
     try { take(await api(`/projects/${p.id}/outline/chat`, { method: "POST", body: { message: text, use_library: useLib } })); }
-    catch (e) { S = { ...S, chat: [...S.chat, { role: "user", text }, { role: "ai", text: "没有成功：" + e.message }] }; toast(e.message, true); }
+    catch (e) { S = { ...S, chat: [...S.chat, { role: "user", text }, { role: "ai", kind: "answer", text: "没有成功：" + e.message, changes: [], suggestions: [] }] }; toast(e.message, true); }
     sending = false; pending = ""; const b = $("#olsend"); if (b) b.disabled = false; drawChat(); drawRight();
   }
 
   /* ---------- right: outline / text / settings / test ---------- */
-  const edit = guard(async (body) => { take(await api(`/projects/${p.id}/outline/edit`, { method: "POST", body })); editing = ""; drawRight(); });
+  const edit = guard(async (body) => { take(await api(`/projects/${p.id}/outline/edit`, { method: "POST", body })); editing = ""; drawRight(); drawChat(); });
   const save = (text) => {
     clearTimeout(saveTimer); stat("保存中…");
-    saveTimer = setTimeout(async () => { try { take(await api(`/projects/${p.id}/outline`, { method: "PUT", body: { text } })); stat("已保存"); if (seg !== "text") drawRight(); else drawNotes(); } catch (e) { stat("还没保存：" + e.message); } }, 600);
+    saveTimer = setTimeout(async () => { try { take(await api(`/projects/${p.id}/outline`, { method: "PUT", body: { text } })); stat("已保存"); if (seg !== "text") drawRight(); else drawNotes(); drawChat(); } catch (e) { stat("还没保存：" + e.message); } }, 600);
   };
-  const notes = () => `${S.problem ? `<div class="rf-warn" role="alert">${esc(S.problem)}</div>` : ""}${S.warning ? `<div class="rf-warn" role="note">${esc(S.warning)}</div>` : ""}`;
-  const drawNotes = () => { const n = $("#olnotes"); if (n) n.innerHTML = notes(); };
+  const notes = () => `${S.problem ? `<div class="rf-warn" role="alert">${esc(S.problem)}<button class="s" type="button" data-fixnote="1">让 AI 帮我修</button></div>` : ""}${S.warning ? `<div class="rf-warn" role="note">${esc(S.warning)}</div>` : ""}`;
+  const drawNotes = () => { const n = $("#olnotes"); if (n) { n.innerHTML = notes(); n.querySelectorAll("[data-fixnote]").forEach((b) => (b.onclick = () => send(fixMessage()))); } };
 
   const questionRow = (part, q, qi) => {
     if (q.cover) return `<div class="rf-o mut">· 要了解：${esc(q.text)}</div>`;
     const key = `${part.kind}:${part.ref}:${qi}`;
     if (editing === key) return `<div class="row" style="margin:4px 0"><input class="olq" data-key="${key}" value="${esc(q.text)}" maxlength="300" aria-label="问题" style="flex:1;min-width:160px"><button class="p" type="button" data-ok="${key}">保存</button><button class="s" type="button" data-no="1">取消</button></div>`;
-    return `<div class="ol-q"><span class="rf-n">${qi + 1}</span><span class="ol-qt">${esc(q.text)}</span><span class="ol-qa"><button class="s" type="button" data-ed="${key}" aria-label="编辑这个问题">编辑</button><button class="s" type="button" data-rm="${key}" aria-label="删除这个问题">删除</button></span></div>`;
+    const mk = (S.marks || {})[q.text];
+    return `<div class="ol-q${mk ? " ol-" + mk : ""}"><span class="rf-n">${qi + 1}</span><span class="ol-qt">${esc(q.text)}${mk ? `<em class="ol-mk">${mk === "new" ? "新增" : "已修改"}</em>` : ""}</span><span class="ol-qa"><button class="s" type="button" data-ed="${key}" aria-label="编辑这个问题">编辑</button><button class="s" type="button" data-rm="${key}" aria-label="删除这个问题">删除</button></span></div>`;
   };
   const partCard = (part, mins) => {
     const real = part.questions.filter((q) => !q.cover).length;
@@ -119,6 +147,7 @@ async function outlineView(p) {
   }
   function wireRight() {
     document.querySelectorAll("[data-seg]").forEach((b) => (b.onclick = () => { seg = b.dataset.seg; sessionStorage.setItem("ol_seg", seg); drawRight(); }));
+    document.querySelectorAll("[data-fixnote]").forEach((b) => (b.onclick = () => send(fixMessage())));
     if (seg === "text") { const t = $("#oltext"); if (t) t.oninput = () => { S.text = t.value; save(t.value); }; return; }
     if (seg === "settings") {
       const apply = (keys, label, v) => { S.text = olSetHeader(S.text, keys, label, v); save(S.text); };
@@ -149,9 +178,9 @@ async function outlineView(p) {
   }
 
   /* ---------- the whole page ---------- */
-  shell(`<div class="rf" style="padding:0"><div class="rf-ws" id="olws"><div class="rf-pane"><div class="rf-hd"><b>和 AI 一起写大纲</b><span class="sp"></span><label class="chk"><input type="checkbox" id="ollib" ${useLib ? "checked" : ""}>参考研究库</label></div>
-      <div class="rf-sc" id="olchat"></div>
-      <div class="rf-inp"><div class="sm mut" style="margin-bottom:6px">${esc(notice())}</div><div class="rf-box"><textarea id="olmsg" rows="2" maxlength="1000" placeholder="说说你想怎么改，或直接说“帮我起草大纲”" aria-label="对话输入"></textarea><button class="p rf-send" type="button" id="olsend" aria-label="发送">↑</button></div></div></div>
+  shell(`<div class="rf" style="padding:0"><div class="rf-ws" id="olws"><div class="rf-pane"><div class="rf-hd"><b>和 AI 一起写大纲</b>${S.model ? `<span class="ol-mdl" title="回答问题的模型">${esc(S.model)}</span>` : ""}<span class="sp"></span><label class="chk"><input type="checkbox" id="ollib" ${useLib ? "checked" : ""}>参考研究库</label></div>
+      <div class="ol-ctx" id="olctx"></div><div class="rf-sc" id="olchat"></div>
+      <div class="rf-inp"><div class="sm mut" style="margin-bottom:6px">${esc(notice())}</div><div class="rf-box"><textarea id="olmsg" rows="2" maxlength="1000" placeholder="说说你想怎么改，或者直接问我问题……" aria-label="对话输入"></textarea><button class="p rf-send" type="button" id="olsend" aria-label="发送">↑</button></div></div></div>
       <div class="rf-split" id="olsplit" role="separator" aria-orientation="vertical" aria-label="拖动调整对话和大纲的宽度（双击恢复）" tabindex="0"><i></i></div><div class="rf-pane" id="olright"></div></div></div>`, { active: "outline", p });
   document.body.classList.add("rfmode", "pgw");
   const ws = $("#olws"), fit = () => { if (ws && ws.offsetParent) ws.style.height = Math.max(380, innerHeight - ws.getBoundingClientRect().top - 18) + "px"; };
@@ -160,7 +189,7 @@ async function outlineView(p) {
   const m = $("#olmsg");
   $("#olsend").onclick = () => send(m.value);
   m.onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(m.value); } };
-  $("#ollib").onchange = (e) => { useLib = e.target.checked; sessionStorage.setItem("ol_lib", useLib ? "1" : "0"); };
+  $("#ollib").onchange = (e) => { useLib = e.target.checked; sessionStorage.setItem("ol_lib", useLib ? "1" : "0"); const x = $("#olctx"); if (x) x.innerHTML = ctxHtml(); };
   const key = "ol_left_pct", setRatio = (pct) => ws.style.setProperty("--rfl", Math.min(60, Math.max(30, pct)) + "%");
   let saved = 42; try { saved = +localStorage.getItem(key) || 42; } catch { /* no storage: the default */ }
   setRatio(saved);
