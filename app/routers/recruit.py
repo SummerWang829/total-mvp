@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import library_context, participant_code, recruit, recruit_form, recruit_insights
+from .. import library_context, participant_code, recruit, recruit_form, recruit_insights, recruit_review
 from ..audit import audit
 from ..db import get_db
 from ..deps import RECRUITERS, STAFF, Ctx, require_roles
@@ -142,6 +142,25 @@ def _form_out(f: RecruitForm | None) -> dict:
             "goals": f.goals or [], "need": f.need or "", "chat": (f.chat or [])[-MAX_CHAT:],
             "status": f.status or "draft", "link": f"/screen.html?t={f.token}" if f.token else "", "published_at": f.published_at.isoformat() if f.published_at else None,
             "stats": {"qualified": f.n_qualified or 0, "out": f.n_out or 0, "out_by": f.out_by or {}}}
+
+
+def _stats_of(f: RecruitForm) -> dict:
+    return {"started": f.n_started or 0, "qualified": f.n_qualified or 0, "out": f.n_out or 0, "out_by": f.out_by or {}}
+
+
+def _quotas_of(db: Session, proj: Project) -> list[dict]:
+    rs = db.get(RecruitSettings, proj.id)
+    return recruit.quota_progress(db, proj.id, (rs.quotas if rs else None) or [])
+
+
+def _full(db: Session, proj: Project, f: RecruitForm | None) -> dict:
+    """The form as the page needs it, with the suggestions that are still open (recomputed every time, so an edited question's suggestion is gone)."""
+    out = _form_out(f)
+    if f is None or f.source != "ai":
+        return {**out, "suggestions": []}
+    out["suggestions"] = recruit_review.open_suggestions(recruit_form.load(f.questions), _quotas_of(db, proj), _stats_of(f), f.ai_items or [], f.dismissed or [],
+                                                         bool((proj.brief or "").strip()), bool(library_context.project_documents(db, proj.id)))
+    return out
 
 
 def _questions(f: RecruitForm) -> list[recruit_form.Question]:
@@ -280,7 +299,7 @@ def log_copy(pid: str, body: ExportLog, ctx: Ctx = Depends(require_roles(*RECRUI
 def get_form(pid: str, ctx: Ctx = Depends(require_roles(*RECRUITERS)), db: Session = Depends(get_db)):
     """The recruiting questionnaire (empty until the team writes one)."""
     proj = get_project(db, ctx, pid)
-    return {**_form_out(db.get(RecruitForm, proj.id)), "library_docs": len(library_context.project_documents(db, proj.id)), "brief": proj.brief or ""}
+    return {**_full(db, proj, db.get(RecruitForm, proj.id)), "library_docs": len(library_context.project_documents(db, proj.id)), "brief": proj.brief or ""}
 
 
 @router.put("/projects/{pid}/recruiting/form")
@@ -302,7 +321,7 @@ def put_form(pid: str, body: FormIn, ctx: Ctx = Depends(require_roles(*RECRUITER
         f.status = "closed"  # the link only serves the questionnaire written here
     audit(db, ctx.org_id, ctx.actor, "recruit.form", proj.id, source=form.source, questions=len(form.questions))
     db.commit()
-    return _form_out(f)
+    return _full(db, proj, f)
 
 
 @router.post("/projects/{pid}/recruiting/form/chat")
@@ -321,8 +340,10 @@ def chat_form(pid: str, body: ChatBody, ctx: Ctx = Depends(require_roles(*RECRUI
         f = RecruitForm(project_id=proj.id, org_id=proj.org_id)
         db.add(f)
     library = library_context.library_text(db, proj.id)[0]
+    quotas = _quotas_of(db, proj)
     try:
-        out = recruit_form.chat_turn(chat, body.message, f.chat or [], current.questions, current.goals, current.need, proj.language, proj.brief or "", library)
+        out = recruit_form.chat_turn(chat, body.message, f.chat or [], current.questions, current.goals, current.need, proj.language, proj.brief or "", library,
+                                     recruit_review.stats_context(current.questions, quotas, _stats_of(f), f.tally or {}))
     except ChatFatalError as e:
         raise HTTPException(502, f"AI 模型服务拒绝了请求：{e.reason}") from e
     except recruit_form.FormError as e:
@@ -331,11 +352,75 @@ def chat_form(pid: str, body: ChatBody, ctx: Ctx = Depends(require_roles(*RECRUI
     f.source, f.html_url, f.questions = "ai", "", [q.model_dump() for q in questions]
     f.goals = out.goals if out.goals is not None else current.goals
     f.need = out.need if out.need is not None else current.need
-    f.chat = [*(f.chat or []), {"role": "user", "text": body.message.strip()}, {"role": "ai", "text": out.reply}][-MAX_CHAT:]
+    labels = recruit_review.source_labels(out.sources, questions, quotas, bool((proj.brief or "").strip()), bool(library))
+    f.chat = [*(f.chat or []), {"role": "user", "text": body.message.strip()}, {"role": "ai", "text": out.reply, "kind": out.kind, "sources": labels}][-MAX_CHAT:]
     f.generated_by, f.version, f.updated_at = chat.name if chat else "mock", (f.version or 0) + 1, utcnow()
     audit(db, ctx.org_id, ctx.actor, "recruit.form_chat", proj.id, model=f.generated_by, changed=out.questions is not None, library=bool(library))  # what was said is not written to the log
     db.commit()
-    return {**_form_out(f), "reply": out.reply, "changed": out.questions is not None, "used": {"brief": bool((proj.brief or "").strip()), "library": len(library_context.project_documents(db, proj.id))}}
+    return {**_full(db, proj, f), "reply": out.reply, "kind": out.kind, "changed": out.questions is not None, "used": {"brief": bool((proj.brief or "").strip()), "library": len(library_context.project_documents(db, proj.id))}}
+
+
+class SigBody(BaseModel):
+    sig: str = Field(min_length=1, max_length=40)
+
+
+@router.post("/projects/{pid}/recruiting/form/review")
+def review_form(pid: str, ctx: Ctx = Depends(require_roles(*RECRUITERS)), db: Session = Depends(get_db)):
+    """"检查问卷": the rule checks (no model needed) plus the model's own reading of the wording and of the goals. Nothing is changed; the suggestions are only listed.
+    The model sees the research background, the goals, the questionnaire and anonymous counts: no names, no answers of single people."""
+    proj = get_project(db, ctx, pid)
+    f = db.get(RecruitForm, proj.id)
+    if f is None or f.source != "ai" or not f.questions:
+        raise HTTPException(422, "还没有问卷可以检查，先让 AI 起草，或自己加几道题")
+    chat = _ai_chat()
+    questions = recruit_form.load(f.questions)
+    quotas = _quotas_of(db, proj)
+    library = library_context.library_text(db, proj.id)[0]
+    try:
+        f.ai_items = recruit_review.ai_review(chat, questions, f.goals or [], f.need or "", proj.brief or "", library,
+                                              recruit_review.stats_context(questions, quotas, _stats_of(f), f.tally or {}), proj.language)
+    except ChatFatalError as e:
+        raise HTTPException(502, f"AI 模型服务拒绝了请求：{e.reason}") from e
+    except recruit_form.FormError as e:
+        raise HTTPException(502, str(e)) from e
+    n = len(_full(db, proj, f)["suggestions"])
+    reply = f"我对照研究背景、配额和已有的作答看了一遍，有 {n} 条建议，列在下面和右边对应的题上。这些只是建议，不点也没关系。" if n else "我对照研究背景、配额和已有的作答看了一遍，暂时没有要改的地方。"
+    f.chat = [*(f.chat or []), {"role": "user", "text": "检查一下这份问卷"}, {"role": "ai", "text": reply, "kind": "suggest", "sources": []}][-MAX_CHAT:]
+    audit(db, ctx.org_id, ctx.actor, "recruit.form_review", proj.id, model=chat.name if chat else "mock", items=n)
+    db.commit()
+    return {**_full(db, proj, f), "reply": reply, "kind": "suggest", "changed": False}
+
+
+@router.post("/projects/{pid}/recruiting/form/suggestions/dismiss")
+def dismiss_suggestion(pid: str, body: SigBody, ctx: Ctx = Depends(require_roles(*RECRUITERS)), db: Session = Depends(get_db)):
+    """"不再提醒": this suggestion does not come back."""
+    proj = get_project(db, ctx, pid)
+    f = db.get(RecruitForm, proj.id)
+    if f is None:
+        raise HTTPException(404, "还没有问卷")
+    f.dismissed = [*dict.fromkeys([*(f.dismissed or []), body.sig])][-200:]
+    db.commit()
+    return _full(db, proj, f)
+
+
+@router.post("/projects/{pid}/recruiting/form/suggestions/adopt")
+def adopt_suggestion(pid: str, body: SigBody, ctx: Ctx = Depends(require_roles(*RECRUITERS)), db: Session = Depends(get_db)):
+    """Do a suggestion that has a deterministic fix (the others are handed to the chat, which edits through the usual checks)."""
+    proj = get_project(db, ctx, pid)
+    f = db.get(RecruitForm, proj.id)
+    item = next((s for s in (_full(db, proj, f)["suggestions"] if f else []) if s["sig"] == body.sig), None)
+    if item is None or not item.get("fix"):
+        raise HTTPException(422, "这条建议已经不适用了，或者需要让 AI 来改")
+    try:
+        f.questions = [q.model_dump() for q in recruit_review.apply_fix(recruit_form.load(f.questions), item["fix"])]
+    except recruit_form.FormError as e:
+        raise HTTPException(422, str(e)) from e
+    f.version, f.updated_at = (f.version or 0) + 1, utcnow()
+    reply = "已把这几个带标签的选项设为互斥。"
+    f.chat = [*(f.chat or []), {"role": "ai", "text": reply, "kind": "change", "sources": []}][-MAX_CHAT:]
+    audit(db, ctx.org_id, ctx.actor, "recruit.form_adopt", proj.id, kind=item["kind"])
+    db.commit()
+    return {**_full(db, proj, f), "reply": reply, "kind": "change", "changed": True}
 
 
 @router.post("/projects/{pid}/recruiting/form/generate")

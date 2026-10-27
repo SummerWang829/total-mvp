@@ -994,3 +994,17 @@ button.ed:hover:not(:disabled){color:var(--ink);background:var(--orange-soft);bo
 .invdlg .lkbox{margin:8px 0 0;display:flex;flex-direction:column;gap:4px}.invdlg .lkbox input{width:100%}
 .invdlg .okn{background:var(--green-soft);color:var(--green);margin:10px 0 0}
 .invdlg #cp:disabled{opacity:1;background:var(--wash);color:var(--muted);border-color:var(--line);cursor:not-allowed}
+
+/* 招募问卷对话：回复标签、依据、建议卡片、右边题上的小标记 */
+.rf-kind{display:inline-block;font-size:12px;font-weight:700;padding:0 8px;border-radius:999px;margin:0 0 3px}
+.rf-kind.ans{background:var(--wash);color:var(--ink2)}.rf-kind.sug{background:var(--orange-mid);color:#8A3600}.rf-kind.chg{background:var(--green-soft);color:var(--green)}
+.rf-src{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 0}.rf-src span{font-size:12px;border:1px solid var(--line2);border-radius:999px;padding:0 8px;color:var(--muted)}
+.rf-sgs{margin:4px 0 12px}.rf-sg{border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:8px 12px;margin:8px 0;line-height:1.6}
+.rf-sgk{font-size:12px;color:var(--muted)}.rf-sgb{display:flex;gap:14px;align-items:center;margin-top:6px}
+.rf-nomore{font-size:13px;color:var(--muted);text-decoration:underline}
+.rf-news{display:flex;justify-content:space-between;width:100%;height:auto;min-height:36px;margin:6px 0;border-radius:10px;background:var(--orange-soft);border-color:var(--orange);color:var(--orange-ink);font-weight:500}
+.rf-news::before{display:none}.rf-news:hover:not(:disabled){color:var(--orange-ink);background:var(--orange-mid)}
+.rf-bd{margin-left:8px;font-size:12px;padding:0 8px;border-radius:999px;font-weight:700}.rf-bd.new{background:var(--orange);color:var(--on-orange)}.rf-bd.sug{background:var(--orange-mid);color:#8A3600}
+@media (max-width:900px){.rf-nomore{min-height:36px;display:inline-flex;align-items:center}}
+.rf-q.rf-hl{border-color:var(--orange);background:var(--orange-soft)}
+.rf-news{white-space:normal;justify-content:flex-start;text-align:left;padding:6px 12px}

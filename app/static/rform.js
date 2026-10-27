@@ -16,12 +16,26 @@ function rfAutosize(t) {
   t.addEventListener("input", fit); fit();
 }
 const rfAiNotice = () => (CONFIG && CONFIG.ai_local ? "AI 运行在我们自己的服务器上，对话内容不会发给其他公司。"
-  : `你说的话、立项里的研究背景和本项目研究库里的资料，会发送给 AI 服务商${CONFIG && CONFIG.ai_vendor ? `“${CONFIG.ai_vendor}”` : ""}来改问卷。请不要写入受访者的姓名、电话等个人信息。`);
+  : `你说的话、立项里的研究背景、本项目研究库里的资料、作答的统计数字（只有人数，不含任何人的答案）会发送给 AI 服务商${CONFIG && CONFIG.ai_vendor ? `“${CONFIG.ai_vendor}”` : ""}来改问卷、回答问题。请不要写入受访者的姓名、电话等个人信息。`);
 
 /** 整个“招募问卷”卡片，返回 { html, wire, fit }。 */
 function rfCard(p, form) {
   let f = form, mode = form.source === "html" ? "html" : "ai", seg = "outline", Q = JSON.parse(JSON.stringify(form.questions || [])), goals = [...(form.goals || [])], need = form.need || "";
   let timer = null, sending = false, pending = "", hist = [], redo = [], editing = new Set();
+  let showSug = false, changedIds = new Set();   // showSug: the suggestion cards are open in the chat; changedIds: the questions the last change touched ("刚改")
+  const RF_KIND = { answer: ["回答", "ans"], suggest: ["建议", "sug"], change: ["已修改", "chg"] };
+  const sugs = () => f.suggestions || [];
+  const sugSeen = () => { try { return sessionStorage.getItem("rf_seen_" + p.id) || ""; } catch { return ""; } };
+  const markSeen = () => { try { sessionStorage.setItem("rf_seen_" + p.id, sugs().map((s) => s.sig).join(",")); } catch { /* no storage */ } };
+  const diffIds = (before, after) => { const b = Object.fromEntries(before.map((q) => [q.id, JSON.stringify(q)])); return new Set(after.filter((q) => b[q.id] !== JSON.stringify(q)).map((q) => q.id)); };
+  const chipsOf = (keys) => (keys && keys.length ? `<div class="rf-src">${keys.map((k) => `<span>${esc(k)}</span>`).join("")}</div>` : "");
+  const msgHtml = (m) => {
+    if (m.role === "user") return `<div class="rf-msg rf-me">${esc(m.text)}</div>`;
+    const k = RF_KIND[m.kind];
+    return `<div class="rf-msg">${k ? `<span class="rf-kind ${k[1]}">${k[0]}</span>` : ""}<div>${esc(m.text)}</div>${chipsOf(m.sources)}</div>`;
+  };
+  const sugCard = (s) => `<div class="rf-sg"><span class="rf-sgk">${esc(s.label)}${s.qno ? ` · 第 ${s.qno} 题` : ""}</span><div>${esc(s.text)}</div>${chipsOf(s.sources)}
+    <div class="rf-sgb"><button class="p s" type="button" data-adopt="${esc(s.sig)}">${esc(s.button || "采纳")}</button><a class="rf-nomore" href="#" data-nomore="${esc(s.sig)}">不再提醒</a></div></div>`;
   const snap = () => JSON.stringify({ Q, goals, need });
   const nextId = () => { let n = 0; Q.forEach((q) => { const m = /^q(\d+)$/.exec(q.id); if (m) n = Math.max(n, +m[1]); }); return "q" + (n + 1); };
   const optId = (q) => { let n = 0; q.options.forEach((o) => { const m = /^o(\d+)$/.exec(o.id); if (m) n = Math.max(n, +m[1]); }); return "o" + (n + 1); };
@@ -40,7 +54,7 @@ function rfCard(p, form) {
   const pushHist = () => { hist.push(snap()); if (hist.length > 30) hist.shift(); redo = []; syncUndo(); };
   const apply = (s) => { const o = JSON.parse(s); Q = o.Q; goals = o.goals; need = o.need; editing = new Set(); };
   const syncUndo = () => { const u = $("#rfundo"), r = $("#rfredo"); if (u) u.disabled = !hist.length; if (r) r.disabled = !redo.length; };
-  const changed = () => { fix(); save(); drawRight(); };  // after a manual edit
+  const changed = () => { fix(); save(); changedIds = new Set(); drawRight(); drawChat(); };  // after a manual edit: the "刚改" marks go, suggestions about edited questions are gone with the next save
   const openEx = new Set();  // option ids whose 互斥 picker is open
   const code = (q, o) => q.options.findIndex((x) => x.id === o.id) + 1;
   const exLabel = (q, o) => (o.excl || []).map((id) => q.options.findIndex((x) => x.id === id) + 1).filter(Boolean).sort((a, b) => a - b).join("、");
@@ -63,9 +77,11 @@ function rfCard(p, form) {
   function chatHtml() {
     const used = [f.brief && f.brief.trim() ? "✓ 已读取立项里的研究背景" : "· 立项里还没有研究背景（可以到立项向导第 1 步写）", `${f.library_docs ? "✓" : "·"} 研究库里本项目的资料 ${f.library_docs || 0} 份`];
     const hello = `<div class="rf-msg">你好！我可以根据研究背景和研究库资料帮你设计招募问卷，也可以按你说的修改，比如“年龄放最前面，18 岁以下筛掉”“每天都用的人跳过频率题”“把第 3 题改成多选”。先说“帮我起草问卷”试试？</div><div class="rf-st">${used.join("<br>")}</div>`;
-    const msgs = (f.chat || []).map((m) => (m.role === "user" ? `<div class="rf-msg rf-me">${esc(m.text)}</div>` : `<div class="rf-msg">${esc(m.text)}</div>`)).join("");
-    const chips = Q.length ? `<div class="rf-chips"><button class="s" type="button" data-chip="test">测试这份问卷</button>${f.link ? "" : `<button class="s" type="button" data-chip="pub">发布成链接和二维码</button>`}</div>` : `<div class="rf-chips"><button class="s" type="button" data-chip="draft">帮我起草问卷</button></div>`;
-    return hello + msgs + (pending ? `<div class="rf-msg rf-me">${esc(pending)}</div><div class="rf-msg mut">AI 正在想…</div>` : chips);
+    const msgs = (f.chat || []).map(msgHtml).join("");
+    const cards = showSug && sugs().length ? `<div class="rf-sgs"><div class="sm mut">建议 ${sugs().length} 条。这些只是建议，不点也没关系：问卷不会变，也不影响你继续写和发布。</div>${sugs().map(sugCard).join("")}</div>` : "";
+    const news = !showSug && sugs().length && sugSeen() !== sugs().map((s) => s.sig).join(",") ? `<button type="button" class="rf-news" data-chip="showsug">有 ${sugs().length} 条建议，点这里查看</button>` : "";
+    const chips = Q.length ? `<div class="rf-chips"><button class="s" type="button" data-chip="review">检查问卷</button><button class="s" type="button" data-chip="explain">解释这道题</button><button class="s" type="button" data-chip="rate">预估通过率</button><button class="s" type="button" data-chip="goals">对照研究目标</button><button class="s" type="button" data-chip="neutral">措辞改得更中性</button><button class="s" type="button" data-chip="test">测试这份问卷</button>${f.link ? "" : `<button class="s" type="button" data-chip="pub">发布成链接和二维码</button>`}</div>` : `<div class="rf-chips"><button class="s" type="button" data-chip="draft">帮我起草问卷</button></div>`;
+    return hello + msgs + cards + (pending ? `<div class="rf-msg rf-me">${esc(pending)}</div><div class="rf-msg mut">AI 正在想…</div>` : news + chips);
   }
   const drawChat = () => { const c = $("#rfchat"); if (!c) return; c.innerHTML = chatHtml(); c.scrollTop = c.scrollHeight; wireChips(); };
   async function send(text) {
@@ -76,12 +92,38 @@ function rfCard(p, form) {
     try {
       const r = await api(`/projects/${p.id}/recruiting/form/chat`, { method: "POST", body: { message: text, questions: Q, goals, need } });
       if (r.changed || JSON.stringify(r.goals) !== JSON.stringify(goals) || r.need !== need) { hist.push(before); if (hist.length > 30) hist.shift(); redo = []; }
+      changedIds = r.changed ? diffIds(Q, r.questions) : new Set();
       f = { ...f, ...r }; Q = JSON.parse(JSON.stringify(r.questions)); goals = [...(r.goals || [])]; need = r.need || ""; editing = new Set();
     } catch (e) { f = { ...f, chat: [...(f.chat || []), { role: "user", text }, { role: "ai", text: "没有成功：" + e.message }] }; toast(e.message, true); }
     sending = false; pending = ""; const b = $("#rfsend"); if (b) b.disabled = false; syncUndo(); drawChat(); drawRight();
   }
+  const ASK = { draft: "帮我起草问卷", rate: "根据已有的作答，预估这份问卷的通过率，并说明哪几题筛掉的人最多", goals: "对照研究目标和招募需求，看看问卷有没有没覆盖到的地方，只告诉我，先不要改", neutral: "检查有没有带引导或带倾向的措辞，有的话改得更中性" };
+  async function review() {
+    if (sending) return; if (incomplete()) return toast("有题目或选项还没写完，先写完再检查", true);
+    sending = true; pending = "检查一下这份问卷"; drawChat();
+    try { const r = await api(`/projects/${p.id}/recruiting/form/review`, { method: "POST" }); f = { ...f, ...r }; showSug = true; markSeen(); }
+    catch (e) { toast(e.message, true); }
+    sending = false; pending = ""; drawChat(); drawRight();
+  }
+  const adopt = guard(async (sig) => {
+    const s = sugs().find((x) => x.sig === sig); if (!s) return;
+    if (!s.fix) return send("采纳：" + s.instruction);   // the others go through the chat, which edits with the usual checks
+    const before = snap(), beforeQ = JSON.parse(JSON.stringify(Q));
+    const r = await api(`/projects/${p.id}/recruiting/form/suggestions/adopt`, { method: "POST", body: { sig } });
+    hist.push(before); if (hist.length > 30) hist.shift(); redo = [];
+    changedIds = diffIds(beforeQ, r.questions); f = { ...f, ...r }; Q = JSON.parse(JSON.stringify(r.questions)); editing = new Set(); syncUndo(); markSeen(); drawChat(); drawRight();
+  });
+  const nomore = guard(async (sig) => { const r = await api(`/projects/${p.id}/recruiting/form/suggestions/dismiss`, { method: "POST", body: { sig } }); f = { ...f, suggestions: r.suggestions }; markSeen(); drawChat(); drawRight(); });
   function wireChips() {
-    document.querySelectorAll("[data-chip]").forEach((b) => (b.onclick = () => { const c = b.dataset.chip; if (c === "draft") send("帮我起草问卷"); else if (c === "test") { seg = "test"; drawRight(); } else if (c === "pub") publish(); }));
+    document.querySelectorAll("[data-chip]").forEach((b) => (b.onclick = () => {
+      const c = b.dataset.chip;
+      if (c === "test") { seg = "test"; drawRight(); } else if (c === "pub") publish(); else if (c === "review") review();
+      else if (c === "showsug") { showSug = true; markSeen(); drawChat(); drawRight(); }
+      else if (c === "explain") { const m = $("#rfmsg"); m.value = "解释一下第 2 题为什么这样问："; m.focus(); m.setSelectionRange(m.value.length, m.value.length); }
+      else if (ASK[c]) send(ASK[c]);
+    }));
+    document.querySelectorAll("[data-adopt]").forEach((b) => (b.onclick = () => adopt(b.dataset.adopt)));
+    document.querySelectorAll("[data-nomore]").forEach((a) => (a.onclick = (e) => { e.preventDefault(); nomore(a.dataset.nomore); }));
   }
 
   /* ---------- right: the outline / the test ---------- */
@@ -100,12 +142,13 @@ function rfCard(p, form) {
         <input data-r="value" type="number" step="any" value="${r.value}" aria-label="数值" style="max-width:110px"><select data-r="goto" aria-label="就">${actions(i, r.goto, false)}</select><button class="s" type="button" data-rdel="${j}" aria-label="删除规则">×</button></div>`).join("")}
         <button class="s" type="button" data-radd="1" ${(q.rules || []).length >= 4 ? "disabled" : ""}>+ 添加规则（例如 小于 18 → 结束 · 不符合）</button></div>` : ""}</div>`;
   }
+  const qBadge = (q) => (changedIds.has(q.id) ? `<span class="rf-bd new">刚改</span>` : showSug && sugs().some((s) => s.qid === q.id) ? `<span class="rf-bd sug">建议</span>` : "");
   function qCard(q, i) {
     if (editing.has(q.id)) return `<div class="rf-q" data-qid="${q.id}">${qEditor(q, i)}</div>`;
     const lines = q.type === "single" || q.type === "multi"
       ? q.options.map((o, j) => `<div class="rf-o"><span class="rf-code">${j + 1}</span>${q.type === "single" ? "○" : "☐"} ${esc(o.text || "（空选项）")} ${badge(o.goto)}${o.tag ? `<span class="rf-lg jump">标签：${esc(o.tag)}</span>` : ""}${(o.excl || []).length ? `<span class="rf-lg exb">互斥：${exLabel(q, o)}</span>` : ""}</div>`).join("")
       : q.type === "number" ? (q.rules || []).map((r) => `<div class="rf-o">如果数字${RF_OP[r.op]} ${r.value} ${badge(r.goto)}</div>`).join("") : "";
-    return `<div class="rf-q" data-qid="${q.id}"><div class="row"><span class="rf-n">${i + 1}</span><b>${esc(q.text || "（还没写题目）")}</b><span class="sp"></span><span class="tag nw">${RF_TYPE[q.type]}${q.required ? " · 必答" : ""}</span><button class="s" type="button" data-edit="${q.id}">编辑</button></div>${lines}${exWarn(q)}</div>`;
+    return `<div class="rf-q${changedIds.has(q.id) ? " rf-hl" : ""}" data-qid="${q.id}"><div class="row"><span class="rf-n">${i + 1}</span><b>${esc(q.text || "（还没写题目）")}</b>${qBadge(q)}<span class="sp"></span><span class="tag nw">${RF_TYPE[q.type]}${q.required ? " · 必答" : ""}</span><button class="s" type="button" data-edit="${q.id}">编辑</button></div>${lines}${exWarn(q)}</div>`;
   }
   function outline() {
     return `<h3 class="rf-h">研究背景</h3><div class="rf-blk">${f.brief && f.brief.trim() ? `${esc(f.brief)} <span class="mut sm">（来自立项向导）</span>` : '<span class="mut">还没有研究背景。到立项向导第 1 步写，或在左边对话里告诉 AI。</span>'}</div>

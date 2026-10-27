@@ -17,6 +17,8 @@ import urllib.request
 
 from playwright.sync_api import sync_playwright
 
+sys.stdout.reconfigure(errors="replace")  # a failure message with a symbol must never crash the run on a Chinese Windows console
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FAILS: list[str] = []
 PASSES = 0
@@ -337,6 +339,49 @@ def insights_section(br, D):
     pg.goto(B + f"/#/p/{pid}/insights"); pg.wait_for_selector(".ins-tbl tbody tr")
     pg.locator(".ins-tbl tbody tr").first.locator("td[data-l='状态']").click(); pg.wait_for_selector("#ipop:not([hidden])")
     audit_page(pg, "insights r/phone", errs)
+    ctx.close()
+
+
+def review_section(br, D):
+    """The questionnaire chat: answers with a label and sources, 检查问卷 lists suggestions without changing anything, a badge sits on the question, adopting changes only that
+    question (marked 刚改), 不再提醒 hides one, and nothing has to be clicked to carry on."""
+    adm = D["tok"]["admin"]
+    pid = call("/projects", {"name": "QA 问卷助手", "market": "SG", "language": "en"}, adm)["id"]
+    qs = [{"id": "q1", "type": "single", "text": "Where do you live?", "required": True, "options": [{"id": "o1", "text": "Greater Bay", "goto": "", "tag": "GBA", "excl": []}, {"id": "o2", "text": "Elsewhere", "goto": "end_out", "tag": "", "excl": []}], "rules": []},
+          {"id": "q2", "type": "multi", "text": "Where do you buy?", "required": True, "options": [{"id": "o1", "text": "Online", "goto": "", "tag": "online", "excl": []}, {"id": "o2", "text": "Shops", "goto": "", "tag": "shops", "excl": []}], "rules": []}]
+    call(f"/projects/{pid}/recruiting/form", {"source": "ai", "questions": qs, "goals": [], "need": ""}, adm, "PUT")
+    ctx, pg, errs = new_page(br, 1280, token=adm)
+    pg.goto(B + "/"); pg.evaluate("sessionStorage.setItem('ptab', 'form')")
+    pg.goto(B + f"/#/p/{pid}/people"); pg.wait_for_selector("#rfchat .rf-chips")
+    chips = [x.strip() for x in pg.locator("#rfchat .rf-chips button").all_inner_texts()]
+    ok(chips[:5] == ["检查问卷", "解释这道题", "预估通过率", "对照研究目标", "措辞改得更中性"], f"[review] the quick buttons (got {chips})")
+    ok("作答的统计数字" in pg.inner_text(".rf-inp") or "不会发给其他公司" in pg.inner_text(".rf-inp"), "[review] the outbound notice is next to the input")
+    pg.fill("#rfmsg", "为什么第 1 题要筛人？"); pg.click("#rfsend")
+    pg.wait_for_selector(".rf-kind.ans")
+    ok(pg.locator(".rf-kind.ans").first.inner_text().strip() == "回答" and pg.locator(".rf-src span", has_text="作答统计").count() >= 1, "[review] a question gets an answer labelled 回答 with its sources")
+    ok(pg.locator(".rf-q").count() == 2 and pg.locator(".rf-bd").count() == 0, "[review] answering a question changes nothing")
+    pg.click("[data-chip=review]"); pg.wait_for_selector(".rf-sgs .rf-sg")
+    ok(pg.locator(".rf-kind.sug").count() >= 1 and pg.locator(".rf-sg").count() >= 1 and "不点也没关系" in pg.inner_text(".rf-sgs"), "[review] 检查问卷 lists suggestions, and says leaving them is fine")
+    ok(pg.locator(".rf-q .rf-bd.sug").count() >= 1, "[review] the question a suggestion is about carries a 建议 badge")
+    ok(pg.locator(".rf-sg [data-nomore]").first.inner_text().strip() == "不再提醒" and pg.locator(".rf-sg .p.s").count() >= 1, "[review] each suggestion has one adopt button and a small 不再提醒 link")
+    audit_page(pg, "review chat/desktop", errs)
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "review_1280.png"))
+    n = pg.locator(".rf-sg").count()
+    pg.locator(".rf-sg [data-adopt]").first.click()
+    ok(wait_until(lambda: pg.locator(".rf-q .rf-bd.new").count() == 1 and pg.locator(".rf-sg").count() < n, 8), "[review] adopting changes that question only, marks it 刚改, and the suggestion is gone")
+    ok(pg.locator("#rfundo").is_enabled(), "[review] the change can be undone")
+    pg.reload(); pg.wait_for_selector("#rfchat .rf-chips")
+    got = call(f"/projects/{pid}/recruiting/form", None, adm)
+    ok(all(s["kind"] != "exclusive" for s in got["suggestions"]), "[review] the fixed suggestion does not come back after a reload")
+    if got["suggestions"]:
+        sig = got["suggestions"][0]["sig"]
+        call(f"/projects/{pid}/recruiting/form/suggestions/dismiss", {"sig": sig}, adm)
+        ok(sig not in [s["sig"] for s in call(f"/projects/{pid}/recruiting/form", None, adm)["suggestions"]], "[review] 不再提醒 keeps a suggestion from coming back")
+    ctx.close()
+    ctx, pg, errs = new_page(br, 390, token=adm)
+    pg.goto(B + "/"); pg.evaluate("sessionStorage.setItem('ptab', 'form')")
+    pg.goto(B + f"/#/p/{pid}/people"); pg.wait_for_selector("#rfchat .rf-chips")
+    audit_page(pg, "review chat/phone", errs)
     ctx.close()
 
 
@@ -852,7 +897,7 @@ def recruit_section(br, D):
     ok(pg.locator("#cp").is_enabled(), "[recruit] an existing, not-yet-started session can have its link copied")
     pg.fill("#du", "60"); pg.click("#mk"); pg.wait_for_selector("#savedmsg:not([hidden])")
     ok("已保存" in pg.inner_text("#savedmsg") and pg.locator(".invdlg").count() == 1, "[recruit] saving keeps the window open and says it is saved")
-    pg.once("dialog", lambda d: d.accept()); pg.click("#cp")
+    pg.click("#cp")  # this page already accepts dialogs
     ok(wait_until(lambda: (pg.locator("#lkbox input").count() and "/join.html?t=" in pg.locator("#lkbox input").input_value()) or "链接已复制" in pg.inner_text(".ntc"), 6), "[recruit] copying the link of an existing session asks first (the old link stops working), then copies the new one")
     pg.click("#c"); pg.wait_for_selector(".invdlg", state="detached")
     ok(pg.locator("td[data-l='问卷答案']").count() >= 1 and pg.locator("td[data-l='来源']").count() >= 1, "[recruit] the list has the answers column and the source column in the order of the header")
@@ -1941,6 +1986,7 @@ def run():
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "marks_section": marks_section(br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "group_section": group_section(br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "outline_section": outline_section(br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "review_section": review_section(br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "insights_section": insights_section(br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "rooms_section": rooms_section(br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "members_section": members_section(br, D)

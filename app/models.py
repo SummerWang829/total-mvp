@@ -720,6 +720,8 @@ class RecruitForm(Base):
     need: Mapped[str] = mapped_column(Text, default="")  # the recruiting need in words (who, how many, what screens out)
     n_started: Mapped[int] = mapped_column(Integer, default=0)  # how many people opened the first question
     tally: Mapped[dict] = mapped_column(JSON, default=dict)  # anonymous: how many chose each option, among people who qualified and people who were screened out (app/recruit_insights.py)
+    ai_items: Mapped[list] = mapped_column(JSON, default=list)  # the model's suggestions from the last "检查问卷" (app/recruit_review.py); each expires when its question is edited
+    dismissed: Mapped[list] = mapped_column(JSON, default=list)  # signatures of suggestions the team chose not to be reminded of again
     chat: Mapped[list] = mapped_column(JSON, default=list)  # the conversation with the AI that edits the questionnaire: [{"role": "user" | "ai", "text"}], the latest 40
 
 
