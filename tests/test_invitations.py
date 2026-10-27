@@ -157,3 +157,12 @@ def test_the_team_can_correct_a_participants_email_and_the_list_carries_their_ch
         db.commit()
     got = org.c.get(f"/api/projects/{pid}/participants", headers=org.h()).json()[0]
     assert got["availability"] == ["2026-10-28T06:00:00", "2026-10-29T08:00:00"]
+
+
+def test_rotate_gives_a_new_working_link_and_the_old_one_stops(org):
+    itv = org.interview()
+    old = itv["invite_token"]
+    new = org.c.post(f"/api/interviews/{itv['id']}/invite/rotate", headers=org.h()).json()
+    assert new["invite_token"] != old and new["invite_path"].endswith(new["invite_token"])
+    assert org.c.get(f"/api/public/join/{old}").status_code in (401, 403, 404)
+    assert org.c.get(f"/api/public/join/{new['invite_token']}").status_code == 200

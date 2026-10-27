@@ -43,9 +43,24 @@ async function inviteModal(p, parts, { preselect = "", itv = null, onDone = () =
     <label class="f"><span>预计访谈时长</span><div class="dur"><input name="duration_min" id="du" type="number" min="5" max="240" value="${editing ? itv.duration_min || 45 : 45}" aria-label="预计访谈时长（分钟）"><span>分钟</span><span class="durq" id="dq"></span></div></label>
     ${editing ? "" : `<fieldset style="border:1px solid var(--line);border-radius:10px;margin:0 0 12px;padding:6px 14px"><legend class="sm mut">观察员（隐身旁听）</legend>${obs.length ? obs.map((u) => `<label class="chk"><input type="checkbox" name="obs" value="${u.id}"><span>${esc(u.name)}</span></label>`).join("") : `<span class="sm mut">还没有观察员账号</span>`}</fieldset>`}
     ${mailReady ? "" : `<div class="rem" id="nomail">还没有配置发件邮箱：点“发送”只会创建邀请函，链接会显示给你复制。</div>`}
-    <div class="btns"><button class="p" type="submit" id="mk">${editing ? "保存" : "创建并生成邀请函"}</button><button class="p" type="button" id="sd">${editing ? "发送更新" : "发送"}</button><span class="sp"></span><button type="button" id="c">取消</button></div></form></div>`);
+    <div class="btns"><button class="p" type="submit" id="mk">${editing ? "保存" : "创建并生成邀请函"}</button><button class="p" type="button" id="sd">${editing ? "发送更新" : "发送"}</button><span class="sp"></span><button type="button" id="cp"${editing && !(itv.status === "live" || itv.invite_state === "entered") ? "" : " disabled"} title="${!editing ? "创建之后才有链接可以复制" : itv.status === "live" || itv.invite_state === "entered" ? "访谈进行中，不能换链接" : "复制受访者的进入链接"}">复制链接</button><button type="button" id="c">取消</button></div>
+    <div class="lkbox" id="lkbox" hidden></div><div class="rem okn" id="savedmsg" role="status" hidden></div></form></div>`);
   const f = $("#f", m), tm = $("#tm", m), tmc = $("#tmc", m), em = $("#em", m), msg = $("#emsg", m), sd = $("#sd", m), du = $("#du", m), dq = $("#dq", m);
-  $("#c", m).onclick = () => m.remove();
+  const cp = $("#cp", m), lkbox = $("#lkbox", m), savedmsg = $("#savedmsg", m);
+  let linkUrl = "", dirty = false;   // the entry link once there is one in this window; dirty: something was saved, so the list behind needs a refresh when the window closes
+  $("#c", m).onclick = () => { m.remove(); if (dirty) onDone(); };
+  const saidSaved = (text) => { savedmsg.hidden = false; savedmsg.textContent = text; $("#c", m).textContent = "关闭"; };
+  const copyLink = async (url) => {   // copy it; when the browser does not allow that, show it in a box to copy by hand
+    try { await navigator.clipboard.writeText(url); notice("链接已复制，可以直接粘贴发给受访者。", "ok", 6000); lkbox.hidden = true; }
+    catch { lkbox.hidden = false; lkbox.innerHTML = `<span class="sm mut">这个浏览器不让自动复制，请手动复制：</span><input readonly value="${esc(url)}" aria-label="进入链接">`; lkbox.querySelector("input").select(); }
+  };
+  cp.onclick = guard(async () => {
+    if (!linkUrl) {   // an existing session: its link was only shown when it was made, so this makes a new one and the old one stops working
+      if (!confirm("会生成一条新链接，之前发给受访者的旧链接会失效。继续吗？")) return;
+      linkUrl = location.origin + (await api(`/interviews/${itv.id}/invite/rotate`, { method: "POST" })).invite_path;
+    }
+    await copyLink(linkUrl);
+  });
   // the other times the candidate chose: click one to make it the booked time (the booked one steps back into the list); × drops it
   const drawChips = () => {
     tmc.innerHTML = backups.length ? `<span class="sm mut">受访者还选了：</span>` + backups.map((b, i) => `<span class="tmc" data-i="${i}" role="button" tabindex="0">${esc(timeLabel(b))}<button type="button" data-x="${i}" aria-label="去掉这个备选时间">×</button></span>`).join("") : "";
@@ -81,17 +96,19 @@ async function inviteModal(p, parts, { preselect = "", itv = null, onDone = () =
       const body = { ...base, send_email: send };
       if (fd.get("moderation") && fd.get("moderation") !== itv.moderation) body.moderation = fd.get("moderation");
       const r = await api(`/interviews/${itv.id}`, { method: "PUT", body });
-      m.remove(); if (r.mail) mailNote(who ? who.name : "", r.mail); else toast("已保存"); onDone(r); return;
+      itv = { ...itv, ...r }; dirty = true; if (r.mail) mailNote(who ? who.name : "", r.mail); else toast("已保存");
+      saidSaved(send && r.mail && r.mail.status === "queued" ? "已保存，更新邮件已发出。" : "已保存。需要的话，可以点“复制链接”把进入链接发给受访者。"); return;
     }
     const body = { kind, ...base, language: fd.get("language") || null, observer_ids: fd.getAll("obs"), moderation: kind === "group" ? "human" : fd.get("moderation") || "human", send_email: send && kind !== "group" };
     if (kind === "group") { body.participant_ids = fd.getAll("pids"); if (!body.participant_ids.length || body.participant_ids.length > 10) return toast("座谈会请勾选 1 到 10 位受访者", true); }
     else body.participant_id = fd.get("participant_id") || (who && who.id);
     const r = await api(`/projects/${p.id}/interviews`, { method: "POST", body });
-    m.remove();
-    if (kind === "group") { showGroupInvites(r); onDone(r); return; }
+    if (kind === "group") { m.remove(); showGroupInvites(r); onDone(r); return; }
     if (send) mailNote(who ? who.name : "", r.mail);
-    if (!send || !r.mail || r.mail.status !== "queued") showInvite(r.id, location.origin + r.invite_path, true, r.scheduled_at, () => onDone(r));   // the link is only shown now: do not lose it when the mail did not go
-    else onDone(r);
+    linkUrl = location.origin + r.invite_path;   // known only now: the window stays open so it can be copied (or sent by other means when the mail did not go)
+    cp.disabled = false; cp.title = "复制受访者的进入链接"; $("#mk", m).disabled = true; sd.disabled = true;
+    saidSaved(send && r.mail && r.mail.status === "queued" ? "邀请函已创建并发送。链接也可以复制，用别的方式再发一次。" : "邀请函已创建。点“复制链接”，把进入链接发给受访者。");
+    $("#c", m).onclick = () => { m.remove(); onDone(r); };   // closing hands the new session to the page behind
   });
   f.onsubmit = (e) => { e.preventDefault(); go(false); };
   sd.onclick = () => go(true);
