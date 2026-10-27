@@ -3,12 +3,12 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 const fmt = (ms) => { const s = Math.floor(ms / 1000); return String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0"); };
 const store = { get: (k) => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch {} }, del: (k) => { try { localStorage.removeItem(k); } catch {} } };
 
-async function api(path, { method = "GET", body, auth = true } = {}) {
+async function api(path, { method = "GET", body, auth = true, signal } = {}) {
   const h = {};
   if (body !== undefined) h["Content-Type"] = "application/json";
   const t = store.get("tt_token");
   if (auth && t) h.Authorization = "Bearer " + t;
-  const r = await fetch("/api" + path, { method, headers: h, body: body !== undefined ? JSON.stringify(body) : undefined });
+  const r = await fetch("/api" + path, { method, headers: h, body: body !== undefined ? JSON.stringify(body) : undefined, signal });
   let data = null;
   try { data = await r.json(); } catch {}
   if (!r.ok) {

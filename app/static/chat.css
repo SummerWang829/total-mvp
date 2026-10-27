@@ -1,0 +1,19 @@
+/* 洞察与片段 · 对话（研究助手） */
+.ins-chat{display:flex;flex-direction:column;max-width:820px;margin:0 auto;min-height:420px;gap:8px}
+.ins-chead{align-items:center;gap:8px;flex-wrap:wrap}.ins-chead b{font-size:16px}
+.ins-hwrap{position:relative;display:inline-block}
+.ins-hist{position:absolute;right:0;top:100%;margin-top:4px;z-index:30;width:min(340px,88vw);max-height:300px;overflow:auto;background:var(--surface);border:1px solid var(--line2);border-radius:12px;padding:6px;box-shadow:0 8px 24px rgba(6,35,25,.18)}
+.ins-hist[hidden]{display:none}
+.ins-hrow{display:flex;gap:4px;align-items:center}.ins-hbtn{flex:1;min-width:0;height:auto;min-height:38px;text-align:left;white-space:normal;border:0;background:none;font-weight:500;line-height:1.4}.ins-hbtn::before{display:none}.ins-hbtn:hover:not(:disabled){background:var(--orange-soft);color:var(--ink)}
+.ins-scope{display:flex;gap:14px;flex-wrap:wrap;font-size:14px}
+.ins-thread{flex:1;min-height:220px;max-height:58vh;overflow:auto;padding:8px 2px;overscroll-behavior:contain}
+.ins-msg.ai h5{margin:12px 0 4px;font-size:13px;font-weight:600;color:var(--muted)}.ins-msg.ai h5:first-child{margin-top:0}
+.ins-ref{font-size:12px;color:var(--orange-ink);margin:0 1px}
+.ins-sg{background:var(--orange-soft);border-radius:8px;padding:8px 12px;font-size:14px;line-height:1.7}.ins-sg ul{margin:0;padding-left:18px}
+.ins-fu{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0 0}.ins-fu button{height:auto;min-height:36px;white-space:normal;text-align:left}
+.ins-act{display:flex;gap:14px;margin:6px 0 0;font-size:13px}.ins-act .lnk{min-height:36px}
+.ins-dots{display:inline-flex;gap:4px;vertical-align:middle}.ins-dots i{width:6px;height:6px;border-radius:50%;background:var(--muted);display:block;animation:insdot 1.2s infinite ease-in-out}.ins-dots i:nth-child(2){animation-delay:.2s}.ins-dots i:nth-child(3){animation-delay:.4s}
+@keyframes insdot{0%,80%,100%{opacity:.25}40%{opacity:1}}
+@media (prefers-reduced-motion:reduce){.ins-dots i{animation:none;opacity:.6}}
+.rf-send.stop{background:var(--ink);border-color:var(--ink)}
+.ins-q small{font-size:12px}
