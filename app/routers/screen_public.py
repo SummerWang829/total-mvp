@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import ratelimit, recruit, recruit_form, recruit_insights, screener
+from .. import ratelimit, recruit, recruit_form, recruit_insights, screener, slots
 from ..audit import audit
 from ..config import settings
 from ..db import get_db
@@ -33,6 +33,7 @@ class SubmitBody(BaseModel):
     email: str = Field(max_length=200)
     country: str = Field(min_length=2, max_length=2)
     consent: bool = False
+    slots: list[str] = Field(default_factory=list, max_length=slots.MAX_PICKS)  # the interview times the candidate said suit them (the last question)
 
 
 def _live(db: Session, token: str) -> tuple[RecruitForm, Project]:
@@ -53,6 +54,14 @@ def screen_info(token: str, db: Session = Depends(get_db)):
     f, proj = _live(db, token)
     return {"org": db.get(Org, f.org_id).name, "language": proj.language, "open": f.status == "published" and f.source == "ai", "dpo": settings.dpo_email,
             "retention_days": days_of(proj), "countries": sorted(settings.allowed_countries), "total": len(f.questions or [])}
+
+
+@router.get("/{token}/slots")
+def screen_slots(token: str, db: Session = Depends(get_db)):
+    """The last question, added by the system: which interview times in the next three days suit the candidate (Singapore time)."""
+    f, _ = _live(db, token)
+    _open(f)
+    return {"days": slots.offered()}
 
 
 @router.post("/{token}/step")
@@ -115,5 +124,8 @@ def screen_submit(token: str, body: SubmitBody, request: Request, db: Session = 
         f.n_qualified = (f.n_qualified or 0) + 1
         f.tally = recruit_insights.record(f.tally, "q", questions, step.chosen)
         audit(db, proj.org_id, "participant:screen", "recruit.form_qualified", proj.id, participant=p.id)
+        same = p.id
+    if body.slots:  # the times that suit them, earliest first (the first one fills the invitation, the rest are backups); a repeat visit updates them
+        db.get(Participant, same).availability = [t.isoformat() for t in slots.parse(body.slots)]
     db.commit()
     return {"ok": True}

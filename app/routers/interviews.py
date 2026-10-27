@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from .. import ai_room, concept, content_rules, export, groups, jobs, participant_code, pretask, scheduling
+from .. import ai_room, concept, content_rules, export, groups, invites, jobs, participant_code, pretask, scheduling
 from ..audit import audit
 from ..config import settings
 from ..db import get_db
@@ -81,6 +81,7 @@ def interview_out(itv: Interview, ctx: Ctx, invite_token: str | None = None, db:
         else {"name": "受访者"},
         "moderator_name": _moderator_name(db, itv) if sees_name else "",  # the team's own names are not for client observers
         "purged": itv.purged_at is not None, "moderation": itv.moderation, "kind": itv.kind, "study_id": itv.study_id,
+        "duration_min": itv.duration_min or 45, "mail_status": invites.mail_status(db, itv.id) if (db is not None and sees_name) else "",
     }
     if groups.is_group(itv):  # a group has no single participant; show the headcount, and (staff only) the roster
         n = len(itv.group_participants)
@@ -123,8 +124,10 @@ class NewInterview(BaseModel):
     participant_id: str | None = None  # depth: the one participant
     participant_ids: list[str] = []  # group (focus group): the seated participants, 1..groups.MAX_GROUP
     kind: str = groups.KIND_DEPTH
-    title: str = Field(min_length=1, max_length=200)
+    title: str = Field(default="", max_length=200)  # the team's own label; empty = made from the participant's number
     scheduled_at: datetime | None = None
+    duration_min: int = Field(default=45, ge=invites.MIN_DURATION, le=invites.MAX_DURATION)  # how long the invitation says to expect
+    send_email: bool = False  # also email the invitation to the participant (a depth interview only)
     language: str | None = None
     moderator_id: str | None = None
     observer_ids: list[str] = []
@@ -176,9 +179,10 @@ def create_interview(pid: str, body: NewInterview, ctx: Ctx = Depends(require_ro
         get_user_in_org(db, ctx, body.moderator_id, ("moderator", "researcher", "admin"))
     obs = [get_user_in_org(db, ctx, uid_, ("observer", "researcher", "admin")) for uid_ in dict.fromkeys(body.observer_ids)]
     token = new_secret_token()  # depth: the participant's link; group: unused placeholder (each seat has its own link)
-    itv = Interview(org_id=ctx.org_id, project_id=proj.id, participant_id=parts[0].id, moderator_id=body.moderator_id, title=body.title,
+    title = body.title.strip() or ("座谈会" if is_group else f"深访 · {parts[0].code or parts[0].name}")
+    itv = Interview(org_id=ctx.org_id, project_id=proj.id, participant_id=parts[0].id, moderator_id=body.moderator_id, title=title,
                     language=body.language or parts[0].language or proj.language, scheduled_at=body.scheduled_at, invite_hash=token_hash(token),
-                    moderation=body.moderation.value, kind=body.kind)
+                    moderation=body.moderation.value, kind=body.kind, duration_min=body.duration_min)
     itv.observers = [InterviewObserver(user_id=u.id) for u in obs]
     db.add(itv)
     db.flush()  # assigns the id, so the audit row points at this interview
@@ -189,9 +193,15 @@ def create_interview(pid: str, body: NewInterview, ctx: Ctx = Depends(require_ro
             seat = groups.add_seat(db, itv, p, token_hash(tok))
             group_invites.append({"participant_id": p.id, "seat": seat.seat, "invite_path": f"/join.html?t={tok}", "invite_token": tok})
     audit(db, ctx.org_id, ctx.actor, "interview.create", itv.id, ip=ctx.ip, kind=body.kind)
+    mail = None
+    if body.send_email and not is_group:
+        mail = invites.send(db, itv, parts[0], f"{settings.public_base_url}/join.html?t={token}", ctx.org_id)
+        audit(db, ctx.org_id, ctx.actor, "interview.invite.email", itv.id, status=mail["status"])  # who it went to is never written down, only how it went
     db.commit()
     db.refresh(itv)
     out = interview_out(itv, ctx, None if is_group else token, db=db)
+    if mail is not None:
+        out["mail"] = mail
     if is_group:
         out["group_invites"] = group_invites  # shown once, like the depth invite link
     return out
@@ -300,6 +310,73 @@ def rotate_invite(iid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Sessi
     audit(db, ctx.org_id, ctx.actor, "interview.invite.rotate", itv.id)
     db.commit()
     return {"invite_path": f"/join.html?t={token}", "invite_token": token}
+
+
+class UpdateInterview(BaseModel):
+    """What the team may change on a session after the invitation went out. Only the fields sent are changed."""
+    scheduled_at: datetime | None = None
+    moderator_id: str | None = None
+    duration_min: int | None = Field(default=None, ge=invites.MIN_DURATION, le=invites.MAX_DURATION)
+    moderation: ModerationMode | None = None
+    send_email: bool = False  # tell the participant by email
+
+
+@router.put("/interviews/{iid}")
+def update_interview(iid: str, body: UpdateInterview, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    """Change a session's time, moderator, length or (before the participant has agreed) the kind of moderator; optionally email the change."""
+    itv = visible_interview(db, ctx, iid)
+    if itv.status == "ended" or itv.purged_at:
+        raise HTTPException(409, "访谈已结束，不能再改邀请函")
+    sent = body.model_fields_set
+    if "moderation" in sent and body.moderation is not None and body.moderation.value != itv.moderation:
+        if groups.is_group(itv) and body.moderation is ModerationMode.AI:
+            raise HTTPException(422, "座谈会暂不支持 AI 主持，请选择人工主持")
+        if db.scalar(select(Consent.id).where(Consent.interview_id == itv.id)):
+            raise HTTPException(409, "受访者已经同意过了，同意书里写明了由谁来主持，不能再把真人改成 AI（或反过来）")
+        if body.moderation is ModerationMode.AI and (why := ai_moderation_blocker()):
+            raise HTTPException(422, why)
+        itv.moderation = body.moderation.value
+    if "scheduled_at" in sent:
+        itv.scheduled_at = body.scheduled_at
+    if "moderator_id" in sent:
+        if body.moderator_id:
+            get_user_in_org(db, ctx, body.moderator_id, ("moderator", "researcher", "admin"))
+        itv.moderator_id = body.moderator_id or None
+    if "duration_min" in sent and body.duration_min:
+        itv.duration_min = body.duration_min
+    audit(db, ctx.org_id, ctx.actor, "interview.update", itv.id, fields=sorted(sent - {"send_email"}))
+    out_mail = None
+    if body.send_email and not groups.is_group(itv):
+        out_mail = _send_letter(db, ctx, itv, resend_full=invites.mail_status(db, itv.id) != "sent")
+    db.commit()
+    db.refresh(itv)
+    out = interview_out(itv, ctx, db=db)
+    if out_mail is not None:
+        out["mail"] = out_mail
+    return out
+
+
+def _send_letter(db: Session, ctx: Ctx, itv: Interview, resend_full: bool) -> dict:
+    """Email the participant. A full invitation carries a fresh link (the old one stops working); a change notice repeats no link."""
+    link = None
+    if resend_full:
+        token = new_secret_token()
+        itv.invite_hash = token_hash(token)
+        link = f"{settings.public_base_url}/join.html?t={token}"
+    result = invites.send(db, itv, itv.participant, link, ctx.org_id, update=not resend_full)
+    audit(db, ctx.org_id, ctx.actor, "interview.invite.email", itv.id, status=result["status"], full=resend_full)
+    return result
+
+
+@router.post("/interviews/{iid}/invite/send")
+def send_invitation_again(iid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    """Send the full invitation again (after fixing the address): a new link is made and the old one stops working."""
+    itv = visible_interview(db, ctx, iid)
+    if itv.status == "ended" or itv.purged_at or groups.is_group(itv):
+        raise HTTPException(409, "这场访谈不能重发邀请函")
+    result = _send_letter(db, ctx, itv, resend_full=True)
+    db.commit()
+    return {"mail": result, "mail_status": invites.mail_status(db, itv.id)}
 
 
 class ObserverBody(BaseModel):

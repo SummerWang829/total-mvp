@@ -424,7 +424,10 @@ def tag_library(pid: str, ctx: Ctx = Depends(require_roles(*RECRUITERS)), db: Se
     """The tags people in this project can be given, with how many people have each."""
     proj = get_project(db, ctx, pid)
     people = db.scalars(select(Participant.tags).where(Participant.project_id == proj.id, Participant.anonymized_at.is_(None))).all()
-    return {"tags": [{"tag": t, "n": sum(t in (x or []) for x in people)} for t in recruit_insights.tag_library(db, proj.id)]}
+    form = db.get(RecruitForm, proj.id)
+    excl = recruit_insights.tag_exclusions(recruit_form.load(form.questions) if form else [])
+    return {"tags": [{"tag": t, "n": sum(t in (x or []) for x in people)} for t in recruit_insights.tag_library(db, proj.id)],
+            "exclusive": {k: sorted(v) for k, v in excl.items()}}
 
 
 @router.post("/projects/{pid}/recruiting/tags", status_code=201)
@@ -478,10 +481,34 @@ def delete_participants(pid: str, body: DeleteBody, ctx: Ctx = Depends(require_r
     return {"erased": len(people), "purged_interviews": purged}
 
 
+class EmailBody(BaseModel):
+    email: str = Field(max_length=200)
+
+
+@router.put("/participants/{part_id}/email")
+def put_email(part_id: str, body: EmailBody, ctx: Ctx = Depends(require_roles(*RECRUITERS)), db: Session = Depends(get_db)):
+    """Correct a participant's email address (the invitation is sent to it). Only the format is checked here; whether the domain can receive mail is checked when sending."""
+    from .. import invites
+    p = _own_participant(db, ctx, part_id)
+    email = body.email.strip().lower()
+    if email and not invites.EMAIL_RE.match(email):
+        raise HTTPException(422, "邮箱格式不对：" + (invites.check_email(email) or "请检查"))
+    p.email = email
+    audit(db, ctx.org_id, ctx.actor, "participant.email", p.id)
+    db.commit()
+    return participant_out(p)
+
+
 @router.put("/participants/{part_id}/tags")
 def put_tags(part_id: str, body: TagsBody, ctx: Ctx = Depends(require_roles(*RECRUITERS)), db: Session = Depends(get_db)):
     p = _own_participant(db, ctx, part_id)
-    p.tags = recruit.clean_tags(body.tags)
+    new = recruit.clean_tags(body.tags)
+    form = db.get(RecruitForm, p.project_id)
+    excl = recruit_insights.tag_exclusions(recruit_form.load(form.questions) if form else [])
+    fresh = [c for c in recruit_insights.tag_conflicts(new, excl) if c not in recruit_insights.tag_conflicts(p.tags or [], excl)]  # a conflict that was already there may stay while other tags change
+    if fresh:
+        raise HTTPException(422, f"“{fresh[0][0]}”和“{fresh[0][1]}”互斥，不能同时给一个人")
+    p.tags = new
     audit(db, ctx.org_id, ctx.actor, "participant.tags", p.id, count=len(p.tags))
     db.commit()
     return participant_out(p)

@@ -62,7 +62,7 @@ def participant_out(p: Participant, screener_count: int = 0, key_answers: str = 
     return {"id": p.id, "name": p.name, "email": p.email, "country": p.country, "language": p.language,
             "screening": p.screening, "anonymized": p.anonymized_at is not None, "screener": screener_count,
             "tags": p.tags or [], "screen_result": p.screen_result, "screen_reason": p.screen_reason, "source": p.source, "source_name": p.source_name, "key_answers": key_answers,
-            "code": p.code, "tier": tier, "tier_manual": bool(p.tier_override), "interview_kind": kind}
+            "code": p.code, "tier": tier, "tier_manual": bool(p.tier_override), "interview_kind": kind, "availability": [a for a in (p.availability or [])]}
 
 
 def get_project(db: Session, ctx: Ctx, pid: str) -> Project:

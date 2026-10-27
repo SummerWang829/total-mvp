@@ -265,3 +265,37 @@ def test_candidates_see_which_options_go_together_but_not_what_screens_out(clien
     q = client.post(f"/api/public/screen/{tok}/step", json={"answers": {}}).json()["question"]
     assert {o["id"]: o["excl"] for o in q["options"]}["z"] == ["a", "b", "c"] and "goto" not in str(q)
     assert client.post(f"/api/public/screen/{tok}/step", json={"answers": {"m": ["a", "z"]}}).status_code == 422  # the server refuses the pair even if a page sends it
+
+
+def test_the_last_question_offers_the_next_three_days_and_the_picks_are_kept_earliest_first(client, org):
+    from datetime import datetime, timedelta
+
+    from app import slots
+    from app.db import SessionLocal
+    from app.models import Participant
+    pid = org.project()
+    org.c.put(f"/api/projects/{pid}/recruiting/form", headers=org.h(), json={"source": "ai", "questions": [{"id": "age", "type": "number", "text": "年龄？", "rules": []}]})
+    tok = org.c.post(f"/api/projects/{pid}/recruiting/form/publish", headers=org.h()).json()["link"].split("t=")[1]
+    days = client.get(f"/api/public/screen/{tok}/slots").json()["days"]
+    assert 1 <= len(days) <= 3 and all(t["hhmm"] in ("10:00", "14:00", "16:00", "19:00") for d in days for t in d["times"])
+    picks = [days[-1]["times"][-1]["at"], days[0]["times"][0]["at"], "2020-01-01T00:00:00", "not a time", days[0]["times"][0]["at"]]
+    r = client.post(f"/api/public/screen/{tok}/submit", json={"answers": {"age": 30}, "name": "林小雨", "email": "lin@example.com", "country": "SG", "consent": True, "slots": picks})
+    assert r.status_code == 201
+    with SessionLocal() as db:
+        got = db.scalars(__import__("sqlalchemy").select(Participant).where(Participant.email == "lin@example.com")).one().availability
+    assert got == sorted({days[0]["times"][0]["at"], days[-1]["times"][-1]["at"]}) and len(got) == 2  # a made-up time, a past one and a repeat are dropped
+    org.c.post(f"/api/projects/{pid}/recruiting/form/close", headers=org.h())
+    assert client.get(f"/api/public/screen/{tok}/slots").status_code == 410
+
+
+def test_the_slot_grid_skips_what_is_too_soon_and_rolls_over_midnight_in_singapore():
+    from datetime import datetime
+
+    from app import slots
+    now = datetime(2026, 10, 27, 7, 30)  # 15:30 in Singapore: the 10:00, 14:00 and 16:00 slots (and 17:30 is the earliest allowed start) are gone
+    today = slots.offered(now)[0]
+    assert [t["hhmm"] for t in today["times"]] == ["19:00"] and today["date"] == "2026-10-27"
+    late = slots.offered(datetime(2026, 10, 27, 15, 30))  # 23:30 in Singapore: it is already the 27th's night, the next day starts the offer
+    assert late[0]["date"] == "2026-10-27" or late[0]["date"] == "2026-10-28"
+    assert slots.parse(["2026-10-27T11:00:00"], now) == [datetime(2026, 10, 27, 11, 0)]  # 19:00 in Singapore, on the grid
+    assert slots.parse(["2026-10-27T11:30:00"], now) == []  # not on the grid

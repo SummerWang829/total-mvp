@@ -114,3 +114,32 @@ def test_the_interview_list_carries_the_moderator_name_and_the_participant_tags_
     assert row["moderator_name"] == me["name"] and row["participant"]["tags"] == ["GBA"]
     seen = org.c.get(f"/api/projects/{pid}/interviews", headers=org.h("observer")).json()
     assert seen == [] or (seen[0]["moderator_name"] == "" and "tags" not in seen[0]["participant"])  # a client observer sees neither the team's names nor the tags
+
+
+def test_tags_exclude_each_other_only_by_the_questionnaires_structure(client, org):
+    from app import recruit_form, recruit_insights
+    qs = recruit_form.load([
+        {"id": "a", "type": "single", "text": "住哪？", "options": [{"id": "x", "text": "大湾区", "tag": "GBA"}, {"id": "y", "text": "非大湾区", "tag": "Non-GBA"}, {"id": "z", "text": "香港", "tag": "HK"}]},
+        {"id": "b", "type": "multi", "text": "渠道？", "options": [{"id": "p", "text": "线上", "tag": "Online", "excl": ["q"]}, {"id": "q", "text": "线下", "tag": "Offline", "excl": ["p"]}, {"id": "r", "text": "电视", "tag": "TV"}]},
+    ])
+    ex = recruit_insights.tag_exclusions(qs)
+    assert ex["GBA"] == {"Non-GBA", "HK"} and ex["Online"] == {"Offline"} and "TV" not in ex  # TV and Online may be together: nothing says they exclude each other
+    assert recruit_insights.tag_conflicts(["GBA", "Non-GBA", "TV", "Online"], ex) == [("GBA", "Non-GBA")]
+
+
+def test_the_server_refuses_a_new_conflicting_tag_but_lets_an_old_conflict_stay_while_other_tags_change(client, org):
+    pid, tok = publish(org)
+    lib = org.c.get(f"/api/projects/{pid}/recruiting/tags", headers=org.h()).json()
+    assert lib["exclusive"].get("大湾区") == ["非大湾区"]
+    who = add(org, pid, "甲")
+    ok = org.c.put(f"/api/participants/{who['id']}/tags", headers=org.h(), json={"tags": ["大湾区"]})
+    assert ok.status_code == 200
+    bad = org.c.put(f"/api/participants/{who['id']}/tags", headers=org.h(), json={"tags": ["大湾区", "非大湾区"]})
+    assert bad.status_code == 422 and "互斥" in bad.json()["detail"]
+    # a person who already has both (older data) can still get an unrelated tag
+    with SessionLocal() as db:
+        from app.models import Participant
+        db.get(Participant, who["id"]).tags = ["大湾区", "非大湾区"]
+        db.commit()
+    assert org.c.put(f"/api/participants/{who['id']}/tags", headers=org.h(), json={"tags": ["大湾区", "非大湾区", "老客户"]}).status_code == 200
+    assert org.c.put(f"/api/participants/{who['id']}/tags", headers=org.h(), json={"tags": ["大湾区"]}).status_code == 200  # and can fix it

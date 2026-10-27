@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import concept, groups, pretask, scheduling
+from .. import concept, groups, pretask, scheduling, mailer
 from ..audit import audit
 from ..config import settings
 from ..consent import consent_for
@@ -54,7 +54,7 @@ def public_config():
     from ..moderator.compliance import moderator_runs_locally  # where the AI writing tools run: the wizard tells people whether their text leaves our servers
     local = moderator_runs_locally()
     return {"allowed_countries": sorted(settings.allowed_countries), "languages": list(settings.languages), "asr": settings.asr_provider, "llm": settings.llm_provider, "video": bool(settings.livekit_url),
-            "ai_local": local, "ai_vendor": "" if local else settings.moderator_vendor.strip()}
+            "ai_local": local, "ai_vendor": "" if local else settings.moderator_vendor.strip(), "mail_ready": mailer.configured()}
 
 
 def _days(db: Session, itv) -> int:

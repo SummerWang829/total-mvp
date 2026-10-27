@@ -74,6 +74,8 @@ class Project(Base):
     closed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # retention clock starts here
     purge_hold_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # an admin kept the data longer: nothing is purged before this date
     methods: Mapped[str] = mapped_column(String(100), default="depth,group,async,listening")  # the research methods this project uses (app/methods.py), comma separated
+    outline_text: Mapped[str] = mapped_column(Text, default="")  # the interview outline being written on the 访谈 page (app/guide_text.py format)
+    outline_chat: Mapped[str] = mapped_column(Text, default="")  # the conversation with the AI that shaped it (JSON list of {role, text}); empty = none yet
     retention_days: Mapped[int] = mapped_column(Integer, default=180)  # chosen in the plan (30/60/120/180, never above the platform's); the consent text names it
     created_by: Mapped[str] = mapped_column(String(32))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
@@ -97,6 +99,7 @@ class Participant(Base):
     screen_version: Mapped[int] = mapped_column(Integer, default=0)  # the version of the project's rules that produced the result
     source: Mapped[str] = mapped_column(String(12), default="")  # how the person came in: link | import | manual | platform | pool | "" (not recorded)
     source_name: Mapped[str] = mapped_column(String(120), default="")  # for an imported list: its name and the day, e.g. "客户 A 名单 · 10-23"
+    availability: Mapped[list] = mapped_column(JSON, default=list)  # the interview times the candidate said suit them (ISO, UTC); the first one is the one to book, the rest are backups
     code: Mapped[str] = mapped_column(String(12), default="")  # the permanent number: Q-001 (questionnaire link) / X-001 (imported list) / M-001 (by hand) ... (app/participant_code.py)
     tier_override: Mapped[str] = mapped_column(String(8), default="")  # "" = decided by the quotas (app/recruit.py tiers); formal | backup = set by hand
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
@@ -112,6 +115,7 @@ class Interview(Base):
     title: Mapped[str] = mapped_column(String(200))
     language: Mapped[str] = mapped_column(String(10), default="en")
     scheduled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    duration_min: Mapped[int] = mapped_column(Integer, default=45)  # the length the invitation tells the participant to expect
     status: Mapped[str] = mapped_column(String(20), default="scheduled")  # scheduled | live | ended
     room_name: Mapped[str] = mapped_column(String(64), unique=True, default=lambda: "r_" + uuid.uuid4().hex)
     invite_hash: Mapped[str] = mapped_column(String(64), index=True)
@@ -779,7 +783,8 @@ class EmailOutbox(Base):
     __tablename__ = "email_outbox"
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
     org_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    kind: Mapped[str] = mapped_column(String(20))  # join | reset | forgot
+    kind: Mapped[str] = mapped_column(String(20))  # join | reset | forgot | invite | invite_update
+    ref_id: Mapped[str] = mapped_column(String(32), default="", index=True)  # for a participant's invitation: the interview it is about
     to_email: Mapped[str] = mapped_column(String(200))
     subject: Mapped[str] = mapped_column(String(200))
     body: Mapped[str] = mapped_column(Text, default="")

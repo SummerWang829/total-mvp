@@ -5,7 +5,7 @@ const SH_KIND = { depth: "深访", group: "座谈会", quant: "定量" };
 const SH_HUBS = [
   { id: "ov", n: "项目总览", tabs: [["home", "总览"], ["monitor", "执行监控"], ["pool", "洞察池"], ["members", "项目成员"]] },
   { id: "wz", n: "立项向导", tabs: [["wiz", "立项向导"]] },
-  { id: "ql", n: "定性", tabs: [["people", "甄别设定"], ["rooms", "直播间"], ["insights", "洞察与片段"], ["analysis", "编码与分析"], ["studies", "异步研究"]] },
+  { id: "ql", n: "定性", tabs: [["people", "甄别设定"], ["outline", "访谈"], ["rooms", "直播间"], ["insights", "洞察与片段"], ["studies", "异步研究"]] },
   { id: "qt", n: "定量", tabs: [["quant", "定量结果"]] },
   { id: "cr", n: "舆情采集", tabs: [["listening", "舆情监测"]] },
 ];
@@ -15,7 +15,7 @@ const shSetup = (p) => !!p.plan_status && p.plan_status !== "published";
 
 function shPageOk(page, p) {  // which pages this project has (the methods it uses decide)
   const M = p.methods || ["depth", "group", "async", "listening"], live = M.includes("depth") || M.includes("group");
-  return { rooms: live, studies: M.includes("async"), quant: M.includes("quant"), listening: M.includes("listening") }[page] ?? true;
+  return { outline: live, rooms: live, studies: M.includes("async"), quant: M.includes("quant"), listening: M.includes("listening") }[page] ?? true;
 }
 const shNumber = (p) => { const all = (PROJECTS || []).slice().sort((a, b) => a.created_at.localeCompare(b.created_at)), i = all.findIndex((x) => x.id === p.id); return `${(p.created_at || "").slice(0, 4)}P${String((i < 0 ? all.length : i) + 1).padStart(3, "0")}`; };
 const shStatus = (p) => (shSetup(p) ? [{ draft: "草稿", review: "审查中", approved: "待发布" }[p.plan_status] || "立项中", "o"] : p.closed_at ? ["已结项", "g"] : p.editing ? ["修改中", "o"] : ["进行中", ""]);
@@ -73,11 +73,10 @@ function shCtx(p, active) {
   const modes = [["定量", "quant"], ["深访", "depth"], ["座谈会", "group"], ["舆情", "listening"]].filter(([, m]) => (p.methods || []).includes(m));
   const hi = { quant: ["quant"], listening: ["listening"], pool: [], home: [], monitor: [] }[active] || (hub === "ql" ? (qm === "group" ? ["group"] : qm === "depth" ? ["depth"] : ["depth", "group"]) : []);
   const close = STAFF() && !shSetup(p) ? (p.closed_at ? `<button class="s" id="reopen">重新打开</button>` : `<button class="s" id="closeproj" title="从结项那天起 ${p.retention_days} 天，受访者数据会自动删除">结项</button>`) : "";
-  return `<div class="ctx"><div class="ctx-row"><span class="ctx-no">${shNumber(p)}</span><span class="ctx-name">${esc(p.name)}</span><span class="pill ${stCls}">${stLabel}</span>
-    ${subs.length > 1 && !shSetup(p) ? `<label class="ctx-sub"><span>子项目</span><select id="subsel" aria-label="切换子项目"><option value="all" ${sub ? "" : "selected"}>总项目（全部 ${subs.length} 个）</option>${subs.map((s, i) => `<option value="${s.id}" ${sub && sub.id === s.id ? "selected" : ""}>S${i + 1} ${esc(s.name)}</option>`).join("")}</select></label>` : ""}
-    <span class="sp"></span>${close}</div>
-    ${shSetup(p) ? "" : `<div class="track"><span class="track-cap">${shDesignName(p)}</span><ol aria-label="研究路径">${kinds.map((k, i) => `<li class="${idxOn >= 0 && i < idxOn ? "done" : ""} ${i === idxOn ? "on" : ""}" ${i === idxOn ? 'aria-current="step"' : ""}><i>${idxOn >= 0 && i < idxOn ? "✓" : i + 1}</i>${SH_KIND[k]}</li>`).join("")}</ol>
-    <div class="ctx-modes" aria-label="访问方式">${modes.map(([n, m]) => `<span class="${hi.includes(m) ? "on" : ""}">${n}</span>`).join("")}</div></div>`}</div>`;
+  const sel = subs.length > 1 && !shSetup(p) ? `<label class="ctx-sub"><span>子项目</span><select id="subsel" aria-label="切换子项目"><option value="all" ${sub ? "" : "selected"}>总项目（全部 ${subs.length} 个）</option>${subs.map((s, i) => `<option value="${s.id}" ${sub && sub.id === s.id ? "selected" : ""}>S${i + 1} ${esc(s.name)}</option>`).join("")}</select></label>` : "";
+  const track = shSetup(p) ? "" : `<div class="track"><span class="track-cap">${shDesignName(p)}</span><ol aria-label="研究路径">${kinds.map((k, i) => `<li class="${idxOn >= 0 && i < idxOn ? "done" : ""} ${i === idxOn ? "on" : ""}" ${i === idxOn ? 'aria-current="step"' : ""}><i>${idxOn >= 0 && i < idxOn ? "✓" : i + 1}</i>${SH_KIND[k]}</li>`).join("")}</ol></div>`;
+  const modesHtml = shSetup(p) ? "" : `<div class="ctx-modes" aria-label="访问方式">${modes.map(([n, m]) => `<span class="${hi.includes(m) ? "on" : ""}">${n}</span>`).join("")}</div>`;
+  return `<div class="ctx"><div class="ctx-row"><span class="ctx-no">${shNumber(p)}</span><span class="ctx-name">${esc(p.name)}</span><span class="pill ${stCls}">${stLabel}</span>${sel}${track}<span class="sp"></span>${modesHtml}${close}</div></div>`;
 }
 
 /** 页签：同一类页面放在一排（原版的 hubtabs）。 */

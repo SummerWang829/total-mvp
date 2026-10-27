@@ -206,6 +206,56 @@ def rooms_section(br, D):
     ctx.close()
 
 
+def outline_section(br, D):
+    """The 访谈 page: the tab sits between 甄别设定 and 直播间 (and 编码与分析 is gone), left chat + right outline, edit / add / delete a question in place, settings, text, and the trial run."""
+    adm, pid = D["tok"]["admin"], D["pid"]
+    ctx, pg, errs = new_page(br, 1280, token=adm)
+    pg.goto(B + f"/#/p/{pid}/outline"); pg.wait_for_selector("#olws")
+    tabs = [x.strip() for x in pg.locator("main .hubtabs.pin a").all_inner_texts()]
+    ok(tabs[:3] == ["甄别设定", "访谈", "直播间"] and "编码与分析" not in tabs, f"[outline] the tabs are 甄别设定, 访谈, 直播间 and there is no 编码与分析 (got {tabs})")
+    ok(pg.locator(".hubtabs.pin a.on").inner_text().strip() == "访谈", "[outline] 访谈 is the selected tab")
+    ok(pg.locator("#olchat").count() == 1 and pg.locator("#olright").count() == 1 and pg.locator("#olsplit").count() == 1, "[outline] chat on the left, outline on the right, a divider between")
+    pg.goto(B + "/#/projects"); pg.wait_for_selector(".card")
+    ok(not pg.evaluate("document.querySelector('.app').classList.contains('rail')") and pg.evaluate("document.querySelector('nav.side').getBoundingClientRect().width") >= 200, "[outline] outside a project (全部项目) the left menu stays wide")
+    pg.goto(B + f"/#/p/{pid}/outline"); pg.wait_for_selector("#olws")
+    ok(pg.locator("#ollib").is_checked() and "AI 运行在我们自己的服务器上" in pg.inner_text(".rf-inp"), "[outline] the research-library box is ticked and the AI notice is next to the input")
+    audit_page(pg, "outline empty/desktop", errs)
+    pg.click("[data-chip]"); pg.wait_for_selector(".ol-q")
+    n0 = pg.locator(".ol-q").count()
+    ok(n0 >= 3 and pg.locator(".ol-bar i").count() >= 3 and "分钟" in pg.inner_text("#olout"), "[outline] asking the AI to draft fills the outline with parts, questions and the time bar")
+    ok(pg.locator("#olchat .rf-me").count() == 1, "[outline] the conversation keeps what was asked")
+    pg.locator("[data-ed]").first.click(); pg.fill(".olq", "最近一次买这类产品，你是怎么挑的？"); pg.keyboard.press("Enter")
+    ok(wait_until(lambda: "怎么挑的" in pg.inner_text("#olout"), 5), "[outline] a question can be edited in place")
+    pg.locator("[data-add]").first.click(); pg.fill(".olq", "哪一步让你最犹豫？"); pg.click("[data-addok]")
+    ok(wait_until(lambda: pg.locator(".ol-q").count() == n0 + 1, 5), "[outline] a question can be added to a part")
+    pg.locator("[data-rm]").last.click()
+    ok(wait_until(lambda: pg.locator(".ol-q").count() == n0, 5), "[outline] a question can be deleted")
+    audit_page(pg, "outline drafted/desktop", errs)
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "outline_1280.png"))
+    pg.click("[data-seg=settings]"); pg.fill("#olset-min", "30"); pg.locator("#olset-min").dispatch_event("change")
+    pg.click("[data-seg=outline]")
+    ok(wait_until(lambda: "30 分钟" in pg.inner_text("#olout"), 5), "[outline] the length set in 设置 shows in the outline")
+    pg.click("[data-seg=text]"); ok("目标" in pg.input_value("#oltext") and "时长: 30" in pg.input_value("#oltext"), "[outline] the 文字 view holds the whole outline text")
+    pg.click("[data-seg=test]"); pg.wait_for_selector(".ol-dev")
+    first = pg.locator(".ol-bd > b").first.inner_text()
+    pg.click("[data-step='1']")
+    ok(pg.locator(".ol-bd > b").first.inner_text() != first and "已用" in pg.inner_text(".ol-bar2"), "[outline] the trial run walks through the questions with the time used")
+    audit_page(pg, "outline test/host/desktop", errs)
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "outline_test_1280.png"))
+    pg.click("[data-view=part]"); pg.wait_for_selector(".ol-pt textarea")
+    ok(pg.locator(".ol-pt textarea").count() == 1, "[outline] the participant's side shows one question and a box to answer")
+    audit_page(pg, "outline test/participant/desktop", errs)
+    pg.reload(); pg.wait_for_selector("#olws")
+    pg.click("[data-seg=outline]"); ok(pg.locator(".ol-q").count() == n0, "[outline] the outline is still there after a reload")
+    pg.goto(B + f"/#/p/{pid}/analysis"); ok(wait_until(lambda: pg.evaluate("location.hash").endswith("/insights"), 8), "[outline] the old coding page link goes to the insights page")
+    ctx.close()
+    ctx, pg, errs = new_page(br, 390, token=adm)
+    pg.goto(B + f"/#/p/{pid}/outline"); pg.wait_for_selector("#olws")
+    audit_page(pg, "outline/phone", errs)
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "outline_390.png"))
+    ctx.close()
+
+
 def group_section(br, D):
     """Focus group (Sprint 2): a session with several participants, a roster, and per-seat admit in the room."""
     adm, mod, pid = D["tok"]["admin"], D["tok"]["moderator"], D["pid"]
@@ -566,6 +616,13 @@ def recruit_section(br, D):
     pg2.wait_for_selector("textarea"); pg2.click("#scrnext")
     ok(pg2.locator("#screrr").is_visible(), "[screen] a required question cannot be skipped")
     pg2.fill("textarea", "价格和成分"); pg2.click("#scrnext")
+    pg2.wait_for_selector("form#sf")  # the last question, added by the system: which interview times suit you
+    audit_page(pg2, "screening page times/phone", errs2)
+    pg2.click("#sf button.p")
+    ok(pg2.locator("#serr").is_visible() and pg2.locator("form#cf").count() == 0, "[screen] the times question cannot be skipped without choosing a time or 'none of these'")
+    pg2.locator(".slot").first.click(); pg2.locator(".slot").nth(1).click()
+    ok("2" in pg2.inner_text("#sc") and pg2.locator(".slot.on").count() == 2, "[screen] picked times are marked and counted")
+    pg2.click("#sf button.p")
     pg2.wait_for_selector("form#cf")
     audit_page(pg2, "screening page contact/phone", errs2)
     pg2.fill("#cf [name=name]", "QA候选人"); pg2.fill("#cf [name=email]", "qa-candidate@example.com")
@@ -611,6 +668,10 @@ def recruit_section(br, D):
     audit_page(pg, "recruiting html link/desktop", errs)
     pg.click("#ptab-list-t"); pg.wait_for_selector("#quotas")
     ok(pg.locator("#rules").count() == 0 and pg.locator("#quotas").count() == 1, "[recruit] eligibility rules are gone from the page (the questionnaire replaces them); quotas stay")
+    ok(pg.locator(".rd-top #rdquotas").count() == 1 and pg.locator(".rd-top > .card").count() == 3, "[recruit] the quota progress sits in the top row beside the questionnaire link and the key numbers")
+    top_h = pg.evaluate("(() => { const c = document.querySelector('.ctx').getBoundingClientRect().height, t = document.querySelector('main>.hubtabs.pin').getBoundingClientRect().height, s = document.querySelector('.hubtabs.sub').getBoundingClientRect().height; return [c, t, s]; })()")
+    ok(top_h[0] <= 60 and top_h[1] <= 46 and top_h[2] <= 40, f"[recruit] the project bar and the two tab rows are compact (bar, tabs, sub tabs = {top_h})")
+    ok(pg.evaluate("document.querySelector('.app').classList.contains('rail')") and pg.evaluate("document.querySelector('nav.side').getBoundingClientRect().width") <= 92, "[recruit] inside a project the left menu is the narrow icon rail")
     call(f"/projects/{pid}/recruiting/rules", {"rules": [{"field": "country", "op": "in", "value": "SG", "effect": "require"}]}, rs, method="PUT")  # a project that already had a rule keeps it
     pg.reload(); pg.wait_for_selector("#rules")
     audit_page(pg, "recruiting/desktop", errs)
@@ -682,11 +743,35 @@ def recruit_section(br, D):
     ok(wait_until(lambda: pg.is_visible("#libcf"), 5) and "标签库" in pg.inner_text("#libcf"), "[recruit] removing a library tag asks first")
     pg.click("#libcf [data-y]")
     ok(wait_until(lambda: pg.locator(".msel[data-key=tag] .mso", has_text="QA新标签").count() == 0, 8), "[recruit] a removed tag leaves the library")
-    pg.locator("tr", has_text="林小雨QA").locator("[data-inv]").click(); pg.wait_for_selector("[name=title]")
-    pg.fill("[name=title]", "QA 深访"); pg.click("#f button.p")
+    row = pg.locator("tr", has_text="林小雨QA")
+    ok(row.locator("[data-inv]").inner_text().strip() == "发送邀请函" and row.locator(".ity").inner_text().strip() == "未邀请", "[recruit] a person who was not invited shows 'not invited' and the button 发送邀请函")
+    ok(pg.locator(".ptbl th", has_text="问卷答案").count() == 1 and pg.locator(".ptbl th", has_text="关键回答").count() == 0, "[recruit] the answers have a column of their own (and the key answers column is gone)")
+    row.locator("[data-inv]").click(); pg.wait_for_selector(".invdlg #mk")
+    ok(pg.locator(".invdlg [name=title]").count() == 0 and "邀请函" in pg.inner_text(".invdlg h2"), "[recruit] the invitation window has no session name field")
+    ok(pg.locator(".invdlg #em").count() == 1 and pg.locator(".invdlg #du").input_value() == "45" and pg.locator(".invdlg #sd").inner_text().strip() == "发送", "[recruit] the window has the participant's email, the expected length (45 minutes) and a 发送 button")
+    pg.fill("#du", "75"); ok(pg.locator("#dq button.on").count() == 0, "[recruit] the length can be typed (75 minutes is not one of the quick buttons)")
+    pg.fill("#em", "abc")
+    ok(pg.locator("#sd").is_disabled() and "缺少 @" in pg.inner_text("#emsg"), "[recruit] a wrong email is flagged as you type and the send button waits")
+    pg.fill("#em", "qa1@example.com"); ok(pg.locator("#sd").is_enabled() and "格式正确" in pg.inner_text("#emsg"), "[recruit] a right-looking email is accepted")
+    pg.evaluate("document.querySelector('#plist').dataset.mark = 'same-page'")
+    pg.click("#sd")  # no mail service in the tests: the session is made, a notice explains, and the link is shown so it is not lost
     pg.wait_for_selector("code.copy")
-    ok("/join.html?t=" in pg.inner_text("code.copy") and pg.locator("code.copy").count() == 1, "[recruit] inviting one person from their row produces the link")
-    pg.click("#cx"); pg.goto(B + f"/#/p/{pid}/people"); pg.wait_for_selector("#quotas")  # (closing the invitation opens the sessions page; back to the list)
+    ok("/join.html?t=" in pg.inner_text("code.copy") and pg.locator(".ntc.bad").count() == 1 and "邮件没有发出去" in pg.inner_text(".ntc"), "[recruit] sending without a mail service still creates the session, shows the link and a page notice")
+    pg.click("#cx"); pg.wait_for_selector("tr:has-text('林小雨QA') [data-upd]")
+    row = pg.locator("tr", has_text="林小雨QA")
+    ok(row.locator("[data-upd]").inner_text().strip() == "更新邀请函" and row.locator(".ity").inner_text().strip() == "真人访谈" and pg.evaluate("document.querySelector('#plist').dataset.mark") == "same-page", "[recruit] after inviting, the button says 更新邀请函 and the badge says 真人访谈, updated in place")
+    row.locator("[data-upd]").click(); pg.wait_for_selector(".invdlg #mk")
+    ok(pg.locator(".invdlg #mk").inner_text().strip() == "保存" and pg.locator(".invdlg #sd").inner_text().strip() == "发送更新" and pg.locator(".invdlg #du").input_value() == "75", "[recruit] updating the invitation shows what was set (75 minutes) with 保存 and 发送更新")
+    pg.fill("#du", "60"); pg.click("#mk"); pg.wait_for_selector(".invdlg", state="detached")
+    ok(wait_until(lambda: pg.locator(".ntc, .toast").count() >= 0, 3), "[recruit] saving closes the window")
+    pg.click("#ptab-list-t") if pg.locator("#ptab-list").is_hidden() else None
+    # the filter capsules, the tag any / all switch
+    ok(pg.locator(".msb.cap").count() >= 5 and pg.evaluate("getComputedStyle(document.querySelector('.msb.cap')).textAlign") != "left", "[recruit] the filters are capsule buttons")
+    pg.click(".msel[data-key=tag] .msb"); pg.wait_for_selector(".msel[data-key=tag] .mode2")
+    ok(pg.locator(".msel[data-key=tag] [data-tm=any].on").count() == 1 and pg.locator(".msel[data-key=tag] [data-tm=all]").inner_text().strip() == "同时满足", "[recruit] the tag filter offers 满足任一 / 同时满足, 满足任一 first")
+    sw = pg.evaluate("(() => { const b = document.querySelector('.msel[data-key=tag] .mode2 button'); return [parseFloat(getComputedStyle(b).fontSize), b.getBoundingClientRect().height, b.scrollHeight <= b.clientHeight + 1]; })()")
+    ok(sw[0] >= 12 and sw[0] <= 13 and 24 <= sw[1] <= 30 and sw[2], f"[recruit] the switch is small (12px text, under 30px tall) and its text fits (got {sw})")
+    pg.mouse.click(5, 300)
     pg.locator("[data-sec=quota] .rd-arr").click() if pg.locator("#rdb-quota").is_hidden() else None
     pg.click("#quotas"); pg.wait_for_selector("#addq"); pg.click("#addq")
     qrow = pg.locator(".qrow").last
@@ -1458,7 +1543,7 @@ def run():
     D = seed()
     mi, pid = D["main"]["id"], D["pid"]
     proj = [f"#/p/{pid}/rooms", f"#/p/{pid}/insights"]
-    staff_routes = [f"#/projects", f"#/p/{pid}/home", f"#/p/{pid}/people", f"#/p/{pid}/analysis", f"#/p/{pid}/members", f"#/p/{pid}/studies", f"#/p/{pid}/listening", f"#/p/{pid}/pool", "#/repo"] + proj + [f"#/i/{mi}", f"#/i/{mi}/insights", f"#/i/{mi}/clips"]
+    staff_routes = [f"#/projects", f"#/p/{pid}/home", f"#/p/{pid}/people", f"#/p/{pid}/outline", f"#/p/{pid}/members", f"#/p/{pid}/studies", f"#/p/{pid}/listening", f"#/p/{pid}/pool", "#/repo"] + proj + [f"#/i/{mi}", f"#/i/{mi}/insights", f"#/i/{mi}/clips"]
     role_routes = {
         "demo_admin": ["#/projects", f"#/p/{D['demo_pid']}/home", "#/demo"],
         "admin": staff_routes + ["#/team", "#/audit", "#/retention"],
@@ -1757,6 +1842,7 @@ def run():
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "timeslot_section": timeslot_section(br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "marks_section": marks_section(br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "group_section": group_section(br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "outline_section": outline_section(br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "rooms_section": rooms_section(br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "members_section": members_section(br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "studies_section": studies_section(br, D)

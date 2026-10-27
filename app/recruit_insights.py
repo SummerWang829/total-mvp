@@ -159,6 +159,38 @@ def summarize(chat: ModeratorChatProvider | None, dash: dict) -> str:
         raise recruit_form.FormError("AI 这次没有给出可用的总结，请再试一次") from e
 
 
+def tag_exclusions(questions: list[recruit_form.Question]) -> dict[str, set[str]]:
+    """Which tags cannot be on the same person, from the questionnaire's structure only (never from what the names look like):
+    the tags of one single-choice question exclude each other, and so do the tags of two options of a multi-choice question that the team linked as mutually exclusive."""
+    out: dict[str, set[str]] = {}
+
+    def link(a: str, b: str) -> None:
+        if a and b and a != b:
+            out.setdefault(a, set()).add(b)
+            out.setdefault(b, set()).add(a)
+
+    for q in questions:
+        if q.type == "single":
+            tags = [o.tag for o in q.options if o.tag]
+            for i, a in enumerate(tags):
+                for b in tags[i + 1:]:
+                    link(a, b)
+        elif q.type == "multi":
+            by_id = {o.id: o for o in q.options}
+            for o in q.options:
+                for other_id in o.excl:
+                    other = by_id.get(other_id)
+                    if other is not None:
+                        link(o.tag, other.tag)
+    return out
+
+
+def tag_conflicts(tags: list[str], exclusions: dict[str, set[str]]) -> list[tuple[str, str]]:
+    """The pairs among `tags` that exclude each other."""
+    mine = list(dict.fromkeys(tags))
+    return [(a, b) for i, a in enumerate(mine) for b in mine[i + 1:] if b in exclusions.get(a, ())]
+
+
 def tag_library(db: Session, project_id: str) -> list[str]:
     """The project's tag library: the questionnaire's tags, the ones added by hand and the ones already on people, minus those taken out."""
     form = db.get(RecruitForm, project_id)

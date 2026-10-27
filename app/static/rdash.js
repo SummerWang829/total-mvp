@@ -34,20 +34,20 @@ async function rdBuild(p, rec) {
       <td>${rdCell(r.qualified, "g")}</td><td>${rdCell(r.out, "r")}</td><td><span class="rd-chip">差 ${r.gap} 点</span></td></tr>`).join("")}</tbody></table><div class="rd-tip" id="rdtip" role="tooltip" hidden></div>
       <div class="sm mut" style="margin-top:6px">差异越大，说明这个条件越能区分“合格”和“不合格”；也能看出投放该往哪类人群去。鼠标移到题目上（手机上点一下）可以看完整内容。被筛掉的人只统计选了哪个选项的人数，不保存个人信息。</div>`
     : `<p class="sm mut" style="margin:0">还没有足够的数据：有人答完问卷后，这里会对比合格和被筛掉的人在每题上的答案。</p>`;
-  const quotaSum = (qs) => `配额 ${qs.length ? qs.map((q) => `${esc(q.name)} ${q.have}/${q.target}${q.over ? `（溢出 ${q.over}）` : ""}`).join("、") : "未设置"} · 合格者共同点：${d.traits.qualified.length ? esc(d.traits.qualified[0]) : "暂无"}`;
-  const updateQuotas = (qs) => { const box = $("#rdquotas"); if (box) box.innerHTML = qs.length ? qs.map(rdQuota).join("") : `<p class="sm mut" style="margin:0">还没有配额。例如“新加坡 10 人”“女性 5 人”。</p>`; const sm = $("[data-sec=quota] .rd-sum"); if (sm) sm.innerHTML = quotaSum(qs); };
+  const traitSum = () => `合格者共同点：${d.traits.qualified.length ? esc(d.traits.qualified[0]) : "暂无"}`;
+  const updateQuotas = (qs) => { const box = $("#rdquotas"); if (box) box.innerHTML = qs.length ? qs.map(rdQuota).join("") : `<p class="sm mut" style="margin:0">还没有配额。例如“新加坡 10 人”“女性 5 人”。</p>`; };
   const opened = rdOpenSet();
   const html = `<div class="rd">
     <div class="rd-row rd-top"><div class="card"><h3>问卷发布 ${live ? `<span class="tag ok">发布中</span>` : f.link ? `<span class="tag">已停止</span>` : ""}</h3>${publish}</div>
-      <div class="card"><h3>一眼看数据</h3><div class="rd-kpis">${kpi(k.started, "开始作答")}${kpi(k.finished, "完成甄别（甄别人数）")}${kpi(k.qualified, "合格（问卷）", "ok")}${kpi(k.pass_rate + "%", "通过率（合格 ÷ 完成）", "warn")}${kpi(k.external, "外部名单导入（直接可邀请）")}${kpi(k.usable, `可邀请总数 · 已邀请 ${k.invited} · 完成访谈 ${k.done}`)}</div></div></div>
+      <div class="card"><h3>一眼看数据</h3><div class="rd-kpis">${kpi(k.started, "开始作答")}${kpi(k.finished, "完成甄别（甄别人数）")}${kpi(k.qualified, "合格（问卷）", "ok")}${kpi(k.pass_rate + "%", "通过率（合格 ÷ 完成）", "warn")}${kpi(k.external, "外部名单导入（直接可邀请）")}${kpi(k.usable, `可邀请总数 · 已邀请 ${k.invited} · 完成访谈 ${k.done}`)}</div></div>
+      <div class="card"><h3>配额进度 <button class="lnk" id="quotas" type="button">编辑配额</button></h3><div id="rdquotas">${quotas}</div><div class="rd-legend"><span class="a">正式</span><span class="b">备份（超出目标的部分）</span></div>${rules}</div></div>
     <div class="rd-all"><button type="button" class="s" id="rdall"></button></div>
     ${rdSection("funnel", "漏斗与来源", `漏斗 开始 ${k.started} → 完成 ${k.finished} → 合格 ${k.qualified} → 已邀请 ${k.invited} · 来源 ${d.sources.length ? d.sources.map((x) => `${esc(x.name)} ${x.n}`).join("、") : "暂无"} · 被筛掉 ${d.out_by.reduce((s, x) => s + x.n, 0)} 人`,
       `<div class="rd-row rd-three"><div class="card"><h3>漏斗：从开始到访谈</h3>${d.funnel.map((x, i) => rdBar(x.label, x.n, maxF, i === 3 ? "s" : i >= 2 ? "g" : "", i === 1 && k.started ? ` · ${rdPct(x.n, k.started)}%` : "")).join("")}</div>
       <div class="card"><h3>人从哪里来（按来源名称）</h3>${d.sources.length ? d.sources.map((x, i) => rdBar(x.name, x.n, maxS, ["", "s", "y", "g", "r"][i % 5])).join("") : `<p class="sm mut" style="margin:0">还没有受访者。</p>`}</div>
       <div class="card"><h3>人在哪一题被筛掉</h3>${d.out_by.length ? d.out_by.map((x) => rdBar(x.label, x.n, maxO, "r", " 人")).join("") + `<div class="sm mut">卡得最多的一题 = 条件最严的一题，可以回去看这题是否太严。</div>` : `<p class="sm mut" style="margin:0">还没有人被筛掉。</p>`}</div></div>`, opened.has("funnel"))}
-    ${rdSection("quota", "配额与人群画像", quotaSum(rec.quotas),
-      `<div class="rd-row rd-two"><div class="card"><h3>配额进度</h3><div id="rdquotas">${quotas}</div><div class="rd-legend"><span class="a">正式</span><span class="b">备份（超出目标的部分）</span></div><div class="sm" style="margin-top:6px"><button class="s" id="quotas" type="button">编辑配额</button></div>${rules}</div>
-      <div class="card"><h3>合格的人有什么共同点</h3><div>${traits(d.traits.qualified, "g", "有 3 个以上的人答完后才能看出共同点。")}</div>
+    ${rdSection("quota", "人群画像", traitSum(),
+      `<div class="rd-row rd-two"><div class="card"><h3>合格的人有什么共同点</h3><div>${traits(d.traits.qualified, "g", "有 3 个以上的人答完后才能看出共同点。")}</div>
         <div class="sm" style="margin-top:8px">被筛掉的人的共同点：</div><div>${traits(d.traits.out, "r", "暂时看不出。")}</div>
         <div style="margin-top:8px"><button class="p" type="button" id="rdsum">让 AI 总结人群画像</button> <span class="sm mut">只发统计数字，不含个人信息${CONFIG && !CONFIG.ai_local ? `；会发送给 AI 服务商${CONFIG.ai_vendor ? `“${esc(CONFIG.ai_vendor)}”` : ""}` : ""}</span></div><div class="note" id="rdsumout" role="status" aria-live="polite" hidden></div></div></div>`, opened.has("quota"))}
     ${rdSection("compare", "合格 vs 被筛掉：每题的答案分布对比", d.compare.length ? `共 ${d.compare.length} 项，差异最大 ${Math.max(...d.compare.map((r) => r.gap))} 点` : "暂无数据", `<div class="card">${cmp}</div>`, opened.has("compare"))}</div>`;

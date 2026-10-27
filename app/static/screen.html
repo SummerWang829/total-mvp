@@ -16,11 +16,13 @@ const T = {
   en: { title: "A short questionnaire", intro: "{org} would like to know if this research is a good fit for you. It takes a few minutes.", start: "Start",
         notice: "These questions help decide whether this research is a good fit for you. If it is, we ask for your name and e-mail so the research team can invite you. If it is not, nothing about you is kept. If you take part, your details are kept until {days} days after the research project ends, then deleted. This is run by TOTAL for {org}. Questions, or to ask us to delete your data: {dpo}.",
         outT: "Thank you", out: "Thank you for your time. This research is not the right fit for you this time.", okT: "You may be a good fit", ok: "Please tell us how to reach you. The research team will contact you if you are invited.",
+        slotsT: "Last question: which times suit you for the interview?", slotsHint: "Pick as many as you like. These are the next three days, in Singapore time (SGT).", next: "Next", none: "None of these suit me, please contact me", days: ["Today", "Tomorrow", "In two days"], wk: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"], picked: "{n} chosen", pick1: "Please choose at least one time, or tick the box below.",
         name: "Your name", email: "Your e-mail", country: "Country or region", agree: "I have read the notice above and agree that you keep my details for this purpose.", submit: "Submit", doneT: "Thank you!", done: "We have your details. You can close this page.",
         closed: "This questionnaire is closed. Thank you!", bad: "This link is not valid", err: "Could not send. Please check the form and try again.", need: "Please fill in your name and e-mail and tick the box." },
   zh: { title: "一份简短的问卷", intro: "{org} 想了解这项研究是否适合你，大约需要几分钟。", start: "开始",
         notice: "这些问题用来判断这项研究是否适合你。适合的话，我们会请你留下姓名和邮箱，方便研究团队邀请你；不适合的话，不会保留任何关于你的信息。如果你参加，你的信息会保存到研究项目结束后 {days} 天，然后删除。本问卷由星桐代 {org} 进行。有疑问或要求删除数据，请联系 {dpo}。",
         outT: "谢谢你", out: "谢谢你抽时间填写。这次的研究暂时不太适合你。", okT: "你可能很合适", ok: "请告诉我们怎么联系你。如果邀请你参加，研究团队会联系你。",
+        slotsT: "最后一题：哪些时间方便接受访谈？", slotsHint: "可以多选。选项是未来 3 天内的时间，均为新加坡时间（SGT）。", next: "下一步", none: "这些时间都不方便，请再联系我", days: ["今天", "明天", "后天"], wk: ["周一", "周二", "周三", "周四", "周五", "周六", "周日"], picked: "已选 {n} 个", pick1: "请至少选一个时间，或勾选下面的“都不方便”。",
         name: "你的姓名", email: "你的邮箱", country: "所在国家或地区", agree: "我已阅读上面的说明，同意你们为此目的保存我的信息。", submit: "提交", doneT: "谢谢！", done: "我们已经收到你的信息，可以关闭页面了。",
         closed: "这份问卷已经关闭，谢谢！", bad: "这个链接无效", err: "没有发送成功，请检查后再试一次。", need: "请填写姓名和邮箱，并勾选同意。" },
 };
@@ -42,20 +44,39 @@ const fill = (s, info) => s.replace("{org}", info.org).replace("{days}", info.re
   $("#scrgo").onclick = () => {
     $("#scrgo").parentElement.remove();
     const host = $("#q");
+    const showContact = (answers, picks) => {
+      host.innerHTML = `<h2>${x.okT}</h2><p>${x.ok}</p><form id="cf" class="stack"><label class="f"><span>${x.name}</span><input name="name" maxlength="100" autocomplete="name" required></label>
+        <label class="f"><span>${x.email}</span><input name="email" type="email" maxlength="200" autocomplete="email" required></label>
+        <label class="f"><span>${x.country}</span><select name="country">${info.countries.map((c) => `<option value="${c}">${esc(COUNTRY[c] || c)}</option>`).join("")}</select></label>
+        <label class="chk"><input type="checkbox" name="consent" required><span>${x.agree}</span></label><div class="note" id="cerr" role="alert" hidden></div><div><button class="p" type="submit">${x.submit}</button></div></form>`;
+      $("#cf").onsubmit = async (e) => {
+        e.preventDefault(); const f = e.target, err = $("#cerr");
+        if (!f.consent.checked || !f.name.value.trim() || !f.email.value.trim()) { err.textContent = x.need; err.hidden = false; return; }
+        try { await post("/submit", { answers, name: f.name.value, email: f.email.value, country: f.country.value, consent: true, slots: picks }); host.innerHTML = `<h2>${x.doneT}</h2><p>${x.done}</p>`; }
+        catch (er) { err.textContent = er.status === 403 || er.status === 422 || er.status === 429 ? er.message : x.err; err.hidden = false; }
+      };
+    };
+    const showSlots = async (answers) => {   // the last question is added by the system: which interview times suit you
+      let days = [];
+      try { days = (await (await fetch(`/api/public/screen/${enc}/slots`)).json()).days || []; } catch { days = []; }
+      if (!days.length) { showContact(answers, []); return; }
+      const names = x.days, ofDay = (d) => { const [, m, dd] = d.date.split("-"); return `${names[days.indexOf(d)] || ""} ${Number(m)}/${Number(dd)} ${x.wk[d.weekday]}`; };
+      host.innerHTML = `<h2>${x.slotsT}</h2><p class="sm">${x.slotsHint}</p><form id="sf" class="stack">${days.map((d) => `<fieldset class="slotday"><legend>${esc(ofDay(d))}</legend><div class="slots">${d.times.map((tm) => `<label class="slot"><input type="checkbox" name="s" value="${esc(tm.at)}"><span>${tm.hhmm}</span></label>`).join("")}</div></fieldset>`).join("")}
+        <label class="chk"><input type="checkbox" name="none"><span>${x.none}</span></label><div class="sm" id="sc" role="status">&nbsp;</div><div class="note" id="serr" role="alert" hidden></div><div><button class="p" type="submit">${x.next}</button></div></form>`;
+      const f = $("#sf"), count = () => { const n = f.querySelectorAll("input[name=s]:checked").length; $("#sc").textContent = n ? x.picked.replace("{n}", n) : "\u00a0"; };
+      f.querySelectorAll("input[name=s]").forEach((c) => (c.onchange = () => { if (c.checked) f.none.checked = false; c.closest(".slot").classList.toggle("on", c.checked); count(); }));
+      f.none.onchange = () => { if (f.none.checked) f.querySelectorAll("input[name=s]").forEach((c) => { c.checked = false; c.closest(".slot").classList.remove("on"); }); count(); };
+      f.onsubmit = (e) => {
+        e.preventDefault(); const picks = [...f.querySelectorAll("input[name=s]:checked")].map((c) => c.value);
+        if (!picks.length && !f.none.checked) { const er = $("#serr"); er.textContent = x.pick1; er.hidden = false; return; }
+        showContact(answers, picks);
+      };
+    };
     const runner = scrRunner(host, {
       lang, step: (answers) => post("/step", { answers }).catch((e) => { throw new Error(e.status === 410 ? x.closed : e.message); }),
       onEnd: (result, answers) => {
         if (result === "out") { host.innerHTML = `<h2>${x.outT}</h2><p>${x.out}</p>`; return; }
-        host.innerHTML = `<h2>${x.okT}</h2><p>${x.ok}</p><form id="cf" class="stack"><label class="f"><span>${x.name}</span><input name="name" maxlength="100" autocomplete="name" required></label>
-          <label class="f"><span>${x.email}</span><input name="email" type="email" maxlength="200" autocomplete="email" required></label>
-          <label class="f"><span>${x.country}</span><select name="country">${info.countries.map((c) => `<option value="${c}">${esc(COUNTRY[c] || c)}</option>`).join("")}</select></label>
-          <label class="chk"><input type="checkbox" name="consent" required><span>${x.agree}</span></label><div class="note" id="cerr" role="alert" hidden></div><div><button class="p" type="submit">${x.submit}</button></div></form>`;
-        $("#cf").onsubmit = async (e) => {
-          e.preventDefault(); const f = e.target, err = $("#cerr");
-          if (!f.consent.checked || !f.name.value.trim() || !f.email.value.trim()) { err.textContent = x.need; err.hidden = false; return; }
-          try { await post("/submit", { answers, name: f.name.value, email: f.email.value, country: f.country.value, consent: true }); host.innerHTML = `<h2>${x.doneT}</h2><p>${x.done}</p>`; }
-          catch (er) { err.textContent = er.status === 403 || er.status === 422 || er.status === 429 ? er.message : x.err; err.hidden = false; }
-        };
+        showSlots(answers);
       },
     });
     runner.start();

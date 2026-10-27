@@ -58,15 +58,16 @@ def body_for(kind: str, org_name: str, link: str, days: int | None = None, hours
     return f"{zh}\n\n{link}\n\n{tail_zh}\n\n----\n\n{en}\n\n{link}\n\n{tail_en}\n"
 
 
-def queue(db: Session, to_email: str, kind: str, body: str, org_id: str | None = None) -> str:
-    """Put one email in the outbox (the caller commits). Returns its id.
+def queue(db: Session, to_email: str, kind: str, body: str, org_id: str | None = None, subject: str | None = None, ref_id: str = "") -> str:
+    """Put one email in the outbox (the caller commits). Returns its id. `subject` is for kinds without a fixed one (a participant's invitation); `ref_id`
+    ties the row to the interview it is about.
 
     Raises:
         RuntimeError: account emails are not configured.
     """
     if not configured():
         raise RuntimeError("account emails are not configured")
-    row = EmailOutbox(org_id=org_id, kind=kind, to_email=to_email, subject=SUBJECTS[kind], body=body)
+    row = EmailOutbox(org_id=org_id, kind=kind, to_email=to_email, subject=subject or SUBJECTS[kind], body=body, ref_id=ref_id)
     db.add(row)
     db.flush()
     return row.id

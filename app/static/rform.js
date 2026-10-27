@@ -48,6 +48,13 @@ function rfCard(p, form) {
     const add = (a, b) => { a.excl = (a.excl || []).filter((x) => x !== b.id); if (on) a.excl.push(b.id); };
     add(o, other); add(other, o);
   };
+  // a multi-choice question whose tagged options are not linked as mutually exclusive: the same person may get all those tags, so say so (never guessing what the names mean)
+  const taggedPairs = (q) => { const tg = q.type === "multi" ? q.options.filter((o) => o.tag) : []; const out = []; tg.forEach((a, i) => tg.slice(i + 1).forEach((b) => { if (a.tag !== b.tag && !(a.excl || []).includes(b.id)) out.push([a, b]); })); return out; };
+  const exWarn = (q) => {
+    const pairs = taggedPairs(q); if (!pairs.length) return "";
+    const opts = [...new Set(pairs.flat())], nums = opts.map((o) => q.options.indexOf(o) + 1).sort((a, b) => a - b).join("、"), tags = [...new Set(opts.map((o) => o.tag))].join("、");
+    return `<div class="rf-warn" role="note">选项 ${nums} 都带标签（${esc(tags)}），又没有设“互斥”：同一个人可能同时拿到这些标签。如果它们不能同时成立，请设为互斥（或把这题改回单选）。<button class="s" type="button" data-exall="${esc(q.id)}">把这几项设为互斥</button></div>`;
+  };
   const ref = (g) => (g === "end_out" ? "结束 · 不符合" : g === "end_ok" ? "结束 · 符合" : g ? `跳到第 ${Q.findIndex((x) => x.id === g) + 1} 题` : "");
   const actions = (i, cur, allowNext) => `<option value="" ${cur === "" ? "selected" : ""}>${allowNext ? "下一题" : "选择处理方式"}</option>${Q.slice(i + 1).map((x, k) => `<option value="${x.id}" ${cur === x.id ? "selected" : ""}>跳到第 ${i + k + 2} 题</option>`).join("")}<option value="end_out" ${cur === "end_out" ? "selected" : ""}>结束 · 不符合（筛掉）</option><option value="end_ok" ${cur === "end_ok" ? "selected" : ""}>结束 · 符合</option>`;
   const badge = (g) => (g === "end_out" ? `<span class="rf-lg out">结束 · 不符合</span>` : g === "end_ok" ? `<span class="rf-lg ok">结束 · 符合</span>` : g ? `<span class="rf-lg jump">${ref(g)}</span>` : "");
@@ -98,7 +105,7 @@ function rfCard(p, form) {
     const lines = q.type === "single" || q.type === "multi"
       ? q.options.map((o, j) => `<div class="rf-o"><span class="rf-code">${j + 1}</span>${q.type === "single" ? "○" : "☐"} ${esc(o.text || "（空选项）")} ${badge(o.goto)}${o.tag ? `<span class="rf-lg jump">标签：${esc(o.tag)}</span>` : ""}${(o.excl || []).length ? `<span class="rf-lg exb">互斥：${exLabel(q, o)}</span>` : ""}</div>`).join("")
       : q.type === "number" ? (q.rules || []).map((r) => `<div class="rf-o">如果数字${RF_OP[r.op]} ${r.value} ${badge(r.goto)}</div>`).join("") : "";
-    return `<div class="rf-q" data-qid="${q.id}"><div class="row"><span class="rf-n">${i + 1}</span><b>${esc(q.text || "（还没写题目）")}</b><span class="sp"></span><span class="tag nw">${RF_TYPE[q.type]}${q.required ? " · 必答" : ""}</span><button class="s" type="button" data-edit="${q.id}">编辑</button></div>${lines}</div>`;
+    return `<div class="rf-q" data-qid="${q.id}"><div class="row"><span class="rf-n">${i + 1}</span><b>${esc(q.text || "（还没写题目）")}</b><span class="sp"></span><span class="tag nw">${RF_TYPE[q.type]}${q.required ? " · 必答" : ""}</span><button class="s" type="button" data-edit="${q.id}">编辑</button></div>${lines}${exWarn(q)}</div>`;
   }
   function outline() {
     return `<h3 class="rf-h">研究背景</h3><div class="rf-blk">${f.brief && f.brief.trim() ? `${esc(f.brief)} <span class="mut sm">（来自立项向导）</span>` : '<span class="mut">还没有研究背景。到立项向导第 1 步写，或在左边对话里告诉 AI。</span>'}</div>
@@ -142,6 +149,10 @@ function rfCard(p, form) {
     const cl = $("#rfclose"); if (cl) cl.onclick = guard(async () => { f = { ...f, ...(await api(`/projects/${p.id}/recruiting/form/close`, { method: "POST" })) }; drawRight(); toast("已停止收集"); });
     if (seg === "test") return retest();
     [$("#rfgoals"), $("#rfneed")].forEach((box) => { if (box) rfAutosize(box); });
+    document.querySelectorAll("[data-exall]").forEach((b) => (b.onclick = () => {   // link every pair of tagged options of this question as mutually exclusive
+      const q = Q.find((x) => x.id === b.dataset.exall); if (!q) return; pushHist();
+      taggedPairs(q).forEach(([a, c]) => setExcl(q, a, c, true)); changed();
+    }));
     const g = $("#rfgoals"); if (g) g.onchange = () => { pushHist(); goals = g.value.split("\n").map((x) => x.trim()).filter(Boolean).slice(0, 8); save(); };
     const n = $("#rfneed"); if (n) n.onchange = () => { pushHist(); need = n.value.trim(); save(); };
     document.querySelectorAll("[data-add]").forEach((b) => (b.onclick = () => {
