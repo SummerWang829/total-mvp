@@ -18,7 +18,8 @@ def _setup(org):
     seg = [s for s in segs if s["speaker"] == "participant"][1]
     org.c.post(f"/api/interviews/{itv['id']}/insights", headers=org.h(), json={"theme": "信任", "statement": "怕假货", "evidence": [{"segment_id": seg["id"], "quote": "clear halal certification"}]})
     pid = org.c.get(f"/api/interviews/{itv['id']}", headers=org.h()).json()["project_id"]
-    org.c.post(f"/api/insights/{org.c.get(f'/api/interviews/{itv['id']}/insights', headers=org.h()).json()[0]['id']}/approve", headers=org.h())
+    first = org.c.get(f"/api/interviews/{itv['id']}/insights", headers=org.h()).json()[0]  # (a nested f-string with the same quotes only parses on Python 3.12)
+    org.c.post(f"/api/insights/{first['id']}/approve", headers=org.h())
     return itv, pid
 
 
