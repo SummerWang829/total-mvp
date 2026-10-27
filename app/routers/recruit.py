@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import library_context, participant_code, recruit, recruit_form, recruit_insights, recruit_review
+from .. import library_context, participant_code, recruit, recruit_form, recruit_insights, recruit_review, recruit_translate
 from ..audit import audit
 from ..db import get_db
 from ..deps import RECRUITERS, STAFF, Ctx, require_roles
@@ -42,6 +42,7 @@ class FormIn(BaseModel):
 class PreviewBody(BaseModel):
     questions: list[dict] = Field(default_factory=list, max_length=30)
     answers: dict = Field(default_factory=dict)
+    lang: str = Field(default="", max_length=10)  # test it in one language version (the team may look at any version, team-only ones too)
 
 
 class ChatBody(BaseModel):
@@ -170,7 +171,7 @@ def _questions(f: RecruitForm) -> list[recruit_form.Question]:
 @router.post("/projects/{pid}/recruiting/form/preview")
 def preview_form(pid: str, body: PreviewBody, ctx: Ctx = Depends(require_roles(*RECRUITERS)), db: Session = Depends(get_db)):
     """Test the questionnaire as it is being edited (nothing is stored or counted): the same walk candidates get, with the reason shown to the team."""
-    get_project(db, ctx, pid)
+    proj = get_project(db, ctx, pid)
     try:
         form = recruit_form.normalize({"source": "ai", "questions": body.questions})
         step = recruit_form.next_step(form.questions, body.answers)
@@ -178,7 +179,11 @@ def preview_form(pid: str, body: PreviewBody, ctx: Ctx = Depends(require_roles(*
         raise HTTPException(422, str(e)) from e
     except recruit_form.AnswerError as e:
         raise HTTPException(422, "这个回答不符合题目要求") from e
-    return {"question": step.question, "result": step.result, "reason": step.reason, "tags": step.tags}
+    question = step.question
+    saved = db.get(RecruitForm, proj.id)
+    if question and body.lang and saved is not None:
+        question = recruit_translate.localize(question, next(q for q in form.questions if q.id == question["id"]), saved.translations or {}, body.lang)
+    return {"question": question, "result": step.result, "reason": step.reason, "tags": step.tags}
 
 
 @router.post("/projects/{pid}/recruiting/form/publish")
@@ -191,6 +196,8 @@ def publish_form(pid: str, ctx: Ctx = Depends(require_roles(*RECRUITERS)), db: S
     if not f.token:
         f.token = recruit_form.new_token()
     f.status, f.published_at, f.updated_at = "published", utcnow(), utcnow()
+    from .recruit_translate import auto_translate  # every project language gets its version before candidates arrive (a model that is down just leaves that language out)
+    auto_translate(db, proj, f, recruit_form.load(f.questions), ctx)
     audit(db, ctx.org_id, ctx.actor, "recruit.form_publish", proj.id, questions=len(f.questions))
     db.commit()
     return _form_out(f)

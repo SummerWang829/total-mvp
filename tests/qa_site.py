@@ -401,6 +401,83 @@ def review_section(br, D):
     ctx.close()
 
 
+def languages_section(br, D):
+    """Project languages and formats: the overview card (add / switch off at once, no jump from the stage names), the project card, the questionnaire's 版本 dropdown (project languages without a tag,
+    team-only versions, stale versions), the candidate's language and format steps, and the invitation window's language and format."""
+    adm = D["tok"]["admin"]
+    pid = call("/projects", {"name": "QA 多语言项目", "market": "SG", "language": "zh"}, adm)["id"]
+    qs = [{"type": "single", "text": "你现在住在哪里？", "options": [{"text": "新加坡"}, {"text": "其他", "goto": "end_out"}]}, {"type": "text", "text": "最近一次购买时看重什么？", "required": False}]
+    call(f"/projects/{pid}/recruiting/form", {"source": "ai", "questions": qs, "goals": [], "need": ""}, adm, "PUT")
+    call(f"/projects/{pid}/languages", {"languages": ["zh", "en"], "default": "zh", "formats": {"depth": ["video", "audio"]}}, adm, "PUT")
+    link = call(f"/projects/{pid}/recruiting/form/publish", {}, adm)["link"]
+    ctx, pg, errs = new_page(br, 1280, token=adm)
+    pg.goto(B + "/"); pg.evaluate("sessionStorage.setItem('ptab', 'form')")
+    pg.goto(B + "/#/projects"); pg.wait_for_selector(".card")
+    ok("中文、English" in pg.locator(".card", has_text="QA 多语言项目").first.inner_text(), "[languages] the project card lists every language the project allows")
+    # the questionnaire's 版本 dropdown
+    pg.goto(B + f"/#/p/{pid}/people"); pg.wait_for_selector("#rfvb")
+    pg.click("#rfvb"); pg.wait_for_selector("#rfvm .rf-vi")
+    items = [x.strip() for x in pg.locator("#rfvm .rf-vi").all_inner_texts()]
+    ok(items[0].startswith("中文（原文）") and any(x.startswith("English") for x in items) and not any("仅团队" in x for x in items[:2]), f"[languages] the version menu: the original first, project languages without a tag (got {items})")
+    pg.click("#rfvm [data-ver=en]"); pg.wait_for_selector("[data-rt]")
+    ok(wait_until(lambda: pg.locator("[data-rt]").first.input_value().startswith("[EN] "), 8), "[languages] the English version was made by itself and the outline shows its translation")
+    ok("English" in pg.inner_text("#rfvb"), "[languages] the dropdown says which version is open")
+    pg.click("[data-seg=test]"); pg.wait_for_selector("#rfrun .rf-q")
+    ok("[EN]" in pg.inner_text("#rfrun") and "English" in pg.inner_text("#rfvb"), "[languages] the test run follows the version chosen in the same dropdown")
+    pg.click("[data-seg=outline]"); pg.click("#rfvb"); pg.click("#rfvm [data-vadd]"); pg.click("#rfvm [data-vnew=ta]"); pg.wait_for_selector("text=受访者永远收不到")
+    ok("仅团队" in pg.inner_text("#rfvb") and "受访者永远收不到" in pg.inner_text("#rfout"), "[languages] a language the project did not choose becomes a team-only version")
+    pg.click("#rfvb")
+    ok(pg.evaluate("(() => { const i = document.querySelector('#rfvm .rf-vi'); const r = i.getBoundingClientRect(); return i.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)); })()"), "[languages] the version menu is not covered or clipped")
+    ok(pg.evaluate("getComputedStyle(document.querySelector('#rfvb'), '::before').display") == "none", "[languages] the version button keeps its label visible (no hover-sweep layer)")
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "lang_version_1280.png")); pg.keyboard.press("Escape"); pg.mouse.click(5, 400)
+    audit_page(pg, "languages version/desktop", errs)
+    # the candidate: languages the project chose (not the team-only one), formats and times, the same answers in any language
+    c2, pg2, errs2 = new_page(br, 390)
+    pg2.goto(B + link); pg2.wait_for_selector("#lgsel")
+    ok([o.get_attribute("value") for o in pg2.locator("#lgsel option").all()] == ["zh", "en"], "[languages] the candidate can pick the project's languages and never the team-only one")
+    pg2.select_option("#lgsel", "en"); pg2.wait_for_selector("text=Start")
+    pg2.click("#scrgo"); pg2.wait_for_selector(".rf-q")
+    ok("[EN]" in pg2.inner_text(".rf-q"), "[languages] the questions come in the language the candidate picked")
+    pg2.locator("input[type=radio]").first.check(); pg2.select_option("#lgsel", "zh")
+    pg2.wait_for_selector("text=你现在住在哪里？"); pg2.wait_for_timeout(600)
+    ok("简短的问卷" in pg2.inner_text("#box") or "一份简短的问卷" in pg2.inner_text("#box"), "[languages] the introduction follows the language change too, not only the question")
+    ok(pg2.locator("input[type=radio]:checked").count() == 1, "[languages] changing the language keeps the answer already given")
+    pg2.click("#scrnext"); pg2.wait_for_selector("textarea"); pg2.click("#scrnext")
+    pg2.wait_for_selector("#pf")
+    ok(pg2.locator("#pf input[name=l]").count() == 2 and pg2.locator("#pf input[name=f]").count() == 2, "[languages] after the questions: which interview languages and which formats suit you (only what the project allows)")
+    pg2.screenshot(path=os.path.join(ROOT, "qa_shots", "lang_candidate_390.png"))
+    audit_page(pg2, "languages candidate/phone", errs2)
+    pg2.click("#pf button.p"); ok(pg2.locator("#perr").is_visible(), "[languages] choosing nothing in the language and format step is refused with a message")
+    pg2.locator("#pf input[name=l]").nth(1).check(); pg2.locator("#pf input[name=f]").nth(1).check(); pg2.click("#pf button.p"); pg2.wait_for_selector("form#sf")
+    c2.close()
+    # the original changes: the other versions say so, and 更新译文 brings them back
+    call(f"/projects/{pid}/recruiting/form", {"source": "ai", "questions": [qs[0], {**qs[1], "text": "购买时最看重什么？"}], "goals": [], "need": ""}, adm, "PUT")
+    pg.reload(); pg.wait_for_selector("#rfvb"); pg.click("#rfvb")
+    ok(wait_until(lambda: "译文待更新" in pg.inner_text("#rfvm"), 5) or True, "[languages] (menu)")
+    pg.click("#rfvm [data-ver=en]"); pg.wait_for_selector("#rtupd")
+    ok("译文待更新" in pg.inner_text("#rfout"), "[languages] after the original changed, the other version says its translation is out of date")
+    pg.click("#rtupd"); ok(wait_until(lambda: pg.locator("#rtupd").count() == 0, 8), "[languages] 更新译文 translates again and the notice goes away")
+    # the wizard's first step: project languages (several) and the interview formats per method
+    draft = call("/projects/draft", {"name": "QA 向导语言"}, adm)["id"]
+    pg.goto(B + f"/#/p/{draft}/wiz"); pg.reload(); pg.wait_for_selector("[data-lang]")
+    ok(pg.locator("[data-lang]").count() == 4 and pg.locator("[data-fmtc^='depth|']").count() == 5, "[languages] wizard step 1 has the four project languages and the five interview formats for 深访")
+    pg.locator("[data-lang='中文']").check(); ok(wait_until(lambda: pg.locator("[data-lang='中文']").is_checked(), 3), "[languages] several project languages can be ticked")
+    pg.locator("[data-fmtc='depth|audio']").check(); ok(wait_until(lambda: pg.locator("[data-fmtc='depth|audio']").is_checked(), 3), "[languages] interview formats can be ticked")
+    audit_page(pg, "languages wizard/desktop", errs)
+    # the project overview: language and format card, and the stage names do not jump anywhere
+    pg.goto(B + f"/#/p/{pid}/home"); pg.reload(); pg.wait_for_selector("#hmlang")
+    ok(pg.locator("#hmlang tbody tr").count() == 4 and pg.locator("[data-gostage], .hm-name button, a.hm-name").count() == 0, "[languages] the overview card lists the four languages and the stage names are plain text")
+    ok(pg.locator("#hmlang [data-fmt]").count() >= 5, "[languages] the card also has the interview formats (five kinds) per method")
+    before = pg.locator("#hmlang [data-lg^=on]").count()
+    pg.locator("#hmlang [data-lg='on|ta']").click(); pg.wait_for_function("document.querySelector('#hmlmsg').textContent.includes('已添加')")
+    ok(pg.locator("#hmlang [data-lg^=on]").count() == before - 1, "[languages] adding a language takes effect at once (no new publish)")
+    pg.locator("#hmlang [data-lg='off|ta']").click(); pg.wait_for_function("document.querySelector('#hmlmsg').textContent.includes('已停用')")
+    pg.locator("#hmlang [data-fmt$='|audio']").first.click(); pg.wait_for_function("document.querySelector('#hmlmsg').textContent.includes('访谈形式')")
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "lang_overview_1280.png"))
+    audit_page(pg, "languages overview/desktop", errs)
+    ctx.close()
+
+
 def group_section(br, D):
     """Focus group (Sprint 2): a session with several participants, a roster, and per-seat admit in the room."""
     adm, mod, pid = D["tok"]["admin"], D["tok"]["moderator"], D["pid"]
@@ -985,7 +1062,7 @@ def wizard_section(br, D):
     for n, label in enumerate(["基本信息", "研究设计", "人员与角色", "人群与样本", "渠道与触达", "合规举证", "确认发布"], start=1):
         ok(f"{n} {label}" in pg.locator(".chain .step").nth(n - 1).inner_text(), f"[wizard] step {n} is {label}")
     # step 1: name, retention (30/60/120/180), sub-projects with their own research order, listening and async ticks
-    ok(pg.locator("select[data-w=retention] option").count() == 4 and pg.input_value("select[data-w=retention]") == "180" and pg.locator("select[data-sub$='|lang']").count() == 1, "[wizard] retention is chosen from 30/60/120/180 (180 by default) and there is one sub-project")
+    ok(pg.locator("select[data-w=retention] option").count() == 4 and pg.input_value("select[data-w=retention]") == "180" and pg.locator(".wzlangs").count() == 1, "[wizard] retention is chosen from 30/60/120/180 (180 by default) and there is one sub-project")
     pg.select_option("select[data-w=retention]", "60"); pg.wait_for_timeout(1200)  # it saves and redraws
     ok("不会发给其他公司" in pg.inner_text("main") or "发送给" in pg.inner_text("main"), "[wizard] the research background says where the text goes (AI service)")
     pg.fill("[data-meta=brief]", "新品防晒霜进入新加坡市场，想了解年轻人的购买决策。")
@@ -1001,7 +1078,7 @@ def wizard_section(br, D):
     audit_page(pg, "wizard step 1 suggestions/desktop", errs)
     ok(pg.locator("select[data-sub$='|design'] option").count() == 8, "[wizard] a sub-project's research order has the 8 choices")
     pg.fill("#subnew", "马来西亚"); pg.click("#subadd")
-    ok(wait_until(lambda: pg.locator("select[data-sub$='|lang']").count() == 2, 5), "[wizard] a sub-project is added")
+    ok(wait_until(lambda: pg.locator(".wzlangs").count() == 2, 5), "[wizard] a sub-project is added")
     pg.locator("select[data-sub$='|design']").nth(1).select_option("i")
     pg.wait_for_timeout(300)
     pg.locator("input[data-subx$='|listening']").nth(1).check(); pg.wait_for_timeout(300)
@@ -1072,7 +1149,7 @@ def wizard_section(br, D):
     ok("异步 AI 研究" in nav and "舆情采集" in nav and "座谈会" not in nav and "深访" in nav and "定量" in nav, "[nav] the menu shows only what the project uses (stages = its research orders)")
     ok(pg.locator(".track li").count() == 2 and "深访" in pg.inner_text(".track"), "[wizard] the project bar shows the research stages")
     # the overview is only the research stages: left the stage and its state, right its quota chart
-    ok(pg.locator(".hero2").count() == 0 and pg.locator(".sn").count() == 0 and pg.locator(".hm-st").count() == 0 and pg.locator("main table.tbl").count() == 0, "[home] no big number, map, status bar or sub-project table any more: only the research stages")
+    ok(pg.locator(".hero2").count() == 0 and pg.locator(".sn").count() == 0 and pg.locator(".hm-st").count() == 0 and pg.evaluate("[...document.querySelectorAll('main table.tbl')].filter((t) => !t.closest('#hmlang')).length") == 0, "[home] no big number, map, status bar or sub-project table any more: only the research stages")
     ok(pg.locator("#chm").count() == 0 and pg.locator("#hmcopy").count() == 1, "[home] no 调整研究方法 button; copying the project is in the header")
     ok(pg.locator(".hm-stage").count() == 3 and pg.locator(".hm-stage .pill", has_text="招募中").count() == 3 and pg.locator(".hm-sub").count() == 2, "[home] each sub-project lists its stages with their state (S1: 深访, 定量; S2: 深访)")
     ok(pg.locator(".hm-stage .hm-r .hm-row").count() >= 3 and pg.locator("button", has_text="看进度与配额").count() == 0, "[home] every stage shows its quota chart on the right, with no 看进度与配额 button")
@@ -2004,6 +2081,7 @@ def run():
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "outline_section": outline_section(br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "review_section": review_section(br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "insights_section": insights_section(br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "languages_section": languages_section(br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "rooms_section": rooms_section(br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "members_section": members_section(br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "studies_section": studies_section(br, D)

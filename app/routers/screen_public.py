@@ -11,7 +11,9 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import ratelimit, recruit, recruit_form, recruit_insights, screener, slots
+from .. import formats, project_langs, ratelimit, recruit, recruit_form, recruit_insights, recruit_translate, screener, slots
+from .. import methods as methods_mod
+from ..project_langs import NAMES
 from ..audit import audit
 from ..config import settings
 from ..db import get_db
@@ -25,6 +27,7 @@ EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 class StepBody(BaseModel):
     answers: dict = Field(default_factory=dict)
+    lang: str = Field(default="", max_length=10)  # the language the candidate picked (ignored unless that language is offered)
 
 
 class SubmitBody(BaseModel):
@@ -34,6 +37,8 @@ class SubmitBody(BaseModel):
     country: str = Field(min_length=2, max_length=2)
     consent: bool = False
     slots: list[str] = Field(default_factory=list, max_length=slots.MAX_PICKS)  # the interview times the candidate said suit them (the last question)
+    langs: list[str] = Field(default_factory=list, max_length=4)  # the interview languages they chose (only the project's)
+    formats: list[str] = Field(default_factory=list, max_length=5)  # the interview formats they chose (only the allowed ones)
 
 
 def _live(db: Session, token: str) -> tuple[RecruitForm, Project]:
@@ -48,12 +53,18 @@ def _open(f: RecruitForm) -> None:
         raise HTTPException(410, "This questionnaire is closed / 这份问卷已经关闭")
 
 
+def _offered(f: RecruitForm, proj: Project) -> list[str]:
+    """The languages a candidate may pick: the questionnaire's own plus every project language whose translation is complete and confirmed (the project's default first)."""
+    return recruit_translate.candidate_languages(recruit_form.load(f.questions), f.translations or {}, project_langs.of(proj), proj.language)
+
+
 @router.get("/{token}")
 def screen_info(token: str, db: Session = Depends(get_db)):
     """What the page shows before the first question: who asks, the language, how the answers are used."""
     f, proj = _live(db, token)
-    return {"org": db.get(Org, f.org_id).name, "language": proj.language, "open": f.status == "published" and f.source == "ai", "dpo": settings.dpo_email,
-            "retention_days": days_of(proj), "countries": sorted(settings.allowed_countries), "total": len(f.questions or [])}
+    offered = _offered(f, proj)
+    return {"org": db.get(Org, f.org_id).name, "language": offered[0], "languages": [{"code": c, "name": NAMES[c]} for c in offered], "open": f.status == "published" and f.source == "ai", "dpo": settings.dpo_email,
+            "retention_days": days_of(proj), "formats": [{"code": c, "name": formats.FORMATS[c], "en": formats.EN[c]} for c in formats.union(proj.formats, methods_mod.of(proj))], "interview_languages": [{"code": c, "name": NAMES[c]} for c in project_langs.of(proj)], "countries": sorted(settings.allowed_countries), "total": len(f.questions or [])}
 
 
 @router.get("/{token}/slots")
@@ -69,7 +80,7 @@ def screen_step(token: str, body: StepBody, request: Request, db: Session = Depe
     """The next question given the answers so far, or the end. Someone screened out is only counted (and where); nothing about them is stored."""
     if wait := ratelimit.screen_step_allowed(client_ip(request)):
         raise HTTPException(429, ratelimit.MESSAGE, headers={"Retry-After": str(wait)})
-    f, _ = _live(db, token)
+    f, proj = _live(db, token)
     _open(f)
     questions = recruit_form.load(f.questions)
     try:
@@ -84,7 +95,10 @@ def screen_step(token: str, body: StepBody, request: Request, db: Session = Depe
         f.out_by = {**(f.out_by or {}), step.ended_at: (f.out_by or {}).get(step.ended_at, 0) + 1}
         f.tally = recruit_insights.record(f.tally, "o", questions, step.chosen)  # only how many chose each option, never who
         db.commit()
-    return {"question": step.question, "result": step.result}
+    question = step.question
+    if question and body.lang in _offered(f, proj):  # the same question in the language the candidate picked (answers go by option id, so the logic is the same)
+        question = recruit_translate.localize(question, next(q for q in questions if q.id == question["id"]), f.translations or {}, body.lang)
+    return {"question": question, "result": step.result}
 
 
 @router.post("/{token}/submit", status_code=201)
@@ -125,6 +139,13 @@ def screen_submit(token: str, body: SubmitBody, request: Request, db: Session = 
         f.tally = recruit_insights.record(f.tally, "q", questions, step.chosen)
         audit(db, proj.org_id, "participant:screen", "recruit.form_qualified", proj.id, participant=p.id)
         same = p.id
+    person = db.get(Participant, same)
+    langs = [c for c in dict.fromkeys(body.langs) if c in project_langs.of(proj)]  # only what the project allows; the first is the preferred one
+    fmts = [c for c in dict.fromkeys(body.formats) if c in formats.union(proj.formats, methods_mod.of(proj))]
+    if langs:
+        person.pref_langs, person.language = langs, langs[0]
+    if fmts:
+        person.pref_formats = fmts
     if body.slots:  # the times that suit them, earliest first (the first one fills the invitation, the rest are backups); a repeat visit updates them
         db.get(Participant, same).availability = [t.isoformat() for t in slots.parse(body.slots)]
     db.commit()

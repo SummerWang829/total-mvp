@@ -22,6 +22,8 @@ const rfAiNotice = () => (CONFIG && CONFIG.ai_local ? "AI 运行在我们自己�
 function rfCard(p, form) {
   let f = form, mode = form.source === "html" ? "html" : "ai", seg = "outline", Q = JSON.parse(JSON.stringify(form.questions || [])), goals = [...(form.goals || [])], need = form.need || "";
   let timer = null, sending = false, pending = "", hist = [], redo = [], editing = new Set();
+  let ver = "", vers = null;   // the language version being looked at (""/the source = the original) and the versions' states (app/static/rtrans.js)
+  const isSource = () => !ver || (vers && ver === vers.source);
   let showSug = false, changedIds = new Set();   // showSug: the suggestion cards are open in the chat; changedIds: the questions the last change touched ("刚改")
   const RF_KIND = { answer: ["回答", "ans"], suggest: ["建议", "sug"], change: ["已修改", "chg"] };
   const sugs = () => f.suggestions || [];
@@ -50,7 +52,7 @@ function rfCard(p, form) {
   const body = () => ({ source: "ai", idea: f.idea || "", goals, need, questions: Q });
   const stat = (t) => { const s = $("#rfstat"); if (s) s.textContent = t; };
   // an unfinished option or question is only reported in the status line; publishing checks it again
-  const save = () => { clearTimeout(timer); if (incomplete()) return stat("有题目或选项还没写完，写完会自动保存"); timer = setTimeout(async () => { try { f = { ...f, ...(await api(`/projects/${p.id}/recruiting/form`, { method: "PUT", body: body() })) }; stat("已保存"); } catch (e) { stat("还没保存：" + e.message); } }, 700); stat("保存中…"); };
+  const save = () => { clearTimeout(timer); if (incomplete()) return stat("有题目或选项还没写完，写完会自动保存"); timer = setTimeout(async () => { try { f = { ...f, ...(await api(`/projects/${p.id}/recruiting/form`, { method: "PUT", body: body() })) }; stat("已保存"); refreshVers(); } catch (e) { stat("还没保存：" + e.message); } }, 700); stat("保存中…"); };
   const pushHist = () => { hist.push(snap()); if (hist.length > 30) hist.shift(); redo = []; syncUndo(); };
   const apply = (s) => { const o = JSON.parse(s); Q = o.Q; goals = o.goals; need = o.need; editing = new Set(); };
   const syncUndo = () => { const u = $("#rfundo"), r = $("#rfredo"); if (u) u.disabled = !hist.length; if (r) r.disabled = !redo.length; };
@@ -160,22 +162,52 @@ function rfCard(p, form) {
   const rightHead = () => {
     const live = f.status === "published";
     return `<div class="rf-hd"><div class="rf-seg" role="tablist"><button type="button" role="tab" data-seg="outline" class="${seg === "outline" ? "on" : ""}" aria-selected="${seg === "outline"}">大纲</button><button type="button" role="tab" data-seg="test" class="${seg === "test" ? "on" : ""}" aria-selected="${seg === "test"}">测试答题</button></div>
-      <span class="sp"></span><span class="sm mut" id="rfstat" role="status" aria-live="polite">${f.version ? `第 ${f.version} 版` : ""}</span><span class="pill ${live ? "" : "o"}">${live ? "发布中" : f.status === "closed" ? "已停止" : "草稿"}</span>
+      <span class="sp"></span>${vers && vers.languages.length > 1 || (vers && vers.languages.length) ? verMenu() : ""}<span class="sm mut" id="rfstat" role="status" aria-live="polite">${f.version ? `第 ${f.version} 版` : ""}</span><span class="pill ${live ? "" : "o"}">${live ? "发布中" : f.status === "closed" ? "已停止" : "草稿"}</span>
       ${live ? `<button class="s" type="button" id="rfclose">停止收集</button>` : `<button class="p" type="button" id="rfpub" ${Q.length ? "" : "disabled"}>${f.status === "closed" ? "重新发布" : "发布成链接和二维码"}</button>`}</div>`;
   };
   function drawRight() {
     const r = $("#rfright"); if (!r) return;
     const keep = $("#rfout") ? $("#rfout").scrollTop : 0;
-    r.innerHTML = rightHead() + `<div class="rf-sc" id="rfout"><div class="rf-col">${seg === "outline" ? outline() : `<p class="sm mut" style="margin:0">就是候选人看到的样子：直接填写，看会走到哪里。</p><div id="rfrun"></div><div class="note" id="rfresult" role="status" aria-live="polite" hidden></div>`}</div></div>`;
-    $("#rfout").scrollTop = keep; wireRight(); syncUndo();
+    r.innerHTML = rightHead() + `<div class="rf-sc" id="rfout"><div class="rf-col">${seg === "outline" ? (isSource() ? outline() : `<div id="rftr"><div class="mut" style="padding:12px">加载中…</div></div>`) : `<p class="sm mut" style="margin:0">就是候选人看到的样子：直接填写，看会走到哪里。</p><div id="rfrun"></div><div class="note" id="rfresult" role="status" aria-live="polite" hidden></div>`}</div></div>`;
+    $("#rfout").scrollTop = keep; wireRight(); wireVer(); syncUndo();
+  }
+  const refreshVers = async () => {   // after the original is saved, other versions may have gone stale: update the menu (the banner shows when you open that version)
+    const v = await rtVersions(p); if (!v) return; vers = v; const m = $("#rfvm"), b = $("#rfvb");
+    if (m) m.innerHTML = rtMenuHtml(vers, ver || vers.source); if (b) { b.firstChild.textContent = "版本：" + verLabel(); wireVer(); }
+  };
+  function verLabel() { const x = vers && vers.languages.find((l) => l.code === (ver || vers.source)); return x ? x.name + (x.source ? "（原文）" : "") : "—"; }
+  function verMenu() {   // 版本: one dropdown for the outline and the test; project languages carry no tag, team-only ones say 仅团队
+    const cur = ver || vers.source, x = vers.languages.find((l) => l.code === cur) || {};
+    return `<div class="rf-ver"><button type="button" id="rfvb" aria-haspopup="menu" aria-expanded="false" title="切换语言版本">版本：${esc(verLabel())}${x.team_only ? " · 仅团队" : ""} ▾</button><div class="rf-vm" id="rfvm" role="menu" hidden>${rtMenuHtml(vers, cur)}</div></div>`;
+  }
+  async function loadVers(auto) {   // every project language gets its version by itself (only what is missing or out of date is translated)
+    if (!Q.length || incomplete()) return;
+    try { vers = auto ? await api(`/projects/${p.id}/recruiting/form/translate-all`, { method: "POST", body: {} }) : await rtVersions(p); } catch { vers = vers || (await rtVersions(p)); }
+    if (vers && ver && !vers.languages.some((l) => l.code === ver)) ver = "";
+    drawRight();
+  }
+  async function drawTrans() {   // a non-original version of the outline: each question's translation, saved by hand if needed
+    const box = $("#rftr"); if (!box || !vers) return;
+    const b = rtBuild(p, Q, ver, vers); box.innerHTML = b.html; b.wire((r) => { vers = r; drawRight(); });
+  }
+  function wireVer() {
+    const vb = $("#rfvb"), vm = $("#rfvm"); if (!vb) return;
+    vb.onclick = (e) => { e.stopPropagation(); vm.hidden = !vm.hidden; vb.setAttribute("aria-expanded", String(!vm.hidden)); };
+    vm.onclick = (e) => e.stopPropagation();
+    vm.querySelectorAll("[data-ver]").forEach((b) => (b.onclick = () => { ver = b.dataset.ver === vers.source ? "" : b.dataset.ver; drawRight(); }));
+    const add = vm.querySelector("[data-vadd]"); if (add) add.onclick = () => { const more = vm.querySelector(".rf-vmore"); more.hidden = !more.hidden; add.setAttribute("aria-expanded", String(!more.hidden)); };
+    vm.querySelectorAll("[data-vnew]").forEach((b) => (b.onclick = guard(async () => {
+      b.disabled = true; b.firstChild.textContent = "正在翻译…";
+      vers = await api(`/projects/${p.id}/recruiting/form/translate`, { method: "POST", body: { lang: b.dataset.vnew, only_missing: true } }); ver = b.dataset.vnew; drawRight();
+    })));
   }
   const retest = () => {
     const host = $("#rfrun"); if (!host) return; const res = $("#rfresult"); res.hidden = true;
     if (!Q.length) { host.innerHTML = `<div class="empty"><b>还没有题目</b><span>先在左边让 AI 起草，或到“大纲”里自己添加。</span></div>`; return; }
     if (incomplete()) { host.innerHTML = `<div class="empty"><b>有题目还没写完</b><span>题目和选项都写好后，这里就能测试。</span></div>`; return; }
     scrRunner(host, {
-      lang: "zh",
-      step: async (answers) => { const r = await api(`/projects/${p.id}/recruiting/form/preview`, { method: "POST", body: { questions: Q, answers } }); return r.result ? { result: r.result } : { question: r.question }; },
+      lang: ["zh", "en", "ms", "ta"].includes(ver) ? ver : "zh",
+      step: async (answers) => { const r = await api(`/projects/${p.id}/recruiting/form/preview`, { method: "POST", body: { questions: Q, answers, lang: isSource() ? "" : ver } }); return r.result ? { result: r.result } : { question: r.question }; },
       onEnd: (result) => { res.hidden = false; res.textContent = result === "out" ? "测试结果：这位候选人会被筛掉（不符合），问卷到此结束。" : "测试结果：这位候选人符合，会进入留联系方式的步骤。"; },
     }).start();
   };
@@ -191,6 +223,7 @@ function rfCard(p, form) {
     const pub = $("#rfpub"); if (pub) pub.onclick = publish;
     const cl = $("#rfclose"); if (cl) cl.onclick = guard(async () => { f = { ...f, ...(await api(`/projects/${p.id}/recruiting/form/close`, { method: "POST" })) }; drawRight(); toast("已停止收集"); });
     if (seg === "test") return retest();
+    if (seg === "outline" && !isSource()) return drawTrans();
     [$("#rfgoals"), $("#rfneed")].forEach((box) => { if (box) rfAutosize(box); });
     document.querySelectorAll("[data-exall]").forEach((b) => (b.onclick = () => {   // link every pair of tagged options of this question as mutually exclusive
       const q = Q.find((x) => x.id === b.dataset.exall); if (!q) return; pushHist();
@@ -242,7 +275,10 @@ function rfCard(p, form) {
     const sv = $("#rfsave"); if (sv) sv.onclick = guard(async () => { f = { ...f, ...(await api(`/projects/${p.id}/recruiting/form`, { method: "PUT", body: { source: "html", html_url: $("#rfurl").value.trim() } })) }; draw(); toast("链接已保存"); });
     const tt = $("#rftest"); if (tt) tt.onclick = () => window.open(f.html_url, "_blank", "noopener,noreferrer");
     if (mode !== "ai") return;
-    drawChat(); drawRight(); fit(); wireSplit();
+    drawChat(); drawRight(); fit(); wireSplit(); loadVers(true);
+    if (window._rfVerOff) document.removeEventListener("click", window._rfVerOff);
+    window._rfVerOff = () => { const m = $("#rfvm"); if (m && !m.hidden) { m.hidden = true; const b = $("#rfvb"); if (b) b.setAttribute("aria-expanded", "false"); } };
+    document.addEventListener("click", window._rfVerOff);
     if (window._rfExOff) document.removeEventListener("click", window._rfExOff);
     window._rfExOff = (e) => { if (openEx.size && !e.target.closest(".rf-expanel, [data-ex]")) { openEx.clear(); drawRight(); } };   // the 互斥 picker closes when you click anywhere else
     document.addEventListener("click", window._rfExOff);

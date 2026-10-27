@@ -82,6 +82,12 @@ def _words(lang: str) -> dict:
     return zh if lang == "zh" else en
 
 
+def formats_text(code: str, lang: str, fallback: str) -> str:
+    """The interview format in words for the invitation (the stored code, else the default text)."""
+    from . import formats
+    return (formats.FORMATS if lang == "zh" else formats.EN).get(code or "", fallback)
+
+
 def compose(itv: Interview, part: Participant, moderator_name: str, link: str | None, update: bool = False) -> tuple[str, str]:
     """(subject, plain-text body) for the invitation, or for a change of plan when `update`. `link` is None when the link is not repeated."""
     lang = part.language if part.language in ("zh", "en") else "en"  # ms / ta use the English text until a native speaker has checked a translation
@@ -92,7 +98,7 @@ def compose(itv: Interview, part: Participant, moderator_name: str, link: str | 
     rows = [
         (w["when"], f"{when}（{w['sgt']}）" if when else w["anytime"]),
         (w["moderator"], f"{moderator_name or w['later']}（{w['ai'] if ai else w['human']}）" if moderator_name or ai else f"{w['later']}（{w['human']}）"),
-        (w["format"], w["text"] if ai else w["video"]),
+        (w["format"], w["text"] if ai else formats_text(itv.format, lang, w["video"])),
         (w["length"], w["minutes"].format(n=itv.duration_min or 45)),
     ]
     lines = [w["hi"].format(name=part.name), "", w["intro_update" if update else "intro"], ""] + [f"{k}：{v}" if lang == "zh" else f"{k}: {v}" for k, v in rows]

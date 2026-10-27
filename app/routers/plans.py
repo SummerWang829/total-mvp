@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import methods as methods_mod
-from .. import library_context, plan_suggest, plans, recruit_form
+from .. import formats, library_context, plan_suggest, plans, recruit_form
 from ..audit import audit
 from ..db import get_db
 from ..deps import MEMBER_ROLES, STAFF, Ctx, require_roles
@@ -237,8 +237,11 @@ def publish_plan(pid: str, ctx: Ctx = Depends(require_roles(*PLAN_ROLES)), db: S
         raise HTTPException(409, "需要先通过审查（并且审查后内容没有变）才能发布")
     project.methods = methods_mod.store(cfg.methods)
     project.retention_days = cfg.retention
-    if cfg.subs:
-        project.language = LANG_CODE.get(cfg.subs[0].lang, project.language)
+    if plan.version == 0:  # the first publish sets the project's languages from the wizard; after that the overview page owns them (adding one needs no new publish)
+        codes = [LANG_CODE[x] for x in plans.LANG_CHOICES if cfg.langs.get(x) and x in LANG_CODE] or [project.language]
+        main = LANG_CODE.get(cfg.subs[0].lang) if cfg.subs else None
+        project.languages, project.language = codes, main if main in codes else codes[0]
+        project.formats = formats.of({m: [c for c in v if c in formats.FORMATS] for m, v in (cfg.fmt or {}).items()}, cfg.methods)
     existing = {m.user_id: m for m in db.scalars(select(ProjectMember).where(ProjectMember.project_id == project.id))}
     have = set(existing)
     wanted = [m.user_id for m in cfg.team]

@@ -403,7 +403,7 @@ nav.side .dotc{width:7px;height:7px;border-radius:50%;background:var(--sc,#FF6A0
 .hm-stagelist li{display:grid;grid-template-columns:28px minmax(70px,auto) auto minmax(90px,auto) minmax(80px,1fr) auto;gap:10px;align-items:center}
 .hm-stagelist .sic{display:inline-flex;width:24px;height:24px;border-radius:50%;border:1.5px solid var(--orange);color:var(--orange-ink);font-size:12px;font-weight:700;align-items:center;justify-content:center}
 .hm-stage{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,7fr);gap:16px;border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px;background:var(--surface)}
-.hm-l{display:flex;flex-direction:column;gap:6px;min-width:0}.hm-name{font-size:17px;font-weight:700;text-decoration:none;color:var(--ink)}.hm-name:hover{text-decoration:underline}
+.hm-l{display:flex;flex-direction:column;gap:6px;min-width:0}.hm-name{font-size:17px;font-weight:700;text-decoration:none;color:var(--ink)}.hm-name{cursor:default}
 .hm-r{background:var(--wash);border-radius:var(--r-pan);padding:12px 14px;display:flex;flex-direction:column;gap:8px;min-width:0}
 .hm-row{display:grid;grid-template-columns:minmax(90px,150px) minmax(0,1fr) auto;gap:10px;align-items:center;font-size:13px}.hm-row>span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .hm-sub{margin:8px 0 6px}
@@ -1017,3 +1017,30 @@ button.ed:hover:not(:disabled){color:var(--ink);background:var(--orange-soft);bo
 .ol-q.ol-new{background:var(--green-soft);border-radius:8px;padding-left:6px;padding-right:6px}.ol-q.ol-chd{background:var(--orange-soft);border-radius:8px;padding-left:6px;padding-right:6px}
 .ol-mk{font-style:normal;font-size:12px;margin-left:8px;padding:0 8px;border-radius:999px;background:var(--surface);border:1px solid var(--line2);white-space:nowrap}.ol-new .ol-mk{color:var(--green)}.ol-chd .ol-mk{color:var(--orange-ink)}
 .rf-warn .s{margin-left:8px}
+
+/* 问卷翻译页、项目语言卡片、立项向导里的子项目语言 */
+.rt-lgs{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}
+.rt-lg{height:auto;min-height:36px;border-radius:999px;padding:3px 14px;font-weight:600}.rt-lg.on{background:var(--orange-soft);border-color:var(--orange);color:var(--orange-ink)}.rt-lg::before{display:none}
+.rt-lg:hover:not(:disabled){color:var(--ink);background:var(--wash)}.rt-lg.on:hover:not(:disabled){color:var(--orange-ink);background:var(--orange-soft)}
+.rt-bar{align-items:center;gap:8px}
+.rt-o{display:grid;grid-template-columns:minmax(0,40%) minmax(0,1fr);gap:8px;align-items:center;margin:4px 0 4px 30px;font-size:14px}.rt-o input{margin:0}
+.hm-langs{margin:0 0 14px}.hm-langs td,.hm-langs th{padding-left:6px;padding-right:6px}
+.wzlangs{display:flex;flex-direction:column;gap:2px}.wzlangs .chk{white-space:nowrap}
+.lgbar{max-width:640px;margin:0 auto;padding:10px 16px 0;display:flex;justify-content:flex-end}.lgbar select{height:36px;min-width:150px}
+.rt-lg,.rt-lg .tag{white-space:nowrap}
+.rt-st{font-size:12px;margin-left:6px;white-space:nowrap;font-weight:600;color:var(--muted)}.rt-st.ok{color:var(--green)}.rt-st.o,.rt-st.bad{color:var(--orange-ink)}
+.rt-lg{display:inline-flex;align-items:center;gap:0;line-height:1.2}.rt-lg>span{display:inline-block}
+.rt-lg{align-items:baseline}.rt-st{font-size:inherit}
+
+/* 版本下拉（招募问卷工作台右上角，大纲和测试答题共用） */
+.rf-ver{position:relative}.rf-ver>button{height:36px;border-radius:999px;padding:0 14px;white-space:nowrap}
+.rf-vm{position:absolute;right:0;top:calc(100% + 4px);z-index:30;min-width:240px;background:var(--surface);border:1px solid var(--line2);border-radius:12px;padding:6px;box-shadow:0 8px 24px rgba(6,35,25,.18);display:flex;flex-direction:column;gap:2px}
+.rf-vm[hidden]{display:none}
+.rf-vi{display:flex;justify-content:space-between;align-items:center;gap:8px;height:auto;min-height:36px;border:0;background:none;text-align:left;font-weight:500;white-space:nowrap;padding:4px 10px}.rf-vi::before{display:none}
+.rf-vi:hover:not(:disabled){background:var(--orange-soft);color:var(--ink)}.rf-vi.on{background:var(--orange-soft);font-weight:700}.rf-vi.add{color:var(--orange-ink)}
+.rf-vsep{height:1px;background:var(--line);margin:4px 0}.rf-vmore{display:flex;flex-direction:column;gap:2px;padding-left:10px}.rf-vmore[hidden]{display:none}
+.hm-fmt{margin:12px 0 0}.hm-fmt .row{gap:6px;flex-wrap:wrap;margin-top:6px}.hm-chip{height:auto;min-height:36px;border-radius:999px;padding:3px 14px}.hm-chip.on{background:var(--orange-soft);border-color:var(--orange);color:var(--orange-ink)}.hm-chip::before{display:none}.hm-chip:hover:not(:disabled){color:var(--ink);background:var(--wash)}.hm-chip.on:hover:not(:disabled){color:var(--orange-ink);background:var(--orange-soft)}
+/* 版本按钮：关掉按钮自带的“悬停滑入”层，文字一直看得见；悬停只变底色 */
+.rf-ver>button::before{display:none}
+.rf-ver>button:hover:not(:disabled){color:var(--ink);background:var(--wash);border-color:var(--ink)}
+.rf-hd{overflow:visible}

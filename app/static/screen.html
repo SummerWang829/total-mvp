@@ -9,7 +9,7 @@
 <script>$("#logobar").innerHTML = LOGO_SVG;</script>
 <script>
 // The public recruiting questionnaire: one question at a time; the server walks the logic. Someone screened out gets a polite thanks and nothing about them is kept;
-// someone who qualifies leaves a name and an e-mail after agreeing to the notice. English and Chinese; other languages show English (ms / ta are not written yet).
+// someone who qualifies leaves a name and an e-mail after agreeing to the notice. English, Chinese, Malay and Tamil: the candidate picks one of the languages the project offers (top right), and can change it at any time without losing answers.
 const t = new URLSearchParams(location.search).get("t") || "";
 const box = $("#box"), enc = encodeURIComponent(t);
 const T = {
@@ -25,7 +25,31 @@ const T = {
         slotsT: "最后一题：哪些时间方便接受访谈？", slotsHint: "可以多选。选项是未来 3 天内的时间，均为新加坡时间（SGT）。", next: "下一步", none: "这些时间都不方便，请再联系我", days: ["今天", "明天", "后天"], wk: ["周一", "周二", "周三", "周四", "周五", "周六", "周日"], picked: "已选 {n} 个", pick1: "请至少选一个时间，或勾选下面的“都不方便”。",
         name: "你的姓名", email: "你的邮箱", country: "所在国家或地区", agree: "我已阅读上面的说明，同意你们为此目的保存我的信息。", submit: "提交", doneT: "谢谢！", done: "我们已经收到你的信息，可以关闭页面了。",
         closed: "这份问卷已经关闭，谢谢！", bad: "这个链接无效", err: "没有发送成功，请检查后再试一次。", need: "请填写姓名和邮箱，并勾选同意。" },
+  ms: { title: "Soal selidik ringkas", intro: "{org} ingin mengetahui sama ada kajian ini sesuai untuk anda. Ia mengambil masa beberapa minit.", start: "Mula",
+        notice: "Soalan-soalan ini membantu menentukan sama ada kajian ini sesuai untuk anda. Jika sesuai, kami akan meminta nama dan e-mel anda supaya pasukan penyelidik boleh menjemput anda. Jika tidak sesuai, tiada maklumat tentang anda disimpan. Jika anda mengambil bahagian, maklumat anda disimpan sehingga {days} hari selepas projek kajian tamat, kemudian dipadam. Ini dikendalikan oleh TOTAL untuk {org}. Soalan, atau untuk meminta kami memadam data anda: {dpo}.",
+        outT: "Terima kasih", out: "Terima kasih kerana meluangkan masa. Kajian ini kurang sesuai untuk anda kali ini.", okT: "Anda mungkin sesuai", ok: "Sila beritahu kami cara untuk menghubungi anda. Pasukan penyelidik akan menghubungi anda jika anda dijemput.",
+        slotsT: "Soalan terakhir: waktu mana yang sesuai untuk temu bual?", slotsHint: "Pilih seberapa banyak yang anda mahu. Ini ialah tiga hari akan datang, dalam waktu Singapura (SGT).", next: "Seterusnya", none: "Tiada waktu yang sesuai, sila hubungi saya", days: ["Hari ini", "Esok", "Lusa"], wk: ["Isn", "Sel", "Rab", "Kha", "Jum", "Sab", "Ahd"], picked: "{n} dipilih", pick1: "Sila pilih sekurang-kurangnya satu waktu, atau tandakan kotak di bawah.",
+        name: "Nama anda", email: "E-mel anda", country: "Negara atau wilayah", agree: "Saya telah membaca notis di atas dan bersetuju anda menyimpan maklumat saya untuk tujuan ini.", submit: "Hantar", doneT: "Terima kasih!", done: "Kami telah menerima maklumat anda. Anda boleh menutup halaman ini.",
+        closed: "Soal selidik ini telah ditutup. Terima kasih!", bad: "Pautan ini tidak sah", err: "Tidak dapat dihantar. Sila semak borang dan cuba lagi.", need: "Sila isi nama dan e-mel anda serta tandakan kotak." },
+  ta: { title: "ஒரு சிறிய கேள்வித்தாள்", intro: "இந்த ஆய்வு உங்களுக்குப் பொருத்தமானதா என்பதை அறிய {org} விரும்புகிறது. இதற்குச் சில நிமிடங்கள் ஆகும்.", start: "தொடங்கு",
+        notice: "இந்தக் கேள்விகள் இந்த ஆய்வு உங்களுக்குப் பொருத்தமானதா என்பதைத் தீர்மானிக்க உதவுகின்றன. பொருத்தமாக இருந்தால், ஆய்வுக் குழு உங்களை அழைக்க உங்கள் பெயரையும் மின்னஞ்சலையும் கேட்போம். பொருத்தமாக இல்லையெனில், உங்களைப் பற்றிய எந்தத் தகவலும் சேமிக்கப்படாது. நீங்கள் பங்கேற்றால், ஆய்வுத் திட்டம் முடிந்த {days} நாட்கள் வரை உங்கள் விவரங்கள் சேமிக்கப்பட்டு, பின்னர் அழிக்கப்படும். இது {org} சார்பாக TOTAL நடத்துகிறது. கேள்விகளுக்கு அல்லது உங்கள் தரவை அழிக்கக் கோர: {dpo}.",
+        outT: "நன்றி", out: "உங்கள் நேரத்திற்கு நன்றி. இந்த முறை இந்த ஆய்வு உங்களுக்குப் பொருந்தவில்லை.", okT: "நீங்கள் பொருத்தமாக இருக்கலாம்", ok: "உங்களை எப்படித் தொடர்பு கொள்வது என்று தெரிவியுங்கள். நீங்கள் அழைக்கப்பட்டால் ஆய்வுக் குழு உங்களைத் தொடர்பு கொள்ளும்.",
+        slotsT: "கடைசிக் கேள்வி: நேர்காணலுக்கு எந்த நேரங்கள் உங்களுக்கு ஏற்றவை?", slotsHint: "எத்தனை வேண்டுமானாலும் தேர்ந்தெடுக்கலாம். இவை அடுத்த மூன்று நாட்கள், சிங்கப்பூர் நேரம் (SGT).", next: "அடுத்தது", none: "இவற்றில் எதுவும் ஏற்றதல்ல, என்னைத் தொடர்பு கொள்ளுங்கள்", days: ["இன்று", "நாளை", "நாளை மறுநாள்"], wk: ["திங்", "செவ்", "புத", "வியா", "வெள்", "சனி", "ஞாயி"], picked: "{n} தேர்ந்தெடுக்கப்பட்டது", pick1: "குறைந்தது ஒரு நேரத்தைத் தேர்ந்தெடுக்கவும், அல்லது கீழே உள்ள பெட்டியைக் குறிக்கவும்.",
+        name: "உங்கள் பெயர்", email: "உங்கள் மின்னஞ்சல்", country: "நாடு அல்லது பகுதி", agree: "மேலே உள்ள அறிவிப்பைப் படித்தேன்; இந்த நோக்கத்திற்காக என் விவரங்களைச் சேமிக்க ஒப்புக்கொள்கிறேன்.", submit: "சமர்ப்பி", doneT: "நன்றி!", done: "உங்கள் விவரங்கள் எங்களுக்குக் கிடைத்தன. இந்தப் பக்கத்தை மூடலாம்.",
+        closed: "இந்தக் கேள்வித்தாள் மூடப்பட்டுள்ளது. நன்றி!", bad: "இந்த இணைப்பு செல்லாது", err: "அனுப்ப முடியவில்லை. படிவத்தைச் சரிபார்த்து மீண்டும் முயலவும்.", need: "உங்கள் பெயர், மின்னஞ்சலை நிரப்பி, பெட்டியைக் குறிக்கவும்." },
 };
+const T2 = {   // the system's own questions after the research team's: interview languages and formats (then the times)
+  en: { prefT: "Two more questions", prefHint: "Pick as many as you like. The first one you tick is the one we will try first; the others are backups.", langQ: "Which language(s) would you like the interview in?", fmtQ: "How would you like to take part?", needL: "Please choose at least one language.", needF: "Please choose at least one way to take part." },
+  zh: { prefT: "还有两个问题", prefHint: "可以多选。最先勾选的是我们优先安排的，其余作为备选。", langQ: "你希望用哪种语言进行访谈？", fmtQ: "你希望用哪种方式参加访谈？", needL: "请至少选一种语言。", needF: "请至少选一种参加方式。" },
+  ms: { prefT: "Dua soalan lagi", prefHint: "Pilih seberapa banyak yang anda mahu. Yang pertama anda tandakan ialah yang kami cuba dahulu; yang lain ialah pilihan sandaran.", langQ: "Anda mahu temu bual dalam bahasa apa?", fmtQ: "Bagaimana anda mahu mengambil bahagian?", needL: "Sila pilih sekurang-kurangnya satu bahasa.", needF: "Sila pilih sekurang-kurangnya satu cara untuk mengambil bahagian." },
+  ta: { prefT: "மேலும் இரண்டு கேள்விகள்", prefHint: "எத்தனை வேண்டுமானாலும் தேர்ந்தெடுக்கலாம். நீங்கள் முதலில் குறிப்பது முதலில் ஏற்பாடு செய்யப்படும்; மற்றவை மாற்று.", langQ: "எந்த மொழியில் நேர்காணல் வேண்டும்?", fmtQ: "எப்படிப் பங்கேற்க விரும்புகிறீர்கள்?", needL: "குறைந்தது ஒரு மொழியைத் தேர்ந்தெடுக்கவும்.", needF: "குறைந்தது ஒரு பங்கேற்பு முறையைத் தேர்ந்தெடுக்கவும்." },
+};
+for (const k in T2) Object.assign(T[k], T2[k]);
+// ms / ta wording is first-draft: it needs a native speaker's and legal's review before real use (the project's language card marks it 文案待复核).
+const NATIVE = { zh: "中文", en: "English", ms: "Bahasa Melayu", ta: "தமிழ்" }, HL = { zh: "zh-CN", en: "en", ms: "ms", ta: "ta" };
+/** The language to open in: the browser's own when the questionnaire offers it, else the project's default. */
+const pickLang = (offered, def) => { for (const l of navigator.languages || [navigator.language || ""]) { const c = String(l).toLowerCase().slice(0, 2); if (offered.includes(c)) return c; } return offered.includes(def) ? def : offered[0]; };
+
 const COUNTRY = { SG: "Singapore / 新加坡", MY: "Malaysia / 马来西亚", ID: "Indonesia / 印尼", TH: "Thailand / 泰国", VN: "Vietnam / 越南", PH: "Philippines / 菲律宾" };
 const post = async (path, body) => {
   const r = await fetch(`/api/public/screen/${enc}${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -38,13 +62,46 @@ const fill = (s, info) => s.replace("{org}", info.org).replace("{days}", info.re
 (async () => {
   let info, x;
   try { info = await (await fetch(`/api/public/screen/${enc}`)).json(); if (!info.org) throw 0; } catch { box.innerHTML = `<h1>${T.en.bad} / ${T.zh.bad}</h1>`; return; }
-  const lang = (info.language || "en").startsWith("zh") ? "zh" : "en"; x = T[lang]; document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
+  const offered = (info.languages && info.languages.length ? info.languages.map((l) => l.code) : [info.language || "en"]).filter((c) => T[c]);
+  let lang = pickLang(offered, info.language); x = T[lang]; document.documentElement.lang = HL[lang];
+  let redraw = () => {};   // draws the screen the candidate is on again, after they change the language
+  if (offered.length > 1) {
+    const bar = document.createElement("div"); bar.className = "lgbar";
+    bar.innerHTML = `<label><span class="vh">Language</span><select id="lgsel" aria-label="Language">${offered.map((c) => `<option value="${c}"${c === lang ? " selected" : ""}>${NATIVE[c]}</option>`).join("")}</select></label>`;
+    box.parentElement.insertBefore(bar, box);
+    $("#lgsel").onchange = (e) => { lang = e.target.value; x = T[lang]; document.documentElement.lang = HL[lang]; runnerLang(); const it = $("#introtxt"); if (it) it.innerHTML = introHtml(); redraw(); };
+  }
+  let runnerLang = () => {};
   if (!info.open) { box.innerHTML = `<h1>${x.closed}</h1>`; return; }
-  box.innerHTML = `<h1>${x.title}</h1><p>${esc(fill(x.intro, info))}</p><div class="note">${esc(fill(x.notice, info))}</div><div><button class="p" id="scrgo" type="button">${x.start}</button></div><div id="q"></div>`;
-  $("#scrgo").onclick = () => {
+  const introHtml = () => `<h1>${x.title}</h1><p>${esc(fill(x.intro, info))}</p><div class="note">${esc(fill(x.notice, info))}</div>`;   // kept apart so it follows a language change while the questions are on screen
+  const drawIntro = () => { box.innerHTML = `<div id="introtxt" class="swrap" style="padding:0">${introHtml()}</div><div><button class="p" id="scrgo" type="button">${x.start}</button></div><div id="q"></div>`; $("#scrgo").onclick = start; redraw = drawIntro; };
+  const start = () => {
     $("#scrgo").parentElement.remove();
     const host = $("#q");
+    const prefs = { langs: [], formats: [] };   // what they chose in the two system questions, in the order they ticked (the first one is the preferred one)
+    const showPrefs = (answers) => {
+      redraw = () => showPrefs(answers);
+      const Ls = info.interview_languages || [], Fs = info.formats || [];
+      if (!Ls.length && !Fs.length) { showSlots(answers); return; }
+      const group = (id, title, list, name, cur, label) => `<fieldset class="slotday"><legend>${esc(title)}</legend><div class="slots">${list.map((o) => `<label class="slot${cur.includes(o.code) ? " on" : ""}"><input type="checkbox" name="${name}" value="${o.code}"${cur.includes(o.code) ? " checked" : ""}><span>${esc(label(o))}</span></label>`).join("")}</div></fieldset>`;
+      host.innerHTML = `<h2>${x.prefT}</h2><p class="sm">${x.prefHint}</p><form id="pf" class="stack">
+        ${Ls.length ? group("l", x.langQ, Ls, "l", prefs.langs, (o) => NATIVE[o.code] || o.name) : ""}${Fs.length ? group("f", x.fmtQ, Fs, "f", prefs.formats, (o) => (lang === "zh" ? o.name : o.en)) : ""}
+        <div class="note" id="perr" role="alert" hidden></div><div><button class="p" type="submit">${x.next}</button></div></form>`;
+      const f = $("#pf");
+      f.querySelectorAll("input[type=checkbox]").forEach((c) => (c.onchange = () => {
+        const list = c.name === "l" ? prefs.langs : prefs.formats, at = list.indexOf(c.value);
+        if (c.checked && at < 0) list.push(c.value); else if (!c.checked && at >= 0) list.splice(at, 1);
+        c.closest(".slot").classList.toggle("on", c.checked);
+      }));
+      f.onsubmit = (e) => {
+        e.preventDefault(); const er = $("#perr");
+        if (Ls.length && !prefs.langs.length) { er.textContent = x.needL; er.hidden = false; return; }
+        if (Fs.length && !prefs.formats.length) { er.textContent = x.needF; er.hidden = false; return; }
+        showSlots(answers);
+      };
+    };
     const showContact = (answers, picks) => {
+      redraw = () => showContact(answers, picks);
       host.innerHTML = `<h2>${x.okT}</h2><p>${x.ok}</p><form id="cf" class="stack"><label class="f"><span>${x.name}</span><input name="name" maxlength="100" autocomplete="name" required></label>
         <label class="f"><span>${x.email}</span><input name="email" type="email" maxlength="200" autocomplete="email" required></label>
         <label class="f"><span>${x.country}</span><select name="country">${info.countries.map((c) => `<option value="${c}">${esc(COUNTRY[c] || c)}</option>`).join("")}</select></label>
@@ -52,11 +109,12 @@ const fill = (s, info) => s.replace("{org}", info.org).replace("{days}", info.re
       $("#cf").onsubmit = async (e) => {
         e.preventDefault(); const f = e.target, err = $("#cerr");
         if (!f.consent.checked || !f.name.value.trim() || !f.email.value.trim()) { err.textContent = x.need; err.hidden = false; return; }
-        try { await post("/submit", { answers, name: f.name.value, email: f.email.value, country: f.country.value, consent: true, slots: picks }); host.innerHTML = `<h2>${x.doneT}</h2><p>${x.done}</p>`; }
+        try { await post("/submit", { answers, name: f.name.value, email: f.email.value, country: f.country.value, consent: true, slots: picks, langs: prefs.langs, formats: prefs.formats }); redraw = () => { host.innerHTML = `<h2>${x.doneT}</h2><p>${x.done}</p>`; }; redraw(); }
         catch (er) { err.textContent = er.status === 403 || er.status === 422 || er.status === 429 ? er.message : x.err; err.hidden = false; }
       };
     };
     const showSlots = async (answers) => {   // the last question is added by the system: which interview times suit you
+      redraw = () => showSlots(answers);
       let days = [];
       try { days = (await (await fetch(`/api/public/screen/${enc}/slots`)).json()).days || []; } catch { days = []; }
       if (!days.length) { showContact(answers, []); return; }
@@ -73,13 +131,15 @@ const fill = (s, info) => s.replace("{org}", info.org).replace("{days}", info.re
       };
     };
     const runner = scrRunner(host, {
-      lang, step: (answers) => post("/step", { answers }).catch((e) => { throw new Error(e.status === 410 ? x.closed : e.message); }),
+      lang, step: (answers) => post("/step", { answers, lang }).catch((e) => { throw new Error(e.status === 410 ? x.closed : e.message); }),
       onEnd: (result, answers) => {
-        if (result === "out") { host.innerHTML = `<h2>${x.outT}</h2><p>${x.out}</p>`; return; }
-        showSlots(answers);
+        if (result === "out") { redraw = () => { host.innerHTML = `<h2>${x.outT}</h2><p>${x.out}</p>`; }; redraw(); return; }
+        showPrefs(answers);
       },
     });
+    runnerLang = () => runner.setLang(lang); redraw = () => runner.redraw();
     runner.start();
   };
+  drawIntro();
 })();
 </script></body></html>

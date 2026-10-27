@@ -3,7 +3,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import member_scopes, plans, recruit, recruit_form, recruit_insights, screener
+from .. import member_scopes, plans, project_langs, recruit, recruit_form, recruit_insights, screener
 from .. import methods as methods_mod
 from ..audit import audit
 from ..config import settings
@@ -53,7 +53,7 @@ def project_out(p: Project, plan_status: str = "", setup: dict | None = None, ed
     """`plan_status`: "" for a project made before plans existed (it counts as published), else draft / review / approved / published (a plan that was
     published stays "published" while it is unlocked; `editing` then says where the unlocked plan stands: draft / review / approved)."""
     pd = purge_date(p)
-    return {"id": p.id, "name": p.name, "brief": p.brief, "market": p.market, "language": p.language, "created_at": p.created_at.isoformat(),
+    return {"id": p.id, "name": p.name, "brief": p.brief, "market": p.market, "language": p.language, "languages": project_langs.of(p), "created_at": p.created_at.isoformat(),
             "closed_at": p.closed_at.isoformat() if p.closed_at else None, "purge_at": pd.isoformat() if pd else None,
             "retention_days": days_of(p), "methods": methods_mod.of(p), "plan_status": plan_status, "setup": setup, "editing": editing}
 
@@ -62,7 +62,7 @@ def participant_out(p: Participant, screener_count: int = 0, key_answers: str = 
     return {"id": p.id, "name": p.name, "email": p.email, "country": p.country, "language": p.language,
             "screening": p.screening, "anonymized": p.anonymized_at is not None, "screener": screener_count,
             "tags": p.tags or [], "screen_result": p.screen_result, "screen_reason": p.screen_reason, "source": p.source, "source_name": p.source_name, "key_answers": key_answers,
-            "code": p.code, "tier": tier, "tier_manual": bool(p.tier_override), "interview_kind": kind, "availability": [a for a in (p.availability or [])]}
+            "code": p.code, "tier": tier, "tier_manual": bool(p.tier_override), "interview_kind": kind, "availability": [a for a in (p.availability or [])], "pref_formats": list(p.pref_formats or []), "pref_langs": list(p.pref_langs or [])}
 
 
 def get_project(db: Session, ctx: Ctx, pid: str) -> Project:

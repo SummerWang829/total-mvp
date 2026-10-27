@@ -31,10 +31,19 @@ async function inviteModal(p, parts, { preselect = "", itv = null, onDone = () =
   let main = editing ? itv.scheduled_at || "" : times[0] || "";
   let backups = times.filter((a) => a !== main);
   const mailReady = !!(window.CONFIG && CONFIG.mail_ready);
+  // the interview language and format: only what the project allows; what the candidate chose in the questionnaire fills them in (the first is the one to book, the rest are backups)
+  const info = await api(`/projects/${p.id}/languages`).catch(() => null);
+  const FMT = (info && info.format_names) || { video: "视频" }, projLangs = info ? info.languages : Object.keys(LANGS);
+  const fmtFor = (kind) => ((info && info.formats && info.formats[kind === "group" ? "group" : "depth"]) || Object.keys(FMT)).filter((k) => FMT[k]);
+  const fmtOpts = (kind, cur) => fmtFor(kind).map((k) => `<option value="${k}"${k === cur ? " selected" : ""}>${esc(FMT[k])}</option>`).join("");
+  const lgOpts = (cur) => (editing ? "" : `<option value="">同受访者</option>`) + projLangs.map((k) => `<option value="${k}"${k === cur ? " selected" : ""}>${esc(LANGS[k] || k)}</option>`).join("");
+  const wantFmt = editing ? itv.format || "" : (who && who.pref_formats && who.pref_formats[0]) || "";
+  const wantLg = editing ? itv.language : (who && who.pref_langs && who.pref_langs[0]) || "";
   const m = modal(`<div class="invdlg"><h2>邀请函</h2><form id="f">
     ${editing ? "" : `<label class="f"><span>场次类型</span><select name="kind" id="kind"><option value="depth">深访（一对一）</option><option value="group">座谈会（最多 10 人，人工主持）</option></select></label>`}
     <div id="depthpick"><div class="grid2"><label class="f"><span>受访者</span><select name="participant_id"${editing ? " disabled" : ""}>${(editing ? [who].filter(Boolean) : el).map((x) => `<option value="${x.id}"${x.id === (who && who.id) ? " selected" : ""}>${esc(x.code)} · ${esc(x.name)} (${esc(x.country)})</option>`).join("")}</select></label>
-      <label class="f"><span>访谈语言</span><select name="language"${editing ? " disabled" : ""}>${langOpts(editing ? itv.language : "", "同受访者")}</select></label></div></div>
+      <label class="f"><span>访谈语言</span><select name="language" id="lg">${lgOpts(wantLg)}</select></label></div></div>
+    <div class="grid2"><label class="f"><span>访谈形式</span><select name="format" id="fm">${fmtOpts(editing ? itv.kind || "depth" : "depth", wantFmt)}</select></label></div><div class="tmchips" id="pfc"></div>
     <fieldset id="grouppick" hidden style="border:1px solid var(--line);border-radius:10px;margin:0 0 14px;padding:6px 14px"><legend class="sm mut">座谈会受访者（勾选 1 到 10 位）</legend>${el.map((x) => `<label class="chk"><input type="checkbox" name="pids" value="${x.id}"${x.id === preselect ? " checked" : ""}><span>${esc(x.code)} · ${esc(x.name)}</span></label>`).join("")}</fieldset>
     <div class="tmbox"><label class="f" style="margin:0"><span>时间</span><input name="scheduled_at" id="tm" type="datetime-local" value="${toLocalInput(main)}"></label><div class="tmchips" id="tmc"></div></div>
     <label class="f" id="emailbox"><span>受访者邮箱</span><input name="email" id="em" type="text" maxlength="200" autocomplete="off" value="${esc(who ? who.email || "" : "")}"><div class="emsg" id="emsg" role="status"></div></label>
@@ -67,6 +76,14 @@ async function inviteModal(p, parts, { preselect = "", itv = null, onDone = () =
     tmc.querySelectorAll(".tmc").forEach((c) => (c.onclick = (e) => { const i = +c.dataset.i; if (e.target.dataset.x !== undefined) { backups.splice(i, 1); drawChips(); return; } const cur = toIsoUtc(tm.value); tm.value = toLocalInput(backups[i]); backups[i] = cur || backups[i]; if (!cur) backups.splice(i, 1); drawChips(); }));
   };
   drawChips();
+  const fm = $("#fm", m), lg = $("#lg", m), pfc = $("#pfc", m);
+  const drawPrefs = () => {   // what else the candidate chose: click one to make it the booked one
+    const fs = ((who && who.pref_formats) || []).filter((k) => FMT[k] && k !== fm.value), ls = ((who && who.pref_langs) || []).filter((k) => projLangs.includes(k) && k !== lg.value);
+    pfc.innerHTML = fs.length || ls.length ? `<span class="sm mut">受访者还选了：</span>` + fs.map((k) => `<span class="tmc" data-f="${k}" role="button" tabindex="0">${esc(FMT[k])}</span>`).join("") + ls.map((k) => `<span class="tmc" data-l="${k}" role="button" tabindex="0">${esc(LANGS[k] || k)}</span>`).join("") : "";
+    pfc.querySelectorAll("[data-f]").forEach((c) => (c.onclick = () => { fm.value = c.dataset.f; drawPrefs(); }));
+    pfc.querySelectorAll("[data-l]").forEach((c) => (c.onclick = () => { lg.value = c.dataset.l; drawPrefs(); }));
+  };
+  fm.onchange = lg.onchange = drawPrefs; drawPrefs();
   [30, 45, 60, 90].forEach((v) => { const b = document.createElement("button"); b.type = "button"; b.textContent = v; b.onclick = () => { du.value = v; syncDur(); }; dq.appendChild(b); });
   const syncDur = () => dq.querySelectorAll("button").forEach((b) => b.classList.toggle("on", +b.textContent === +du.value));
   du.oninput = syncDur; syncDur();
@@ -82,12 +99,12 @@ async function inviteModal(p, parts, { preselect = "", itv = null, onDone = () =
   };
   em.oninput = checkEmail; checkEmail();
   if (!editing) $("#kind", m).onchange = () => {
-    const g = grouped(); $("#grouppick", m).hidden = !g; $("#depthpick", m).hidden = g; $("#emailbox", m).hidden = g; $(".tmbox", m).hidden = false;
+    const g = grouped(); fm.innerHTML = fmtOpts(g ? "group" : "depth", ""); drawPrefs(); $("#grouppick", m).hidden = !g; $("#depthpick", m).hidden = g; $("#emailbox", m).hidden = g; $(".tmbox", m).hidden = false;
     const how = $("#how", m); if (g) how.value = "human"; how.querySelector("option[value=ai]").disabled = g; checkEmail();
   };
   const go = guard(async (send) => {
     const fd = new FormData(f), kind = editing ? itv.kind || "depth" : fd.get("kind") || "depth";
-    const base = { moderator_id: fd.get("moderator_id") || null, duration_min: Number(fd.get("duration_min")) || 45, scheduled_at: toIsoUtc(fd.get("scheduled_at")) };
+    const base = { moderator_id: fd.get("moderator_id") || null, duration_min: Number(fd.get("duration_min")) || 45, scheduled_at: toIsoUtc(fd.get("scheduled_at")), format: fd.get("format") || "" };
     if (kind !== "group" && who) {
       const addr = em.value.trim().toLowerCase();
       if (addr && addr !== (who.email || "").toLowerCase()) { await api(`/participants/${who.id}/email`, { method: "PUT", body: { email: addr } }); who.email = addr; }
@@ -95,6 +112,7 @@ async function inviteModal(p, parts, { preselect = "", itv = null, onDone = () =
     if (editing) {
       const body = { ...base, send_email: send };
       if (fd.get("moderation") && fd.get("moderation") !== itv.moderation) body.moderation = fd.get("moderation");
+      if (fd.get("language") && fd.get("language") !== itv.language) body.language = fd.get("language");
       const r = await api(`/interviews/${itv.id}`, { method: "PUT", body });
       itv = { ...itv, ...r }; dirty = true; if (r.mail) mailNote(who ? who.name : "", r.mail); else toast("已保存");
       saidSaved(send && r.mail && r.mail.status === "queued" ? "已保存，更新邮件已发出。" : "已保存。需要的话，可以点“复制链接”把进入链接发给受访者。"); return;

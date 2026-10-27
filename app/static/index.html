@@ -11,6 +11,7 @@
 <script src="/home.js"></script>
 <script src="/screen_run.js"></script>
 <script src="/rform.js"></script>
+<script src="/rtrans.js"></script>
 <script src="/rdash.js"></script>
 <script src="/outline.js"></script>
 <script src="/insights.js"></script>
@@ -23,6 +24,9 @@ const app = $("#app");
 const route = () => location.hash.replace(/^#/, "") || "/projects";
 const STAFF = () => ["admin", "researcher", "support"].includes(ME.role);
 const VIEWER = () => ME.role === "viewer", RECRUITER = () => ME.role === "recruiter";   // a client who only reads, and someone who only recruits
+const FMT_NAME = { audio: "纯音频", text: "文字访谈", text_voice: "文字+语音转录", video: "视频", video_screen: "视频+屏幕共享" };   // the five interview formats
+/** The languages a project allows, as words ("中文、English"); the default one first. */
+const langNames = (p) => ((p.languages && p.languages.length ? p.languages : [p.language]).map((l) => LANGS[l] || l)).join("、");
 const when = (iso) => (iso ? new Date(iso + "Z").toLocaleString([], { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "—");
 
 // ---------------- shell: dark-green nav + sticky project bar + white canvas ----------------
@@ -54,7 +58,7 @@ function navHtml(active, p) {
 function shell(inner, { active, p, title } = {}) {
   const proj = p && STAFF();  // researchers and admins: stage navigation + project bar + tabs
   const st = p ? (p.closed_at ? `<span class="tag">已结项</span>` : `<span class="tag ok keep">进行中</span>`) : "";
-  const meta = p ? `<span class="tag">${esc(p.market || "—")}</span><span class="tag">${esc(LANGS[p.language] || p.language)}</span>${st}` +
+  const meta = p ? `<span class="tag">${esc(p.market || "—")}</span><span class="tag">${esc(langNames(p))}</span>${st}` +
     (STAFF() ? (p.closed_at ? `<button class="s" id="reopen">重新打开</button>` : `<button class="s" id="closeproj" title="从结项那天起 ${p.retention_days} 天，受访者数据会自动删除">结项</button>`) : "") : "";
   const notice = p && p.closed_at ? `<div class="note"><b>项目已结项。</b>受访者的录像、转写原文、引文和分享链接将在 ${esc(new Date(p.purge_at + "Z").toLocaleDateString())} 自动删除（结项后 ${p.retention_days} 天），洞察结论会保留。</div>` : "";
   const top = proj ? shCtx(p, active) : `<div class="top">${p ? `<span class="crumb"><a href="#/projects">项目总览</a> /</span><span class="pname">${esc(p.name)}</span>` : `<span class="pname">${esc(title || "")}</span>`}<div class="meta">${meta}</div></div>`;
@@ -191,7 +195,7 @@ function projectCard(p) {
   const stt = setup ? `<span class="tag o">${{ draft: "草稿", review: "审查中", approved: "待发布" }[p.plan_status] || "立项中"}</span>` : st;
   return `<a class="card pcard" href="#/p/${p.id}${setup ? "/wiz" : ""}" data-name="${esc(p.name.toLowerCase())}" data-st="${p.closed_at ? "closed" : "open"}">
     <div class="row"><h3>${esc(p.name)}</h3><span class="sp"></span>${stt}</div>
-    <div class="sm mut">${esc(p.market || "—")} · ${esc(LANGS[p.language] || p.language)}${p.brief ? " · " + esc(p.brief).slice(0, 40) : ""}</div>
+    <div class="sm mut">${esc(p.market || "—")} · ${esc(langNames(p))}${p.brief ? " · " + esc(p.brief).slice(0, 40) : ""}</div>
     ${s ? `<div class="nums"><div><b>${s.participants}</b><span>受访者</span></div><div><b>${s.done}/${s.sessions}</b><span>场次完成</span></div><div><b>${s.approved}</b><span>洞察已通过</span></div></div>
       <div class="sm">${s.next_at ? `下一场：<b>${when(s.next_at)}</b>` : `<span class="mut">没有待开始的场次</span>`}</div>` : ""}</a>`;
 }
@@ -235,11 +239,12 @@ async function homeView(p) {
   const my = renderSeq;
   const o = await api(`/projects/${p.id}/overview`), s = o.summary;
   const h = STAFF() && p.plan_status === "published" ? await hmBuild(p, o) : null;  // projects with a plan get the original overview: big number, country map, status, sub-projects
+  const langs = STAFF() ? await api(`/projects/${p.id}/languages`).catch(() => null) : null;   // the project-language card (every project has one)
   if (stale(my)) return;
   const pct = (a, b) => (b ? Math.round((a / b) * 100) : 0);
   const meter = (label, a, b, cls = "") => `<div class="meter"><dt>${label}</dt><dd class="pbar6 ${cls}" role="img" aria-label="${label} ${a} / ${b}"><i style="width:${pct(a, b)}%"></i></dd><dd>${a} / ${b}</dd></div>`;
   shell(`${head("项目总览", "这个项目用了哪些研究方法、各做到哪一步、下一步做什么。", `<button class="s" id="rep">下载研究报告（Word）</button>${h ? ` <button class="s" id="hmcopy" type="button">复制项目</button>` : ""}`)}
-    ${h ? h.html : starmapHtml(p, o.starmap)}
+    ${langs ? hmLangCard(langs) : ""}${h ? h.html : starmapHtml(p, o.starmap)}
     ${!h && (o.methods.includes("depth") || o.methods.includes("group")) ? `<div class="hero">
       <div class="card"><div class="hero-k">已完成的深访</div><div class="hero-n"><b>${s.done}</b><span>/ ${s.sessions} 场</span></div>
         <dl class="meters">${meter("受访者到场", s.done, s.sessions)}${meter("已转写", s.transcribed, s.ended)}${meter("洞察已通过", s.approved, s.insights, "o")}</dl>
@@ -249,6 +254,7 @@ async function homeView(p) {
     <div class="card"><h2>最近动态</h2>${o.activity.length ? `<ul class="feed">${o.activity.map((a) => `<li><time>${when(a.at.replace(/Z$/, ""))}</time><span><b>${esc(a.who)}</b> ${esc(a.what)}${a.session ? ` <span class="mut">· ${esc(a.session)}</span>` : ""}</span></li>`).join("")}</ul>`
       : `<p class="mut" style="margin:0">还没有动态。添加受访者、发出邀请后，这里会按时间列出每一步。</p>`}</div>`, { active: "home", p });
   if (h) h.wire();
+  if (langs) hmLangWire(p, langs);
   $("#rep").onclick = guard(async () => {  // a download needs the login header, so fetch it and hand the browser a file
     const r = await fetch(`/api/projects/${p.id}/report?format=docx`, { headers: { Authorization: "Bearer " + store.get("tt_token") } });
     if (!r.ok) throw new Error("生成报告失败，请稍后再试");
@@ -299,7 +305,7 @@ async function peopleView(p) {
           : `<button type="button" class="lch ${x.tier === "backup" ? "st-b" : "st-f"}" data-tier="${x.id}" aria-haspopup="menu" title="${x.screen_reason ? esc(x.screen_reason) : ""}">${x.tier === "backup" ? "备份" : "正式"} ▾</button><div class="sm mut">${x.tier_manual ? "手动" : "自动"} · ${x.screen_result ? SCREEN[x.screen_result][0] : "可邀请"}</div>`;
         const bad = new Set(clash(x.tags).flat()), tags = x.tags.map((tg) => `<span class="lch ${lcolor(tg)}${bad.has(tg) ? " bad" : ""}">${esc(tg)}${TAG_DEL.has(x.id) ? ` <span class="lx" data-tx="${x.id}" data-tag="${esc(tg)}" role="button" aria-label="去掉标签 ${esc(tg)}">×</span>` : ""}</span>`).join("");
         return `<tr><td><input type="checkbox" class="pick" value="${x.id}" aria-label="选择 ${esc(x.name)}"${x.anonymized ? " disabled" : ""}></td><td><div class="code">${esc(x.code)}</div><span class="ity ${k[1]}">${k[0]}</span></td>
-        <td><b>${esc(x.name)}</b>${x.email ? `<div class="sm mut ell" title="${esc(x.email)}">${esc(x.email)}</div>` : ""}</td><td><div>${esc(x.country || "—")}</div><div class="sm mut">${esc(LANGS[x.language] || x.language || "—")}</div></td>
+        <td><b>${esc(x.name)}</b>${x.email ? `<div class="sm mut ell" title="${esc(x.email)}">${esc(x.email)}</div>` : ""}</td><td><div>${esc(x.country || "—")}</div><div class="sm mut">${esc(LANGS[x.language] || x.language || "—")}</div>${(x.pref_formats || []).length ? `<div class="sm mut ell" title="受访者选的访谈形式">${esc(x.pref_formats.map((k) => FMT_NAME[k] || k).join("、"))}</div>` : ""}</td>
         <td>${tier}</td>
         <td>${x.anonymized ? "" : `<div class="lbox">${tags || `<span class="sm mut">—</span>`}<span class="lbtns"><button class="sqb" type="button" data-tadd="${x.id}" aria-label="给 ${esc(x.name)} 添加标签">＋</button><button class="sqb${TAG_DEL.has(x.id) ? " on" : ""}" type="button" data-tdel="${x.id}" aria-label="去掉 ${esc(x.name)} 的标签">－</button></span></div>`}${bad.size ? `<div class="tgwarn" role="alert">“${esc(clash(x.tags)[0][0])}”和“${esc(clash(x.tags)[0][1])}”互斥，请去掉其中一个。</div>` : ""}</td>
         <td data-l="问卷答案">${x.anonymized ? "" : x.screener ? `<button class="s" data-scr="${x.id}">查看详情</button>` : `<span class="stn">无答案</span>`}</td>

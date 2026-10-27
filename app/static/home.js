@@ -36,7 +36,7 @@ function hmStages(p, mon, o, users, one) {
   const block = (s) => {
     const x = hmSubStats(mon, s), ks = (SH_DESIGN[s.design] || SH_DESIGN.iq)[1], num = { quant: [x.qc, x.qt, "份"], depth: [x.ic, x.it, "人"], group: [x.fc, x.ft, "人"] };
     return `${many ? `<div class="row hm-sub"><b>${esc(s.name)}</b><span class="mut sm">${SH_DESIGN[s.design] ? SH_DESIGN[s.design][0] : ""} · 责任人 ${esc(pm(s.pm))}${s.listening ? " · 舆情" : ""}${s.async_ai ? " · 异步 AI" : ""}</span></div>` : ""}
-      ${ks.map((k, i) => { const [d, t, u] = num[k], st = hmStageState(p, o, k, d, t); return `<div class="hm-stage"><div class="hm-l"><div class="row"><span class="sic">${i + 1}</span><button class="lnk hm-name" type="button" data-gostage="${s.id}|${k}">${SH_KIND[k]}</button></div>
+      ${ks.map((k, i) => { const [d, t, u] = num[k], st = hmStageState(p, o, k, d, t); return `<div class="hm-stage"><div class="hm-l"><div class="row"><span class="sic">${i + 1}</span><span class="hm-name">${SH_KIND[k]}</span></div>
         <div><span class="pill ${st === "招募中" ? "o" : st === "进行中" ? "" : "g"}">${st}</span></div><div class="mut sm">${d} / ${t} ${u}</div><div class="mut sm">${esc(s.name)} · 责任人 ${esc(pm(s.pm))}</div></div>
         <div class="hm-r">${hmChart(mon, k, s, mon.subs.length === 1, d, t, u)}</div></div>`; }).join("")}`;
   };
@@ -56,12 +56,45 @@ async function hmBuild(p, o) {
   const picked = shSub(p), sub = picked ? mon.subs.find((s) => s.id === picked.id) || null : null;  // the full sub-project (language, responsible person), not only the menu's summary
   const html = sub ? hmSubView(p, mon, sub, users, o) : hmStages(p, mon, o, users, null);
   const wire = () => {
-    document.querySelectorAll("[data-gostage]").forEach((b) => (b.onclick = () => {  // open the stage's page for that sub-project (深访 / 座谈会 start at the recruiting setup)
-      const [id, kind] = b.dataset.gostage.split("|"); sessionStorage.setItem("sub_" + p.id, id);
-      if (kind !== "quant") sessionStorage.setItem("qmode", kind);
-      location.hash = `#/p/${p.id}/${kind === "quant" ? "quant" : "people"}`;
-    }));
     const cp = $("#hmcopy"); if (cp) cp.onclick = guard(async () => { const r = await api(`/projects/${p.id}/copy`, { method: "POST" }); await projects(true); toast(`已创建草稿「${r.name}」，在立项向导里继续编辑`); location.hash = `#/p/${r.id}/wiz`; });
   };
   return { html, wire, sub };
+}
+
+/* ---------- 项目语言：项目总览里的一张卡片，随时加或停用语言，立刻生效（不用重新发布） ---------- */
+const HM_AI = { true: ["支持", "ok"], false: ["不支持", ""] };
+function hmLangCard(info) {
+  const rows = info.rows.map((r) => `<tr><td data-l="语言"><b>${esc(r.name)}</b>${r.default ? ` <span class="tag o">默认</span>` : ""}</td>
+    <td data-l="同意书"><span class="tag ${r.consent_reviewed ? "ok" : "o"}">${r.consent_reviewed ? "已审" : "文案待复核"}</span></td>
+    <td data-l="AI 主持"><span class="tag ${HM_AI[r.ai][1]}">${HM_AI[r.ai][0]}</span></td><td data-l="使用">${r.on ? (r.in_use ? r.in_use + " 场" : "0 场") : "—"}</td>
+    <td class="acts" data-l="操作">${!info.can_edit ? "" : r.on ? (r.default ? "" : `<button type="button" class="s" data-lg="default|${r.code}">设为默认</button> <button type="button" class="s" data-lg="off|${r.code}">停用</button>`) : `<button type="button" class="p" data-lg="on|${r.code}">添加</button>`}</td></tr>`).join("");
+  return `<div class="card hm-langs" id="hmlang"><h3 style="margin:0 0 8px">语言与受访形式 <span class="sm mut" style="font-weight:400">${info.can_edit ? "改完立刻生效，不用重新发布" : "只有管理员、项目经理和项目负责人能改"}</span></h3>
+    <table class="tbl rc"><thead><tr><th>语言</th><th>同意书</th><th>AI 主持</th><th>使用</th><th></th></tr></thead><tbody>${rows}</tbody></table>${hmFmtRows(info)}<div class="sm" id="hmlmsg" role="status" aria-live="polite" style="margin-top:6px"></div></div>`;
+}
+/** The interview formats each live method allows (深访 / 座谈会): tick the kinds candidates may choose; it applies at once. */
+function hmFmtRows(info) {
+  const names = info.format_names || {}, label = { depth: "深访", group: "座谈会" };
+  return Object.keys(info.formats || {}).map((m) => `<div class="hm-fmt"><b>${label[m] || m}允许的访谈形式</b><div class="row" role="group" aria-label="${label[m] || m}允许的访谈形式">${Object.keys(names).map((k) => `<button type="button" class="s hm-chip${info.formats[m].includes(k) ? " on" : ""}" data-fmt="${m}|${k}" aria-pressed="${info.formats[m].includes(k)}"${info.can_edit ? "" : " disabled"}>${esc(names[k])}</button>`).join("")}</div></div>`).join("");
+}
+function hmLangWire(p, info) {
+  const box = $("#hmlang"); if (!box || !info) return;
+  box.querySelectorAll("[data-fmt]").forEach((b) => (b.onclick = async () => {
+    const [m, k] = b.dataset.fmt.split("|"), now = info.formats[m], next = now.includes(k) ? now.filter((x) => x !== k) : [...now, k];
+    try {
+      const r = await api(`/projects/${p.id}/languages`, { method: "PUT", body: { formats: { [m]: next } } });
+      Object.assign(info, r); box.outerHTML = hmLangCard(info); hmLangWire(p, info);
+      const msg = $("#hmlmsg"); if (msg) msg.textContent = `${m === "depth" ? "深访" : "座谈会"}的访谈形式已更新，还没作答的候选人会看到新的选项。`;
+    } catch (e) { const msg = $("#hmlmsg"); if (msg) msg.textContent = e.message; toast(e.message, true); }
+  }));
+  box.querySelectorAll("[data-lg]").forEach((b) => (b.onclick = async () => {
+    const [act, code] = b.dataset.lg.split("|"), on = info.languages.slice();
+    let langs = on, def = info.default;
+    if (act === "on") langs = [...on, code]; else if (act === "off") langs = on.filter((x) => x !== code); else def = code;
+    try {
+      const r = await api(`/projects/${p.id}/languages`, { method: "PUT", body: { languages: langs, default: def } });
+      Object.assign(info, r); box.outerHTML = hmLangCard(info); hmLangWire(p, info);
+      const m = $("#hmlmsg"); const row = r.rows.find((x) => x.code === code);
+      if (m && row) m.textContent = act === "on" ? (row.consent_reviewed ? `已添加${row.name}，邀请函和同意书里受访者可以选它。` : `已添加${row.name}。同意书文案还没经法务复核，请到团队里找人复核。`) : act === "off" ? `已停用${row.name}，已经开始的访谈不受影响。` : `默认访谈语言已改为${row.name}。`;
+    } catch (e) { const m = $("#hmlmsg"); if (m) m.textContent = e.message; toast(e.message, true); }
+  }));
 }

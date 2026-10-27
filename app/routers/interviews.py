@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from .. import insights_overview as insights_overview_mod, ai_room, concept, content_rules, export, groups, invites, jobs, participant_code, pretask, scheduling
+from .. import formats, insights_overview as insights_overview_mod, ai_room, concept, content_rules, export, groups, invites, jobs, participant_code, pretask, scheduling
 from ..audit import audit
 from ..config import settings
 from ..db import get_db
@@ -81,7 +81,7 @@ def interview_out(itv: Interview, ctx: Ctx, invite_token: str | None = None, db:
         else {"name": "受访者"},
         "moderator_name": _moderator_name(db, itv) if sees_name else "",  # the team's own names are not for client observers
         "purged": itv.purged_at is not None, "moderation": itv.moderation, "kind": itv.kind, "study_id": itv.study_id,
-        "duration_min": itv.duration_min or 45, "mail_status": invites.mail_status(db, itv.id) if (db is not None and sees_name) else "",
+        "duration_min": itv.duration_min or 45, "format": itv.format or "", "mail_status": invites.mail_status(db, itv.id) if (db is not None and sees_name) else "",
     }
     if groups.is_group(itv):  # a group has no single participant; show the headcount, and (staff only) the roster
         n = len(itv.group_participants)
@@ -129,9 +129,17 @@ class NewInterview(BaseModel):
     duration_min: int = Field(default=45, ge=invites.MIN_DURATION, le=invites.MAX_DURATION)  # how long the invitation says to expect
     send_email: bool = False  # also email the invitation to the participant (a depth interview only)
     language: str | None = None
+    format: str | None = None  # an interview format code (app/formats.py); empty = the candidate's first choice, else video
     moderator_id: str | None = None
     observer_ids: list[str] = []
     moderation: ModerationMode = ModerationMode.HUMAN
+
+    @field_validator("format")
+    @classmethod
+    def _format(cls, v):
+        if v and v not in formats.FORMATS:
+            raise ValueError("unknown interview format")
+        return v
 
     @field_validator("language")
     @classmethod
@@ -182,7 +190,8 @@ def create_interview(pid: str, body: NewInterview, ctx: Ctx = Depends(require_ro
     title = body.title.strip() or ("座谈会" if is_group else f"深访 · {parts[0].code or parts[0].name}")
     itv = Interview(org_id=ctx.org_id, project_id=proj.id, participant_id=parts[0].id, moderator_id=body.moderator_id, title=title,
                     language=body.language or parts[0].language or proj.language, scheduled_at=body.scheduled_at, invite_hash=token_hash(token),
-                    moderation=body.moderation.value, kind=body.kind, duration_min=body.duration_min)
+                    moderation=body.moderation.value, kind=body.kind, duration_min=body.duration_min,
+                    format=body.format or next(iter(parts[0].pref_formats or []), ""))
     itv.observers = [InterviewObserver(user_id=u.id) for u in obs]
     db.add(itv)
     db.flush()  # assigns the id, so the audit row points at this interview
@@ -338,6 +347,8 @@ class UpdateInterview(BaseModel):
     moderator_id: str | None = None
     duration_min: int | None = Field(default=None, ge=invites.MIN_DURATION, le=invites.MAX_DURATION)
     moderation: ModerationMode | None = None
+    format: str | None = None
+    language: str | None = None
     send_email: bool = False  # tell the participant by email
 
 
@@ -364,6 +375,14 @@ def update_interview(iid: str, body: UpdateInterview, ctx: Ctx = Depends(require
         itv.moderator_id = body.moderator_id or None
     if "duration_min" in sent and body.duration_min:
         itv.duration_min = body.duration_min
+    if "format" in sent and body.format is not None:
+        if body.format and body.format not in formats.FORMATS:
+            raise HTTPException(422, "不认识这个访谈形式")
+        itv.format = body.format
+    if "language" in sent and body.language:
+        if body.language not in settings.languages:
+            raise HTTPException(422, "不认识这个语言")
+        itv.language = body.language
     audit(db, ctx.org_id, ctx.actor, "interview.update", itv.id, fields=sorted(sent - {"send_email"}))
     out_mail = None
     if body.send_email and not groups.is_group(itv):

@@ -43,7 +43,8 @@ class Sub(BaseModel):
     model_config = ConfigDict(extra="forbid")
     id: str = Field(min_length=1, max_length=20)
     name: str = Field(min_length=1, max_length=40)
-    lang: str = Field(default="英语", max_length=20)
+    lang: str = Field(default="英语", max_length=20)  # the main execution language
+    langs: list[str] = Field(default_factory=list, max_length=4)  # all the languages this sub-project runs in (the main one included); empty = just `lang`
     pm: str = Field(default="", max_length=40)  # a user id, or empty
     design: Literal["fq", "iq", "qi", "i", "f", "q", "fi", "if"] = "iq"
     listening: bool = False  # this sub-project also does social listening (舆情)
@@ -125,6 +126,7 @@ class PlanConfig(BaseModel):
     methods: list[str] = Field(default_factory=lambda: ["depth", "quant"])  # derived from the sub-projects' research orders; whatever is sent is replaced
     split: Literal["country", "single"] = "country"
     subs: list[Sub] = Field(default_factory=lambda: [Sub(id="s1", name="新加坡", lang="英语")], max_length=30)
+    fmt: dict[str, list[str]] = Field(default_factory=lambda: {"depth": ["video"], "group": ["video"]})  # interview formats allowed per live method (app/formats.py)
     team: list[Member] = Field(default_factory=list, max_length=80)
     pop: str = Field(default="", max_length=2000)
     tags: list[str] = Field(default_factory=list, max_length=30)
@@ -262,7 +264,7 @@ def uses_interviews(cfg: PlanConfig) -> bool:
 def compliance(cfg: PlanConfig) -> list[dict]:
     """The compliance list judged from the config: id, title, basis, passed, and how it is met. 14 items, +4 when interviews are used."""
     q = uses_interviews(cfg)
-    langs_ok = all(cfg.langs.get(s.lang, False) for s in cfg.subs) if cfg.subs else False
+    langs_ok = all(cfg.langs.get(x, False) for s in cfg.subs for x in (s.langs or [s.lang])) if cfg.subs else False
     tq_ok = has_placeholder(cfg.tq, "purpose") and (not q or has_placeholder(cfg.tl, "purpose"))
     unsub_ok = has_placeholder(cfg.tq, "unsubscribe") and (not q or has_placeholder(cfg.tl, "unsubscribe"))
     items = [

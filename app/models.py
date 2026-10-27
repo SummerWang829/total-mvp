@@ -74,6 +74,8 @@ class Project(Base):
     closed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # retention clock starts here
     purge_hold_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # an admin kept the data longer: nothing is purged before this date
     methods: Mapped[str] = mapped_column(String(100), default="depth,group,async,listening")  # the research methods this project uses (app/methods.py), comma separated
+    languages: Mapped[list] = mapped_column(JSON, default=list)  # the language codes the project allows (app/project_langs.py); empty = just `language`
+    formats: Mapped[dict] = mapped_column(JSON, default=dict)  # method (depth | group) -> the interview formats it allows (app/formats.py); empty = video
     outline_text: Mapped[str] = mapped_column(Text, default="")  # the interview outline being written on the 访谈 page (app/guide_text.py format)
     outline_chat: Mapped[str] = mapped_column(Text, default="")  # the conversation with the AI that shaped it (JSON list of {role, text}); empty = none yet
     retention_days: Mapped[int] = mapped_column(Integer, default=180)  # chosen in the plan (30/60/120/180, never above the platform's); the consent text names it
@@ -99,6 +101,8 @@ class Participant(Base):
     screen_version: Mapped[int] = mapped_column(Integer, default=0)  # the version of the project's rules that produced the result
     source: Mapped[str] = mapped_column(String(12), default="")  # how the person came in: link | import | manual | platform | pool | "" (not recorded)
     source_name: Mapped[str] = mapped_column(String(120), default="")  # for an imported list: its name and the day, e.g. "客户 A 名单 · 10-23"
+    pref_langs: Mapped[list] = mapped_column(JSON, default=list)  # the interview languages the candidate chose in the questionnaire, first = preferred
+    pref_formats: Mapped[list] = mapped_column(JSON, default=list)  # the interview formats the candidate chose, first = preferred
     availability: Mapped[list] = mapped_column(JSON, default=list)  # the interview times the candidate said suit them (ISO, UTC); the first one is the one to book, the rest are backups
     code: Mapped[str] = mapped_column(String(12), default="")  # the permanent number: Q-001 (questionnaire link) / X-001 (imported list) / M-001 (by hand) ... (app/participant_code.py)
     tier_override: Mapped[str] = mapped_column(String(8), default="")  # "" = decided by the quotas (app/recruit.py tiers); formal | backup = set by hand
@@ -116,6 +120,7 @@ class Interview(Base):
     language: Mapped[str] = mapped_column(String(10), default="en")
     scheduled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     duration_min: Mapped[int] = mapped_column(Integer, default=45)  # the length the invitation tells the participant to expect
+    format: Mapped[str] = mapped_column(String(16), default="")  # how it is done (app/formats.py code); "" = video. Stored and written into the invitation; the room does not change with it yet
     status: Mapped[str] = mapped_column(String(20), default="scheduled")  # scheduled | live | ended
     room_name: Mapped[str] = mapped_column(String(64), unique=True, default=lambda: "r_" + uuid.uuid4().hex)
     invite_hash: Mapped[str] = mapped_column(String(64), index=True)
@@ -722,6 +727,7 @@ class RecruitForm(Base):
     tally: Mapped[dict] = mapped_column(JSON, default=dict)  # anonymous: how many chose each option, among people who qualified and people who were screened out (app/recruit_insights.py)
     ai_items: Mapped[list] = mapped_column(JSON, default=list)  # the model's suggestions from the last "检查问卷" (app/recruit_review.py); each expires when its question is edited
     dismissed: Mapped[list] = mapped_column(JSON, default=list)  # signatures of suggestions the team chose not to be reminded of again
+    translations: Mapped[dict] = mapped_column(JSON, default=dict)  # language code -> {question id: {text, options: {option id: text}, fp, state}} (app/recruit_translate.py)
     chat: Mapped[list] = mapped_column(JSON, default=list)  # the conversation with the AI that edits the questionnaire: [{"role": "user" | "ai", "text"}], the latest 40
 
 
