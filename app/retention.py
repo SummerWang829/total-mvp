@@ -13,6 +13,7 @@ from .audit import audit
 from .config import settings
 from .media import purge_cache
 from . import ai_room, screener
+from .chat_models import ChatThread
 from .models import (BackroomMessage, CaptionLine, Clip, CueCard, Evidence, Highlight, Insight, Claim, Interview, InterviewParticipant, Job, Mention, Participant, PersuasionEvent, SlotVote, PreTask, PreTaskAnswer, Project, RepoDocument, SegmentCode,
                      Recording, RecordingTrack, Reaction, ReelItem, ShareLink, StimulusMark, TimeSlot, TranscriptSegment, utcnow)
 
@@ -91,6 +92,7 @@ def purge_project_extras(db: Session, project: Project, actor: str, reason: str)
         anonymize_participant(db, p)
     posts = db.execute(delete(Mention).where(Mention.project_id == project.id)).rowcount or 0
     docs = db.execute(delete(RepoDocument).where(RepoDocument.project_id == project.id)).rowcount or 0
+    db.execute(delete(ChatThread).where(ChatThread.project_id == project.id))  # the research assistant conversations about the project go with it
     out = {"participants": len(people), "mentions": posts, "documents": docs}
     if any(out.values()):
         audit(db, project.org_id, actor, "project.purge_extras", project.id, reason=reason, **out)

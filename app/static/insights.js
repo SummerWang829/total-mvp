@@ -124,23 +124,73 @@ async function insightsHub(p, my) {
     reelsSection(p, my);
   }
 
-  /* ---------- 对话 ---------- */
-  const talk = [];  // the conversation, kept while the page is open
-  const ASK = ["这次研究的关键结论是什么？", "受访者最常提到的困扰有哪些？", "按不同人群比较一下回答的差别", "找出最有说服力的几句原话", "哪些问题受访者答得最犹豫？", "受访者对价格是怎么看的？"];
+  /* ---------- 对话：研究助手（接已配置的 AI 模型；回答 / 引用原话 / 建议 分开显示） ---------- */
+  const ASK = ["这次研究的关键结论是什么？", "受访者最常提到的困扰有哪些？", "按不同人群比较一下回答的差别", "找出最有说服力的几句原话", "哪些问题受访者答得最犹豫？", "下一轮访谈该怎么改大纲？"];
+  const SCOPES = [["transcripts", "本项目访谈转写"], ["insights", "已通过的洞察"], ["library", "研究库资料"]];
   async function chat(box) {
+    const st = await api(`/projects/${p.id}/chat/status`); if (stale(my)) return;
+    let threads = await api(`/projects/${p.id}/chats`).catch(() => []), cur = null, busy = null;   // cur: the open conversation { id, title, messages }
+    let scope = SCOPES.map((s) => s[0]); try { const saved = JSON.parse(sessionStorage.getItem("ichat_scope") || "null"); if (Array.isArray(saved) && saved.length) scope = saved; } catch { /* the default */ }
+    const key = `ichat_${p.id}`, status = st.mock ? ["演示模式", "w"] : st.ready ? [`${st.vendor || "本地模型"} · 已连接`, ""] : ["未连接", "w"];
+    const answerHtml = (m) => esc(m.answer).replace(/\[(\d+)\]/g, (_, n) => `<sup class="ins-ref">[${n}]</sup>`).replace(/\n/g, "<br>");
+    const aiHtml = (m, i) => `<div class="ins-msg ai"><h5>回答</h5><div>${answerHtml(m)}</div>
+      ${m.quotes.length ? `<h5>引用原话（程序从转写里原样复制，不是 AI 写的）</h5>${m.quotes.map((q) => `<div class="ins-q"><b>[${q.n}]</b> “${esc(q.text)}”<small> ${esc(q.who || "")} ${q.at_ms ? insClock(q.at_ms) : ""}${q.interview_id ? ` · <a href="#/i/${q.interview_id}">看原文</a>` : ""}</small></div>`).join("")}` : ""}
+      ${m.suggestions.length ? `<h5>建议（AI 的判断，不是受访者原话）</h5><div class="ins-sg"><ul>${m.suggestions.map((s) => `<li>${esc(s)}</li>`).join("")}</ul></div>` : ""}
+      <div class="ins-fu">${m.followups.map((f) => `<button type="button" class="s" data-fu="${esc(f)}">${esc(f)}</button>`).join("")}${m.followups.length || m.suggestions.length ? `<button type="button" class="s" data-addq="${i}">把追问加进访谈大纲</button>` : ""}</div>
+      <div class="ins-act"><button type="button" class="lnk" data-copy="${i}">复制</button><button type="button" class="lnk" data-redo="${i}">重新生成</button></div></div>`;
     const draw = () => {
-      $("#cthread").innerHTML = talk.length ? talk.map((m) => (m.role === "me" ? `<div class="ins-msg me">${esc(m.text)}</div>` : `<div class="ins-msg">${m.html}</div>`)).join("") : `<div class="ins-hello"><b>研究助手</b><div class="mut">可以问这次访谈的任何问题：找原话、归纳主题、比较人群。回答里的引文都由程序从转写原文里取。</div><div class="ins-cg">${ASK.map((a) => `<button type="button" class="ins-card" data-ask="${esc(a)}">${esc(a)}</button>`).join("")}</div></div>`;
-      $("#cthread").scrollTop = $("#cthread").scrollHeight; document.querySelectorAll("[data-ask]").forEach((b) => (b.onclick = () => send(b.dataset.ask)));
+      const msgs = cur ? cur.messages : [];
+      $("#cthread").innerHTML = msgs.length || busy ? msgs.map((m, i) => (m.role === "user" ? `<div class="ins-msg me">${esc(m.text)}</div>` : aiHtml(m, i))).join("")
+          + (busy ? `<div class="ins-msg me">${esc(busy)}</div><div class="ins-msg ai"><span class="ins-dots"><i></i><i></i><i></i></span>　正在读资料并回答…　<button type="button" class="s" id="cstop">停止</button></div>` : "")
+        : `<div class="ins-hello"><b>研究助手</b><div class="mut">可以问这次访谈的任何问题，也可以让它给建议。引用的原话由程序从转写里复制。</div><div class="ins-cg">${ASK.map((a) => `<button type="button" class="ins-card" data-ask="${esc(a)}">${esc(a)}</button>`).join("")}</div></div>`;
+      const t = $("#cthread"); t.scrollTop = t.scrollHeight;
+      t.querySelectorAll("[data-ask],[data-fu]").forEach((b) => (b.onclick = () => send(b.dataset.ask || b.dataset.fu)));
+      t.querySelectorAll("[data-copy]").forEach((b) => (b.onclick = async () => { const m = cur.messages[+b.dataset.copy]; try { await navigator.clipboard.writeText([m.answer, ...m.suggestions.map((s) => "· " + s)].join("\n")); toast("已复制"); } catch { toast("这个浏览器不让复制，请手动选中文字", true); } }));
+      t.querySelectorAll("[data-redo]").forEach((b) => (b.onclick = () => { const q = cur.messages[+b.dataset.redo - 1]; if (q) send(q.text); }));
+      t.querySelectorAll("[data-addq]").forEach((b) => (b.onclick = () => addToOutline(cur.messages[+b.dataset.addq])));
+      const stop = $("#cstop"); if (stop) stop.onclick = () => { if (busy && drawAbort) drawAbort.abort(); };
+      const go = $("#csend"); if (go) { go.textContent = busy ? "■" : "↑"; go.classList.toggle("stop", !!busy); go.setAttribute("aria-label", busy ? "停止" : "发送"); }
     };
-    const send = async (text) => {
-      text = (text || "").trim(); if (!text || $("#csend").disabled) return;
-      talk.push({ role: "me", text }); $("#cmsg").value = ""; $("#csend").disabled = true; draw();
-      try { talk.push({ role: "ai", html: insAnswer(await api("/repo/ask", { method: "POST", body: { question: text, project_id: p.id } })) }); } catch (e) { talk.push({ role: "ai", html: `<span class="mut">没有成功：${esc(e.message)}</span>` }); }
-      $("#csend").disabled = false; draw();
-    };
-    box.innerHTML = `<div class="ins-chat"><div id="cthread" class="ins-thread"></div><div class="ins-inp"><div class="rf-box"><textarea id="cmsg" rows="2" maxlength="500" placeholder="问问研究助手…" aria-label="提问"></textarea><button class="p rf-send" type="button" id="csend" aria-label="发送">↑</button></div>${insAiNotice()}</div></div>`;
-    $("#csend").onclick = () => send($("#cmsg").value);
+    let drawAbort = null;
+    const drawHist = () => { const h = $("#chist"); h.innerHTML = threads.length ? threads.map((t) => `<div class="ins-hrow"><button type="button" class="ins-hbtn" data-open="${t.id}">${esc(t.title)}<small class="mut"> ${when(t.updated_at)}</small></button><button type="button" class="s" data-del="${t.id}" aria-label="删除这段对话">×</button></div>`).join("") : `<div class="mut sm" style="padding:6px 8px">还没有历史对话。</div>`;
+      h.querySelectorAll("[data-open]").forEach((b) => (b.onclick = guard(async () => { await open(b.dataset.open); h.hidden = true; })));
+      h.querySelectorAll("[data-del]").forEach((b) => (b.onclick = guard(async () => { if (!confirm("删除这段对话？删除后不能恢复。")) return; await api(`/chats/${b.dataset.del}`, { method: "DELETE" }); threads = threads.filter((t) => t.id !== b.dataset.del); if (cur && cur.id === b.dataset.del) { cur = null; sessionStorage.removeItem(key); draw(); } drawHist(); }))); };
+    const open = async (id) => { cur = await api(`/chats/${id}`); sessionStorage.setItem(key, id); draw(); };
+    async function send(text) {
+      text = (text || "").trim(); if (!text || busy) return;
+      if (!st.ready) return toast(st.message, true);
+      busy = text; $("#cmsg").value = ""; draw();
+      drawAbort = new AbortController();
+      try {
+        if (!cur) { cur = await api(`/projects/${p.id}/chats`, { method: "POST" }); sessionStorage.setItem(key, cur.id); }
+        const r = await api(`/chats/${cur.id}/ask`, { method: "POST", body: { message: text, scope }, signal: drawAbort.signal });
+        cur.messages.push({ role: "user", text }, r.message); cur.title = r.title;
+        threads = [{ id: cur.id, title: r.title || "新对话", updated_at: new Date().toISOString().replace("Z", "") }, ...threads.filter((t) => t.id !== cur.id)];
+      } catch (e) { if (e.name !== "AbortError") toast(e.message, true); else { cur = cur ? await api(`/chats/${cur.id}`).catch(() => cur) : cur; } }
+      busy = null; drawAbort = null; draw(); drawHist();
+    }
+    async function addToOutline(m) {   // a follow-up question goes into the interview outline only after the person looks at it and picks where
+      const o = await api(`/projects/${p.id}/outline`), parts = o.summary ? o.summary.parts.filter((x) => x.kind !== "stimulus") : [];
+      if (!parts.length) return toast("访谈大纲还没有内容，先到“访谈”页起草大纲", true);
+      const mod = modal(`<h2>加进访谈大纲</h2><label class="f"><span>问题（可以改）</span><input id="aq" maxlength="300" value="${esc(m.followups[0] || m.suggestions[0] || "")}"></label>
+        <label class="f"><span>放进哪一段</span><select id="ap">${parts.map((x, i) => `<option value="${i}">${esc(x.title)}</option>`).join("")}</select></label><div class="row"><button class="p" id="aok">加进大纲</button><button type="button" id="ano">取消</button></div>`);
+      $("#ano", mod).onclick = () => mod.remove();
+      $("#aok", mod).onclick = guard(async () => { const v = $("#aq", mod).value.trim(), part = parts[+$("#ap", mod).value]; if (!v) throw new Error("问题不能是空的");
+        await api(`/projects/${p.id}/outline/edit`, { method: "POST", body: { op: "add", kind: part.kind, ref: part.ref, value: v } }); mod.remove(); toast("已加进访谈大纲，可以到“访谈”页查看"); });
+    }
+    box.innerHTML = `<div class="ins-chat"><div class="row ins-chead"><b>研究助手</b><span class="tag ${status[1] === "w" ? "o" : "ok"}">${esc(status[0])}</span><span class="sp"></span><span class="ins-hwrap"><button type="button" class="s" id="chbtn">历史对话 ▾</button><div class="ins-hist" id="chist" hidden></div></span><button type="button" class="s" id="cnew">新对话</button></div>
+      <div class="ins-scope" id="cscope" role="group" aria-label="让 AI 读哪些内容">${SCOPES.map(([k, n]) => `<label class="chk"><input type="checkbox" data-sc="${k}" ${scope.includes(k) ? "checked" : ""}><span>${n}</span></label>`).join("")}</div>
+      ${st.ready ? "" : `<div class="card empty"><b>还没连接 AI 模型</b><span>${esc(st.message)}</span></div>`}
+      <div id="cthread" class="ins-thread"></div>
+      <div class="ins-inp"><div class="rf-box"><textarea id="cmsg" rows="2" maxlength="1000" placeholder="${st.ready ? "问问研究助手，比如“受访者为什么觉得价格太贵？”" : "连接模型后才能提问"}" aria-label="提问" ${st.ready ? "" : "disabled"}></textarea><button class="p rf-send" type="button" id="csend" aria-label="发送" ${st.ready ? "" : "disabled"}>↑</button></div>
+        ${st.local ? "" : `<div class="sm mut ins-note">你的提问、本项目相关的转写片段和洞察会发送给 AI 服务商${st.vendor ? `“${esc(st.vendor)}”` : ""}。请不要输入受访者的姓名、电话等个人信息。</div>`}</div></div>`;
+    $("#csend").onclick = () => (busy ? (drawAbort && drawAbort.abort()) : send($("#cmsg").value));
     $("#cmsg").onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send($("#cmsg").value); } };
-    draw();
+    $("#cnew").onclick = () => { cur = null; sessionStorage.removeItem(key); draw(); $("#cmsg").focus(); };
+    $("#chbtn").onclick = (e) => { e.stopPropagation(); const h = $("#chist"); h.hidden = !h.hidden; if (!h.hidden) drawHist(); };
+    document.addEventListener("click", (e) => { const h = $("#chist"); if (h && !h.hidden && !e.target.closest(".ins-hwrap")) h.hidden = true; });
+    box.querySelectorAll("[data-sc]").forEach((c) => (c.onchange = () => { scope = [...box.querySelectorAll("[data-sc]:checked")].map((x) => x.dataset.sc); if (!scope.length) { c.checked = true; scope = [c.dataset.sc]; toast("至少留一项让 AI 读", true); } sessionStorage.setItem("ichat_scope", JSON.stringify(scope)); }));
+    const last = sessionStorage.getItem(key); if (last && threads.some((t) => t.id === last)) { try { await open(last); } catch { draw(); } } else draw();
+    drawHist();
   }
 }
