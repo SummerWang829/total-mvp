@@ -84,6 +84,9 @@
 - 验证（按用户 2026-10-27 的要求只测改动到的部分，没跑整套）：相关 pytest 68 项通过（问卷建议、问卷、邀请函、配额、名单看板、候选人问卷）；网页检查只跑了 `recruit_section`（招募页、邀请函、名单）和新增的 `review_section`（问卷对话），都 0 失败。没跑：全站遍历、e2e 房间、一键启动（这次没碰房间和公共外壳；改了全局样式 `app.css` 里只新增了新类名，没改旧规则）。过程中发现并修好：建议提示条在手机上被判分行、测试里弹窗被重复处理、失败信息里的符号让 Windows 控制台崩溃。新增 `tests/test_recruit_review.py`，邀请函步骤按新流程改过。
 - 数据库：`recruit_forms.ai_items`、`recruit_forms.dismissed` 两列启动时自动加。新接口：`POST /projects/{id}/recruiting/form/review`、`.../suggestions/adopt`、`.../suggestions/dismiss`；`GET/PUT form` 和 `chat` 的返回多了 `suggestions`，`chat` 多了 `kind`。
 - 还差/风险：①“访谈”页左边的大纲对话还没升级成同样的做法（大纲的界面不一样，先出效果图）；②“采纳：让 AI …”这类建议是把一句话交给对话去改，没配云端模型时（演示模式）改不了；③“只影响以后作答的人”要看问卷发布后是否立即生效，页面里没有写这句；④“复制链接”在进行中的场次是灰的。
+## 2026-10-28 · 部署到新加坡测试服务器（提交 a695de3，LW：访谈页版本自动生成与批量修改、三个 AI 对话页的选中文字弹窗与修改清单、受访者数据表改版、一对一房间四列与点字幕引用追问）
+SW 执行。本机相关测试 137 项全过（concept / insight_chat / report_analysis / respondent_progress / insights_overview / outline / outline_versions / outline_chat / recruit_review / screen_form）；服务器无进行中访谈；备份 `total-20261028-082126.db.gz` + COS 异地成功；先上传再构建，`deploy/.env` 保留（邮件 6 行仍在）。检查：三容器运行、app healthy；highlights.quotes_json、highlights.depth 两列已存在；“cannot add” 0、error/traceback 0；/api/health、/api/public/config、/index.html、/chatsel.js、/chatsel.css、/outline.js、/insights.js、/rooms.js、/rform.js、/room.html、/app.css 全 200；doctor 无必须解决项（仅剩告警 webhook 未配）。未做：登录后的界面冒烟待用户（仅网页端）；真实 DeepSeek 回答质量待用户线上试。
+
 ## 2026-10-28 · 部署到新加坡测试服务器（提交 607eb8b，LW：洞察报告分析卡片与报告模版、访谈页每题追问深度与指引、去掉访谈页确认弹窗、直播间悬停卡片加宽）
 SW 执行。本机相关测试 54 项全过（report_analysis / report / outline / outline_versions / outline_chat / room_list_facts / insights_overview）；服务器无进行中访谈；备份 `total-20261028-065742.db.gz` + COS 异地成功；先上传再构建，`deploy/.env` 保留（邮件 6 行仍在）。检查：三容器运行、app healthy；report_templates 表已建；“cannot add” 0、error/traceback 0；/api/health、/api/public/config、/index.html、/insights.js、/outline.js、/rooms.js、/app.css 全 200；doctor 无必须解决项（仅剩告警 webhook 未配）。未做：登录后的界面冒烟待用户；真实 DeepSeek 的报告解读与指引起草质量待用户线上试。
 
