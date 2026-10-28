@@ -21,8 +21,8 @@ class TranslateError(ValueError):
     """The AI could not translate; the message is plain Chinese for the researcher."""
 
 
-def slots_of(guide: dict) -> list[tuple[tuple, str]]:
-    """The words to translate, in order, each with the place it came from: [(path, text)]."""
+def slots_of(guide: dict, guides: bool = True) -> list[tuple[tuple, str]]:
+    """The words to translate, in order, each with the place it came from: [(path, text)]. `guides`: also the interviewer guidance written under questions."""
     out: list[tuple[tuple, str]] = []
     if guide.get("participant_topic"):
         out.append((("participant_topic",), guide["participant_topic"]))
@@ -34,6 +34,11 @@ def slots_of(guide: dict) -> list[tuple[tuple, str]]:
     for si, s in enumerate(guide.get("stimuli", [])):
         out.append((("stimuli", si, "description"), s["description"]))
         out += [(("stimuli", si, "questions", i), q) for i, q in enumerate(s.get("questions", []))]
+    if guides:
+        meta = guide.get("meta") or {}
+        out += [(("meta", "warmup", i, "guide"), m["guide"]) for i, m in enumerate(meta.get("warmup", [])) if m.get("guide", "").strip()]
+        for key in ("topics", "stimuli"):
+            out += [(("meta", key, pi, i, "guide"), m["guide"]) for pi, part in enumerate(meta.get(key, [])) for i, m in enumerate(part) if m.get("guide", "").strip()]
     return out
 
 

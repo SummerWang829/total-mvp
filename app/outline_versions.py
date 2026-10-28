@@ -21,7 +21,7 @@ FAMILIES = {"live": ("audio", "video", "video_screen"), "text": ("text", "text_v
 FAMILY_NAMES = {"live": "语音 / 视频", "text": "文字访谈"}
 STRUCTURAL = ("add", "delete", "add_part", "del_part")  # changes to the shape of the outline: always carried to every version
 TOPIC_MAX = 18  # the participant topic (对外标题) is at most 18 characters
-WORDING = ("set", "rename", "add", "add_part")  # operations that bring new words, which another language needs translated
+WORDING = ("set", "rename", "add", "add_part", "meta")  # operations that bring new words, which another language needs translated ("meta": the guidance of a question; its depth is not language)
 
 
 class VersionError(ValueError):
@@ -114,8 +114,8 @@ def generate(p: Project, key: str, chat: ModeratorChatProvider | None) -> str:
     if not src:
         raise VersionError("还没有大纲，先让 AI 起草一份")
     g = _guide_of(text_of(p, src))
-    slots = outline_translate.slots_of(g)
     rewrite = fam == "text" and split(src)[1] != "text"
+    slots = outline_translate.slots_of(g, guides=not (split(src)[0] == lang and rewrite))  # the guidance is for the interviewer: translated with the rest, but not rewritten as chat messages
     if split(src)[0] != lang or rewrite:
         done = outline_translate.translate(chat, [s for _, s in slots], lang, rewrite=split(src)[0] == lang and rewrite)
         outline_translate.fill(g, [pth for pth, _ in slots], done)
@@ -149,17 +149,18 @@ def edit(p: Project, cur: str, sync: list[str], op: str, kind: str, ref: int, in
     results = {cur: outline.edit(text_of(p, cur), op, kind, ref, index, value)}
     targets = targets_for(p, cur, sync, op)
     cur_lang = split(cur)[0]
-    words = [x.strip() for x in (value.partition("|")[::2] if op == "add_part" else [value])]
+    depth, _, note = value.partition("|")
+    words = [x.strip() for x in (value.partition("|")[::2] if op == "add_part" else [note] if op == "meta" else [value])]
     made: dict[str, list[str]] = {}
-    if op in WORDING:
+    if op in WORDING and not (op == "meta" and not note.strip()):
         for lang in {split(t)[0] for t in targets} - {cur_lang}:
             made[lang] = outline_translate.translate(chat, words, lang)
     skipped = []
     for t in targets:
         lang = split(t)[0]
-        w = words if lang == cur_lang or op not in WORDING else made[lang]
+        w = words if lang == cur_lang or op not in WORDING or lang not in made else made[lang]
         try:
-            results[t] = outline.edit(text_of(p, t), op, kind, ref, index, "|".join(w) if op == "add_part" else (w[0] if w else value))
+            results[t] = outline.edit(text_of(p, t), op, kind, ref, index, "|".join(w) if op == "add_part" else f"{depth}|{w[0]}" if op == "meta" else (w[0] if w else value))
         except outline.EditError as e:
             skipped.append({"key": t, "reason": str(e)})
     for k, txt in results.items():

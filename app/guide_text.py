@@ -11,6 +11,8 @@ The format is meant to be written by a researcher in any text editor:
     ## 话题: 选购决策
     - 你上一次买护肤品是怎么选的？
     * 了解: 在哪里获得信息                        (a must-cover point)
+      追问: deep                                    (under a question: none / shallow / deep / free; no line = shallow)
+      指引: 先让受访者自然复盘，不诱导                 (under a question: how to interview it, at most 500 characters)
     ## 素材: ad_film | 欧莱雅新品广告片           (id must match a material installed for the interview)
     - 看完这支广告，你的第一反应是什么？
     ## 假设 / ## 禁谈 / ## 品牌 / ## 产品事实     (one "- item" per line)
@@ -28,9 +30,19 @@ HEADER_KEYS = {"目标": "research_goal", "goal": "research_goal", "受访者话
                "语言": "language", "language": "language", "时长": "duration_min", "minutes": "duration_min"}
 LIST_SECTIONS = {"暖场": "warmup_questions", "warmup": "warmup_questions", "假设": "hypotheses", "hypotheses": "hypotheses", "禁谈": "forbidden_topics", "forbidden": "forbidden_topics",
                  "品牌": "client_brand_names", "brands": "client_brand_names", "产品事实": "product_facts", "facts": "product_facts"}
+NOTE_KEYS = {"追问": "depth", "follow": "depth", "指引": "guide", "guidance": "guide"}
 TOPIC_WORDS, STIMULUS_WORDS = ("话题", "topic"), ("素材", "stimulus")
 COVER_WORDS = ("了解", "cover")
 MAX_CHARS = 20_000
+DEPTHS = ("none", "shallow", "deep", "free")  # follow-ups: none, 1, 2-3, 1-3 open-ended
+DEFAULT_DEPTH = "shallow"
+DEPTH_WORDS = {"不追问": "none", "浅度": "shallow", "深度": "deep", "自由": "free"}
+MAX_NOTE = 500
+
+
+def blank_meta() -> dict:
+    """What a question has until the researcher says otherwise."""
+    return {"depth": DEFAULT_DEPTH, "guide": ""}
 
 
 class GuideTextError(ValueError):
@@ -62,6 +74,9 @@ def parse_guide_text(text: str) -> dict:
     stimuli: list[dict] = []
     cur: dict | None = None  # the topic / stimulus whose questions are being read
     cur_list: str | None = None
+    meta: dict = {"warmup": [], "topics": [], "stimuli": []}  # follow-up depth and guidance, one entry per question, in step with the question lists
+    cur_meta: list | None = None
+    last: dict | None = None  # the meta entry of the question just read
     for n, raw in enumerate(text.replace("\r", "").split("\n"), 1):
         line = raw.strip()
         if not line or line.startswith("//"):
@@ -70,32 +85,50 @@ def parse_guide_text(text: str) -> dict:
             title = line.lstrip("#").strip()
             kv = _split_key(title)
             name, rest = (kv if kv else (title.lower(), ""))
-            cur, cur_list = None, None
+            cur, cur_list, cur_meta, last = None, None, None, None
             if name in LIST_SECTIONS:
                 cur_list = LIST_SECTIONS[name]
                 lists.setdefault(cur_list, [])
+                cur_meta = meta["warmup"] if cur_list == "warmup_questions" else None
             elif name in TOPIC_WORDS:
                 cur = {"id": f"t{len(topics) + 1}", "title": rest or f"话题 {len(topics) + 1}", "questions": [], "must_cover": []}
                 topics.append(cur)
+                cur_meta = []
+                meta["topics"].append(cur_meta)
             elif name in STIMULUS_WORDS:
                 sid, _, desc = (p.strip() for p in rest.partition("|"))
                 if not sid:
                     raise GuideTextError(f"第 {n} 行：素材要写成“## 素材: 编号 | 描述”")
                 cur = {"id": sid, "description": desc or sid, "questions": []}
                 stimuli.append(cur)
+                cur_meta = []
+                meta["stimuli"].append(cur_meta)
             else:
                 raise GuideTextError(f"第 {n} 行：不认识的小节“{title}”（可用：暖场、话题、素材、假设、禁谈、品牌、产品事实）")
         elif line[0] in "-*•" and (item := line[1:].strip()):
             if cur_list:
                 lists[cur_list].append(item)
+                last = None
+                if cur_meta is not None:
+                    last = blank_meta()
+                    cur_meta.append(last)
             elif cur is not None and line[0] == "*" and "must_cover" in cur:
                 kv = _split_key(item)
                 point = kv[1] if kv and kv[0] in COVER_WORDS else item
                 cur["must_cover"].append({"id": f"{cur['id']}c{len(cur['must_cover']) + 1}", "text": point})
             elif cur is not None:
                 cur["questions"].append(item)
+                last = blank_meta()
+                cur_meta.append(last)
             else:
                 raise GuideTextError(f"第 {n} 行：这一行不属于任何小节，请先写“## 暖场”或“## 话题: …”")
+        elif last is not None and (kv := _split_key(line)) and kv[0] in NOTE_KEYS:
+            if NOTE_KEYS[kv[0]] == "guide":
+                last["guide"] = kv[1][:MAX_NOTE]
+            elif (d := DEPTH_WORDS.get(kv[1], kv[1].lower())) in DEPTHS:
+                last["depth"] = d
+            else:
+                raise GuideTextError(f"第 {n} 行：追问写成 不追问 / 浅度 / 深度 / 自由 之一")
         elif (kv := _split_key(line)) and kv[0] in HEADER_KEYS and cur is None and cur_list is None:
             g[HEADER_KEYS[kv[0]]] = kv[1]
         else:
@@ -107,11 +140,26 @@ def parse_guide_text(text: str) -> dict:
     except (TypeError, ValueError) as e:
         raise GuideTextError("时长要写数字（分钟）") from e
     try:
-        return InterviewGuide.model_validate(g).model_dump(mode="json")
+        out = InterviewGuide.model_validate(g).model_dump(mode="json")
     except ValidationError as e:
         first = e.errors()[0]
         where = ".".join(str(x) for x in first["loc"]) or "提纲"
         raise GuideTextError(f"提纲不完整：{where} — {first['msg']}") from e
+    out["meta"] = meta
+    return out
+
+
+def _questions(questions: list[str], metas: list[dict] | None, one) -> list[str]:
+    """A part's question lines, each followed by its follow-up depth (only when it is not the default) and its guidance (only when there is one)."""
+    out = []
+    for i, q in enumerate(questions):
+        m = metas[i] if metas and i < len(metas) else blank_meta()
+        out.append(f"- {one(q)}")
+        if m.get("depth", DEFAULT_DEPTH) != DEFAULT_DEPTH:
+            out.append(f"  追问: {m['depth']}")
+        if (m.get("guide") or "").strip():
+            out.append(f"  指引: {one(m['guide'])[:MAX_NOTE]}")
+    return out
 
 
 def guide_to_text(guide: dict) -> str:
@@ -122,11 +170,12 @@ def guide_to_text(guide: dict) -> str:
     """
     one = lambda v: " ".join(str(v).split())  # noqa: E731
     out = [f"目标: {one(guide['research_goal'])}", f"受访者话题: {one(guide.get('participant_topic', ''))}", f"语言: {guide['language']}", f"时长: {int(guide['duration_min'])}", "", "## 暖场"]
-    out += [f"- {one(q)}" for q in guide["warmup_questions"]]
-    for t in guide["topics"]:
-        out += ["", f"## 话题: {one(t['title'])}"] + [f"- {one(q)}" for q in t["questions"]] + [f"* 了解: {one(m['text'])}" for m in t.get("must_cover", [])]
-    for st in guide.get("stimuli", []):
-        out += ["", f"## 素材: {one(st['id'])} | {one(st['description'])}"] + [f"- {one(q)}" for q in st["questions"]]
+    meta = guide.get("meta") or {}
+    out += _questions(guide["warmup_questions"], meta.get("warmup"), one)
+    for i, t in enumerate(guide["topics"]):
+        out += ["", f"## 话题: {one(t['title'])}"] + _questions(t["questions"], (meta.get("topics") or [[]] * (i + 1))[i], one) + [f"* 了解: {one(m['text'])}" for m in t.get("must_cover", [])]
+    for i, st in enumerate(guide.get("stimuli", [])):
+        out += ["", f"## 素材: {one(st['id'])} | {one(st['description'])}"] + _questions(st["questions"], (meta.get("stimuli") or [[]] * (i + 1))[i], one)
     for title, key in (("假设", "hypotheses"), ("禁谈", "forbidden_topics"), ("品牌", "client_brand_names"), ("产品事实", "product_facts")):
         if guide.get(key):
             out += ["", f"## {title}"] + [f"- {one(v)}" for v in guide[key]]

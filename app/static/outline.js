@@ -17,7 +17,7 @@ async function outlineView(p) {
   let S; try { S = await api(`/projects/${p.id}/outline${V ? "?v=" + encodeURIComponent(V) : ""}`); } catch { S = await api(`/projects/${p.id}/outline`); }
   if (stale(my)) return;
   V = S.v;
-  let seg = sessionStorage.getItem("ol_seg") || "outline", sending = false, pending = "", editing = "", viewer = "host", step = 0, pop = "", L = new Set(), F = new Set();
+  let seg = sessionStorage.getItem("ol_seg") || "outline", sending = false, pending = "", editing = "", viewer = "host", step = 0, pop = "", L = new Set(), F = new Set(), opened = new Set();
   if (!["outline", "settings", "test"].includes(seg)) seg = "outline";
   let useLib = sessionStorage.getItem("ol_lib") !== "0";
   const notice = () => (S.ai_local ? "AI 运行在我们自己的服务器上，对话内容不会发给其他公司。"
@@ -90,13 +90,15 @@ async function outlineView(p) {
   const notes = () => `${S.problem ? `<div class="rf-warn" role="alert">${esc(S.problem)}<button class="s" type="button" data-fixnote="1">让 AI 帮我修</button></div>` : ""}${S.warning ? `<div class="rf-warn" role="note">${esc(S.warning)}</div>` : ""}`;
   const drawNotes = () => { const n = $("#olnotes"); if (n) { n.innerHTML = notes(); n.querySelectorAll("[data-fixnote]").forEach((b) => (b.onclick = () => send(fixMessage()))); } };
 
+  const DEPTH = { none: ["不追问", "只问这一题"], shallow: ["浅度追问", "追问 1 个"], deep: ["深度追问", "追问 2–3 个"], free: ["自由讨论", "追问 1–3 个，不限"] };
   const refOf = (pi, qi) => { const r = S.ref && S.ref[pi] && S.ref[pi][qi]; return r ? `<span class="ol-ref">${esc(r.text)}</span>` : ""; };   // 其他语言的版本：原文（中文）放在下面对照
   const questionRow = (part, q, qi, label, pi) => {
     if (q.cover) return S.lang === "zh" ? "" : `<div class="rf-o mut">· ${esc(q.text)}${refOf(pi, qi)}</div>`;   // “要了解”只在非中文版本里留着，中文版不显示
     const key = `${part.kind}:${part.ref}:${qi}`;
     if (editing === key) return `<div class="row" style="margin:4px 0"><input class="olq" data-key="${key}" value="${esc(q.text)}" maxlength="300" aria-label="问题" style="flex:1;min-width:160px"><button class="p" type="button" data-ok="${key}">保存</button><button class="s" type="button" data-no="1">取消</button></div>`;
-    const mk = (S.marks || {})[q.text];
-    return `<div class="ol-q${mk ? " ol-" + mk : ""}"><span class="rf-n">${label}</span><span class="ol-qt">${esc(q.text)}${mk ? `<em class="ol-mk">${mk === "new" ? "新增" : "已修改"}</em>` : ""}${refOf(pi, qi)}</span><span class="ol-qa"><button class="s" type="button" data-ed="${key}" aria-label="编辑这个问题">编辑</button><button class="s" type="button" data-rm="${key}" aria-label="删除这个问题">删除</button></span></div>`;
+    const mk = (S.marks || {})[q.text], on = opened.has(key), depth = q.depth || "shallow";
+    const panel = !on ? "" : `<div class="ol-ex" data-ex="${key}"><div class="ol-exr"><label for="d-${key}">追问深度</label><select id="d-${key}" class="ol-dp" data-dp-sel="${key}" aria-label="追问深度">${Object.entries(DEPTH).map(([k, v]) => `<option value="${k}"${k === depth ? " selected" : ""}>${v[0]} · ${v[1]}</option>`).join("")}</select></div><label for="g-${key}" class="ol-gl">访谈指引</label><textarea id="g-${key}" class="ol-gt" data-gt="${key}" maxlength="500" rows="3" aria-label="访谈指引">${esc(q.guide || "")}</textarea><div class="ol-gc"><span data-gc>${(q.guide || "").length}</span> / 500</div></div>`;
+    return `<div class="ol-q${mk ? " ol-" + mk : ""}"><button class="ol-cv${on ? " on" : ""}" type="button" data-tg="${key}" aria-expanded="${on}" aria-label="${on ? "收起" : "展开"}这个问题的设置">›</button><span class="rf-n">${label}</span><span class="ol-qt">${esc(q.text)}${mk ? `<em class="ol-mk">${mk === "new" ? "新增" : "已修改"}</em>` : ""}${refOf(pi, qi)}</span><span class="ol-dl">${DEPTH[depth][0]}</span><span class="ol-qa"><button class="s" type="button" data-ed="${key}" aria-label="编辑这个问题">编辑</button><button class="s" type="button" data-rm="${key}" aria-label="删除这个问题">删除</button></span></div>${panel}`;
   };
   const partCard = (part, mins, pi, n0) => {
     let k = n0; const live = cur().family === "live";
@@ -212,6 +214,10 @@ async function outlineView(p) {
     const keyOf = (s) => s.split(":");
     document.querySelectorAll("[data-ed]").forEach((b) => (b.onclick = () => { editing = b.dataset.ed; drawRight(); const i = document.querySelector(".olq"); if (i) { i.focus(); i.select(); } }));
     document.querySelectorAll("[data-rn]").forEach((b) => (b.onclick = () => { editing = b.dataset.rn; drawRight(); const i = document.querySelector(".olt"); if (i) { i.focus(); i.select(); } }));
+    document.querySelectorAll("[data-tg]").forEach((b) => (b.onclick = () => { const k = b.dataset.tg; opened.has(k) ? opened.delete(k) : opened.add(k); drawRight(); }));
+    const saveMeta = (key) => { const box = document.querySelector(`[data-ex="${key}"]`), [kind, ref, idx] = keyOf(key); edit({ op: "meta", kind, ref: +ref, index: +idx, value: `${box.querySelector("select").value}|${box.querySelector("textarea").value}` }); };
+    document.querySelectorAll("[data-dp-sel]").forEach((s) => (s.onchange = () => saveMeta(s.dataset.dpSel)));
+    document.querySelectorAll("[data-gt]").forEach((a) => { a.oninput = () => { const c = a.parentElement.querySelector("[data-gc]"); if (c) c.textContent = a.value.length; }; a.onchange = () => saveMeta(a.dataset.gt); });
     document.querySelectorAll("[data-no]").forEach((b) => (b.onclick = () => { editing = ""; drawRight(); }));
     document.querySelectorAll("[data-ok]").forEach((b) => (b.onclick = () => { const [kind, ref, idx] = keyOf(b.dataset.ok), v = document.querySelector(".olq").value; edit({ op: "set", kind, ref: +ref, index: +idx, value: v }); }));
     document.querySelectorAll(".olq").forEach((i) => (i.onkeydown = (e) => { if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); (document.querySelector("[data-ok]") || document.querySelector("[data-addok]")).click(); } else if (e.key === "Escape") { editing = ""; drawRight(); } }));

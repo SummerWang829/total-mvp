@@ -44,14 +44,16 @@ def summary_of(text: str) -> dict | None:
         g = guide_text.parse_guide_text(text)
     except guide_text.GuideTextError:
         return None
+    meta = g.get("meta") or {}
+    ask = lambda qs, ms: [{"text": q, **(ms[i] if i < len(ms) else guide_text.blank_meta())} for i, q in enumerate(qs)]  # noqa: E731
     parts = []
     if g.get("warmup_questions"):
-        parts.append({"kind": "warmup", "ref": 0, "title": "开场与热身", "questions": [{"text": q} for q in g["warmup_questions"]], "stimulus": False})
+        parts.append({"kind": "warmup", "ref": 0, "title": "开场与热身", "questions": ask(g["warmup_questions"], meta.get("warmup") or []), "stimulus": False})
     for i, t in enumerate(g.get("topics", [])):
-        qs = [{"text": q} for q in t.get("questions", [])] + [{"text": c["text"], "cover": True} for c in t.get("must_cover", [])]
+        qs = ask(t.get("questions", []), (meta.get("topics") or [])[i] if i < len(meta.get("topics") or []) else []) + [{"text": c["text"], "cover": True} for c in t.get("must_cover", [])]
         parts.append({"kind": "topic", "ref": i, "title": t["title"], "questions": qs, "stimulus": False})
     for i, s in enumerate(g.get("stimuli", [])):
-        parts.append({"kind": "stimulus", "ref": i, "title": s["description"], "questions": [{"text": q} for q in s["questions"]], "stimulus": True})
+        parts.append({"kind": "stimulus", "ref": i, "title": s["description"], "questions": ask(s["questions"], (meta.get("stimuli") or [])[i] if i < len(meta.get("stimuli") or []) else []), "stimulus": True})
     n = sum(1 for p in parts for q in p["questions"] if not q.get("cover"))
     return {"language": g["language"], "minutes": int(g["duration_min"]), "topic": g.get("participant_topic", ""), "parts": parts, "question_count": n}
 
@@ -75,7 +77,7 @@ def edit(text: str, op: str, kind: str, ref: int, index: int, value: str) -> str
 
     Args:
         text: the current outline text (must be valid).
-        op: set | delete | add | rename | del_part | add_part.
+        op: set | delete | add | rename | del_part | add_part | meta ("meta": value is "<depth>|<guidance>", the question's follow-up depth and guidance).
         kind: warmup | topic | stimulus (which list the part is in); ref: its position in that list; index: the question's position in the part.
         value: the new question text (set / add / add_part) or the new title (rename / add_part).
 
@@ -88,13 +90,16 @@ def edit(text: str, op: str, kind: str, ref: int, index: int, value: str) -> str
         raise EditError("先把文字里的问题改好，再用这里的按钮：" + str(e)) from e
     value = value.strip()
     try:
+        meta = g["meta"]
+        key = {"warmup": "warmup", "topic": "topics", "stimulus": "stimuli"}[kind]
         if kind == "warmup":
-            qs = g["warmup_questions"]
+            qs, ms = g["warmup_questions"], meta["warmup"]
         else:
             lst = g["topics"] if kind == "topic" else g.get("stimuli", [])
             qs = lst[ref]["questions"] if op != "add_part" and 0 <= ref < len(lst) else None
             if qs is None and op not in ("add_part",):
                 raise IndexError
+            ms = meta[key][ref] if qs is not None else None
         if op == "set" or op == "add":
             if not value:
                 raise EditError("问题不能是空的")
@@ -102,10 +107,20 @@ def edit(text: str, op: str, kind: str, ref: int, index: int, value: str) -> str
                 qs[index] = value
             else:
                 qs.append(value)
+                ms.append(guide_text.blank_meta())
+        elif op == "meta":
+            depth, _, note = value.partition("|")
+            if depth not in guide_text.DEPTHS:
+                raise EditError("追问深度不对")
+            if not 0 <= index < len(qs):
+                raise IndexError
+            ms[index] = {"depth": depth, "guide": " ".join(note.split())[:guide_text.MAX_NOTE]}
         elif op == "delete":
             qs.pop(index)
+            ms.pop(index)
             if not qs and kind != "warmup":
                 (g["topics"] if kind == "topic" else g["stimuli"]).pop(ref)  # a part with no question is dropped
+                meta[key].pop(ref)
         elif op == "rename":
             if kind != "topic" or not value:
                 raise EditError("只能给话题改名，名字不能为空")
@@ -113,13 +128,16 @@ def edit(text: str, op: str, kind: str, ref: int, index: int, value: str) -> str
         elif op == "del_part":
             if kind == "warmup":
                 g["warmup_questions"] = []
+                meta["warmup"] = []
             else:
                 (g["topics"] if kind == "topic" else g["stimuli"]).pop(ref)
+                meta[key].pop(ref)
         elif op == "add_part":
             title, _, question = value.partition("|")
             if not title.strip() or not question.strip():
                 raise EditError("新话题要有名字和第一个问题")
             g["topics"].append({"id": f"t{len(g['topics']) + 1}", "title": title.strip()[:120], "questions": [question.strip()], "must_cover": []})
+            meta["topics"].append([guide_text.blank_meta()])
         else:
             raise EditError("不认识这个操作")
     except (IndexError, KeyError) as e:

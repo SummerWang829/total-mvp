@@ -24,9 +24,9 @@ def assist(iid: str, asked: str = Query("", max_length=1200), ctx: Ctx = Depends
     planned = (summary["minutes"] if summary else None) or itv.duration_min or 45
     out = {"has_outline": bool(summary), "planned_min": planned, "talk": room_assist.talk_share(lines)}
     seen = {k for k in asked.split(",") if k}
-    out["probes"] = room_assist.probe_suggestions(lines, set(list(seen)[:MAX_ASKED]))
+    cov = room_assist.coverage(summary, lines) if summary else None
+    out["probes"] = room_assist.probe_suggestions(lines, set(list(seen)[:MAX_ASKED]))[:room_assist.probe_limit(summary, cov)]
     if summary:
-        cov = room_assist.coverage(summary, lines)
         mins = room_assist.part_minutes(summary["parts"], planned)
         out["outline"] = {"parts": [{"title": p["title"], "minutes": mins[i], "questions": [{"text": q["text"], "covered": next((x["covered"] for x in cov["questions"] if x["part"] == i and x["q"] == q["text"]), False)} for q in p["questions"] if not q.get("cover")]} for i, p in enumerate(summary["parts"])],
                           "covered": cov["covered"], "total": cov["total"], "current": cov["current"]}
