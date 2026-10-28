@@ -22,6 +22,8 @@ MIN_STARTED = 5  # ... once at least this many people have started (fewer says n
 COMFORT_QUESTIONS = 10
 SECONDS_PER_QUESTION = 25
 MAX_AI_ITEMS = 5
+SMALL_SAMPLE = 30  # fewer people than this and the rate is only a hint
+TOP_BARS = 5
 MAX_TEXT = 300
 KIND_LABEL = {"quota": "配额对不上", "strict": "条件偏严", "exclusive": "选项互斥", "dead_end": "没有人能继续", "length": "题量", "wording": "措辞", "coverage": "没覆盖研究目标"}
 AI_KINDS = ("wording", "coverage")
@@ -114,6 +116,40 @@ def source_labels(keys: list, questions: list[recruit_form.Question], quotas: li
     return list(dict.fromkeys(out))
 
 
+def rate_report(questions: list[recruit_form.Question], quotas: list[dict], stats: dict, focus: str = "rate") -> dict:
+    """"预估通过率" / "定位筛除率较高的题目", worked out from the anonymous counts alone (no model): lines of text, bars (question → people stopped) and the follow-up asks.
+    `focus` is "rate" or "worst". Never raises: with nobody having started it says so."""
+    started, qualified = stats.get("started", 0), stats.get("qualified", 0)
+    if not started:
+        return {"lines": ["暂无作答数据，无法预估。问卷发布并有人作答后再来看。"], "bars": [], "next": []}
+    rate = qualified / started
+    lines = [f"当前共 {started} 人开始作答，{qualified} 人通过甄别，通过率约 {round(rate * 100)}%。"]
+    if started < SMALL_SAMPLE:
+        lines.append(f"样本量不足 {SMALL_SAMPLE} 人，数据仅供参考。")
+    by = sorted(((qid, n) for qid, n in (stats.get("out_by") or {}).items() if n and _no(questions, qid)), key=lambda x: -x[1])
+    out = stats.get("out", 0)
+    if out:
+        lines.append(f"未通过的 {out} 人，终止于以下题目：" if by else f"未通过的 {out} 人，没有记录到终止的题目。")
+    bars = [{"no": _no(questions, qid), "label": f"第 {_no(questions, qid)} 题", "n": n, "text": _by_id(questions, qid).text[:40]} for qid, n in by[:TOP_BARS]]
+    if focus == "worst" and bars:
+        lines.append("其中" + "；".join(f"{b['label']}：{b['text']}" for b in bars[:3]) + "。")
+    if rate > 0:
+        for qt in quotas:
+            missing = max(0, int(qt.get("target") or 0) - int(qt.get("have") or 0))
+            if missing:
+                lines.append(f"按当前进度，配额“{qt.get('name') or qt.get('value')}”尚缺 {missing} 人，预计还需 {math.ceil(missing / rate)} 人开始作答。")
+    nxt = []
+    if bars:
+        no = bars[0]["no"]
+        nxt = [{"label": f"核查第 {no} 题的筛选条件", "ask": f"第 {no} 题终止了较多作答者，请核查它的筛选条件是否过严，只告诉我结论，先不要修改"},
+               {"label": "放宽条件的方案", "ask": f"请给出放宽第 {no} 题条件的两三种方案，说明各自对通过率和人群的影响，先不要修改"}]
+    return {"lines": lines, "bars": bars, "next": nxt}
+
+
+def _by_id(questions: list[recruit_form.Question], qid: str) -> recruit_form.Question:
+    return next(q for q in questions if q.id == qid)
+
+
 def stats_context(questions: list[recruit_form.Question], quotas: list[dict], stats: dict, tally: dict) -> str:
     """The anonymous numbers the model may use, as text: counts only, never a name or an answer of one person."""
     lines = [f"People who started: {stats.get('started', 0)}; qualified: {stats.get('qualified', 0)}; screened out: {stats.get('out', 0)}."]
@@ -143,10 +179,13 @@ def ai_review(chat: ModeratorChatProvider | None, questions: list[recruit_form.Q
                f"Questionnaire (JSON):\n{json.dumps([q.model_dump() for q in questions], ensure_ascii=False)}\n\nAnonymous counts:\n{stats_text}\nWrite in {language}.")
     try:
         reply = chat.complete([{"role": "system", "content": REVIEW_SYSTEM}, {"role": "user", "content": context}], temperature=0.2)
-    except ChatFatalError:
+    except ChatFatalError as e:
+        recruit_form.note_fatal(e.reason)
         raise
     except ChatError as e:
-        raise recruit_form.FormError("AI 暂时无法检查，请稍后再试") from e
+        log.warning("questionnaire review failed: %s", e)
+        raise recruit_form.ChatUnavailable(recruit_form.chat_reason(e)) from e
+    recruit_form.clear_fatal()
     by_id = {q.id: q for q in questions}
     out: list[dict] = []
     for it in (reply.get("items") if isinstance(reply, dict) and isinstance(reply.get("items"), list) else [])[:MAX_AI_ITEMS]:

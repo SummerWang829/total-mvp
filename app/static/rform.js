@@ -25,16 +25,30 @@ function rfCard(p, form) {
   let ver = "", vers = null;   // the language version being looked at (""/the source = the original) and the versions' states (app/static/rtrans.js)
   const isSource = () => !ver || (vers && ver === vers.source);
   let showSug = false, changedIds = new Set();   // showSug: the suggestion cards are open in the chat; changedIds: the questions the last change touched ("刚改")
-  const RF_KIND = { answer: ["回答", "ans"], suggest: ["建议", "sug"], change: ["已修改", "chg"] };
+  let useLib = true, fail = null;   // useLib: the "参考研究库" tick; fail: the last turn that did not get an answer { ask, text, fatal } (kept here only, never saved)
+  const RF_KIND = { answer: ["回答", "ans"], suggest: ["建议", "sug"], stat: ["统计", "stat"] };
+  const aiOk = () => !f.ai || f.ai.ok;
+  const nl = (s) => esc(s).replace(/\n/g, "<br>");
   const sugs = () => f.suggestions || [];
   const sugSeen = () => { try { return sessionStorage.getItem("rf_seen_" + p.id) || ""; } catch { return ""; } };
   const markSeen = () => { try { sessionStorage.setItem("rf_seen_" + p.id, sugs().map((s) => s.sig).join(",")); } catch { /* no storage */ } };
   const diffIds = (before, after) => { const b = Object.fromEntries(before.map((q) => [q.id, JSON.stringify(q)])); return new Set(after.filter((q) => b[q.id] !== JSON.stringify(q)).map((q) => q.id)); };
   const chipsOf = (keys) => (keys && keys.length ? `<div class="rf-src">${keys.map((k) => `<span>${esc(k)}</span>`).join("")}</div>` : "");
-  const msgHtml = (m) => {
+  const bars = (m) => { const top = Math.max(1, ...(m.bars || []).map((b) => b.n)); return (m.bars || []).map((b) => `<div class="rf-bar"><span>${esc(b.label)}</span><i style="width:${Math.round((b.n / top) * 140)}px"></i>${b.n} 人</div>`).join(""); };
+  const msgHtml = (m, last) => {
     if (m.role === "user") return `<div class="rf-msg rf-me">${esc(m.text)}</div>`;
-    const k = RF_KIND[m.kind];
-    return `<div class="rf-msg">${k ? `<span class="rf-kind ${k[1]}">${k[0]}</span>` : ""}<div>${esc(m.text)}</div>${chipsOf(m.sources)}</div>`;
+    if (m.kind === "change") {
+      const ids = last ? [...changedIds].map((id) => Q.findIndex((q) => q.id === id) + 1).filter(Boolean).sort((a, b) => a - b) : [];
+      return `<div class="rf-msg"><div class="rf-chgc"><b>已更新问卷</b><div>${nl(m.text)}</div>${ids.length ? `<div class="sm">涉及：第 ${ids.join("、")} 题</div>` : ""}${last && hist.length ? `<button class="s" type="button" data-chip="undo">撤销本次修改</button>` : ""}</div></div>`;
+    }
+    const k = RF_KIND[m.kind], nx = last && m.next && m.next.length ? `<div class="rf-nx"><span class="sm mut">可继续查看：</span>${m.next.map((n, i) => `<button class="s" type="button" data-next="${i}">${esc(n.label)}</button>`).join("")}</div>` : "";
+    return `<div class="rf-msg">${k ? `<span class="rf-kind ${k[1]}">${k[0]}</span>` : ""}<div>${nl(m.text)}</div>${m.bars && m.bars.length ? `<div class="rf-bars">${bars(m)}</div>` : ""}${chipsOf(m.sources)}${nx}</div>`;
+  };
+  const ctxHtml = () => {
+    const a = f.ai || { ok: true, name: "" }, docs = f.library_docs || 0, started = (f.stats && f.stats.started) || 0;
+    const cx = [f.brief && f.brief.trim() ? "✓ 研究背景" : "· 研究背景（未填写）", `${useLib && docs ? "✓" : "·"} 研究库 ${docs} 份`, ...(Q.length ? [`✓ 当前问卷（${Q.length} 题）`] : []), ...(started ? [`✓ 作答统计（${started} 人）`] : [])];
+    return `<div class="rf-ctxh"><b>与 AI 共同编写问卷</b>${a.name ? `<span class="rf-model${a.ok ? "" : " bad"}">${esc(a.name)}${a.ok ? "" : " 不可用"}</span>` : ""}<span class="sp"></span><label class="chk"><input type="checkbox" id="rflib" ${useLib ? "checked" : ""}>参考研究库</label></div>
+      ${a.ok ? "" : `<div class="rf-bad" role="alert">${esc(a.reason)}</div>`}<div class="rf-cx">${cx.map((x) => `<span>${esc(x)}</span>`).join("")}</div>`;
   };
   const sugCard = (s) => `<div class="rf-sg"><span class="rf-sgk">${esc(s.label)}${s.qno ? ` · 第 ${s.qno} 题` : ""}</span><div>${esc(s.text)}</div>${chipsOf(s.sources)}
     <div class="rf-sgb"><button class="p s" type="button" data-adopt="${esc(s.sig)}">${esc(s.button || "采纳")}</button><a class="rf-nomore" href="#" data-nomore="${esc(s.sig)}">不再提醒</a></div></div>`;
@@ -77,34 +91,43 @@ function rfCard(p, form) {
 
   /* ---------- left: the conversation ---------- */
   function chatHtml() {
-    const used = [f.brief && f.brief.trim() ? "✓ 已读取立项里的研究背景" : "· 立项里还没有研究背景（可以到立项向导第 1 步写）", `${f.library_docs ? "✓" : "·"} 研究库里本项目的资料 ${f.library_docs || 0} 份`];
-    const hello = `<div class="rf-msg">你好！我可以根据研究背景和研究库资料帮你设计招募问卷，也可以按你说的修改，比如“年龄放最前面，18 岁以下筛掉”“每天都用的人跳过频率题”“把第 3 题改成多选”。先说“帮我起草问卷”试试？</div><div class="rf-st">${used.join("<br>")}</div>`;
-    const msgs = (f.chat || []).map(msgHtml).join("");
+    const hello = `<div class="rf-msg">您好！我可以根据研究背景和研究库资料协助设计招募问卷，也可以按您的要求修改，例如“年龄放最前面，18 岁以下筛掉”“每天都用的人跳过频率题”“把第 3 题改成多选”。可先说“帮我起草问卷”。</div>`;
+    const all = f.chat || [], msgs = all.map((m, i) => msgHtml(m, i === all.length - 1 && !fail)).join("");
+    const failHtml = fail ? `<div class="rf-msg rf-me">${esc(fail.ask)}</div><div class="rf-err" role="alert"><b>本次未能完成回复</b><div>${esc(fail.text)}</div>${fail.fatal ? "" : `<button class="s" type="button" data-chip="retry">重新尝试</button><button class="s" type="button" data-chip="rephrase">调整提问方式</button>`}</div>` : "";
     const cards = showSug && sugs().length ? `<div class="rf-sgs"><div class="sm mut">建议 ${sugs().length} 条。这些只是建议，不点也没关系：问卷不会变，也不影响你继续写和发布。</div>${sugs().map(sugCard).join("")}</div>` : "";
     const news = !showSug && sugs().length && sugSeen() !== sugs().map((s) => s.sig).join(",") ? `<button type="button" class="rf-news" data-chip="showsug">有 ${sugs().length} 条建议，点这里查看</button>` : "";
-    const chips = Q.length ? `<div class="rf-chips"><button class="s" type="button" data-chip="review">检查问卷</button><button class="s" type="button" data-chip="explain">解释这道题</button><button class="s" type="button" data-chip="rate">预估通过率</button><button class="s" type="button" data-chip="goals">对照研究目标</button><button class="s" type="button" data-chip="neutral">措辞改得更中性</button><button class="s" type="button" data-chip="test">测试这份问卷</button>${f.link ? "" : `<button class="s" type="button" data-chip="pub">发布成链接和二维码</button>`}</div>` : `<div class="rf-chips"><button class="s" type="button" data-chip="draft">帮我起草问卷</button></div>`;
-    return hello + msgs + cards + (pending ? `<div class="rf-msg rf-me">${esc(pending)}</div><div class="rf-msg mut">AI 正在想…</div>` : news + chips);
+    const started = (f.stats && f.stats.started) || 0, why = aiOk() ? "" : ` disabled title="${esc(f.ai.reason)}"`;   // the buttons that need the model are greyed out, with the reason, when it cannot be used
+    const need = (c, label) => `<button class="s" type="button" data-chip="${c}"${why}>${label}</button>`, free = (c, label) => `<button class="s" type="button" data-chip="${c}">${label}</button>`;
+    const row = !Q.length ? [need("draft", "帮我起草问卷")] : !started ? [free("review", "检查问卷"), need("goals", "对照研究目标"), need("neutral", "优化措辞的中立性"), free("test", "测试这份问卷")]
+      : [free("review", "检查问卷"), free("rate", "预估通过率"), free("worst", "定位筛除率较高的题目"), need("neutral", "优化措辞的中立性")];
+    const chips = `<div class="rf-chips">${row.join("")}</div>`;
+    return hello + msgs + cards + failHtml + (pending ? `<div class="rf-msg rf-me">${esc(pending)}</div><div class="rf-msg mut">AI 正在处理…</div>` : news + chips);
   }
-  const drawChat = () => { const c = $("#rfchat"); if (!c) return; c.innerHTML = chatHtml(); c.scrollTop = c.scrollHeight; wireChips(); };
+  const drawChat = () => { const c = $("#rfchat"); if (!c) return; const x = $("#rfctx"); if (x) { x.innerHTML = ctxHtml(); const l = $("#rflib"); if (l) l.onchange = () => { useLib = l.checked; drawChat(); }; } c.innerHTML = chatHtml(); c.scrollTop = c.scrollHeight; wireChips(); };
   async function send(text) {
     text = (text || "").trim(); if (!text || sending) return;
     if (incomplete()) return toast("有题目或选项还没写完，先写完再对话", true);
-    sending = true; pending = text; $("#rfmsg").value = ""; $("#rfsend").disabled = true; drawChat();
+    sending = true; pending = text; fail = null; $("#rfmsg").value = ""; $("#rfsend").disabled = true; drawChat();
     const before = snap();
     try {
-      const r = await api(`/projects/${p.id}/recruiting/form/chat`, { method: "POST", body: { message: text, questions: Q, goals, need } });
+      const r = await api(`/projects/${p.id}/recruiting/form/chat`, { method: "POST", body: { message: text, questions: Q, goals, need, use_library: useLib } });
       if (r.changed || JSON.stringify(r.goals) !== JSON.stringify(goals) || r.need !== need) { hist.push(before); if (hist.length > 30) hist.shift(); redo = []; }
       changedIds = r.changed ? diffIds(Q, r.questions) : new Set();
       f = { ...f, ...r }; Q = JSON.parse(JSON.stringify(r.questions)); goals = [...(r.goals || [])]; need = r.need || ""; editing = new Set();
-    } catch (e) { f = { ...f, chat: [...(f.chat || []), { role: "user", text }, { role: "ai", text: "没有成功：" + e.message }] }; toast(e.message, true); }
+    } catch (e) { fail = { ask: text, text: e.message, fatal: e.status === 503 }; if (e.status === 503) f = { ...f, ai: { ...(f.ai || {}), ok: false, reason: e.message } }; }
     sending = false; pending = ""; const b = $("#rfsend"); if (b) b.disabled = false; syncUndo(); drawChat(); drawRight();
   }
-  const ASK = { draft: "帮我起草问卷", rate: "根据已有的作答，预估这份问卷的通过率，并说明哪几题筛掉的人最多", goals: "对照研究目标和招募需求，看看问卷有没有没覆盖到的地方，只告诉我，先不要改", neutral: "检查有没有带引导或带倾向的措辞，有的话改得更中性" };
+  const ASK = { draft: "帮我起草问卷", goals: "对照研究目标和招募需求，核查问卷是否有未覆盖之处，仅告知结论，暂不修改", neutral: "检查问卷是否存在引导性或带有倾向的措辞，如有，请修改得更为中立" };
+  async function stats(kind) {   // 预估通过率 / 定位筛除率较高的题目: worked out on the server from the anonymous counts, no model
+    if (sending) return; sending = true; fail = null; pending = kind === "rate" ? "预估通过率" : "定位筛除率较高的题目"; drawChat();
+    try { f = { ...f, ...(await api(`/projects/${p.id}/recruiting/form/stats`, { method: "POST", body: { kind } })) }; } catch (e) { fail = { ask: pending, text: e.message, fatal: true }; }
+    sending = false; pending = ""; drawChat();
+  }
   async function review() {
     if (sending) return; if (incomplete()) return toast("有题目或选项还没写完，先写完再检查", true);
-    sending = true; pending = "检查一下这份问卷"; drawChat();
+    sending = true; fail = null; pending = "检查问卷"; drawChat();
     try { const r = await api(`/projects/${p.id}/recruiting/form/review`, { method: "POST" }); f = { ...f, ...r }; showSug = true; markSeen(); }
-    catch (e) { toast(e.message, true); }
+    catch (e) { fail = { ask: pending, text: e.message, fatal: e.status === 503 }; }
     sending = false; pending = ""; drawChat(); drawRight();
   }
   const adopt = guard(async (sig) => {
@@ -121,9 +144,13 @@ function rfCard(p, form) {
       const c = b.dataset.chip;
       if (c === "test") { seg = "test"; drawRight(); } else if (c === "pub") publish(); else if (c === "review") review();
       else if (c === "showsug") { showSug = true; markSeen(); drawChat(); drawRight(); }
-      else if (c === "explain") { const m = $("#rfmsg"); m.value = "解释一下第 2 题为什么这样问："; m.focus(); m.setSelectionRange(m.value.length, m.value.length); }
+      else if (c === "rate" || c === "worst") stats(c);
+      else if (c === "retry" && fail) send(fail.ask);
+      else if (c === "rephrase" && fail) { const m = $("#rfmsg"), a = fail.ask; fail = null; drawChat(); m.value = a; m.focus(); }
+      else if (c === "undo") { const u = $("#rfundo"); if (u && !u.disabled) u.click(); }
       else if (ASK[c]) send(ASK[c]);
     }));
+    document.querySelectorAll("[data-next]").forEach((b) => (b.onclick = () => { const last = [...(f.chat || [])].reverse().find((m) => m.next && m.next.length); if (last) send(last.next[+b.dataset.next].ask); }));
     document.querySelectorAll("[data-adopt]").forEach((b) => (b.onclick = () => adopt(b.dataset.adopt)));
     document.querySelectorAll("[data-nomore]").forEach((a) => (a.onclick = (e) => { e.preventDefault(); nomore(a.dataset.nomore); }));
   }
@@ -262,8 +289,8 @@ function rfCard(p, form) {
     if (mode === "html") return `<div class="rf-htmlmode"><div>${modeSwitch()}</div><label class="field">问卷链接（https://）<input id="rfurl" type="url" value="${esc(f.html_url)}" placeholder="https://…（在别的系统里做好的问卷）" maxlength="500"></label>
       <div class="note">问卷在别的系统里制作和托管，这里只保存链接，点下面的按钮在新窗口里测试；不会嵌进本页面。</div><div class="row"><button class="p" id="rfsave" type="button">保存链接</button>${f.html_url ? `<button class="s" id="rftest" type="button">打开测试窗口</button>` : ""}</div>${f.html_url ? `<code class="rfurl">${esc(f.html_url)}</code>` : ""}</div>`;
     return `<div class="rf-ws" id="rfws"><div class="rf-pane"><div class="rf-hd">${modeSwitch()}<span class="sp"></span><button class="s" type="button" id="rfundo" disabled>撤销</button><button class="s" type="button" id="rfredo" disabled>重做</button></div>
-      <div class="rf-sc" id="rfchat"></div>
-      <div class="rf-inp"><div class="sm mut" style="margin-bottom:6px">${esc(rfAiNotice())}</div><div class="rf-box"><textarea id="rfmsg" rows="2" maxlength="2000" placeholder="说说你想怎么改，或直接说“帮我起草问卷”" aria-label="对话输入"></textarea><button class="p rf-send" type="button" id="rfsend" aria-label="发送">↑</button></div></div></div>
+      <div class="rf-ctx" id="rfctx"></div><div class="rf-sc" id="rfchat"></div>
+      <div class="rf-inp"><div class="sm mut" style="margin-bottom:6px">${esc(rfAiNotice())}</div><div class="rf-box"><textarea id="rfmsg" rows="2" maxlength="2000" placeholder="请输入修改要求或问题，例如“帮我起草问卷”" aria-label="对话输入"></textarea><button class="p rf-send" type="button" id="rfsend" aria-label="发送">↑</button></div></div></div>
       <div class="rf-split" id="rfsplit" role="separator" aria-orientation="vertical" aria-label="拖动调整对话和大纲的宽度（双击恢复）" tabindex="0"><i></i></div><div class="rf-pane" id="rfright"></div></div>`;
   }
   const modeSwitch = () => `<div class="rf-seg" role="radiogroup" aria-label="问卷来源"><button type="button" role="radio" data-mode="ai" class="${mode === "ai" ? "on" : ""}" aria-checked="${mode === "ai"}">对话编写</button><button type="button" role="radio" data-mode="html" class="${mode === "html" ? "on" : ""}" aria-checked="${mode === "html"}">导入问卷链接</button></div>`;

@@ -30,21 +30,72 @@ async function insightsHub(p, my) {
   async function respondents(box) {
     const d = await api(`/projects/${p.id}/insights/overview`); if (stale(my)) return;
     const k = d.kpi, rows = d.rows, showTags = rows.length ? "tags" in rows[0] : team;
-    let q = "";
-    const state = (r) => { const [t, c] = STATUS[r.status] || [r.status, ""]; return `<span class="tag ${c}">${t}</span>`; };
+    const SEP = "、";
+    const statusLabel = (r) => (STATUS[r.status] || [r.status])[0];
     const dur = (r) => (r.minutes != null ? `${r.minutes} 分` : "—");
-    const tr = (r, i) => `<tr data-i="${i}" tabindex="0"><td data-l="编号"><a href="#/i/${r.id}"><b>${esc(r.code)}</b></a></td><td data-l="开始时间">${r.started_at ? when(r.started_at) : "—"}${r.scheduled ? ` <span class="mut sm">预约</span>` : ""}</td><td data-l="时长">${dur(r)}</td><td data-l="状态">${state(r)}</td>
-      ${showTags ? `<td data-l="标签">${(r.tags || []).map((t) => `<span class="lch ${lcolor(t)}">${esc(t)}</span>`).join("") || `<span class="mut">—</span>`}</td>` : ""}<td data-l="洞察 / 片段">${r.insights ? `${r.insights}` : "—"} / ${r.clips || "—"}${r.review ? ` <span class="tag bad">${r.review} 待复核</span>` : ""}</td>
-      <td data-l="AI 要点摘要">${r.summary.length ? r.summary.map((s) => esc(s)).join("<br>") : `<span class="mut">${r.status === "ended" ? "还没有洞察" : "访谈结束后自动生成"}</span>`}</td></tr>`;
-    const hit = (r) => !q || [r.code, ...(r.tags || []), ...r.summary].join(" ").toLowerCase().includes(q);
+    /* the columns: the fixed ones, then one per questionnaire question and per outline question (the server says which are choices and which are open text) */
+    const base = [{ id: "start", group: "base", label: "开始时间", type: "time" }, { id: "dur", group: "base", label: "访谈时长", type: "num" }, { id: "status", group: "base", label: "状态", type: "choice", multi: false, options: [] },
+      ...(showTags ? [{ id: "tags", group: "base", label: "标签", type: "choice", multi: true, options: [] }] : []), { id: "ins", group: "base", label: "洞察 / 片段", type: "num" }];
+    const cols = [...base, ...(d.columns || [])];
+    const GROUPS = { base: "基本信息", screen: "问卷答案", answer: "访谈回答（按“访谈”页大纲的问题）" };
+    const valueOf = (r, c) => {
+      if (c.id === "start") return r.started_at || "";
+      if (c.id === "dur") return r.minutes != null ? String(r.minutes) : "";
+      if (c.id === "status") return statusLabel(r);
+      if (c.id === "tags") return r.tags || [];
+      if (c.id === "ins") return `${r.insights || 0} / ${r.clips || 0}`;
+      const v = (r.cells || {})[c.id];
+      return v == null ? "" : v;
+    };
+    const asList = (v, c) => (Array.isArray(v) ? v : v === "" ? [] : c.multi ? String(v).split(SEP) : [String(v)]);
+    const optionsOf = (c) => { const seen = new Map(); (c.options || []).forEach((o) => seen.set(o, 0)); rows.forEach((r) => asList(valueOf(r, c), c).forEach((v) => seen.set(v, (seen.get(v) || 0) + 1))); return [...seen.entries()]; };
+    const filterable = (c) => c.type === "choice" || (c.type === "text");
+    const hideKey = "ins_hide_" + p.id;
+    let hidden = new Set(); try { hidden = new Set(JSON.parse(sessionStorage.getItem(hideKey) || "[]")); } catch { /* none */ }
+    const F = {};     // column id -> { sel: Set } for choices, { q: "text" } for open text
+    let gq = "";
+    const visible = () => cols.filter((c) => !hidden.has(c.id));
+    const matches = (r) => {
+      if (gq && ![r.code, ...Object.values(r.cells || {}).flat(), ...(r.tags || []), ...r.summary].join(" ").toLowerCase().includes(gq)) return false;
+      return Object.entries(F).every(([id, f]) => {
+        const c = cols.find((x) => x.id === id); if (!c) return true; const v = valueOf(r, c);
+        if (f.sel) return !f.sel.size || asList(v, c).some((x) => f.sel.has(x));
+        return !f.q || String(Array.isArray(v) ? v.join(" ") : v).toLowerCase().includes(f.q);
+      });
+    };
+    const activeFilters = () => Object.values(F).filter((f) => (f.sel && f.sel.size) || f.q).length;
+    const cell = (r, c) => {
+      if (c.id === "start") return `${r.started_at ? when(r.started_at) : "—"}${r.scheduled ? ` <span class="mut sm">预约</span>` : ""}`;
+      if (c.id === "dur") return dur(r);
+      if (c.id === "status") { const [t, cl] = STATUS[r.status] || [r.status, ""]; return `<span class="tag ${cl}">${t}</span>`; }
+      if (c.id === "tags") return (r.tags || []).map((t) => `<span class="lch ${lcolor(t)}">${esc(t)}</span>`).join("") || `<span class="mut">—</span>`;
+      if (c.id === "ins") return `${r.insights || "—"} / ${r.clips || "—"}${r.review ? ` <span class="tag bad">${r.review} 待复核</span>` : ""}`;
+      const v = valueOf(r, c);
+      if (c.group === "answer" && c.type === "text") return v ? `<div class="ins-cl" tabindex="0" role="button" aria-expanded="false">${esc(v)}</div>` : `<span class="mut">${r.status === "ended" ? "还没整理" : "访谈结束后生成"}</span>`;
+      if (c.type === "choice") return asList(v, c).map((x) => `<span class="tag">${esc(x)}</span>`).join("") || `<span class="mut">—</span>`;
+      return v ? `<div class="ins-cl" tabindex="0" role="button" aria-expanded="false">${esc(String(v))}</div>` : `<span class="mut">—</span>`;
+    };
+    const widthOf = (c) => (c.group === "answer" && c.type === "text" ? "w2" : c.type === "choice" || c.id === "tags" ? "w3" : "w1");
     box.innerHTML = `<div class="ins-kp"><div class="rd-k"><span>已完成访谈</span><b>${k.completed}</b><small class="mut">${k.upcoming ? `另有 ${k.upcoming} 场待开始` : "没有待开始的场次"}${k.live ? ` · ${k.live} 场进行中` : ""}</small></div>
         <div class="rd-k"><span>平均时长</span><b>${k.avg_minutes != null ? k.avg_minutes + " 分钟" : "—"}</b></div><div class="rd-k ok"><span>洞察通过率</span><b>${k.approval_rate != null ? k.approval_rate + "%" : "—"}</b><small class="mut">已通过 ${k.approved} / 共 ${k.insights} 条</small></div></div>
-      <div class="row ins-tool"><input id="isearch" type="search" placeholder="搜索 编号、标签、关键词" aria-label="搜索受访者" style="max-width:260px"><span class="sp"></span>${ME.role === "observer" ? "" : `<button type="button" id="xw">导出 Word</button><button type="button" id="xc">导出 CSV</button>`}</div>
-      ${rows.length ? `<div class="ins-wrap" id="iwrap"><div class="card scroll" style="padding:6px 10px"><table class="tbl rc ins-tbl"><colgroup>${(showTags ? [9, 13, 8, 9, 14, 10, 37] : [10, 15, 9, 10, 12, 44]).map((w) => `<col style="width:${w}%">`).join("")}</colgroup><thead><tr><th>编号</th><th>开始时间</th><th>时长</th><th>状态</th>${showTags ? "<th>标签</th>" : ""}<th>洞察 / 片段</th><th>AI 要点摘要</th></tr></thead><tbody id="irows"></tbody></table></div><div class="ins-pop" id="ipop" hidden></div></div><div class="card empty" id="inone" hidden><b>没有符合的人。</b></div>`
+      <div class="row ins-tool"><input id="isearch" type="search" placeholder="搜索（所有列）" aria-label="搜索受访者" style="max-width:260px"><span class="sp"></span><span class="sm mut" id="igen-st" role="status" aria-live="polite"></span>
+        ${d.can_generate ? `<button type="button" id="igen">整理访谈回答</button>` : ""}<button type="button" id="iview">视图与筛选</button>${ME.role === "observer" ? "" : `<button type="button" id="xw">导出 Word</button><button type="button" id="xc">导出 CSV</button>`}</div>
+      ${d.can_generate ? insAiNotice().replace("你的提问和相关的访谈转写会发送给", "整理时，每位受访者的回答会发送给") : ""}
+      ${rows.length ? `<div class="ins-wrap" id="iwrap"><div class="ins-sc"><div class="ins-sx" id="isx"><table class="ins-tbl2" id="itbl"></table></div></div><div class="ins-pop" id="ipop" hidden></div></div><div class="ins-ft"><span id="icount"></span></div>`
         : `<div class="card empty"><b>还没有场次。</b><span>访谈结束并转写后，每位受访者的数据会列在这里。</span></div>`}`;
     if (ME.role !== "observer" && $("#xw")) { $("#xw").onclick = insDownload(p, `/api/projects/${p.id}/insights/export?format=docx`, `${p.name}-洞察.docx`); $("#xc").onclick = insDownload(p, `/api/projects/${p.id}/insights/export?format=csv`, `${p.name}-洞察.csv`); }
+    const gen = $("#igen");
+    if (gen) gen.onclick = guard(async () => {   // the answers of every finished interview, one after the other (each call reads one transcript)
+      const todo = rows.filter((r) => r.status === "ended" && !r.purged && r.kind !== "group"), st = $("#igen-st"); gen.disabled = true; let n = 0, skip = "";
+      for (const r of todo) { st.textContent = `整理中 ${n}/${todo.length}…`; try { const out = await api(`/interviews/${r.id}/answers/generate`, { method: "POST" }); skip = out.themes_skipped_reason || skip; } catch (e) { toast(e.message, true); break; } n++; }
+      st.textContent = `已整理 ${n}/${todo.length}`; if (skip) toast(skip, true); await show("r");
+    });
     if (!rows.length) return;
-    const pop = $("#ipop"), wrap = $("#iwrap"), body = $("#irows");
+    const wrap = $("#iwrap"), sx = $("#isx"), tbl = $("#itbl"), pop = $("#ipop");
+    const fit = () => { const b = $(".ins-sc"), pane = $("#ipanel"); if (!b || !pane || !b.offsetParent) return; b.style.height = Math.max(200, pane.getBoundingClientRect().bottom - b.getBoundingClientRect().top - 34) + "px"; };
+    addEventListener("resize", fit);
+    let shown = [], open = -1;
+    const closeCard = () => { open = -1; pop.hidden = true; tbl.querySelectorAll("tr.hv").forEach((x) => x.classList.remove("hv")); };
     const card = (r) => {
       const c = r.card, steps = c.steps.map((on, i) => `<i class="${on ? "" : "n"}"></i>${i < 5 ? `<u class="${on && c.steps[i + 1] ? "" : "n"}"></u>` : ""}`).join("");
       return `<h5><b>${esc(r.code)}</b><span class="mut">${esc(c.loc)}</span><span class="sp"></span><a class="btn s" href="#/i/${r.id}">查看详情 →</a></h5>
@@ -55,20 +106,52 @@ async function insightsHub(p, my) {
         <div class="sm"><span class="mut">洞察</span> ${r.insights ? `${r.insights} 条（通过 ${r.approved}${r.review ? `，待复核 ${r.review}` : ""}）` : "—"}　<span class="mut">片段</span> ${r.clips ? r.clips + " 个" : "—"}</div>
         ${c.quotes.map((x) => `<div class="ins-q">“${esc(x.text)}” <small>${insClock(x.at_ms)}</small></div>`).join("")}`;
     };
-    let shown = [], open = -1;
-    const place = (trEl) => {  // beside the row, kept inside the table's box
-      const wr = wrap.getBoundingClientRect(), a = trEl.getBoundingClientRect(), top = a.bottom - wr.top + 4;
-      pop.style.top = Math.max(0, Math.min(top, wrap.offsetHeight - pop.offsetHeight)) + "px";
+    const openCard = (i, anchor) => {   // beside the code cell that was pointed at, kept inside the table's box
+      const trEl = tbl.tBodies[0].children[i]; if (!trEl) return; open = i; tbl.querySelectorAll("tr.hv").forEach((x) => x.classList.remove("hv")); trEl.classList.add("hv");
+      pop.innerHTML = card(shown[i]); pop.hidden = false;
+      const wr = wrap.getBoundingClientRect(), a = (anchor || trEl).getBoundingClientRect();
+      pop.style.left = Math.max(8, Math.min(wr.width - pop.offsetWidth - 8, a.right - wr.left + 6)) + "px";
+      pop.style.top = Math.max(0, Math.min(a.bottom - wr.top + 4, wrap.offsetHeight - pop.offsetHeight)) + "px";
     };
-    const openCard = (i) => { const trEl = body.children[i]; if (!trEl) return; open = i; [...body.children].forEach((x) => x.classList.toggle("hv", x === trEl)); pop.innerHTML = card(shown[i]); pop.hidden = false; place(trEl); };
-    const closeCard = () => { open = -1; pop.hidden = true; [...body.children].forEach((x) => x.classList.remove("hv")); };
+    const header = () => {
+      const vs = visible(), groups = []; vs.forEach((c) => { const g = groups[groups.length - 1]; if (g && g.id === c.group) g.n++; else groups.push({ id: c.group, n: 1 }); });
+      const fi = (c) => (filterable(c) || c.id === "status" || c.id === "tags" ? `<button type="button" class="fi${F[c.id] && ((F[c.id].sel && F[c.id].sel.size) || F[c.id].q) ? " on" : ""}" data-f="${c.id}" aria-label="筛选：${esc(c.label)}">☰</button>` : "");
+      return `<thead><tr class="g"><th class="pin"></th>${groups.map((g) => `<th colspan="${g.n}">${GROUPS[g.id]}</th>`).join("")}</tr><tr class="c"><th class="pin">编号</th>${vs.map((c) => `<th class="${widthOf(c)}" title="${esc(c.label)}">${esc(c.label)}${fi(c)}</th>`).join("")}</tr></thead>`;
+    };
     const draw = () => {
-      shown = rows.filter(hit); body.innerHTML = shown.map(tr).join(""); closeCard(); $("#inone").hidden = shown.length > 0;
-      [...body.children].forEach((trEl, i) => { trEl.onmouseenter = () => { if (matchMedia("(hover:hover)").matches) openCard(i); }; trEl.onfocus = () => { if (trEl.matches(":focus-visible")) openCard(i); }; trEl.onclick = (e) => { if (e.target.closest("a") || matchMedia("(hover:hover)").matches) return; open === i ? closeCard() : openCard(i); }; });   // a mouse already opened the card by hovering; a finger has no hover, so a tap opens and closes it
+      const vs = visible(); shown = rows.filter(matches); closeCard();
+      tbl.innerHTML = header() + `<tbody>${shown.map((r, i) => `<tr data-i="${i}"><td class="pin"><a href="#/i/${r.id}"><b>${esc(r.code)}</b></a></td>${vs.map((c) => `<td class="${widthOf(c)}" data-l="${esc(c.label)}">${cell(r, c)}</td>`).join("")}</tr>`).join("")}</tbody>`;
+      $("#icount").textContent = `共 ${rows.length} 人 · 当前显示 ${shown.length} 人${activeFilters() ? ` · ${activeFilters()} 个筛选` : ""}`;
+      tbl.querySelectorAll("td.pin").forEach((td) => { const i = +td.parentElement.dataset.i; td.onmouseenter = () => { if (matchMedia("(hover:hover)").matches) openCard(i, td); }; td.onclick = (e) => { if (e.target.closest("a") || matchMedia("(hover:hover)").matches) return; open === i ? closeCard() : openCard(i, td); }; });
+      tbl.querySelectorAll(".ins-cl").forEach((c) => (c.onclick = c.onkeydown = (e) => { if (e.type === "keydown" && e.key !== "Enter" && e.key !== " ") return; e.preventDefault(); const on = c.classList.toggle("open"); c.setAttribute("aria-expanded", String(on)); }));
+      tbl.querySelectorAll(".fi").forEach((b) => (b.onclick = (e) => { e.stopPropagation(); openFilter(b, cols.find((x) => x.id === b.dataset.f)); }));
+      fit();
     };
     wrap.onmouseleave = () => { if (matchMedia("(hover:hover)").matches) closeCard(); };
-    wrap.onkeydown = (e) => { if (e.key === "Escape") closeCard(); };
-    $("#isearch").oninput = (e) => { q = e.target.value.trim().toLowerCase(); draw(); };
+    sx.onscroll = closeCard;
+    /* a column's filter: choices (and labels) get a tick list with counts, 全选 / 清除; an open question only gets a search box */
+    function openFilter(btn, c) {
+      if (!filterable(c) && c.id !== "status" && c.id !== "tags") return;
+      if (c.type === "text") {
+        const pp = rmPop(btn, `<div class="lb">${esc(c.label)}</div><input class="mss" placeholder="搜索回答里的词" aria-label="搜索${esc(c.label)}" value="${esc((F[c.id] && F[c.id].q) || "")}">`), inp = pp.querySelector("input");
+        inp.oninput = () => { F[c.id] = { q: inp.value.trim().toLowerCase() }; draw(); btn.classList.toggle("on", !!F[c.id].q); }; inp.focus(); return;
+      }
+      const all = optionsOf(c), pp = rmPop(btn, `<div class="lb">${esc(c.label)}${c.multi ? "（多选题：满足任一）" : ""}</div><input class="mss" placeholder="搜索" aria-label="搜索${esc(c.label)}"><div class="rmfa"><button type="button" class="lnk" data-all>全选</button><button type="button" class="lnk" data-none>清除</button></div><div class="rmopts rmfl"></div>`);
+      const list = pp.querySelector(".rmfl"), inp = pp.querySelector("input"), cur = () => (F[c.id] = F[c.id] || { sel: new Set() }).sel;
+      const fill = () => { const q = inp.value.trim().toLowerCase(), os = all.filter(([v]) => !q || v.toLowerCase().includes(q));
+        list.innerHTML = os.length ? os.map(([v, n]) => `<label class="rmfo"><input type="checkbox" value="${esc(v)}"${cur().has(v) ? " checked" : ""}><span>${esc(v)}</span><em>${n}</em></label>`).join("") : `<div class="sm mut" style="padding:6px 8px">${all.length ? "没有匹配的" : "还没有可选的内容"}</div>`;
+        list.querySelectorAll("input").forEach((i) => (i.onchange = () => { i.checked ? cur().add(i.value) : cur().delete(i.value); draw(); })); };
+      pp.querySelector("[data-all]").onclick = () => { all.filter(([v]) => !inp.value.trim() || v.toLowerCase().includes(inp.value.trim().toLowerCase())).forEach(([v]) => cur().add(v)); fill(); draw(); };
+      pp.querySelector("[data-none]").onclick = () => { cur().clear(); fill(); draw(); };
+      inp.oninput = fill; fill(); inp.focus();
+    }
+    $("#iview").onclick = (e) => {   // which columns to show, and one place to clear every filter
+      const pp = rmPop(e.currentTarget, `<div class="lb">显示哪些列</div><div class="rmopts rmfl">${cols.map((c) => `<label class="rmfo"><input type="checkbox" value="${c.id}"${hidden.has(c.id) ? "" : " checked"}><span>${esc(c.label)}</span></label>`).join("")}</div><div class="rmfa"><button type="button" class="lnk" data-clr>清除全部筛选</button></div>`);
+      pp.querySelectorAll("input").forEach((i) => (i.onchange = () => { i.checked ? hidden.delete(i.value) : hidden.add(i.value); try { sessionStorage.setItem(hideKey, JSON.stringify([...hidden])); } catch { /* none */ } $("#iview").textContent = hidden.size ? `视图与筛选 · ${hidden.size} 列隐藏` : "视图与筛选"; draw(); }));
+      pp.querySelector("[data-clr]").onclick = () => { Object.keys(F).forEach((x) => delete F[x]); gq = ""; $("#isearch").value = ""; draw(); };
+    };
+    if (hidden.size) $("#iview").textContent = `视图与筛选 · ${hidden.size} 列隐藏`;
+    $("#isearch").oninput = (e) => { gq = e.target.value.trim().toLowerCase(); draw(); };
     draw();
   }
 

@@ -14,6 +14,7 @@ import logging
 import math
 import re
 import secrets
+import time
 from dataclasses import dataclass, field
 from typing import Literal
 from urllib.parse import urlparse
@@ -47,6 +48,48 @@ Questions are neutral, one at a time, never leading, never naming or praising a 
 
 class FormError(ValueError):
     """The questionnaire cannot be used or could not be written; the message is plain Chinese for the researcher."""
+
+
+class ChatUnavailable(FormError):
+    """The model service gave no usable reply even after the automatic retries; `reason` says why in plain words (never any conversation text)."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+FORMAT_ERRORS = ("not JSON", "JSON object", "response shape")  # the service answered, but not with something usable: worth asking once more
+FATAL_NOTE_TTL_S = 600  # a refusal (no balance, bad key) is remembered this long, so the page can grey out the buttons that need the model
+_fatal_note: dict = {"reason": "", "at": 0.0}
+
+
+def chat_reason(e: ChatError) -> str:
+    """The failure in plain words, from the error the model client raised (its messages hold no conversation text)."""
+    s = str(e)
+    if "429" in s:
+        return "服务繁忙（请求过于频繁）"
+    if "HTTP 5" in s:
+        return "服务暂时不可用"
+    if "Timeout" in s or "timed out" in s.lower():
+        return "服务响应超时"
+    if any(m in s for m in FORMAT_ERRORS):
+        return "返回的内容格式不正确"
+    return "服务暂时无法连接"
+
+
+def note_fatal(reason: str) -> None:
+    """Remember that the model service refused (bad key, no balance...)."""
+    _fatal_note.update(reason=reason, at=time.monotonic())
+
+
+def clear_fatal() -> None:
+    """A reply came through: the refusal is over."""
+    _fatal_note.update(reason="", at=0.0)
+
+
+def recent_fatal() -> str:
+    """The reason of a refusal in the last few minutes, or ''."""
+    return _fatal_note["reason"] if _fatal_note["reason"] and time.monotonic() - _fatal_note["at"] < FATAL_NOTE_TTL_S else ""
 
 
 class AnswerError(ValueError):
@@ -436,7 +479,8 @@ def chat_turn(chat: ModeratorChatProvider | None, message: str, history: list[di
     `chat` None means the offline assistant. A change that is not a valid questionnaire is asked for again once with the problem named, then dropped (the reply says so).
 
     Raises:
-        FormError: the message is empty, or the model service is unavailable.
+        FormError: the message is empty.
+        ChatUnavailable: the model service is unavailable (after the automatic retries); `reason` says why.
         ChatFatalError: the model service refused (bad key, no balance...).
     """
     if not message.strip():
@@ -447,6 +491,7 @@ def chat_turn(chat: ModeratorChatProvider | None, message: str, history: list[di
                f"Current questionnaire (JSON):\n{json.dumps([q.model_dump() for q in questions], ensure_ascii=False)}\nCurrent goals: {json.dumps(goals, ensure_ascii=False)}\nCurrent recruiting need: {need or '(none)'}\n\nAnonymous counts and quotas (numbers only, nobody's answers):\n{stats_text or '(none yet)'}")
     msgs = [{"role": "system", "content": CHAT_SYSTEM.replace("{language}", language)}, {"role": "user", "content": context}, *_history_messages(history), {"role": "user", "content": message.strip()[:MAX_CHAT_TEXT]}]
     problem = ""
+    format_retried = False
     for attempt in range(MAX_ATTEMPTS):
         try:
             reply = chat.complete(msgs + ([{"role": "user", "content": f"Your previous change was rejected: {problem}. Answer again with a valid questionnaire."}] if problem else []), temperature=0.3)
@@ -457,11 +502,18 @@ def chat_turn(chat: ModeratorChatProvider | None, message: str, history: list[di
             changed = new_q is not None or new_goals is not None or new_need is not None
             kind = "change" if changed else ("suggest" if reply.get("kind") == "suggest" else "answer")
             srcs = [str(s) for s in reply.get("sources", []) if isinstance(s, str)][:6] if isinstance(reply.get("sources"), list) else []
+            clear_fatal()
             return ChatResult(text, new_q, new_goals, new_need, kind, srcs)
-        except ChatFatalError:
+        except ChatFatalError as e:
+            note_fatal(e.reason)
             raise
         except ChatError as e:
-            raise FormError("AI 暂时无法回复，请稍后再试") from e
+            if not format_retried and any(m in str(e) for m in FORMAT_ERRORS):
+                format_retried = True
+                log.warning("questionnaire chat: unusable reply (%s), asking once more", e)
+                continue
+            log.warning("questionnaire chat failed: %s", e)  # the error text names the cause only; nothing the researcher or the model said
+            raise ChatUnavailable(chat_reason(e)) from e
         except (ValueError, KeyError, TypeError, AttributeError) as e:
             problem = f"not a valid questionnaire ({type(e).__name__}: {str(e)[:120]})"
             log.warning("questionnaire chat attempt %d unusable: %s", attempt + 1, type(e).__name__)
