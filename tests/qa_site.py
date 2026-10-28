@@ -370,7 +370,29 @@ def review_section(br, D):
     pg.goto(B + "/"); pg.evaluate("sessionStorage.setItem('ptab', 'form')")
     pg.goto(B + f"/#/p/{pid}/people"); pg.wait_for_selector("#rfchat .rf-chips")
     chips = [x.strip() for x in pg.locator("#rfchat .rf-chips button").all_inner_texts()]
-    ok(chips[:5] == ["检查问卷", "解释这道题", "预估通过率", "对照研究目标", "措辞改得更中性"], f"[review] the quick buttons (got {chips})")
+    ok(chips == ["检查问卷", "对照研究目标", "优化措辞的中立性", "测试这份问卷"], f"[review] with nobody answering yet the quick buttons are these four, no 预估通过率 (got {chips})")
+    ok("与 AI 共同编写问卷" in pg.inner_text("#rfctx") and pg.locator("#rfctx .rf-model").count() == 1 and pg.locator("#rfctx .rf-cx span", has_text="当前问卷（2 题）").count() == 1 and pg.locator("#rflib").is_checked(), "[review] the header names the model and shows what the AI reads")
+    # a passing failure: the reason in plain words, the question kept, 重新尝试 asks again; a refusal greys out the buttons that need the model
+    fails = {"n": 0}
+    def flaky(route):
+        fails["n"] += 1
+        if fails["n"] == 1:
+            route.fulfill(status=502, content_type="application/json", body=json.dumps({"detail": "DeepSeek服务响应超时，系统已自动重试。您的提问已保留，可重新尝试。"}))
+        else:
+            route.continue_()
+    pg.route("**/recruiting/form/chat", flaky)
+    pg.fill("#rfmsg", "为什么第 1 题要筛人？"); pg.click("#rfsend"); pg.wait_for_selector(".rf-err")
+    ok("本次未能完成回复" in pg.inner_text(".rf-err") and "服务响应超时" in pg.inner_text(".rf-err") and pg.locator(".rf-err button", has_text="重新尝试").count() == 1 and pg.locator(".rf-err button", has_text="调整提问方式").count() == 1, "[review] a passing failure names the reason and offers 重新尝试 / 调整提问方式")
+    ok(pg.locator(".rf-me", has_text="为什么第 1 题要筛人？").count() >= 1, "[review] the question stays in the conversation")
+    pg.click(".rf-err [data-chip=retry]"); pg.wait_for_selector(".rf-kind.ans")
+    ok(pg.locator(".rf-err").count() == 0, "[review] 重新尝试 sends the question again and the failure card is gone")
+    pg.unroute("**/recruiting/form/chat")
+    pg.route("**/recruiting/form/chat", lambda route: route.fulfill(status=503, content_type="application/json", body=json.dumps({"detail": "DeepSeek拒绝了请求：账户余额不足，请联系管理员处理。"})))
+    pg.fill("#rfmsg", "对照一下"); pg.click("#rfsend"); pg.wait_for_selector(".rf-err")
+    ok(pg.locator(".rf-err button").count() == 0 and pg.locator("#rfctx .rf-model.bad").count() == 1 and pg.locator("[data-chip=goals]").is_disabled() and pg.locator("[data-chip=review]").is_enabled(), "[review] a refusal shows no retry, marks the model 不可用 and greys out only the buttons that need it")
+    pg.unroute("**/recruiting/form/chat")
+    errs.clear()   # the 502 / 503 above were made up on purpose
+    pg.reload(); pg.wait_for_selector("#rfchat .rf-chips")
     ok("作答的统计数字" in pg.inner_text(".rf-inp") or "不会发给其他公司" in pg.inner_text(".rf-inp"), "[review] the outbound notice is next to the input")
     pg.fill("#rfmsg", "为什么第 1 题要筛人？"); pg.click("#rfsend")
     pg.wait_for_selector(".rf-kind.ans")
@@ -398,6 +420,7 @@ def review_section(br, D):
     pg.goto(B + "/"); pg.evaluate("sessionStorage.setItem('ptab', 'form')")
     pg.goto(B + f"/#/p/{pid}/people"); pg.wait_for_selector("#rfchat .rf-chips")
     audit_page(pg, "review chat/phone", errs)
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "review_390.png"))
     ctx.close()
 
 
@@ -747,7 +770,7 @@ def recruit_section(br, D):
     lw, rw = pg.evaluate("document.querySelector('.rf-pane').getBoundingClientRect().width"), pg.evaluate("document.querySelector('#rfright').getBoundingClientRect().width")
     ok(rw > lw * 1.3, "[recruit] the outline gets more width than the conversation")
     ok("不会发给其他公司" in pg.inner_text(".rf-inp") or "发送给" in pg.inner_text(".rf-inp"), "[recruit] the conversation says where what is typed goes")
-    ok(pg.locator("#rfimport").count() == 0 and pg.locator("#rflib").count() == 0 and pg.locator("#rfidea").count() == 0, "[recruit] the old idea box, import button and library tick are gone")
+    ok(pg.locator("#rfimport").count() == 0 and pg.locator("#rfidea").count() == 0, "[recruit] the old idea box and import button are gone (the 参考研究库 tick is back in the conversation header, like the 访谈 page)")
     audit_page(pg, "recruiting workspace empty/desktop", errs)
     # draft by talking: the questions, goals and need appear in the outline
     pg.click("[data-chip=draft]"); pg.wait_for_selector("#rfout .rf-q", timeout=15000)

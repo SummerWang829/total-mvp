@@ -1044,3 +1044,16 @@ button.ed:hover:not(:disabled){color:var(--ink);background:var(--orange-soft);bo
 .rf-ver>button::before{display:none}
 .rf-ver>button:hover:not(:disabled){color:var(--ink);background:var(--wash);border-color:var(--ink)}
 .rf-hd{overflow:visible}
+
+/* 招募问卷对话（改版）：模型与参考内容、统计回复、变更卡、失败提示 */
+.rf-ctx{flex:none;padding:8px 14px 6px;border-bottom:1px solid var(--line)}
+.rf-ctxh{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:14px}
+.rf-model{font-size:12px;padding:0 8px;border-radius:999px;background:var(--green-soft);color:var(--green);font-weight:600}.rf-model.bad,.rf-bad{background:var(--risk-soft);color:var(--risk-ink)}
+.rf-bad{font-size:13px;border-radius:8px;padding:4px 10px;margin:6px 0 0;line-height:1.6}
+.rf-cx{display:flex;gap:4px 6px;flex-wrap:wrap;margin-top:6px}.rf-cx span{font-size:12px;border:1px solid var(--line2);border-radius:999px;padding:0 8px;color:var(--muted)}
+.rf-kind.stat{background:var(--orange-soft);color:var(--orange-ink)}
+.rf-bars{margin:6px 0}.rf-bar{display:flex;align-items:center;gap:8px;font-size:13px;margin:3px 0}.rf-bar span{width:64px;color:var(--muted)}.rf-bar i{display:block;height:8px;border-radius:4px;background:var(--orange)}
+.rf-nx{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px}
+.rf-chgc,.rf-err{border-radius:10px;padding:9px 12px;line-height:1.7;max-width:560px}.rf-chgc{border:1px solid var(--green);background:var(--green-soft);color:var(--green)}
+.rf-err{border:1px solid var(--risk);background:var(--risk-soft);color:var(--risk-ink);margin:0 0 12px}.rf-err button,.rf-chgc button{margin:8px 8px 0 0}
+.rf-chips button:disabled{cursor:not-allowed}

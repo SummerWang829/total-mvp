@@ -11,12 +11,14 @@ from .. import library_context, participant_code, recruit, recruit_form, recruit
 from ..audit import audit
 from ..db import get_db
 from ..deps import RECRUITERS, STAFF, Ctx, require_roles
+from ..models import Participant, Project, RecruitForm, RecruitSettings, utcnow
 from ..moderator.providers import ChatFatalError
 from ..recruit_form import MAX_CHAT
-from ..models import Participant, Project, RecruitForm, RecruitSettings, utcnow
 from ..retention import erase_participant
 from .interviews import NewInterview, create_interview
 from .projects import _own_participant, get_project, participant_out
+
+FATAL_PHRASE = "拒绝了请求："
 
 router = APIRouter(prefix="/api", tags=["recruiting"])
 MAX_BATCH = 100
@@ -50,11 +52,41 @@ class ChatBody(BaseModel):
     questions: list[dict] = Field(default_factory=list, max_length=30)  # the questionnaire as the page has it now (manual edits included)
     goals: list[str] = Field(default_factory=list, max_length=8)
     need: str = Field(default="", max_length=1500)
+    use_library: bool = True  # the "参考研究库" tick above the conversation
 
 
 class IdeaBody(BaseModel):
     idea: str = Field(default="", max_length=5000)
     use_library: bool = True  # kept for older pages: the project's research library always goes along now
+
+
+def _model_name() -> str:
+    """Who the questionnaire text goes to, for the messages (the vendor, or a neutral name for a model on our own server)."""
+    from ..config import settings
+    return settings.moderator_vendor.strip() or "AI 服务"
+
+
+def _ai_status() -> dict:
+    """Can the page use the model right now? {ok, name, reason}: a cloud model without a named vendor, or one that just refused (no balance, bad key), is not usable."""
+    from ..config import settings
+    from ..moderator.compliance import moderator_runs_locally
+    if settings.moderator_provider == "mock":
+        return {"ok": True, "name": "离线演示", "reason": ""}
+    name = _model_name()
+    if not moderator_runs_locally() and not settings.moderator_vendor.strip():
+        return {"ok": False, "name": name, "reason": recruit_form.MSG_VENDOR_MISSING}
+    fatal = recruit_form.recent_fatal()
+    return {"ok": not fatal, "name": name, "reason": f"{name}{FATAL_PHRASE}{fatal}，请联系管理员处理。" if fatal else ""}
+
+
+def _unavailable(e: recruit_form.ChatUnavailable) -> HTTPException:
+    """502 = a passing failure (the page offers 重新尝试)."""
+    return HTTPException(502, f"{_model_name()}{e.reason}，系统已自动重试。您的提问已保留，可重新尝试。")
+
+
+def _refused(e: ChatFatalError) -> HTTPException:
+    """503 = the service refused and retrying will not help (the page shows the reason only)."""
+    return HTTPException(503, f"{_model_name()}{FATAL_PHRASE}{e.reason}，请联系管理员处理。")
 
 
 def _ai_chat():
@@ -142,7 +174,7 @@ def _form_out(f: RecruitForm | None) -> dict:
     return {"source": f.source, "idea": f.idea, "html_url": f.html_url, "questions": [q.model_dump() for q in recruit_form.load(f.questions)], "version": f.version, "generated_by": f.generated_by,
             "goals": f.goals or [], "need": f.need or "", "chat": (f.chat or [])[-MAX_CHAT:],
             "status": f.status or "draft", "link": f"/screen.html?t={f.token}" if f.token else "", "published_at": f.published_at.isoformat() if f.published_at else None,
-            "stats": {"qualified": f.n_qualified or 0, "out": f.n_out or 0, "out_by": f.out_by or {}}}
+            "stats": {"started": f.n_started or 0, "qualified": f.n_qualified or 0, "out": f.n_out or 0, "out_by": f.out_by or {}}}
 
 
 def _stats_of(f: RecruitForm) -> dict:
@@ -157,6 +189,7 @@ def _quotas_of(db: Session, proj: Project) -> list[dict]:
 def _full(db: Session, proj: Project, f: RecruitForm | None) -> dict:
     """The form as the page needs it, with the suggestions that are still open (recomputed every time, so an edited question's suggestion is gone)."""
     out = _form_out(f)
+    out["ai"] = _ai_status()
     if f is None or f.source != "ai":
         return {**out, "suggestions": []}
     out["suggestions"] = recruit_review.open_suggestions(recruit_form.load(f.questions), _quotas_of(db, proj), _stats_of(f), f.ai_items or [], f.dismissed or [],
@@ -346,13 +379,15 @@ def chat_form(pid: str, body: ChatBody, ctx: Ctx = Depends(require_roles(*RECRUI
     if f is None:
         f = RecruitForm(project_id=proj.id, org_id=proj.org_id)
         db.add(f)
-    library = library_context.library_text(db, proj.id)[0]
+    library = library_context.library_text(db, proj.id)[0] if body.use_library else ""
     quotas = _quotas_of(db, proj)
     try:
         out = recruit_form.chat_turn(chat, body.message, f.chat or [], current.questions, current.goals, current.need, proj.language, proj.brief or "", library,
                                      recruit_review.stats_context(current.questions, quotas, _stats_of(f), f.tally or {}))
     except ChatFatalError as e:
-        raise HTTPException(502, f"AI 模型服务拒绝了请求：{e.reason}") from e
+        raise _refused(e) from e
+    except recruit_form.ChatUnavailable as e:
+        raise _unavailable(e) from e
     except recruit_form.FormError as e:
         raise HTTPException(422 if "先说点什么" in str(e) else 502, str(e)) from e
     questions = out.questions if out.questions is not None else current.questions
@@ -371,6 +406,29 @@ class SigBody(BaseModel):
     sig: str = Field(min_length=1, max_length=40)
 
 
+class StatsBody(BaseModel):
+    kind: str = Field(pattern="^(rate|worst)$")
+
+
+STAT_ASK = {"rate": "预估通过率", "worst": "定位筛除率较高的题目"}
+
+
+@router.post("/projects/{pid}/recruiting/form/stats")
+def stats_form(pid: str, body: StatsBody, ctx: Ctx = Depends(require_roles(*RECRUITERS)), db: Session = Depends(get_db)):
+    """"预估通过率" and "定位筛除率较高的题目": worked out here from the anonymous counts, no model involved, so they always answer. Only the question and the answer are kept in the conversation."""
+    proj = get_project(db, ctx, pid)
+    f = db.get(RecruitForm, proj.id)
+    if f is None or f.source != "ai" or not f.questions:
+        raise HTTPException(422, "还没有问卷可以分析，先让 AI 起草，或自己加几道题")
+    rep = recruit_review.rate_report(recruit_form.load(f.questions), _quotas_of(db, proj), _stats_of(f), body.kind)
+    reply = "\n".join(rep["lines"])
+    f.chat = [*(f.chat or []), {"role": "user", "text": STAT_ASK[body.kind]},
+              {"role": "ai", "text": reply, "kind": "stat", "sources": ["作答统计（匿名）"], "bars": rep["bars"], "next": rep["next"]}][-MAX_CHAT:]
+    audit(db, ctx.org_id, ctx.actor, "recruit.form_stats", proj.id, kind=body.kind)
+    db.commit()
+    return {**_full(db, proj, f), "reply": reply, "kind": "stat", "changed": False}
+
+
 @router.post("/projects/{pid}/recruiting/form/review")
 def review_form(pid: str, ctx: Ctx = Depends(require_roles(*RECRUITERS)), db: Session = Depends(get_db)):
     """"检查问卷": the rule checks (no model needed) plus the model's own reading of the wording and of the goals. Nothing is changed; the suggestions are only listed.
@@ -383,15 +441,16 @@ def review_form(pid: str, ctx: Ctx = Depends(require_roles(*RECRUITERS)), db: Se
     questions = recruit_form.load(f.questions)
     quotas = _quotas_of(db, proj)
     library = library_context.library_text(db, proj.id)[0]
+    note = ""
     try:
         f.ai_items = recruit_review.ai_review(chat, questions, f.goals or [], f.need or "", proj.brief or "", library,
                                               recruit_review.stats_context(questions, quotas, _stats_of(f), f.tally or {}), proj.language)
-    except ChatFatalError as e:
-        raise HTTPException(502, f"AI 模型服务拒绝了请求：{e.reason}") from e
-    except recruit_form.FormError as e:
-        raise HTTPException(502, str(e)) from e
+    except ChatFatalError as e:  # the rule suggestions do not need the model: they are still listed, with a note on what could not be checked
+        f.ai_items, note = [], f"{_model_name()}{FATAL_PHRASE}{e.reason}，措辞与目标覆盖度未能检查，请联系管理员处理。"
+    except recruit_form.ChatUnavailable as e:
+        f.ai_items, note = [], f"{_model_name()}{e.reason}，措辞与目标覆盖度未能检查，可重新尝试。"
     n = len(_full(db, proj, f)["suggestions"])
-    reply = f"我对照研究背景、配额和已有的作答看了一遍，有 {n} 条建议，列在下面和右边对应的题上。这些只是建议，不点也没关系。" if n else "我对照研究背景、配额和已有的作答看了一遍，暂时没有要改的地方。"
+    reply = (f"已对照研究背景、配额和现有作答完成检查，共 {n} 条建议，列于下方及右侧对应题目。以上均为建议，无需处理，不影响继续编写和发布。" if n else "已对照研究背景、配额和现有作答完成检查，暂无需要修改之处。") + (f"\n{note}" if note else "")
     f.chat = [*(f.chat or []), {"role": "user", "text": "检查一下这份问卷"}, {"role": "ai", "text": reply, "kind": "suggest", "sources": []}][-MAX_CHAT:]
     audit(db, ctx.org_id, ctx.actor, "recruit.form_review", proj.id, model=chat.name if chat else "mock", items=n)
     db.commit()
@@ -439,7 +498,9 @@ def generate_form(pid: str, body: IdeaBody, ctx: Ctx = Depends(require_roles(*RE
     try:
         questions = recruit_form.generate(chat, body.idea, proj.language, library, proj.brief or "")
     except ChatFatalError as e:
-        raise HTTPException(502, f"AI 模型服务拒绝了请求：{e.reason}") from e
+        raise _refused(e) from e
+    except recruit_form.ChatUnavailable as e:
+        raise _unavailable(e) from e
     except recruit_form.FormError as e:
         raise HTTPException(422 if "先写一下" in str(e) else 502, str(e)) from e
     f = db.get(RecruitForm, proj.id)
