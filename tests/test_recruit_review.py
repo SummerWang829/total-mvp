@@ -185,3 +185,20 @@ def test_checking_still_lists_the_rule_suggestions_when_the_model_fails(org, mon
     assert r.status_code == 200, r.text
     d = r.json()
     assert any(s["kind"] == "exclusive" for s in d["suggestions"]) and "未能检查" in d["reply"]
+
+
+def test_ask_only_answers_without_saving_anything(org):
+    pid = _form(org)
+    before = org.c.get(f"/api/projects/{pid}/recruiting/form", headers=org.h()).json()
+    r = org.c.post(f"/api/projects/{pid}/recruiting/form/chat", headers=org.h(), json={"message": "针对这一处：“年龄”\n为什么？\n请只回答，不要修改问卷。", "questions": [q.model_dump() for q in _q()], "ask_only": True})
+    assert r.status_code == 200 and r.json()["changed"] is False and r.json()["reply"]
+    after = org.c.get(f"/api/projects/{pid}/recruiting/form", headers=org.h()).json()
+    assert after["chat"] == before["chat"] and after["version"] == before["version"] and after["questions"] == before["questions"]
+
+
+def test_a_long_multi_passage_request_is_accepted(org):
+    pid = _form(org)
+    msg = "请一次性修改以下 8 处，其余保持不变：\n" + "\n".join(f"{i}. “{'问' * 140}”——要求：{'改' * 100}" for i in range(1, 9))
+    assert len(msg) > 2000
+    r = org.c.post(f"/api/projects/{pid}/recruiting/form/chat", headers=org.h(), json={"message": msg, "questions": [q.model_dump() for q in _q()]})
+    assert r.status_code == 200

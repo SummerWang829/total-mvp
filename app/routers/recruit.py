@@ -48,7 +48,8 @@ class PreviewBody(BaseModel):
 
 
 class ChatBody(BaseModel):
-    message: str = Field(min_length=1, max_length=2000)
+    message: str = Field(min_length=1, max_length=4000)  # a "修改 N 处" request quotes each passage, so it is longer than a usual line
+    ask_only: bool = False  # 只问不改: answer, change and save nothing
     questions: list[dict] = Field(default_factory=list, max_length=30)  # the questionnaire as the page has it now (manual edits included)
     goals: list[str] = Field(default_factory=list, max_length=8)
     need: str = Field(default="", max_length=1500)
@@ -378,7 +379,8 @@ def chat_form(pid: str, body: ChatBody, ctx: Ctx = Depends(require_roles(*RECRUI
     f = db.get(RecruitForm, proj.id)
     if f is None:
         f = RecruitForm(project_id=proj.id, org_id=proj.org_id)
-        db.add(f)
+        if not body.ask_only:
+            db.add(f)
     library = library_context.library_text(db, proj.id)[0] if body.use_library else ""
     quotas = _quotas_of(db, proj)
     try:
@@ -390,6 +392,10 @@ def chat_form(pid: str, body: ChatBody, ctx: Ctx = Depends(require_roles(*RECRUI
         raise _unavailable(e) from e
     except recruit_form.FormError as e:
         raise HTTPException(422 if "先说点什么" in str(e) else 502, str(e)) from e
+    if body.ask_only:  # the answer only: the questionnaire, the conversation and the version stay as they were
+        audit(db, ctx.org_id, ctx.actor, "recruit.form_ask", proj.id, library=bool(library))
+        db.commit()
+        return {"reply": out.reply, "kind": "answer", "changed": False}
     questions = out.questions if out.questions is not None else current.questions
     f.source, f.html_url, f.questions = "ai", "", [q.model_dump() for q in questions]
     f.goals = out.goals if out.goals is not None else current.goals

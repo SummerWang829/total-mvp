@@ -35,14 +35,14 @@ function rfCard(p, form) {
   const diffIds = (before, after) => { const b = Object.fromEntries(before.map((q) => [q.id, JSON.stringify(q)])); return new Set(after.filter((q) => b[q.id] !== JSON.stringify(q)).map((q) => q.id)); };
   const chipsOf = (keys) => (keys && keys.length ? `<div class="rf-src">${keys.map((k) => `<span>${esc(k)}</span>`).join("")}</div>` : "");
   const bars = (m) => { const top = Math.max(1, ...(m.bars || []).map((b) => b.n)); return (m.bars || []).map((b) => `<div class="rf-bar"><span>${esc(b.label)}</span><i style="width:${Math.round((b.n / top) * 140)}px"></i>${b.n} 人</div>`).join(""); };
-  const msgHtml = (m, last) => {
+  const msgHtml = (m, last, idx) => {
     if (m.role === "user") return `<div class="rf-msg rf-me">${esc(m.text)}</div>`;
     if (m.kind === "change") {
       const ids = last ? [...changedIds].map((id) => Q.findIndex((q) => q.id === id) + 1).filter(Boolean).sort((a, b) => a - b) : [];
-      return `<div class="rf-msg"><div class="rf-chgc"><b>已更新问卷</b><div>${nl(m.text)}</div>${ids.length ? `<div class="sm">涉及：第 ${ids.join("、")} 题</div>` : ""}${last && hist.length ? `<button class="s" type="button" data-chip="undo">撤销本次修改</button>` : ""}</div></div>`;
+      return `<div class="rf-msg"><div class="rf-chgc"><b>已更新问卷</b><div data-selk="m:${idx}">${nl(m.text)}</div>${ids.length ? `<div class="sm">涉及：第 ${ids.join("、")} 题</div>` : ""}${last && hist.length ? `<button class="s" type="button" data-chip="undo">撤销本次修改</button>` : ""}</div></div>`;
     }
     const k = RF_KIND[m.kind], nx = last && m.next && m.next.length ? `<div class="rf-nx"><span class="sm mut">可继续查看：</span>${m.next.map((n, i) => `<button class="s" type="button" data-next="${i}">${esc(n.label)}</button>`).join("")}</div>` : "";
-    return `<div class="rf-msg">${k ? `<span class="rf-kind ${k[1]}">${k[0]}</span>` : ""}<div>${nl(m.text)}</div>${m.bars && m.bars.length ? `<div class="rf-bars">${bars(m)}</div>` : ""}${chipsOf(m.sources)}${nx}</div>`;
+    return `<div class="rf-msg">${k ? `<span class="rf-kind ${k[1]}">${k[0]}</span>` : ""}<div data-selk="m:${idx}">${nl(m.text)}</div>${m.bars && m.bars.length ? `<div class="rf-bars">${bars(m)}</div>` : ""}${chipsOf(m.sources)}${nx}</div>`;
   };
   const ctxHtml = () => {
     const a = f.ai || { ok: true, name: "" }, docs = f.library_docs || 0, started = (f.stats && f.stats.started) || 0;
@@ -92,7 +92,7 @@ function rfCard(p, form) {
   /* ---------- left: the conversation ---------- */
   function chatHtml() {
     const hello = `<div class="rf-msg">您好！我可以根据研究背景和研究库资料协助设计招募问卷，也可以按您的要求修改，例如“年龄放最前面，18 岁以下筛掉”“每天都用的人跳过频率题”“把第 3 题改成多选”。可先说“帮我起草问卷”。</div>`;
-    const all = f.chat || [], msgs = all.map((m, i) => msgHtml(m, i === all.length - 1 && !fail)).join("");
+    const all = f.chat || [], msgs = all.map((m, i) => msgHtml(m, i === all.length - 1 && !fail, i)).join("");
     const failHtml = fail ? `<div class="rf-msg rf-me">${esc(fail.ask)}</div><div class="rf-err" role="alert"><b>本次未能完成回复</b><div>${esc(fail.text)}</div>${fail.fatal ? "" : `<button class="s" type="button" data-chip="retry">重新尝试</button><button class="s" type="button" data-chip="rephrase">调整提问方式</button>`}</div>` : "";
     const cards = showSug && sugs().length ? `<div class="rf-sgs"><div class="sm mut">建议 ${sugs().length} 条。这些只是建议，不点也没关系：问卷不会变，也不影响你继续写和发布。</div>${sugs().map(sugCard).join("")}</div>` : "";
     const news = !showSug && sugs().length && sugSeen() !== sugs().map((s) => s.sig).join(",") ? `<button type="button" class="rf-news" data-chip="showsug">有 ${sugs().length} 条建议，点这里查看</button>` : "";
@@ -116,6 +116,21 @@ function rfCard(p, form) {
       f = { ...f, ...r }; Q = JSON.parse(JSON.stringify(r.questions)); goals = [...(r.goals || [])]; need = r.need || ""; editing = new Set();
     } catch (e) { fail = { ask: text, text: e.message, fatal: e.status === 503 }; if (e.status === 503) f = { ...f, ai: { ...(f.ai || {}), ok: false, reason: e.message } }; }
     sending = false; pending = ""; const b = $("#rfsend"); if (b) b.disabled = false; syncUndo(); drawChat(); drawRight();
+    return !fail;
+  }
+  let sel = null;   // the "选中文字 → 修改清单" helper (app/static/chatsel.js)
+  const selLabel = (key) => { const m = /^q:(.+)$/.exec(key || ""); const i = m ? Q.findIndex((q) => q.id === m[1]) : -1; return i >= 0 ? `第 ${i + 1} 题` : ""; };
+  function wireSel() {
+    sel = ChatSel.attach({
+      roots: [$("#rfchat"), $("#rfright")], bar: $("#rfsel"), label: selLabel,
+      ask: async ({ quote, text }) => {   // 只问不改: answered on the server without touching or saving the questionnaire
+        const r = await api(`/projects/${p.id}/recruiting/form/chat`, { method: "POST", body: { message: `针对这一处：“${quote}”
+${text}
+请只回答，不要修改问卷。`, questions: Q, goals, need, use_library: useLib, ask_only: true } });
+        return r.reply;
+      },
+      send: async ({ text }) => { const box = $("#rfmsg"), draft = box ? box.value : ""; const ok = await send(text); if (box && draft) box.value = draft; return ok; },
+    });
   }
   const ASK = { draft: "帮我起草问卷", goals: "对照研究目标和招募需求，核查问卷是否有未覆盖之处，仅告知结论，暂不修改", neutral: "检查问卷是否存在引导性或带有倾向的措辞，如有，请修改得更为中立" };
   async function stats(kind) {   // 预估通过率 / 定位筛除率较高的题目: worked out on the server from the anonymous counts, no model
@@ -177,7 +192,7 @@ function rfCard(p, form) {
     const lines = q.type === "single" || q.type === "multi"
       ? q.options.map((o, j) => `<div class="rf-o"><span class="rf-code">${j + 1}</span>${q.type === "single" ? "○" : "☐"} ${esc(o.text || "（空选项）")} ${badge(o.goto)}${o.tag ? `<span class="rf-lg jump">标签：${esc(o.tag)}</span>` : ""}${(o.excl || []).length ? `<span class="rf-lg exb">互斥：${exLabel(q, o)}</span>` : ""}</div>`).join("")
       : q.type === "number" ? (q.rules || []).map((r) => `<div class="rf-o">如果数字${RF_OP[r.op]} ${r.value} ${badge(r.goto)}</div>`).join("") : "";
-    return `<div class="rf-q${changedIds.has(q.id) ? " rf-hl" : ""}" data-qid="${q.id}"><div class="row"><span class="rf-n">${i + 1}</span><b>${esc(q.text || "（还没写题目）")}</b>${qBadge(q)}<span class="sp"></span><span class="tag nw">${RF_TYPE[q.type]}${q.required ? " · 必答" : ""}</span><button class="s" type="button" data-edit="${q.id}">编辑</button></div>${lines}${exWarn(q)}</div>`;
+    return `<div class="rf-q${changedIds.has(q.id) ? " rf-hl" : ""}" data-qid="${q.id}" data-selk="q:${q.id}"><div class="row"><span class="rf-n">${i + 1}</span><b>${esc(q.text || "（还没写题目）")}</b>${qBadge(q)}<span class="sp"></span><span class="tag nw">${RF_TYPE[q.type]}${q.required ? " · 必答" : ""}</span><button class="s" type="button" data-edit="${q.id}">编辑</button></div>${lines}${exWarn(q)}</div>`;
   }
   function outline() {
     return `<h3 class="rf-h">研究背景</h3><div class="rf-blk">${f.brief && f.brief.trim() ? `${esc(f.brief)} <span class="mut sm">（来自立项向导）</span>` : '<span class="mut">还没有研究背景。到立项向导第 1 步写，或在左边对话里告诉 AI。</span>'}</div>
@@ -290,7 +305,7 @@ function rfCard(p, form) {
       <div class="note">问卷在别的系统里制作和托管，这里只保存链接，点下面的按钮在新窗口里测试；不会嵌进本页面。</div><div class="row"><button class="p" id="rfsave" type="button">保存链接</button>${f.html_url ? `<button class="s" id="rftest" type="button">打开测试窗口</button>` : ""}</div>${f.html_url ? `<code class="rfurl">${esc(f.html_url)}</code>` : ""}</div>`;
     return `<div class="rf-ws" id="rfws"><div class="rf-pane"><div class="rf-hd">${modeSwitch()}<span class="sp"></span><button class="s" type="button" id="rfundo" disabled>撤销</button><button class="s" type="button" id="rfredo" disabled>重做</button></div>
       <div class="rf-ctx" id="rfctx"></div><div class="rf-sc" id="rfchat"></div>
-      <div class="rf-inp"><div class="sm mut" style="margin-bottom:6px">${esc(rfAiNotice())}</div><div class="rf-box"><textarea id="rfmsg" rows="2" maxlength="2000" placeholder="请输入修改要求或问题，例如“帮我起草问卷”" aria-label="对话输入"></textarea><button class="p rf-send" type="button" id="rfsend" aria-label="发送">↑</button></div></div></div>
+      <div id="rfsel" hidden></div><div class="rf-inp"><div class="sm mut" style="margin-bottom:6px">${esc(rfAiNotice())}</div><div class="rf-box"><textarea id="rfmsg" rows="2" maxlength="2000" placeholder="请输入修改要求或问题，例如“帮我起草问卷”" aria-label="对话输入"></textarea><button class="p rf-send" type="button" id="rfsend" aria-label="发送">↑</button></div></div></div>
       <div class="rf-split" id="rfsplit" role="separator" aria-orientation="vertical" aria-label="拖动调整对话和大纲的宽度（双击恢复）" tabindex="0"><i></i></div><div class="rf-pane" id="rfright"></div></div>`;
   }
   const modeSwitch = () => `<div class="rf-seg" role="radiogroup" aria-label="问卷来源"><button type="button" role="radio" data-mode="ai" class="${mode === "ai" ? "on" : ""}" aria-checked="${mode === "ai"}">对话编写</button><button type="button" role="radio" data-mode="html" class="${mode === "html" ? "on" : ""}" aria-checked="${mode === "html"}">导入问卷链接</button></div>`;
@@ -301,8 +316,9 @@ function rfCard(p, form) {
     document.querySelectorAll("[data-mode]").forEach((b) => (b.onclick = () => { mode = b.dataset.mode; draw(); }));
     const sv = $("#rfsave"); if (sv) sv.onclick = guard(async () => { f = { ...f, ...(await api(`/projects/${p.id}/recruiting/form`, { method: "PUT", body: { source: "html", html_url: $("#rfurl").value.trim() } })) }; draw(); toast("链接已保存"); });
     const tt = $("#rftest"); if (tt) tt.onclick = () => window.open(f.html_url, "_blank", "noopener,noreferrer");
+    if (sel) { sel.destroy(); sel = null; }
     if (mode !== "ai") return;
-    drawChat(); drawRight(); fit(); wireSplit(); loadVers(true);
+    drawChat(); drawRight(); fit(); wireSplit(); loadVers(true); wireSel();
     if (window._rfVerOff) document.removeEventListener("click", window._rfVerOff);
     window._rfVerOff = () => { const m = $("#rfvm"); if (m && !m.hidden) { m.hidden = true; const b = $("#rfvb"); if (b) b.setAttribute("aria-expanded", "false"); } };
     document.addEventListener("click", window._rfVerOff);

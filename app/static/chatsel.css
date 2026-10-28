@@ -1,0 +1,25 @@
+/* 共用组件 chatsel.js：选中文字的浮动按钮、小窗、原文里的编号、输入框上方的“待一起修改”清单 */
+.cs-mk{background:var(--orange-mid);color:inherit;border-radius:3px;padding:0 1px}
+.cs-no{display:inline-block;min-width:16px;height:16px;line-height:16px;margin-left:2px;padding:0 4px;border-radius:8px;background:var(--orange);color:var(--on-orange);font-size:12px;font-weight:700;text-align:center;vertical-align:super;user-select:none}
+.cs-float{position:fixed;z-index:70;display:flex;gap:6px;padding:6px;background:var(--surface);border:1px solid var(--line2);border-radius:10px;box-shadow:0 6px 20px rgba(11,46,37,.18)}
+.cs-float button{white-space:nowrap}
+.cs-float.cs-bottom{left:0;right:0;bottom:0;border-radius:12px 12px 0 0;padding:10px 16px calc(10px + env(safe-area-inset-bottom));justify-content:center;box-shadow:0 -4px 16px rgba(11,46,37,.16)}
+.cs-float.cs-bottom button{min-height:40px;flex:1}
+.cs-list{border-top:1px solid var(--line);background:var(--orange-soft);padding:8px 12px;flex:none}
+.cs-lh{display:flex;align-items:center;gap:8px;margin-bottom:4px}.cs-lh .sp{flex:1}
+.cs-list ul{list-style:none;margin:0 0 6px;padding:0;max-height:112px;overflow:auto}
+.cs-list li{display:flex;align-items:center;gap:8px;padding:3px 0;line-height:1.5}
+.cs-n{flex:none;min-width:20px;height:20px;line-height:20px;border-radius:10px;background:var(--orange);color:var(--on-orange);font-size:12px;font-weight:700;text-align:center}
+.cs-q{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.cs-q i{font-style:normal;color:var(--muted);margin-left:6px;font-size:12px}.cs-q em{font-style:normal;color:var(--ink2);margin-left:6px}
+.cs-ov{display:flex;gap:8px}.cs-ov input{flex:1;min-width:0}
+.cs-dlg{position:fixed;inset:0;z-index:80;background:rgba(6,35,25,.38);display:flex;align-items:center;justify-content:center;padding:16px}
+.cs-card{width:min(480px,100%);max-height:min(560px,100%);display:flex;flex-direction:column;gap:8px;background:var(--surface);border:1px solid var(--line2);border-radius:14px;padding:14px 16px;box-shadow:0 12px 40px rgba(11,46,37,.28)}
+.cs-dh{display:flex;align-items:center}.cs-dh .sp{flex:1}
+.cs-quote{margin:0;padding:8px 12px;border-left:3px solid var(--orange);background:var(--orange-soft);border-radius:0 8px 8px 0;line-height:1.7;max-height:96px;overflow:auto;overflow-wrap:anywhere}
+.cs-talk{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:8px}.cs-talk:empty{display:none}
+.cs-t{line-height:1.7;overflow-wrap:anywhere}.cs-t.me{align-self:flex-end;max-width:88%;background:var(--wash);border-radius:12px;padding:7px 11px}.cs-t.err{color:var(--risk-ink)}
+.cs-card textarea{width:100%;resize:none}
+.cs-db{display:flex;gap:8px;flex-wrap:wrap}.cs-db button{min-height:36px}
+.rf-me{white-space:pre-wrap}
+@media (max-width:720px){.cs-dlg{align-items:flex-end;padding:0}.cs-card{width:100%;border-radius:14px 14px 0 0;max-height:85vh}}
+@media (prefers-reduced-motion:no-preference){.cs-float,.cs-card{animation:csin .12s ease-out}@keyframes csin{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}}
