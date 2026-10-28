@@ -27,11 +27,11 @@ class OutlineBody(BaseModel):
 
 
 class EditBody(BaseModel):
-    op: Literal["set", "delete", "add", "rename", "del_part", "add_part"]
+    op: Literal["set", "delete", "add", "rename", "del_part", "add_part", "meta"]
     kind: Literal["warmup", "topic", "stimulus"] = "topic"
     ref: int = Field(default=0, ge=0, le=50)
     index: int = Field(default=0, ge=0, le=100)
-    value: str = Field(default="", max_length=400)
+    value: str = Field(default="", max_length=600)  # "meta": "<depth>|<guidance>"
     v: str | None = Field(default=None, max_length=20)  # the version being edited (language|family); none = the main one
     sync: list[str] = Field(default_factory=list, max_length=20)  # the other versions that get a change of wording too (同步到)
 

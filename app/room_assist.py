@@ -13,6 +13,7 @@ TALK_WARN_PCT = 40      # the moderator talking more than this share of the word
 TALK_FEW_LINES = 6      # fewer finished lines than this: too early to say anything about who talks more
 BEHIND_BY = 0.15        # time used minus questions covered, as a share, beyond which the pace is called behind
 MAX_PROBES = 3
+PROBE_LIMIT = {"none": 0, "shallow": 1, "deep": 3, "free": 3}  # how many follow-up hints the question being followed up allows (its follow-up depth)
 QUOTE_CHARS = 120
 SHARES = {"warmup": 1, "topic": 3, "stimulus": 3}   # how the minutes are shared between the parts (the same as the outline page)
 
@@ -90,6 +91,17 @@ def talk_share(lines: list[dict]) -> dict:
         return {"moderator_pct": None, "participant_pct": None, "advice": ""}
     m = round(mod * 100 / total)
     return {"moderator_pct": m, "participant_pct": 100 - m, "advice": f"你说了 {m}% 的话，试着多让受访者说" if m > TALK_WARN_PCT else ""}
+
+
+def probe_limit(outline: dict | None, cov: dict | None) -> int:
+    """How many follow-up hints to show: set by the follow-up depth of the question asked last (the default depth when no question was asked yet or there is no outline)."""
+    depth = "shallow"
+    if outline and cov:
+        qs = [q for p in outline["parts"] for q in p["questions"] if not q.get("cover")]
+        last = max((i for i, x in enumerate(cov["questions"]) if x["covered"]), default=None)
+        if last is not None and last < len(qs):
+            depth = qs[last].get("depth", depth)
+    return PROBE_LIMIT.get(depth, MAX_PROBES)
 
 
 def probe_suggestions(lines: list[dict], asked: set[str]) -> list[dict]:

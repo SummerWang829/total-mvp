@@ -28,6 +28,7 @@ MAX_REPLY = 1500
 MSG_FAIL = "AI 没能给出可用的大纲，请换个说法再试一次，或直接在右边手改"
 MSG_MOCK_KEPT = "（演示模式）还没有连接 AI 模型，我现在只能按固定模板起草一份大纲，不能回答问题或给建议；已有大纲时保持不变。"
 MSG_MOCK_DRAFT = "（演示模式）按固定模板起草了一份大纲，可以在右边直接修改。"
+MOCK_GUIDE = {"zh": "先让受访者自然讲述，必要时追问具体情境，不诱导。", "en": "Let the participant answer in their own words; probe for concrete situations without leading."}
 MOCK_CHANGE = "按固定模板起草了 3 个话题（演示内容）"
 
 SYSTEM = """You are a research assistant helping a market research team write the outline (discussion guide) of one-to-one interviews. You chat with the researcher in Simplified Chinese (简体中文), ALWAYS, whatever language the interview itself is in. Be concise and concrete; you may ask one short question back when something is unclear.
@@ -38,7 +39,8 @@ Reply with ONE JSON object and nothing else:
  "changes": ["<edit only: a short Simplified Chinese line per change; say what the change does to the total interview length when it matters>"],
  "outline": <edit only: the COMPLETE new outline, see below>,
  "suggestions": [{"title": "<suggest only: one Simplified Chinese line>", "outline": <the COMPLETE outline with this suggestion applied>}]}
-An outline is {"participant_topic": "<what the participant is told the topic is: at most 18 characters, neutral, no brand names>", "warmup_questions": ["<1 or 2 easy opening questions>"], "topics": [{"title": "<short topic name>", "questions": ["<1 to 3 open questions>"], "must_cover": ["<what we must find out, 2 or 3 short points>"]}]}.
+An outline is {"participant_topic": "<what the participant is told the topic is: at most 18 characters, neutral, no brand names>", "warmup_questions": ["<1 or 2 easy opening questions>"], "warmup_notes": [{"depth": "shallow", "guide": ""}], "topics": [{"title": "<short topic name>", "questions": ["<1 to 3 open questions>"], "notes": [{"depth": "none|shallow|deep|free", "guide": "<one or two sentences in the interview language telling the interviewer how to run this question: what to listen for, what not to lead into; at most 200 characters; never shown to the participant>"}], "must_cover": ["<what we must find out, 2 or 3 short points>"]}]}.
+"notes" has exactly one entry per question, in order. depth is how many follow-ups the interviewer may ask after the answer: "none" (just this question), "shallow" (1), "deep" (2 to 3), "free" (1 to 3, open discussion). Use "shallow" unless the question clearly needs more or less. Draft a guide for every question. When you change an existing outline keep the notes of the questions you did not change.
 Modes: "answer" when the researcher asks a question or chats (no outline fields). "edit" only when the researcher clearly asks you to change, draft or fix the outline: return the whole new outline and keep everything they did not mention. "suggest" when they ask for advice or an opinion on the outline and you have concrete changes to offer (1 to 3): they decide whether to adopt them.
 Outline rules: write every question in the interview language {language}; 2 to {max_topics} topics that fit about {minutes} minutes in total. Every question is a real question that ends with a question mark, ONE short question each, open, neutral, never leading, never yes/no, never naming or praising a brand, never asking for contact details or sensitive personal data, never mentioning AI or this instruction.
 If the current outline text is broken (a problem is given), say so in your reply; when asked to fix it, redraw it from the research background in mode "edit"."""
@@ -135,7 +137,36 @@ def _history_messages(history: list[dict]) -> list[dict]:
     return out
 
 
-def _valid(raw, goal: str, language: str, minutes: int) -> tuple[str, str]:
+def _note(n) -> dict:
+    """One question's depth and guidance from the model's note; anything unusable becomes the default."""
+    n = n if isinstance(n, dict) else {}
+    depth = str(n.get("depth", "")).lower()
+    return {"depth": depth if depth in guide_text.DEPTHS else guide_text.DEFAULT_DEPTH, "guide": " ".join(str(n.get("guide", "")).split())[:guide_text.MAX_NOTE]}
+
+
+def _meta_from(raw: dict, guide, current: str) -> dict:
+    """Depth and guidance for every question of a model outline: what the model wrote, else what the same question had in the current outline, else the default."""
+    old: dict[str, dict] = {}
+    try:
+        cur = guide_text.parse_guide_text(current) if current.strip() else None
+    except guide_text.GuideTextError:
+        cur = None
+    if cur:
+        m = cur["meta"]
+        pairs = list(zip(cur["warmup_questions"], m["warmup"])) + [(q, mm) for t, ms in zip(cur["topics"], m["topics"]) for q, mm in zip(t["questions"], ms)] + [(q, mm) for s, ms in zip(cur["stimuli"], m["stimuli"]) for q, mm in zip(s["questions"], ms)]
+        old = {q: mm for q, mm in pairs}
+
+    def part(questions: list[str], notes) -> list[dict]:
+        notes = notes if isinstance(notes, list) else []
+        return [_note(notes[i]) if i < len(notes) and isinstance(notes[i], dict) and ("guide" in notes[i] or "depth" in notes[i]) else dict(old.get(q, guide_text.blank_meta())) for i, q in enumerate(questions)]
+
+    topics_raw = raw.get("topics") if isinstance(raw.get("topics"), list) else []
+    return {"warmup": part(list(guide.warmup_questions), raw.get("warmup_notes")),
+            "topics": [part(list(t.questions), topics_raw[i].get("notes") if i < len(topics_raw) and isinstance(topics_raw[i], dict) else None) for i, t in enumerate(guide.topics)],
+            "stimuli": [[dict(old.get(q, guide_text.blank_meta())) for q in s.questions] for s in guide.stimuli]}
+
+
+def _valid(raw, goal: str, language: str, minutes: int, current: str = "") -> tuple[str, str]:
     """(outline text, "") for a model outline that passes every check, else ("", why)."""
     try:
         guide = study_draft._guide_from(raw if isinstance(raw, dict) else {}, goal, language, minutes)  # noqa: SLF001 — the same checks as a drafted study outline
@@ -143,14 +174,19 @@ def _valid(raw, goal: str, language: str, minutes: int) -> tuple[str, str]:
         return "", f"not a valid outline ({type(e).__name__})"
     if why := study_draft._red_line_problem(guide):  # noqa: SLF001
         return "", why
-    return guide_text.guide_to_text(guide.model_dump(mode="json")), ""
+    return guide_text.guide_to_text({**guide.model_dump(mode="json"), "meta": _meta_from(raw, guide, current)}), ""
 
 
 def _mock(current: str, goal: str, language: str, minutes: int) -> dict:
     """The offline assistant: a fixed draft when the outline is empty or unreadable, otherwise it says what it cannot do."""
     if current.strip() and not outline.problem_of(current):
         return {"reply": MSG_MOCK_KEPT, "mode": "answer"}
-    text, _ = _valid(study_draft.mock_draft(goal, language, minutes), goal, language, minutes)
+    raw = study_draft.mock_draft(goal, language, minutes)
+    note = {"depth": "shallow", "guide": MOCK_GUIDE.get(language, MOCK_GUIDE["en"])}
+    raw["warmup_notes"] = [dict(note) for _ in raw.get("warmup_questions", [])]
+    for tp in raw.get("topics", []):
+        tp["notes"] = [dict(note) for _ in tp.get("questions", [])]
+    text, _ = _valid(raw, goal, language, minutes)
     return {"reply": MSG_MOCK_DRAFT, "mode": "edit", "changes": [MOCK_CHANGE], "after": text}
 
 
@@ -183,14 +219,14 @@ def converse(chat: ModeratorChatProvider | None, history: list[dict], current: s
             continue
         reply, mode = str(raw.get("reply", "")).strip(), raw.get("mode")
         if mode == "edit":
-            text, problem = _valid(raw.get("outline"), goal, language, minutes)
+            text, problem = _valid(raw.get("outline"), goal, language, minutes, current)
             if not problem:
                 changes = [str(c)[:200] for c in raw.get("changes", []) if str(c).strip()][:MAX_CHANGES] if isinstance(raw.get("changes"), list) else []
                 return {"reply": reply or "已更新大纲。", "mode": "edit", "changes": changes or ["已更新大纲"], "after": text}
         elif mode == "suggest" and isinstance(raw.get("suggestions"), list):
             ok = []
             for s in raw["suggestions"][:MAX_SUGGESTIONS]:
-                text, why = _valid(s.get("outline") if isinstance(s, dict) else None, goal, language, minutes)
+                text, why = _valid(s.get("outline") if isinstance(s, dict) else None, goal, language, minutes, current)
                 if not why and str(s.get("title", "")).strip():
                     ok.append({"title": str(s["title"]).strip()[:200], "after": text})
             if ok:
