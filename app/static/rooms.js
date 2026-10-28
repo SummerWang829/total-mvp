@@ -152,20 +152,24 @@ async function roomsView(p) {
   /* the card (资料卡) of the row the mouse is on: the questionnaire answers and the two lengths */
   function wireCard(rows) {
     if (obs) return;
-    const hide = () => { const c = $("#rmcard"); if (c) c.remove(); document.querySelectorAll("#rmb tr.hv").forEach((x) => x.classList.remove("hv")); };
+    let hideTimer = null;
+    const hide = () => { clearTimeout(hideTimer); const c = $("#rmcard"); if (c) c.remove(); document.querySelectorAll("#rmb tr.hv").forEach((x) => x.classList.remove("hv")); };
+    const hideSoon = () => { clearTimeout(hideTimer); hideTimer = setTimeout(hide, 150); };   // the mouse may move from the row into the card to scroll it
     const show = (tr) => {
       const i = rows[+tr.dataset.ri]; if (!i) return; hide(); tr.classList.add("hv");
       const c = document.createElement("div"); c.id = "rmcard"; c.className = "rmcard";
-      const ans = (i.key_answers || []).map((a) => `<div class="rmq"><small>${esc(a.q)}</small>${esc(a.a)}</div>`).join("");
-      c.innerHTML = `<h5><b>${esc(i.participant.name)}</b><span class="tag">${roomState(i)[0]}</span><span class="sp"></span><span class="mut sm">${esc(i.participant.country || "")} · ${esc(LANGS[i.language] || i.language)}</span></h5>${ans || `<div class="mut sm">没有问卷答案（手动添加或外部名单的人没有）。</div>`}
-        <div class="mut sm" style="margin-top:6px">预计 ${i.duration_min || 45} 分${i.actual_min != null ? `，访谈 ${i.actual_min} 分` : ""}${i.moderator_name ? ` · 主持 ${esc(i.moderator_name)}` : ""}</div>`;
+      const ans = (i.key_answers || []).map((a, n) => `<div class="rmq"><small><em>${n + 1}.</em>${esc(a.q)}</small><span>${esc(a.a)}</span></div>`).join("");
+      const tags = (i.participant.tags || []).map((t) => `<span class="tag">${esc(t)}</span>`).join("");
+      c.innerHTML = `<h5><b>${esc(i.participant.name)}</b><span class="tag">${roomState(i)[0]}</span>${tags}<span class="sp"></span><span class="mut sm">${esc(i.participant.country || "")} · ${esc(LANGS[i.language] || i.language)}</span></h5>${ans || `<div class="mut sm">没有问卷答案（手动添加或外部名单的人没有）。</div>`}
+        <div class="rmft"><span>预计 ${i.duration_min || 45} 分</span>${i.actual_min != null ? `<span>访谈 ${i.actual_min} 分</span>` : ""}${i.moderator_name ? `<span>主持 ${esc(i.moderator_name)}</span>` : ""}</div>`;
+      c.onmouseenter = () => clearTimeout(hideTimer); c.onmouseleave = hideSoon;
       document.body.appendChild(c);
       const a = tr.getBoundingClientRect(), w = c.offsetWidth, h = c.offsetHeight;
       c.style.left = Math.max(8, Math.min(innerWidth - w - 8, a.left + a.width * 0.45)) + "px"; c.style.top = (a.bottom + h + 8 > innerHeight ? Math.max(8, a.top - h - 4) : a.bottom + 4) + "px";
     };
     app.querySelectorAll("#rmb tr[data-ri]").forEach((tr) => {
-      tr.onmouseenter = () => { if (matchMedia("(hover:hover)").matches && !document.querySelector(".rmpop")) show(tr); };
-      tr.onmouseleave = () => { if (matchMedia("(hover:hover)").matches) hide(); };
+      tr.onmouseenter = () => { clearTimeout(hideTimer); if (matchMedia("(hover:hover)").matches && !document.querySelector(".rmpop")) show(tr); };
+      tr.onmouseleave = () => { if (matchMedia("(hover:hover)").matches) hideSoon(); };
       tr.onfocus = () => { if (tr.matches(":focus-visible")) show(tr); };
       tr.onblur = hide;
       tr.onclick = (e) => { if (e.target.closest("a,button") || matchMedia("(hover:hover)").matches) return; tr.classList.contains("hv") ? hide() : show(tr); };

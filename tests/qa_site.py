@@ -228,7 +228,7 @@ def rooms_section(br, D):
     ok(pg.locator("#rmh th", has_text="邀请进度").count() == 1 and pg.locator("#rmh th", has_text="预计 / 访谈时长").count() == 1 and pg.locator("#rmh th", has_text="关键回答").count() == 1, "[rooms] the table has 关键回答, 邀请进度 and 预计 / 访谈时长 columns")
     ok("/" in pg.locator("#rmb tr").first.locator("td[data-l='预计 / 访谈时长']").inner_text(), "[rooms] under 全部 the length cell reads 'planned / real'")
     people = call(f"/projects/{pid}/participants", None, adm)
-    long_q = "During your trip to Hong Kong between 1 and 7 October 2026, did you notice any advertising or promotional messages about insurance, for example on billboards, in shopping malls, on public transport or on the internet?"
+    long_q = "During your trip to Hong Kong between 1 and 7 October 2026, did you notice any advertising or promotional messages about insurance, for example on billboards or in shopping malls?"
     for person in people[:3]:   # give the people in the first rows long questionnaire answers so the card has something to show
         text = "\n".join(["What is your age?：25 to 34", "Where do you currently live?：Mainland China, outside the Greater Bay Area", long_q + "：Yes, I noticed some of them, mostly in shopping malls and at MTR stations", "Which of these areas did you visit?：Tsim Sha Tsui、Mong Kok"])
         call(f"/participants/{person['id']}/screener", {"text": text}, adm, "PUT")

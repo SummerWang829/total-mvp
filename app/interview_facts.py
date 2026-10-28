@@ -5,8 +5,8 @@ from sqlalchemy.orm import Session
 
 from .models import Interview, Recording, ScreenerAnswer
 
-MAX_ANSWERS = 8
-ANSWER_CHARS = 120
+MAX_ANSWERS = 30
+ANSWER_CHARS = 600
 
 
 def actual_minutes(db: Session, itv: Interview) -> int | None:

@@ -1200,3 +1200,12 @@ body.q4mode .q4{display:grid;grid-template-columns:1.3fr 1.3fr 1fr 1fr;gap:10px;
 .q4 .qc2 .qp.cp h3 span{color:#BFD9CE}
 
 .q4 #stim img{max-height:150px;object-fit:contain;max-width:100%}.q4 #stim iframe{height:150px;width:100%}
+
+/* 直播间的资料卡：贴合内容，最宽 720、最高 360（屏幕矮时 70%），超出的换行、超高的在卡片里滚动；顶部和底部固定；鼠标可以移进去滚动 */
+.rmcard{width:max-content;max-width:min(720px,calc(100vw - 32px));max-height:min(360px,70vh);overflow:auto;pointer-events:auto;padding:12px 18px}
+.rmcard h5{position:sticky;top:-12px;z-index:1;background:var(--surface);margin:0 0 6px;padding:2px 0 6px;white-space:nowrap}
+.rmcard h5 .sp{min-width:24px}
+.rmq{margin:0 0 8px}.rmq small{display:block;padding-left:24px;text-indent:-24px;line-height:1.5;overflow-wrap:anywhere}.rmq small em{font-style:normal;display:inline-block;min-width:24px;text-indent:0;color:var(--orange-ink);font-weight:600}
+.rmq span{display:block;padding-left:24px;font-size:14px;line-height:1.55;color:var(--ink);overflow-wrap:anywhere}
+.rmft{display:flex;gap:14px;flex-wrap:wrap;margin:4px 0 0;padding-top:8px;border-top:1px solid var(--line);color:var(--muted);font-size:13px;position:sticky;bottom:-12px;background:var(--surface)}
+.rmbox .rmkey{font-size:14px}
