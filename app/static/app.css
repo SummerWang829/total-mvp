@@ -1167,3 +1167,36 @@ button.ed:hover:not(:disabled){color:var(--ink);background:var(--orange-soft);bo
 
 @media (max-width:900px){.rsp-sa a{display:inline-flex;align-items:center;min-height:36px;padding:0 6px}}
 .rsp{z-index:40}   /* below the small dialogs (.modal is 50) that open from inside the window */
+
+/* 访谈房间四列（主持人和观察员，真人主持的一对一访谈）：1 主持人画面 / 大纲 / 说话占比；2 受访者画面 / 实时字幕；3 追问；4 章节总结 */
+.q4{display:none}
+body.q4mode .rbody{display:none}
+body.q4mode .q4{display:grid;grid-template-columns:1.3fr 1.3fr 1fr 1fr;gap:10px;padding:0 12px;height:calc(100vh - 196px);min-height:430px}
+.q4 .qc{display:flex;flex-direction:column;gap:8px;min-height:0;min-width:0}
+.q4 .qt{flex:none;height:32%;min-height:140px;display:flex;flex-direction:column;gap:6px;position:relative}
+.q4 .qt .tile{flex:1;aspect-ratio:auto;min-height:0}
+.q4 .qp{background:var(--r-pan);border:1px solid var(--r-line);border-radius:12px;padding:10px 12px;min-height:0;min-width:0;overflow:auto;display:flex;flex-direction:column;gap:6px}
+.q4 .qp h3{font-size:13px;color:var(--r-h);margin:0;letter-spacing:.04em;display:flex;gap:8px;align-items:baseline}.q4 .qp h3 span{margin-left:auto;font-weight:400;color:var(--r-mut)}
+.q4 .fill{flex:1}
+.q4 .qs{flex:none;min-height:84px}
+.q4 .qo{display:flex;gap:7px;align-items:flex-start;padding:4px 0;line-height:1.5;font-size:14px}
+.q4 .qo i{flex:none;width:14px;height:14px;border-radius:50%;border:1.5px solid var(--r-line);margin-top:3px}
+.q4 .qo.dn i{background:#1F6B54;border-color:#1F6B54}.q4 .qo.dn span{color:var(--r-mut);text-decoration:line-through}
+.q4 .qo.now{background:rgba(255,106,0,.14);border-radius:8px;padding:4px 6px;margin:0 -6px}.q4 .qo.now i{background:var(--orange);border-color:var(--orange)}
+.q4 .qo small{display:block;color:var(--r-mut);font-size:12px}
+.q4 .qpt{font-size:13px;color:var(--r-mut);margin:6px 0 0}
+.q4 .qbar{display:flex;gap:6px;align-items:center;font-size:12px;color:var(--r-mut)}.q4 .qbar div{flex:1;height:7px;border-radius:999px;background:var(--r-tile);overflow:hidden;display:flex}.q4 .qbar i{display:block;height:100%}
+.q4 .qwarn{background:rgba(255,106,0,.14);color:var(--r-ink);border-radius:8px;padding:6px 8px;font-size:13px;line-height:1.5}
+.q4 .qsug{border:1px solid var(--r-line);border-radius:10px;padding:7px 9px;line-height:1.55;font-size:14px}.q4 .qsug small{display:block;color:var(--r-mut);font-size:12px}
+.q4 .qsug .row{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}.q4 .qsug button{height:32px;padding:0 10px;font-size:13px;background:var(--r-btn);border-color:var(--r-btnline);color:var(--r-btnink)}.q4 .qsug button::before{background:var(--r-sweep)}
+.q4 .qsug button.p{background:var(--orange);color:var(--on-orange);border-color:var(--orange)}
+.q4 .qq{border-left:3px solid var(--orange);padding:2px 8px;margin:4px 0;background:var(--r-tile);border-radius:0 8px 8px 0;font-size:14px;line-height:1.55}.q4 .qq small{color:var(--r-mut)}
+.q4 .caps{flex:1;min-height:0;overflow:auto}
+.q4 .qc2 .qp.cp{background:#0B382C;color:#fff;border-color:#0B382C}.q4 .qc2 .qp.cp h3{color:#FFB27A}
+.brpop{position:fixed;right:16px;bottom:72px;width:min(360px,92vw);max-height:60vh;overflow:auto;z-index:20;background:var(--r-pan);border:1px solid var(--r-line);border-radius:12px;padding:10px 12px;box-shadow:0 8px 24px rgba(6,35,25,.25)}
+.brpop[hidden]{display:none}
+@media (max-width:1000px){body.q4mode .q4{grid-template-columns:1fr;height:auto}.q4 .qt{height:220px}.q4 .qp{max-height:420px}}
+
+.q4 .qc2 .qp.cp h3 span{color:#BFD9CE}
+
+.q4 #stim img{max-height:150px;object-fit:contain;max-width:100%}.q4 #stim iframe{height:150px;width:100%}

@@ -37,8 +37,8 @@ class Settings:
     livekit_api_key: str = os.getenv("LIVEKIT_API_KEY", "devkey")
     livekit_api_secret: str = os.getenv("LIVEKIT_API_SECRET", "devsecret-devsecret-devsecret-0000")
     room_token_ttl_min: int = int(os.getenv("ROOM_TOKEN_TTL_MIN", "120"))
-    join_early_min: int = int(os.getenv("JOIN_EARLY_MIN", "15"))
-    join_late_min: int = int(os.getenv("JOIN_LATE_MIN", "360"))
+    join_early_min: int = int(os.getenv("JOIN_EARLY_MIN", "60"))
+    join_late_min: int = int(os.getenv("JOIN_LATE_MIN", "60"))
 
     mail_host: str = os.getenv("MAIL_HOST", "")  # SMTP server of the mail-sending service; empty = no account emails (links are handed over by hand)
     mail_port: int = int(os.getenv("MAIL_PORT", "587"))

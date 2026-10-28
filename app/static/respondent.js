@@ -24,6 +24,7 @@ async function openRespondent(iid, tab = "transcript") {
   if (RSP.open && RSP.close) RSP.close(false);
   const staff = STAFF(), obs = ME.role === "observer", my = renderSeq;
   const it = await api(`/interviews/${iid}`);
+  if (my !== renderSeq) return;   // the user moved on to another page while this was loading
   const root = document.createElement("div"); root.className = "rsp"; root.setAttribute("role", "dialog"); root.setAttribute("aria-modal", "true"); root.setAttribute("aria-label", "受访者");
   app.appendChild(root);
   const [t, c] = STATUS[it.status] || [it.status, ""];

@@ -663,19 +663,16 @@ def group_section(br, D):
     ctx.close()
     ctx, pg, errs = new_page(br, 1280, token=mod)
     pg.goto(B + f"/room.html?i={iid}&as=moderator"); pg.wait_for_selector("#claims")
-    ok(wait_until(lambda: pg.locator("#gwait [data-admit]").count() == 3, 8), "[group room] one admit button per seat")
-    ok(pg.locator("#wadmit").is_hidden(), "[group room] the single-person admit row is hidden")
+    ok(wait_until(lambda: pg.locator("#gwait .row").count() == 3, 8), "[group room] the moderator sees one line per seat")
+    ok(pg.locator("[data-admit], [data-hold], #b-admit, #b-hold, #wadmit").count() == 0, "[group room] there is nothing to admit or hold any more")
     audit_page(pg, "group room moderator/desktop", errs)
-    pg.locator("#gwait [data-admit]").first.click()
-    ok(wait_until(lambda: pg.locator("#gwait .sm", has_text="已放行").count() == 1, 8), "[group room] admitting one seat leaves the others unadmitted")
     pg.screenshot(path=os.path.join(ROOT, "qa_shots", "group_room_moderator_1280.png"), full_page=True)
     ctx.close()
-    seat = it["group_invites"][1]  # seat 1 was admitted above without consent; seat 2 walks the real path
+    seat = it["group_invites"][1]  # seat 2 walks the real path
     tok = seat["invite_token"]
     call(f"/public/join/{tok}/device", {"camera": True, "microphone": True, "speaker": True})
     call(f"/public/join/{tok}/consent", {"country": "SG", "recording": True, "observers": True, "cross_border": True})
     call(f"/interviews/{iid}/start", {}, mod)
-    call(f"/interviews/{iid}/admit", {"admit": True, "participant_id": seat["participant_id"]}, mod)
     call(f"/public/join/{tok}/enter", {})
     call(f"/public/join/{tok}/captions", {"text": "我先说成分。", "final": True, "dur_ms": 800})
     call(f"/interviews/{iid}/transcript/from-captions", {}, adm)
@@ -1656,7 +1653,6 @@ def concept_room_section(br, D):
     call(f"/public/join/{T}/device", {"camera": True, "microphone": True, "speaker": True})
     call(f"/public/join/{T}/consent", {"country": "SG", "recording": True, "observers": True, "cross_border": True})
     call(f"/interviews/{iid}/start", {}, mod)
-    call(f"/interviews/{iid}/admit", {"admit": True}, mod)
     call(f"/public/join/{T}/enter", {})
     for who, text in (("m", "先聊聊你平时的护肤习惯。"), ("p", "我平时先看成分，再看价格，最担心买到假货。"), ("m", "你为什么会选这一款？"), ("p", "因为朋友推荐，而且旗舰店有保障。")):
         if who == "m":
@@ -1714,7 +1710,6 @@ def ai_room_section(br, D):
     call(f"/public/join/{tk}/device", {"camera": True, "microphone": True, "speaker": True})
     call(f"/public/join/{tk}/consent", {"country": "SG", "recording": True, "observers": True, "cross_border": True, "ai": True})
     call(f"/interviews/{it['id']}/start", {}, mod)
-    call(f"/interviews/{it['id']}/admit", {"admit": True}, mod)
     call(f"/public/join/{tk}/enter", {})
     log_texts = lambda pg: pg.locator("#clog .m").all_inner_texts()
     for theme in (None, "dark"):
@@ -1821,8 +1816,8 @@ def pretask_section(br, D):
     audit_page(pg, "pretask participant step/phone", errs)
     pg.screenshot(path=os.path.join(ROOT, "qa_shots", "join_pretask_390.png"), full_page=True)
     pg.locator("#pf textarea").first.fill("洁面、爽肤水、面霜")
-    pg.click("#pf button"); pg.wait_for_selector("#pw")
-    ok("候场室" in pg.inner_text("#box"), "[pretask] submitting the answers reaches the waiting room")
+    pg.click("#pf button"); pg.wait_for_url("**/room.html*", timeout=15000)
+    ok("room.html" in pg.url, "[pretask] submitting the answers goes straight into the room (nobody has to let the participant in)")
     ctx.close()
     # (c) the moderator sees the answers in the room; the client observer never does
     ctx, pg, errs = new_page(br, 1280, token=mod)
@@ -1887,7 +1882,6 @@ def marks_section(br, D):
     call(f"/public/join/{T}/device", {"camera": True, "microphone": True, "speaker": True})
     call(f"/public/join/{T}/consent", {"country": "SG", "recording": True, "observers": True, "cross_border": True})
     call(f"/interviews/{iid}/start", {}, mod)
-    call(f"/interviews/{iid}/admit", {"admit": True}, mod)
     call(f"/public/join/{T}/enter", {})
     shown = next(s for s in call(f"/interviews/{iid}/concept", token=mod)["stimuli"] if s["key"] == "concept_a")
     call(f"/interviews/{iid}/stimulus/show", {"stimulus_id": shown["id"]}, mod)
@@ -1995,7 +1989,7 @@ def run():
                         ok(not pg.is_visible("#wbox"), f"[room {role}/{vp}] observer must not see the waiting room controls")
                     else:
                         ok(claims["canPublish"] is True and claims["hidden"] is False, f"[room {role}/{vp}] moderator grants wrong")
-                        ok(pg.is_visible("#b-admit") and pg.is_visible("#b-hold"), f"[room {role}/{vp}] moderator has admit / hold")
+                        ok(pg.is_visible("#wbox") and pg.locator("#b-admit, #b-hold").count() == 0, f"[room {role}/{vp}] moderator sees who is in the room and has no admit / hold")
                     audit_page(pg, f"room-{role}/{theme or 'light'}/{vp}", errs)
                     ctx.close()
             # theme switch: one click, takes effect at once, remembered in this browser
@@ -2193,40 +2187,29 @@ def run():
                 pg.check(f"input[name={k}]")
             pg.click("form button"); pg.wait_for_selector(".toast.err")
             ok(pg.locator("form#f").count() == 1, f"[join AI {lang}] must not go on without agreeing to the AI interviewer")
-            pg.check("input[name=ai]"); pg.click("form button"); pg.wait_for_selector("#pw")
-            ok(state(it) == "consented", f"[join AI {lang}] agreeing to all four items reaches the waiting room")
+            pg.check("input[name=ai]"); pg.click("form button"); pg.wait_for_url("**/room.html*", timeout=20000)
+            ok(state(it) in ("consented", "entered"), f"[join AI {lang}] agreeing to all four items goes into the room")
             ctx.close()
-        # (c) full journey: consent -> waiting room (locked until started AND let in) -> hold -> admit -> room -> leave
+        # (c) full journey: consent -> straight into the room (nobody lets anyone in) -> leave -> back in
         ctx, pg, errs = new_page(fake, 390, **media)
         it = D["itv"]["zh"]
         mod = D["tok"]["moderator"]
         pg.goto(B + f"/join.html?t={it['invite_token']}"); pg.wait_for_selector("form#f")  # the device test passed above, so it resumes at consent
         pg.select_option("[name=country]", "SG")
         for i in range(3): pg.locator("input[type=checkbox]").nth(i).check()
-        pg.click("form button"); pg.wait_for_selector("#enter")
-        ok(state(it) == "consented", "staff should see the participant as consented")
-        ok(pg.get_attribute("#enter", "aria-disabled") == "true" and "等待主持人开始" in pg.inner_text("#pw"), "waiting room: the entry is locked")
-        pg.click("#enter", force=True); pg.wait_for_timeout(300); ok("join.html" in pg.url, "a locked entry button must not open the room")
-        ok(wait_until(lambda: call(f"/interviews/{it['id']}/live", token=mod)["participant"]["waiting"], 8), "the moderator sees the participant in the waiting room")
-        audit_page(pg, "join zh waiting room/phone", errs)
-        pg.screenshot(path=os.path.join(ROOT, "qa_shots", "join_zh_4waiting_390.png"), full_page=True)
-        pg.reload(); pg.wait_for_selector("#enter"); ok("候场室" in pg.inner_text("#box"), "reopening the link after consent goes straight back to the waiting room")
-        call(f"/interviews/{it['id']}/start", {}, mod)
-        pg.wait_for_timeout(3500); ok(pg.get_attribute("#enter", "aria-disabled") == "true", "started but not let in yet: still locked")
-        call(f"/interviews/{it['id']}/admit", {"admit": False}, mod)
-        ok(wait_until(lambda: "稍等" in pg.inner_text("#pw"), 8), "held: the participant is asked to wait a little longer")
-        audit_page(pg, "join zh waiting room held/phone", errs)
-        call(f"/interviews/{it['id']}/admit", {"admit": True}, mod)
-        ok(wait_until(lambda: pg.get_attribute("#enter", "aria-disabled") == "false", 8), "let in: the waiting room unlocks")
-        pg.click("#enter")
-        pg.wait_for_selector("#claims"); cl = json.loads(pg.inner_text("#claims")); ok(cl["canPublish"] and not cl["hidden"] and not cl["canPublishData"], f"participant grants wrong {cl}")
+        pg.click("form button")
+        pg.wait_for_selector("#claims", timeout=20000)   # consent done: straight into the room, before the interview has started
+        cl = json.loads(pg.inner_text("#claims")); ok(cl["canPublish"] and not cl["hidden"] and not cl["canPublishData"], f"participant grants wrong {cl}")
         ok(state(it) == "entered", "staff should see the participant as entered")
+        ok(wait_until(lambda: call(f"/interviews/{it['id']}/live", token=mod)["participant"]["waiting"], 10), "the moderator sees the participant in the room before starting")
+        ok("主持人" in pg.inner_text("#msg") or "moderator" in pg.inner_text("#msg").lower() or "稍等" in pg.inner_text("#msg"), "the participant is told to wait for the moderator inside the room")
         ok(pg.locator("#lpan:visible, #rpan:visible").count() == 0, "participant room shows no internal side panels")
         ok("t-light" in pg.evaluate("document.body.className") and "Dark" not in pg.inner_text("#theme"), "participant room: light by default, theme button in the interview language")
         audit_page(pg, "participant room/light/phone", errs)
         pg.click("#theme"); audit_page(pg, "participant room/dark/phone", errs); pg.click("#theme")
         pg.click("#b-leave"); pg.wait_for_timeout(500)
-        ok("邀请链接" in pg.inner_text("#msg") and not call(f"/interviews/{it['id']}/live", token=mod)["participant"]["admitted"], "after leaving, coming back needs the moderator to let them in again")
+        ok("邀请链接" in pg.inner_text("#msg"), "after leaving the participant is told the link works again")
+        ok(call(f"/public/join/{it['invite_token']}/enter", {})["token"], "coming back needs nobody's permission")
         ctx.close(); fake.close()
 
 
@@ -2313,7 +2296,7 @@ def run():
         pg.wait_for_timeout(300); settle(pg); pg.wait_for_timeout(600)
         body = pg.inner_text("main")
         ok("打不开这个页面" not in pg.inner_text("body") and "Cannot set properties" not in body, "rapid navigation never shows an error page")
-        ok(pg.url.endswith(f"/p/{pid}/home") and pg.locator("main .tabs").count() == 0, "rapid navigation: the last page clicked is the one left on screen (no stale interview page painted over it)")
+        ok(pg.url.endswith(f"/p/{pid}/home") and pg.locator("main .tabs").count() == 0 and pg.locator(".rsp").count() == 0, "rapid navigation: the last page clicked is the one left on screen (no stale interview window painted over it)")
         ctx.close()
 
         # ---------- F. screenshots for a human glance ----------

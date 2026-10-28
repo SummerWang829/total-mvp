@@ -18,7 +18,7 @@ const L = {
         pickTime: "Choose a time", pickGo: "Confirm this time", pickIntro: "Pick the time that suits you best. Times below are shown in your local time.", voteIntro: "Tick every time that suits you. The team will pick the time most people can make and let you know.", voteGo: "Save my choice", voteDone: "Thank you. We have your choice. This page updates by itself once the team has confirmed the time.", voteN: "{n} can make it",
         invite: "Interview invitation", by: "Invited by {o}", time: "Time: {t}", timeTbd: "Time: the research team will confirm it with you",
         how: "You can take part with your camera on, or with voice only. The camera can be switched off at any time. Please find a quiet place; earphones help.",
-        next: "Next: test your device, read the privacy notice, then wait in the waiting room. About 5 minutes.", accept: "Accept and start", decline: "Not a good time? Just close this page. Nothing happens.",
+        next: "Next: test your device, read the privacy notice, then go into the interview room. About 5 minutes.", accept: "Accept and start", decline: "Not a good time? Just close this page. Nothing happens.",
         dev: "Test your device", devIntro: "We will ask to use your camera and microphone, only for this test and the interview.",
         cam: "Camera", mic: "Microphone", spk: "Speaker", net: "Network", checking: "Checking…", ok: "Working", fail: "Not working", played: "Played",
         camFix: "Allow the camera in your browser's address bar, then tap “Test again”. You can also take part without a camera.",
@@ -36,7 +36,7 @@ const L = {
         pickTime: "选择访谈时间", pickGo: "确认这个时间", pickIntro: "请选择最方便你的时间。下面显示的是你本地时间。", voteIntro: "请勾选所有你方便的时间。研究团队会选多数人能来的那个时间，并通知你。", voteGo: "保存我的选择", voteDone: "谢谢，已记下你的选择。研究团队确认时间后，这个页面会自动更新。", voteN: "{n} 人能来",
         invite: "访谈邀请", by: "由 {o} 邀请", time: "时间：{t}", timeTbd: "时间：研究团队会和你确认",
         how: "可以开摄像头视频参加，也可以只用语音参加，摄像头随时可以关闭。请找一个安静的地方，戴耳机效果更好。",
-        next: "接下来：测试设备 → 阅读隐私说明 → 进入候场室，大约 5 分钟。", accept: "接受邀请，开始", decline: "暂时不方便？直接关闭本页即可，不会有任何影响。",
+        next: "接下来：测试设备 → 阅读隐私说明 → 进入访谈室，大约 5 分钟。", accept: "接受邀请，开始", decline: "暂时不方便？直接关闭本页即可，不会有任何影响。",
         dev: "测试设备", devIntro: "我们会请求使用你的摄像头和麦克风，只用于这次检测和访谈。",
         cam: "摄像头", mic: "麦克风", spk: "扬声器", net: "网络", checking: "检测中…", ok: "正常", fail: "未通过", played: "已播放",
         camFix: "在浏览器地址栏允许使用摄像头，然后点“重新检测”。不开摄像头也可以参加。",
@@ -261,23 +261,18 @@ function preStep() {
   });
 }
 
-// ---------- 3. waiting room: the entry button unlocks when the moderator starts ----------
+// ---------- 3. into the room: nobody has to let the participant in; before the time window they wait here and go in by themselves ----------
 let waitTimer = null;
 function waitStep() {
-  frame(IX.wait, `<h1>${x.wait}</h1><div class="pwait" id="pw" role="status"><span class="dot" aria-hidden="true"></span><span id="pwt">${x.waiting}</span></div>
-    <p class="mut">${esc(x.tips)}</p><a class="btn p pbig" id="enter" href="/room.html?t=${encodeURIComponent(t)}" aria-disabled="true">${x.enter}</a>`);
-  const en = $("#enter");
-  en.addEventListener("click", (e) => { if (en.getAttribute("aria-disabled") === "true") e.preventDefault(); });
-  const poll = async () => {  // waiting=1 tells the moderator this person is in the waiting room right now
-    let st;
-    try { st = await pub("/live?waiting=1"); } catch { return; }
-    if (st.status === "ended") { clearInterval(waitTimer); $("#pw").className = "pwait go"; $("#pwt").textContent = x.ended; en.remove(); return; }
-    const open = st.status === "live" && st.admitted && info.can_enter_now;
-    $("#pw").className = "pwait" + (open ? " go" : "");
-    $("#pwt").textContent = !info.can_enter_now ? x.notTime : open ? x.ready : st.held ? x.held : st.admitted ? x.admittedWait : x.waiting;
-    en.setAttribute("aria-disabled", String(!open));
+  const url = `/room.html?t=${encodeURIComponent(t)}`;
+  if (info.can_enter_now) { location.replace(url); return; }   // the room is open: straight in (inside the room they wait for the moderator to start)
+  frame(IX.wait, `<h1>${x.wait}</h1><div class="pwait" id="pw" role="status"><span class="dot" aria-hidden="true"></span><span id="pwt">${x.notTime}</span></div><p class="mut">${esc(x.tips)}</p>`);
+  const poll = async () => {
+    try { info = await pub(""); } catch { return; }
+    if (info.status === "ended") { clearInterval(waitTimer); $("#pw").className = "pwait go"; $("#pwt").textContent = x.ended; return; }
+    if (info.can_enter_now) { clearInterval(waitTimer); location.replace(url); }
   };
-  poll(); clearInterval(waitTimer); waitTimer = setInterval(poll, 3000);
+  clearInterval(waitTimer); waitTimer = setInterval(poll, 5000);
 }
 
 (async () => {

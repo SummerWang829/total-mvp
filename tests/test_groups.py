@@ -96,7 +96,7 @@ def test_roster_view_shows_each_seat_without_leaking_more_than_needed(org):
         view = groups.roster_view(db, db.get(Interview, iid))
     assert view["max"] == groups.MAX_GROUP and len(view["seats"]) == 2
     assert {s["seat"] for s in view["seats"]} == {1, 2}
-    assert all(s["entered"] is False and s["admitted"] is False for s in view["seats"])
+    assert all(s["entered"] is False and "admitted" not in s for s in view["seats"])
 
 
 def test_retention_purges_group_seats(org):
@@ -194,7 +194,7 @@ def _ready(org, token):
 
 
 def test_each_seat_has_its_own_journey(org):
-    """Consent, device check, admit and entry belong to one seat: letting one person in does not let the other in."""
+    """Consent, device check and entry belong to one seat: one person's consent or entry does not stand in for the other's. Nobody has to let anyone in."""
     from conftest import decode_unverified
 
     pid = org.project()
@@ -208,26 +208,22 @@ def test_each_seat_has_its_own_journey(org):
     assert org.c.get(f"/api/public/join/{t2}").json()["consented"] is False  # the other person has not agreed
     assert org.c.get(f"/api/public/join/{t2}").json()["device_ok"] is False
     org.c.post(f"/api/interviews/{iid}/start", headers=org.h("moderator"))
-    assert org.c.post(f"/api/interviews/{iid}/admit", headers=org.h("moderator"), json={"admit": True}).status_code == 422  # a group names the seat
-    assert org.c.post(f"/api/interviews/{iid}/admit", headers=org.h("moderator"), json={"admit": True, "participant_id": "nope"}).status_code == 404
-    assert org.c.post(f"/api/interviews/{iid}/admit", headers=org.h("moderator"), json={"admit": True, "participant_id": pids[0]}).json() == {"admitted": True, "held": False}
+    assert org.c.post(f"/api/interviews/{iid}/admit", headers=org.h("moderator"), json={"admit": True, "participant_id": pids[0]}).status_code in (404, 405)  # the admit call is gone
     assert org.c.post(f"/api/public/join/{t1}/enter").status_code == 200
-    assert org.c.post(f"/api/public/join/{t2}/enter").status_code == 403  # not consented, and not admitted
+    assert org.c.post(f"/api/public/join/{t2}/enter").status_code == 403  # not consented
     _ready(org, t2)
-    assert org.c.post(f"/api/public/join/{t2}/enter").status_code == 409  # consented, but not let in
     org.c.get(f"/api/public/join/{t2}/live?waiting=1")
     live = org.c.get(f"/api/interviews/{iid}/live", headers=org.h("moderator")).json()
     assert "participant" not in live
     by = {p["participant_id"]: p for p in live["participants"]}
-    assert by[pids[0]]["admitted"] and by[pids[0]]["entered"] and by[pids[0]]["label"] == "参与者 ·01"
-    assert by[pids[1]]["waiting"] and not by[pids[1]]["admitted"]
+    assert by[pids[0]]["entered"] and by[pids[0]]["label"] == "参与者 ·01"
+    assert by[pids[1]]["waiting"] and not by[pids[1]]["entered"] and "admitted" not in by[pids[1]]
     assert "participants" not in org.c.get(f"/api/interviews/{iid}/live", headers=org.h("observer")).json()
-    org.c.post(f"/api/interviews/{iid}/admit", headers=org.h("moderator"), json={"admit": True, "participant_id": pids[1]})
-    ent = org.c.post(f"/api/public/join/{t2}/enter")
+    ent = org.c.post(f"/api/public/join/{t2}/enter")   # consented and device-tested: in, with nobody's permission
     claims = decode_unverified(ent.json()["token"])
     assert ent.status_code == 200 and claims["name"] == "P-02" and json.loads(claims["metadata"])["seat"] == 2
     org.c.post(f"/api/public/join/{t2}/leave")
-    assert org.c.post(f"/api/public/join/{t2}/enter").status_code == 409  # leaving needs a fresh admit
+    assert org.c.post(f"/api/public/join/{t2}/enter").status_code == 200  # and back in the same way
     assert org.c.post(f"/api/public/join/{t1}/enter").status_code == 200  # the other person is unaffected
 
 
@@ -240,7 +236,6 @@ def test_a_group_seat_records_on_its_own_track(org):
     iid, t1 = created["id"], created["group_invites"][0]["invite_token"]
     _ready(org, t1)
     org.c.post(f"/api/interviews/{iid}/start", headers=org.h("moderator"))
-    org.c.post(f"/api/interviews/{iid}/admit", headers=org.h("moderator"), json={"admit": True, "participant_id": pids[0]})
     org.c.post(f"/api/public/join/{t1}/enter")
     rid = org.c.post(f"/api/interviews/{iid}/recording/start", headers=org.h("moderator")).json()["id"]
     up = org.c.post(f"/api/public/join/{t1}/recording/{rid}/chunk?seq=0&offset_ms=0", content=b"abc", headers={"Content-Type": "video/webm"})
@@ -296,7 +291,6 @@ def test_group_connection_reports_are_kept_per_seat(org):
     iid, t1 = created["id"], created["group_invites"][0]["invite_token"]
     _ready(org, t1)
     org.c.post(f"/api/interviews/{iid}/start", headers=org.h("moderator"))
-    org.c.post(f"/api/interviews/{iid}/admit", headers=org.h("moderator"), json={"admit": True, "participant_id": pids[0]})
     org.c.post(f"/api/public/join/{t1}/enter")
     body = {"transport": "udp", "kind": "host", "rtt_ms": 30, "loss_pct": 1.0, "jitter_ms": 2}
     assert org.c.post(f"/api/public/join/{t1}/netstat", json=body).status_code == 204

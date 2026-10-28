@@ -143,6 +143,7 @@ async function render() {
     }
     if (seg[1] === "i") {   // the old whole page is gone: the same address opens the respondent window over the project's insights page
       const it = await api(`/interviews/${seg[2]}`);
+      if (stale(seq)) return;   // the user already moved on to another page: do not pull them back
       window._rspPending = { id: seg[2], tab: seg[3] || "transcript" };
       location.replace(`#/p/${it.project_id}/insights`); return;
     }
@@ -605,9 +606,9 @@ function showInvite(iid, url, created, sched, onClose) {
 function roomState(i) {
   if (i.purged) return ["已按保留期清除", ""];
   if (i.status === "ended") return ["已结束", "ok"];
-  if (i.waiting) return ["候场中，等你放行", "o"];
   if (i.status === "live") return ["进行中", "live"];
-  if (i.admitted) return ["已放行", "ok"];
+  if (i.waiting) return ["已在房间", "ok"];
+  if (i.entered) return ["进过房间", "ok"];
   if (i.invite_state === "consented") return ["已就绪", "o"];
   return ["未就绪", ""];
 }

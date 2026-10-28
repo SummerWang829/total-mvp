@@ -179,11 +179,6 @@ def resolve_joiner(db: Session, token: str) -> Joiner | None:
     return Joiner(itv, itv, itv.participant)
 
 
-def admitted_count(db: Session, interview_id: str) -> int:
-    """How many seats the moderator has let into the room (for the group waiting-room summary)."""
-    return len([s for s in seats(db, interview_id) if s.admitted_at is not None])
-
-
 def roster_view(db: Session, itv: Interview) -> dict | None:
     """Staff view of a group's seats and where each participant is on their journey. None for a depth interview."""
     if not is_group(itv):
@@ -195,6 +190,5 @@ def roster_view(db: Session, itv: Interview) -> dict | None:
         out.append({"seat": s.seat, "participant_id": s.participant_id, "name": p.name,
                     "country": p.country, "label": label(s),
                     "opened": s.opened_at is not None, "device_ok": s.device_ok_at is not None,
-                    "admitted": s.admitted_at is not None, "held": s.held_at is not None and s.admitted_at is None,
                     "entered": s.entered_at is not None})
     return {"max": MAX_GROUP, "seats": out}

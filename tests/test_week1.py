@@ -30,7 +30,6 @@ def give_consent(org, itv, country="SG"):
 def let_in(org, itv):
     """Device test passed + the moderator lets the participant in from the waiting room."""
     assert org.c.post(f"/api/public/join/{itv['invite_token']}/device", json={"camera": True, "microphone": True, "speaker": True}).json()["passed"]
-    assert org.c.post(f"/api/interviews/{itv['id']}/admit", headers=org.h("moderator"), json={"admit": True}).status_code == 200
 
 
 # ---- spike 1: three-role room; observer is hidden, subscribe-only ----
