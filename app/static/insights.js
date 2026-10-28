@@ -119,7 +119,7 @@ async function insightsHub(p, my) {
       return `<thead><tr class="g"><th class="pin"></th>${groups.map((g) => `<th colspan="${g.n}">${GROUPS[g.id]}</th>`).join("")}</tr><tr class="c"><th class="pin">编号</th>${vs.map((c) => `<th class="${widthOf(c)}" title="${esc(c.label)}">${esc(c.label)}${fi(c)}</th>`).join("")}</tr></thead>`;
     };
     const draw = () => {
-      const vs = visible(); shown = rows.filter(matches); closeCard();
+      const vs = visible(); shown = rows.filter(matches); closeCard(); rspSetList(shown.map((r) => r.id));
       tbl.innerHTML = header() + `<tbody>${shown.map((r, i) => `<tr data-i="${i}"><td class="pin"><a href="#/i/${r.id}"><b>${esc(r.code)}</b></a></td>${vs.map((c) => `<td class="${widthOf(c)}" data-l="${esc(c.label)}">${cell(r, c)}</td>`).join("")}</tr>`).join("")}</tbody>`;
       $("#icount").textContent = `共 ${rows.length} 人 · 当前显示 ${shown.length} 人${activeFilters() ? ` · ${activeFilters()} 个筛选` : ""}`;
       tbl.querySelectorAll("td.pin").forEach((td) => { const i = +td.parentElement.dataset.i; td.onmouseenter = () => { if (matchMedia("(hover:hover)").matches) openCard(i, td); }; td.onclick = (e) => { if (e.target.closest("a") || matchMedia("(hover:hover)").matches) return; open === i ? closeCard() : openCard(i, td); }; });

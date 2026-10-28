@@ -77,7 +77,7 @@ def interview_out(itv: Interview, ctx: Ctx, invite_token: str | None = None, db:
         "started_at": itv.started_at.isoformat() if itv.started_at else None,
         "ended_at": itv.ended_at.isoformat() if itv.ended_at else None,
         "moderator_id": itv.moderator_id, "observer_ids": [o.user_id for o in itv.observers],
-        "participant": {"id": itv.participant.id, "name": itv.participant.name, "country": itv.participant.country, "tags": itv.participant.tags or [], "availability": list(itv.participant.availability or [])} if sees_name
+        "participant": {"id": itv.participant.id, "name": itv.participant.name, "country": itv.participant.country, "tags": itv.participant.tags or [], "availability": list(itv.participant.availability or []), "code": itv.participant.code} if sees_name
         else {"name": "受访者"},
         "moderator_name": _moderator_name(db, itv) if sees_name else "",  # the team's own names are not for client observers
         "purged": itv.purged_at is not None, "moderation": itv.moderation, "kind": itv.kind, "study_id": itv.study_id,

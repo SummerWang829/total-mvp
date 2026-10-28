@@ -147,7 +147,7 @@ async function roomsView(p) {
     const em = $("#rmempty"); em.hidden = rows.length > 0; em.innerHTML = rows.length ? "" : emptyHtml();
     const clr = $("#rmclr2"); if (clr) clr.onclick = () => { RM.sel[RM.tab] = rmEmptySel(); drawHead(); drawBody(); drawTabs(); };
     em.querySelectorAll("[data-goto]").forEach((b) => (b.onclick = () => { RM.tab = b.dataset.goto; RM.wall = false; drawAll(); }));
-    wireEdits(); wireCard(rows);
+    rspSetList(rows.filter((r) => r.status === "ended").map((r) => r.id)); wireEdits(); wireCard(rows);
   };
   /* the card (资料卡) of the row the mouse is on: the questionnaire answers and the two lengths */
   function wireCard(rows) {

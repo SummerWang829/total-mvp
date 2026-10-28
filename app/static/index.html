@@ -15,6 +15,7 @@
 <script src="/rdash.js"></script>
 <script src="/outline.js"></script>
 <script src="/insights.js"></script>
+<script src="/respondent.js"></script>
 <script src="/rooms.js"></script>
 <script src="/invite.js"></script>
 <script src="/logo.js"></script>
@@ -140,7 +141,11 @@ async function render() {
       if (page === "studies" && STAFF()) return seg[4] ? await studyView(p, seg[4]) : await studiesView(p);
       location.hash = `#/p/${p.id}/${VIEWER() ? "pool" : RECRUITER() ? "people" : "rooms"}`; return;
     }
-    if (seg[1] === "i") return await interviewView(seg[2], seg[3] || "transcript");
+    if (seg[1] === "i") {   // the old whole page is gone: the same address opens the respondent window over the project's insights page
+      const it = await api(`/interviews/${seg[2]}`);
+      window._rspPending = { id: seg[2], tab: seg[3] || "transcript" };
+      location.replace(`#/p/${it.project_id}/insights`); return;
+    }
     if (r === "/repo" && STAFF()) return await repoView();
     if (r === "/retention") return await dataView();
     if (r === "/team") return await teamView();
@@ -619,6 +624,7 @@ const TIME_ORDER = ["今天", "近 7 天", "更晚", "更早", "随时可进入"
 async function insightsListView(p) {
   const my = renderSeq;
   await insightsHub(p, my);  // app/static/insights.js: 受访者数据 / 报告 / 问题分析 / 精彩片段 / 对话
+  if (window._rspPending && !stale(my)) { const { id, tab } = window._rspPending; window._rspPending = null; openRespondent(id, tab); }
 }
 
 // ---------------- 集锦：把多个片段按顺序编成一条，一个链接分享 ----------------
@@ -1102,43 +1108,6 @@ async function loadMarksCard(iid) {
     
     <div class="hmgrid">${stims.map((s) => `<div class="hmstim"><div class="row sm" style="gap:8px;margin-bottom:6px"><b>${esc(s.title)}</b><span class="sp"></span><span class="tag o">♥ ${s.like}</span><span class="tag">✕ ${s.dislike}</span></div>
       <div class="stimwrap hm"><img src="${esc(s.url)}" alt="" referrerpolicy="no-referrer"><div class="pins">${pins(s.marks)}</div></div></div>`).join("")}</div>`;
-}
-
-async function interviewView(iid, tab) {
-  const my = renderSeq;
-  const staff = STAFF();
-  const it = await api(`/interviews/${iid}`);
-  const p = (await projects()).find((x) => x.id === it.project_id);
-  if (stale(my)) return;
-  const [t, c] = STATUS[it.status];
-  const invite = sessionStorage.getItem("invite_" + iid);
-  const room = (as, cls) => `<a class="btn ${cls}" href="/room.html?i=${iid}&as=${as}" target="_blank" rel="noopener">${as === "observer" ? "隐身观察" : "进入房间（主持）"}</a>`;
-  const canRoom = it.status !== "ended" && !it.purged;
-  const tabs = [["transcript", "转写"], ["insights", "洞察"], ["clips", "片段"], ...(staff ? [["highlights", "引用与追问"], ["signals", "情绪信号"]] : []), ...(it.kind === "group" ? [["fairness", "发言情况"], ...(staff ? [["disagree", "分歧地图"]] : [])] : [])];
-  shell(`<a class="back" href="#/p/${it.project_id}/insights">← 洞察与片段</a>
-    <div class="head"><div><h1>${esc(it.title)}</h1><p class="lead" style="margin:6px 0 0">${it.kind === "group" ? "座谈会" : "受访者"}：${esc(it.participant.name)}${it.participant.country ? " · " + esc(it.participant.country) : ""} · 访谈语言 ${esc(LANGS[it.language] || it.language)} · <span class="tag ${c}">${t}</span>${it.kind === "group" ? ` <span class="tag o">座谈会</span>` : ""}${it.moderation === "ai" ? ` <span class="tag o">AI 主持</span>` : ""}${it.invite_state ? ` <span class="tag ${(INVITE[it.invite_state] || [])[1] || ""}">${(INVITE[it.invite_state] || [it.invite_state])[0]}</span>` : ""}</p></div><span class="sp"></span>
-      <div class="row">${canRoom ? (ME.role === "observer" ? room("observer", "") : staff ? room("moderator", "p") + room("observer", "") : room("moderator", "p")) : ""}</div></div>
-    ${it.kind === "group" && staff && it.group ? `<div class="card" id="groupcard"><h3>座谈会名单</h3><p class="sm mut" style="margin:6px 0 0">每人一条邀请链接，在房间里逐个放行。链接丢了可以单独重新生成（旧的立即失效）。</p>
-      <ul class="ptlist">${it.group.seats.map((s) => `<li><b>${esc(s.label)}</b> ${esc(s.name)} <span class="tag ${s.entered ? "ok" : s.admitted ? "live" : ""}">${s.entered ? "已进入" : s.admitted ? "已放行" : s.device_ok ? "检测通过" : "未到"}</span>${canRoom ? ` <button class="s" data-grot="${s.participant_id}">重新生成链接</button>` : ""}</li>`).join("")}</ul></div>` : ""}
-    ${it.kind !== "group" && staff && invite && canRoom ? `<div class="card"><h3>受访者邀请链接</h3><code class="copy" id="inv">${esc(invite)}</code><p class="sm mut" style="margin:8px 0 0">只显示这一次，发给受访者后请不要转发。丢了可以重新生成（旧链接会失效）。</p></div>` : ""}
-    ${it.kind !== "group" && staff && canRoom && !invite ? `<div class="note row">邀请链接已隐藏。<span class="sp"></span><button class="s" id="rot">重新生成</button></div>` : ""}
-    ${staff ? `<div class="card" id="timeslotcard"><p class="sm mut" style="margin:0">候选时间加载中…</p></div>` : ""}
-    ${staff ? `<div class="card" id="pretaskcard"><p class="sm mut" style="margin:0">访谈前问题加载中…</p></div>` : ""}
-    ${staff ? `<div class="card" id="markcard" hidden></div>` : ""}
-    <div class="tabs">${tabs.map(([k, n]) => `<a href="#/i/${iid}/${k}" class="${tab === k ? "on" : ""}">${n}</a>`).join("")}</div><div id="tab"></div>`, { active: "insights", p });
-  const rot = $("#rot"); if (rot) rot.onclick = guard(async () => { const r = await api(`/interviews/${iid}/invite/rotate`, { method: "POST" }); sessionStorage.setItem("invite_" + iid, location.origin + r.invite_path); render(); });
-  app.querySelectorAll("[data-grot]").forEach((b) => b.onclick = guard(async () => {
-    const r = await api(`/interviews/${iid}/participants/${b.dataset.grot}/invite/rotate`, { method: "POST" });
-    showInvite(iid + "_" + b.dataset.grot, location.origin + r.invite_path, false, it.scheduled_at);
-  }));
-  if (staff) { loadTimeslotsCard(iid, canRoom); loadPretaskCard(iid, canRoom); loadMarksCard(iid); }
-  if (tab === "transcript") return transcriptTab(iid, it, staff, my);
-  if (tab === "clips") return clipsTab(iid, staff, my);
-  if (tab === "highlights" && staff) return highlightsTab(iid, my);
-  if (tab === "fairness" && it.kind === "group") return fairnessTab(iid, my);
-  if (tab === "disagree" && it.kind === "group" && staff) return disagreeTab(iid, it, my);
-  if (tab === "signals" && staff) return signalsTab(iid, my);
-  return insightsTab(iid, staff, my);
 }
 
 // A long task runs in the background: start it, then ask every 2 s how it is going (resolves with the result, throws the job's plain message if it failed).
