@@ -113,3 +113,25 @@ def test_only_the_latest_conversations_are_kept(org):
     ids = [_new(org, pid) for _ in range(insight_chat.MAX_THREADS + 2)]
     kept = [t["id"] for t in org.c.get(f"/api/projects/{pid}/chats", headers=org.h()).json()]
     assert len(kept) == insight_chat.MAX_THREADS and ids[-1] in kept and ids[0] not in kept
+
+
+def test_a_side_question_about_one_passage_is_answered_but_not_saved(org):
+    itv, pid = _setup(org)
+    cid = _new(org, pid)
+    org.c.post(f"/api/chats/{cid}/ask", headers=org.h(), json={"message": "受访者担心什么？ halal certification"})
+    before = org.c.get(f"/api/chats/{cid}", headers=org.h()).json()
+    r = org.c.post(f"/api/chats/{cid}/ask", headers=org.h(), json={"message": "关于你上一条回答里的这一段：“和你的问题最相关”\n这句话是什么意思？", "ask_only": True})
+    assert r.status_code == 200 and r.json()["message"]["answer"]
+    after = org.c.get(f"/api/chats/{cid}", headers=org.h()).json()
+    assert after["messages"] == before["messages"] and after["title"] == before["title"] and after["updated_at"] == before["updated_at"]
+
+
+def test_a_batch_request_of_several_changes_is_one_long_message_that_is_saved(org):
+    itv, pid = _setup(org)
+    cid = _new(org, pid)
+    text = "请一次性修改以下 3 处，其余保持不变：\n" + "\n".join(f"{i}. “某一句话”——要更具体" * 30 for i in range(1, 4))
+    assert 1000 < len(text) < 3000
+    assert org.c.post(f"/api/chats/{cid}/ask", headers=org.h(), json={"message": text}).status_code == 200
+    assert len(org.c.get(f"/api/chats/{cid}", headers=org.h()).json()["messages"]) == 2
+    assert org.c.post(f"/api/chats/{cid}/ask", headers=org.h(), json={"message": "x" * 3001}).status_code == 422
+    assert org.c.post(f"/api/chats/{cid}/ask", headers=org.h("observer"), json={"message": "x", "ask_only": True}).status_code == 403

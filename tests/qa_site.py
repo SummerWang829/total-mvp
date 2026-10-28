@@ -462,6 +462,7 @@ def outline_section(br, D):
 def insights_section(br, D):
     """The insights page's five tabs: respondent data (numbers, table, hover card, search), report, question analysis, highlight wall, chat; a client observer only gets the table."""
     adm, pid = D["tok"]["admin"], D["pid"]
+    PICK_I = "([sel, q]) => { const b = document.querySelectorAll(sel)[0]; const w = document.createTreeWalker(b, NodeFilter.SHOW_TEXT); let n; while ((n = w.nextNode())) { const i = n.data.indexOf(q); if (i >= 0) { const r = document.createRange(); r.setStart(n, i); r.setEnd(n, i + q.length); const s = getSelection(); s.removeAllRanges(); s.addRange(r); return true; } } return false; }"
     call(f"/projects/{pid}/outline/chat", {"message": "帮我起草一份大纲"}, adm)  # so the question tab has questions
     for it in call(f"/projects/{pid}/interviews", None, adm):   # work out the answers of finished interviews, so the table has answer cells
         if it["status"] == "ended":
@@ -546,6 +547,12 @@ def insights_section(br, D):
         pg.wait_for_selector(".ins-ql")
         ok(pg.evaluate("(k) => sessionStorage.getItem('ol_v_' + k)", pid) == key, "[insights] picking another outline version on the question tab is the same choice the 访谈 page keeps")
     pg.click("#qago"); ok(wait_until(lambda: pg.locator(".ins-claim").count() > 0 or "没有足够的证据" in pg.inner_text("#qapane") or "没有成功" in pg.inner_text("#qapane") or pg.locator("#qago").inner_text().startswith("重新"), 15), "[insights] 'generate the analysis' gives an answer or says the evidence is not enough")
+    if pg.locator("#qapane .ins-claim [data-selk]").count():   # the analysis sentences can be selected and collected too
+        qfirst = pg.evaluate("() => document.querySelector('#qapane [data-selk]').textContent")
+        pg.evaluate(PICK_I, ["#qapane [data-selk]", qfirst[:3]]); pg.wait_for_selector(".cs-float"); pg.click(".cs-float [data-cs-addq]")
+        ok(pg.locator("#qbar .cs-lh b", has_text="待一起修改（1 处）").count() == 1 and pg.locator("#qapane .cs-no").count() == 1, "[insights] a sentence of the question analysis is numbered and listed above it")
+        ok(pg.evaluate("() => [...document.querySelectorAll('#qapane .ins-q')].every((q) => !q.closest('[data-selk]'))"), "[insights] the quotes under an analysis cannot be selected")
+        pg.click("#qbar [data-cs-clear]")
     audit_page(pg, "insights q/desktop", errs)
     pg.click("#itabs a[data-k=v]"); pg.wait_for_selector("#reels .card")
     ok(pg.locator(".ins-wall").count() + pg.locator(".card.empty").count() >= 1 and pg.locator("#rnew").count() == 1, "[insights] the highlights tab has the clip wall (or its empty state) and the reels")
@@ -557,6 +564,14 @@ def insights_section(br, D):
     pg.locator(".ins-card").first.click(); pg.wait_for_selector(".ins-msg.me")
     ok(wait_until(lambda: pg.locator(".ins-msg.ai h5", has_text="回答").count() == 1, 15), "[insights] a question is answered in a block headed 回答")
     ok(pg.locator(".ins-msg.ai h5", has_text="引用原话").count() <= 1 and pg.locator(".ins-msg.ai .ins-q").count() >= 0, "[insights] the quotes (when the answer relies on passages) come in their own block")
+    first_i = pg.evaluate("() => document.querySelector('#cthread [data-selk]').textContent")
+    ok(pg.evaluate(PICK_I, ["#cthread [data-selk]", first_i[:3]]), "[insights] a passage of the assistant's reply can be selected")
+    pg.wait_for_selector(".cs-float")
+    pg.click(".cs-float [data-cs-addq]")
+    ok(pg.locator("#cbar .cs-lh b", has_text="待一起修改（1 处）").count() == 1 and pg.locator("#cthread .cs-no").count() == 1, "[insights] the passage is numbered 1 in the reply and listed above the input")
+    ok(pg.evaluate("() => [...document.querySelectorAll('#cthread .ins-q')].every((q) => !q.closest('[data-selk]'))"), "[insights] the quotes the server copied are not part of any selectable block")
+    pg.click("#cbar [data-cs-clear]")
+    ok(pg.locator("#cbar .cs-list").count() == 0 and pg.locator("#cthread .cs-no").count() == 0, "[insights] clearing the list takes the numbers out of the reply")
     pg.fill("#cmsg", "再说说价格"); pg.keyboard.press("Enter")
     ok(wait_until(lambda: pg.locator(".ins-msg.ai").count() == 2 and pg.locator(".ins-msg.me").count() == 2, 15), "[insights] a follow-up question joins the same conversation")
     pg.click("#chbtn"); pg.wait_for_selector("#chist .ins-hrow")

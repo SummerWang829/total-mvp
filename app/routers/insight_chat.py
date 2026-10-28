@@ -21,8 +21,9 @@ router = APIRouter(prefix="/api", tags=["insight-chat"])
 
 
 class AskBody(BaseModel):
-    message: str = Field(min_length=1, max_length=insight_chat.MAX_ANSWER // 3)
+    message: str = Field(min_length=1, max_length=insight_chat.MAX_ANSWER)
     scope: list[str] = Field(default_factory=lambda: list(insight_chat.SCOPES), max_length=3)
+    ask_only: bool = False  # 只问不改: answer, and keep the question and the answer out of the saved conversation
 
 
 def _project(db: Session, ctx: Ctx, pid: str) -> Project:
@@ -106,6 +107,10 @@ def ask(cid: str, body: AskBody, ctx: Ctx = Depends(require_roles(*STAFF)), db: 
         raise HTTPException(502, f"AI 模型服务拒绝了请求：{e.reason}") from e
     except insight_chat.ChatUnavailable as e:
         raise HTTPException(502, e.message) from e
+    if body.ask_only:   # a side question about one passage: the conversation stays as it was
+        audit(db, ctx.org_id, ctx.actor, "chat.ask", t.id, model="mock" if chat is None else chat.name, ask_only=True)
+        db.commit()
+        return {"title": t.title, "message": insight_chat.message_out(db, ctx, proj.id, ai)}
     msgs = insight_chat.load(t.messages) + [{"role": "user", "text": body.message.strip()}, ai]
     t.messages = json.dumps(msgs, ensure_ascii=False)
     t.title = t.title or body.message.strip()[:40]

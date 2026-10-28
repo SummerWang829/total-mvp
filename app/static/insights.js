@@ -11,8 +11,8 @@ const insDownload = (p, url, name) => guard(async () => {  // a download needs t
   const a = document.createElement("a"); a.href = URL.createObjectURL(await r.blob()); a.download = name; document.body.appendChild(a); a.click(); a.remove();
 });
 /** Quotes the server copied out of the transcripts, as clickable lines. */
-const insEvidence = (hits) => hits.map((h) => `<div class="ins-q">“${esc(h.text)}”<small> ${esc(h.who || "")} ${h.at_ms ? insClock(h.at_ms) : ""}${h.interview_id ? ` · <a href="#/i/${h.interview_id}">看原文</a>` : ""}</small></div>`).join("");
-const insAnswer = (r) => (r.insufficient ? `<div class="mut">${esc(r.message)}</div>` : r.answer.map((c) => `<div class="ins-claim"><div>${esc(c.text)}</div>${insEvidence(c.evidence)}</div>`).join(""));
+const insEvidence = (hits) => hits.map((h) => `<div class="ins-q" data-nosel>“${esc(h.text)}”<small> ${esc(h.who || "")} ${h.at_ms ? insClock(h.at_ms) : ""}${h.interview_id ? ` · <a href="#/i/${h.interview_id}">看原文</a>` : ""}</small></div>`).join("");
+const insAnswer = (r) => (r.insufficient ? `<div class="mut">${esc(r.message)}</div>` : r.answer.map((c, ci) => `<div class="ins-claim"><div data-selk="c:${ci}">${esc(c.text)}</div>${insEvidence(c.evidence)}</div>`).join(""));
 
 async function insightsHub(p, my) {
   const team = STAFF(), tabs = team ? INS_TABS : [INS_TABS[0]];
@@ -22,7 +22,8 @@ async function insightsHub(p, my) {
   const fit = () => { const b = $("#ipanel"); if (b && b.offsetParent) b.style.height = Math.max(320, innerHeight - b.getBoundingClientRect().top - 18) + "px"; };
   fit(); addEventListener("resize", fit);
   const drawTabs = () => document.querySelectorAll("#itabs a").forEach((a) => { const on = a.dataset.k === tab; a.classList.toggle("on", on); a.setAttribute("aria-selected", on); });
-  const show = async (k) => { tab = k; sessionStorage.setItem("itab", k); drawTabs(); const box = $("#ipanel"); box.innerHTML = `<div class="mut" style="padding:16px">加载中…</div>`; try { await ({ r: respondents, p: report, q: questions, v: reels, c: chat })[k](box); } catch (e) { if (!stale(my)) box.innerHTML = `<div class="card empty"><b>${esc(e.message)}</b></div>`; } };
+  let selOff = null;   // takes the text-selection helper of the open tab down (see chatsel.js)
+  const show = async (k) => { if (selOff) { selOff(); selOff = null; } tab = k; sessionStorage.setItem("itab", k); drawTabs(); const box = $("#ipanel"); box.innerHTML = `<div class="mut" style="padding:16px">加载中…</div>`; try { await ({ r: respondents, p: report, q: questions, v: reels, c: chat })[k](box); } catch (e) { if (!stale(my)) box.innerHTML = `<div class="card empty"><b>${esc(e.message)}</b></div>`; } };
   document.querySelectorAll("#itabs a").forEach((a) => (a.onclick = (e) => { e.preventDefault(); show(a.dataset.k); }));
   show(tab);
 
@@ -281,9 +282,15 @@ async function insightsHub(p, my) {
     };
     const list = () => { $("#qalist").innerHTML = qs.map((q, i) => `<div role="button" tabindex="0" class="ins-ql${i === cur ? " on" : ""}" data-qi="${i}"><span>${i + 1}</span><div>${esc(q)}</div>${done[q] ? `<em>已分析</em>` : ""}</div>`).join(""); document.querySelectorAll("[data-qi]").forEach((b) => { const go = () => { cur = +b.dataset.qi; list(); right(); }; b.onclick = go; b.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } }; }); };
     const draw = () => {
-      box.innerHTML = `<div id="qverbar">${verBar()}</div><div class="ins-qa"><div><div class="sm mut" style="margin:0 0 6px">访谈大纲里的问题</div><div id="qalist" class="ins-qls"></div></div><div id="qapane"></div></div>`;
+      if (selOff) { selOff(); selOff = null; }
+      box.innerHTML = `<div id="qverbar">${verBar()}</div><div class="ins-qa"><div><div class="sm mut" style="margin:0 0 6px">访谈大纲里的问题</div><div id="qalist" class="ins-qls"></div></div><div><div id="qbar" hidden></div><div id="qapane"></div></div></div>`;
       const vb = $("#qver"); if (vb) vb.onclick = (e) => { e.stopPropagation(); menu = !menu; $("#qverbar").innerHTML = verBar(); wireVer(); };
       list(); right();
+      const ask = (body) => api("/repo/ask", { method: "POST", body: { ...body, project_id: p.id } });
+      const sel = ChatSel.attach({ roots: [$("#qapane")], bar: $("#qbar"), label: (k) => `第 ${+k.split(":")[1] + 1} 句`,
+        ask: async ({ quote, text }) => { const r = await ask({ question: `关于“${quote.slice(0, 120)}”：${text}`.slice(0, 480) }); return r.insufficient ? r.message : r.answer.map((c) => c.text).join("\n"); },
+        send: async ({ text }) => { const q = qs[cur]; if (!q) return false; done[q] = await ask({ question: `受访者是怎么回答这个问题的：${q}。请按下面的要求重新归纳：${text}`.slice(0, 480) }); right(); list(); return true; } });
+      selOff = () => sel.destroy();
     };
     const wireVer = () => {
       const vb = $("#qver"); if (vb) vb.onclick = (e) => { e.stopPropagation(); menu = !menu; $("#qverbar").innerHTML = verBar(); wireVer(); };
@@ -314,9 +321,9 @@ async function insightsHub(p, my) {
     let scope = SCOPES.map((s) => s[0]); try { const saved = JSON.parse(sessionStorage.getItem("ichat_scope") || "null"); if (Array.isArray(saved) && saved.length) scope = saved; } catch { /* the default */ }
     const key = `ichat_${p.id}`, status = st.mock ? ["演示模式", "w"] : st.ready ? [`${st.vendor || "本地模型"} · 已连接`, ""] : ["未连接", "w"];
     const answerHtml = (m) => esc(m.answer).replace(/\[(\d+)\]/g, (_, n) => `<sup class="ins-ref">[${n}]</sup>`).replace(/\n/g, "<br>");
-    const aiHtml = (m, i) => `<div class="ins-msg ai"><h5>回答</h5><div>${answerHtml(m)}</div>
+    const aiHtml = (m, i) => `<div class="ins-msg ai"><h5>回答</h5><div data-selk="m:${i}">${answerHtml(m)}</div>
       ${m.quotes.length ? `<h5>引用原话（程序从转写里原样复制，不是 AI 写的）</h5>${m.quotes.map((q) => `<div class="ins-q"><b>[${q.n}]</b> “${esc(q.text)}”<small> ${esc(q.who || "")} ${q.at_ms ? insClock(q.at_ms) : ""}${q.interview_id ? ` · <a href="#/i/${q.interview_id}">看原文</a>` : ""}</small></div>`).join("")}` : ""}
-      ${m.suggestions.length ? `<h5>建议（AI 的判断，不是受访者原话）</h5><div class="ins-sg"><ul>${m.suggestions.map((s) => `<li>${esc(s)}</li>`).join("")}</ul></div>` : ""}
+      ${m.suggestions.length ? `<h5>建议（AI 的判断，不是受访者原话）</h5><div class="ins-sg"><ul data-selk="g:${i}">${m.suggestions.map((s) => `<li>${esc(s)}</li>`).join("")}</ul></div>` : ""}
       <div class="ins-fu">${m.followups.map((f) => `<button type="button" class="s" data-fu="${esc(f)}">${esc(f)}</button>`).join("")}${m.followups.length || m.suggestions.length ? `<button type="button" class="s" data-addq="${i}">把追问加进访谈大纲</button>` : ""}</div>
       <div class="ins-act"><button type="button" class="lnk" data-copy="${i}">复制</button><button type="button" class="lnk" data-redo="${i}">重新生成</button></div></div>`;
     const draw = () => {
@@ -338,8 +345,9 @@ async function insightsHub(p, my) {
       h.querySelectorAll("[data-del]").forEach((b) => (b.onclick = guard(async () => { if (!confirm("删除这段对话？删除后不能恢复。")) return; await api(`/chats/${b.dataset.del}`, { method: "DELETE" }); threads = threads.filter((t) => t.id !== b.dataset.del); if (cur && cur.id === b.dataset.del) { cur = null; sessionStorage.removeItem(key); draw(); } drawHist(); }))); };
     const open = async (id) => { cur = await api(`/chats/${id}`); sessionStorage.setItem(key, id); draw(); };
     async function send(text) {
-      text = (text || "").trim(); if (!text || busy) return;
-      if (!st.ready) return toast(st.message, true);
+      text = (text || "").trim(); if (!text || busy) return false;
+      if (!st.ready) { toast(st.message, true); return false; }
+      let ok = false;
       busy = text; $("#cmsg").value = ""; draw();
       drawAbort = new AbortController();
       try {
@@ -347,8 +355,10 @@ async function insightsHub(p, my) {
         const r = await api(`/chats/${cur.id}/ask`, { method: "POST", body: { message: text, scope }, signal: drawAbort.signal });
         cur.messages.push({ role: "user", text }, r.message); cur.title = r.title;
         threads = [{ id: cur.id, title: r.title || "新对话", updated_at: new Date().toISOString().replace("Z", "") }, ...threads.filter((t) => t.id !== cur.id)];
+        ok = true;
       } catch (e) { if (e.name !== "AbortError") toast(e.message, true); else { cur = cur ? await api(`/chats/${cur.id}`).catch(() => cur) : cur; } }
       busy = null; drawAbort = null; draw(); drawHist();
+      return ok;
     }
     async function addToOutline(m) {   // a follow-up question goes into the interview outline only after the person looks at it and picks where
       const o = await api(`/projects/${p.id}/outline`), parts = o.summary ? o.summary.parts.filter((x) => x.kind !== "stimulus") : [];
@@ -363,6 +373,7 @@ async function insightsHub(p, my) {
       <div class="ins-scope" id="cscope" role="group" aria-label="让 AI 读哪些内容">${SCOPES.map(([k, n]) => `<label class="chk"><input type="checkbox" data-sc="${k}" ${scope.includes(k) ? "checked" : ""}><span>${n}</span></label>`).join("")}</div>
       ${st.ready ? "" : `<div class="card empty"><b>还没连接 AI 模型</b><span>${esc(st.message)}</span></div>`}
       <div id="cthread" class="ins-thread"></div>
+      <div id="cbar" hidden></div>
       <div class="ins-inp"><div class="rf-box"><textarea id="cmsg" rows="2" maxlength="1000" placeholder="${st.ready ? "问问研究助手，比如“受访者为什么觉得价格太贵？”" : "连接模型后才能提问"}" aria-label="提问" ${st.ready ? "" : "disabled"}></textarea><button class="p rf-send" type="button" id="csend" aria-label="发送" ${st.ready ? "" : "disabled"}>↑</button></div>
         ${st.local ? "" : `<div class="sm mut ins-note">你的提问、本项目相关的转写片段和洞察会发送给 AI 服务商${st.vendor ? `“${esc(st.vendor)}”` : ""}。请不要输入受访者的姓名、电话等个人信息。</div>`}</div></div>`;
     $("#csend").onclick = () => (busy ? (drawAbort && drawAbort.abort()) : send($("#cmsg").value));
@@ -373,5 +384,16 @@ async function insightsHub(p, my) {
     box.querySelectorAll("[data-sc]").forEach((c) => (c.onchange = () => { scope = [...box.querySelectorAll("[data-sc]:checked")].map((x) => x.dataset.sc); if (!scope.length) { c.checked = true; scope = [c.dataset.sc]; toast("至少留一项让 AI 读", true); } sessionStorage.setItem("ichat_scope", JSON.stringify(scope)); }));
     const last = sessionStorage.getItem(key); if (last && threads.some((t) => t.id === last)) { try { await open(last); } catch { draw(); } } else draw();
     drawHist();
+    if (st.ready) {   // select words of a reply: ask about them on the side, or collect several and change them in one go (the quotes the server copied cannot be selected)
+      const sel = ChatSel.attach({ roots: [$("#cthread")], bar: $("#cbar"),
+        label: (k) => { const [kind, i] = k.split(":"), n = cur ? cur.messages.slice(0, +i + 1).filter((x) => x.role === "ai").length : 0; return kind === "g" ? `第 ${n} 条回答的建议` : `第 ${n} 条回答`; },
+        ask: async ({ quote, text }) => {
+          if (!cur) throw new Error("先问一个问题，再针对回答追问");
+          const r = await api(`/chats/${cur.id}/ask`, { method: "POST", body: { message: `关于你上一条回答里的这一段：“${quote}”\n${text}\n请只回答这个问题，不要改写前面的结论。`, scope, ask_only: true } });
+          return [r.message.answer, ...r.message.suggestions.map((x) => "· " + x)].join("\n");
+        },
+        send: async ({ text }) => send(text) });
+      selOff = () => sel.destroy();
+    }
   }
 }
