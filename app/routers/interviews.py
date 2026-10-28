@@ -263,8 +263,11 @@ def insights_overview(pid: str, ctx: Ctx = Depends(current_ctx), db: Session = D
         icols, icells = respondent_table.interview_columns(qs, itvs)
         cols = scols + icols
         cells = {iid: {**sby.get(pid_, {}), **icells.get(iid, {})} for iid, pid_ in person.items()}
+        by_id = {i.id: i for i in itvs}
         for r in rows:
             r["cells"] = cells.get(r["id"], {})
+            if r["status"] == "ended" and r["id"] in by_id:
+                r["progress"] = respondent_table.progress(qs, by_id[r["id"]])   # answered / asked outline questions; fewer = cut off midway
     return {"kpi": insights_overview_mod.kpis(rows), "rows": rows, "columns": cols, "can_generate": bool(team and qs) if team else False}
 
 

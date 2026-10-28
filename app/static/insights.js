@@ -29,7 +29,7 @@ async function insightsHub(p, my) {
   /* ---------- 受访者数据 ---------- */
   async function respondents(box) {
     const d = await api(`/projects/${p.id}/insights/overview`); if (stale(my)) return;
-    const k = d.kpi, rows = d.rows, showTags = rows.length ? "tags" in rows[0] : team;
+    const k = d.kpi, rows = d.rows.filter((r) => r.status === "ended"), showTags = d.rows.length ? "tags" in d.rows[0] : team;   // only finished interviews are listed
     const SEP = "、";
     const statusLabel = (r) => (STATUS[r.status] || [r.status])[0];
     const dur = (r) => (r.minutes != null ? `${r.minutes} 分` : "—");
@@ -67,13 +67,21 @@ async function insightsHub(p, my) {
     const cell = (r, c) => {
       if (c.id === "start") return `${r.started_at ? when(r.started_at) : "—"}${r.scheduled ? ` <span class="mut sm">预约</span>` : ""}`;
       if (c.id === "dur") return dur(r);
-      if (c.id === "status") { const [t, cl] = STATUS[r.status] || [r.status, ""]; return `<span class="tag ${cl}">${t}</span>`; }
+      if (c.id === "status") { const [t, cl] = STATUS[r.status] || [r.status, ""], g = r.progress; return g && g.answered < g.asked ? `<span class="tag o">中途结束 · ${g.answered}/${g.asked} 题</span>` : `<span class="tag ${cl}">${t}</span>`; }
       if (c.id === "tags") return (r.tags || []).map((t) => `<span class="lch ${lcolor(t)}">${esc(t)}</span>`).join("") || `<span class="mut">—</span>`;
       if (c.id === "ins") return `${r.insights || "—"} / ${r.clips || "—"}${r.review ? ` <span class="tag bad">${r.review} 待复核</span>` : ""}`;
       const v = valueOf(r, c);
-      if (c.group === "answer" && c.type === "text") return v ? `<div class="ins-cl" tabindex="0" role="button" aria-expanded="false">${esc(v)}</div>` : `<span class="mut">${r.status === "ended" ? "还没整理" : "访谈结束后生成"}</span>`;
+      if (c.group === "answer" && c.type === "text") return v ? `<div class="ins-cl" tabindex="0" role="button" data-ttl="${esc(r.code + " · " + c.label)}" data-tip="${esc(v)}">${esc(v)}</div>` : `<span class="mut">还没整理</span>`;
       if (c.type === "choice") return asList(v, c).map((x) => `<span class="tag">${esc(x)}</span>`).join("") || `<span class="mut">—</span>`;
-      return v ? `<div class="ins-cl" tabindex="0" role="button" aria-expanded="false">${esc(String(v))}</div>` : `<span class="mut">—</span>`;
+      return v ? `<div class="ins-cl" tabindex="0" role="button" data-ttl="${esc(r.code + " · " + c.label)}" data-tip="${esc(String(v))}">${esc(String(v))}</div>` : `<span class="mut">—</span>`;
+    };
+    const tw = (t) => [...String(t)].reduce((a, ch) => a + (ch.charCodeAt(0) > 255 ? 14 : 7.5), 0);
+    const FIXED_PX = { start: 130, dur: 96, status: 150, tags: 190, ins: 124 };
+    const colPx = (c) => {
+      if (FIXED_PX[c.id]) return FIXED_PX[c.id];
+      if (c.type === "choice") return Math.min(240, Math.max(130, Math.round(Math.max(0, ...optionsOf(c).map(([v]) => tw(v))) + 40)));
+      const vals = rows.map((r) => valueOf(r, c)).flat().map(String).filter(Boolean);
+      return Math.min(320, Math.max(160, Math.round((vals.reduce((a, v) => a + tw(v), 0) / (vals.length || 1)) / 2.4)));
     };
     const widthOf = (c) => (c.group === "answer" && c.type === "text" ? "w2" : c.type === "choice" || c.id === "tags" ? "w3" : "w1");
     box.innerHTML = `<div class="ins-kp"><div class="rd-k"><span>已完成访谈</span><b>${k.completed}</b><small class="mut">${k.upcoming ? `另有 ${k.upcoming} 场待开始` : "没有待开始的场次"}${k.live ? ` · ${k.live} 场进行中` : ""}</small></div>
@@ -82,7 +90,7 @@ async function insightsHub(p, my) {
         ${d.can_generate ? `<button type="button" id="igen">整理访谈回答</button>` : ""}<button type="button" id="iview">视图与筛选</button>${ME.role === "observer" ? "" : `<button type="button" id="xw">导出 Word</button><button type="button" id="xc">导出 CSV</button>`}</div>
       ${d.can_generate ? insAiNotice().replace("你的提问和相关的访谈转写会发送给", "整理时，每位受访者的回答会发送给") : ""}
       ${rows.length ? `<div class="ins-wrap" id="iwrap"><div class="ins-sc"><div class="ins-sx" id="isx"><table class="ins-tbl2" id="itbl"></table></div></div><div class="ins-pop" id="ipop" hidden></div></div><div class="ins-ft"><span id="icount"></span></div>`
-        : `<div class="card empty"><b>还没有场次。</b><span>访谈结束并转写后，每位受访者的数据会列在这里。</span></div>`}`;
+        : `<div class="card empty"><b>还没有已结束的访谈。</b><span>访谈结束后，每位受访者的数据会列在这里。</span></div>`}`;
     if (ME.role !== "observer" && $("#xw")) { $("#xw").onclick = insDownload(p, `/api/projects/${p.id}/insights/export?format=docx`, `${p.name}-洞察.docx`); $("#xc").onclick = insDownload(p, `/api/projects/${p.id}/insights/export?format=csv`, `${p.name}-洞察.csv`); }
     const gen = $("#igen");
     if (gen) gen.onclick = guard(async () => {   // the answers of every finished interview, one after the other (each call reads one transcript)
@@ -113,22 +121,38 @@ async function insightsHub(p, my) {
       pop.style.left = Math.max(8, Math.min(wr.width - pop.offsetWidth - 8, a.right - wr.left + 6)) + "px";
       pop.style.top = Math.max(0, Math.min(a.bottom - wr.top + 4, wrap.offsetHeight - pop.offsetHeight)) + "px";
     };
+    const pxStyle = (c) => { const w = colPx(c); return `width:${w}px;min-width:${w}px;max-width:${w}px`; };
     const header = () => {
-      const vs = visible(), groups = []; vs.forEach((c) => { const g = groups[groups.length - 1]; if (g && g.id === c.group) g.n++; else groups.push({ id: c.group, n: 1 }); });
+      const vs = visible();
       const fi = (c) => (filterable(c) || c.id === "status" || c.id === "tags" ? `<button type="button" class="fi${F[c.id] && ((F[c.id].sel && F[c.id].sel.size) || F[c.id].q) ? " on" : ""}" data-f="${c.id}" aria-label="筛选：${esc(c.label)}">☰</button>` : "");
-      return `<thead><tr class="g"><th class="pin"></th>${groups.map((g) => `<th colspan="${g.n}">${GROUPS[g.id]}</th>`).join("")}</tr><tr class="c"><th class="pin">编号</th>${vs.map((c) => `<th class="${widthOf(c)}" title="${esc(c.label)}">${esc(c.label)}${fi(c)}</th>`).join("")}</tr></thead>`;
+      return `<thead><tr class="c"><th class="pin">编号</th>${vs.map((c) => `<th class="${widthOf(c)}" style="${pxStyle(c)}"><div class="thc"><span class="tt" data-ttl="" data-tip="${esc(c.label)}">${esc(c.label)}</span>${fi(c)}</div></th>`).join("")}</tr></thead>`;
     };
     const draw = () => {
       const vs = visible(); shown = rows.filter(matches); closeCard(); rspSetList(shown.map((r) => r.id));
-      tbl.innerHTML = header() + `<tbody>${shown.map((r, i) => `<tr data-i="${i}"><td class="pin"><a href="#/i/${r.id}"><b>${esc(r.code)}</b></a></td>${vs.map((c) => `<td class="${widthOf(c)}" data-l="${esc(c.label)}">${cell(r, c)}</td>`).join("")}</tr>`).join("")}</tbody>`;
+      tbl.innerHTML = header() + `<tbody>${shown.map((r, i) => `<tr data-i="${i}"><td class="pin"><a href="#/i/${r.id}"><b>${esc(r.code)}</b></a></td>${vs.map((c) => `<td class="${widthOf(c)}" style="${pxStyle(c)}" data-l="${esc(c.label)}">${cell(r, c)}</td>`).join("")}</tr>`).join("")}</tbody>`;
+      tbl.style.width = 92 + vs.reduce((a, c) => a + colPx(c), 0) + "px";
       $("#icount").textContent = `共 ${rows.length} 人 · 当前显示 ${shown.length} 人${activeFilters() ? ` · ${activeFilters()} 个筛选` : ""}`;
       tbl.querySelectorAll("td.pin").forEach((td) => { const i = +td.parentElement.dataset.i; td.onmouseenter = () => { if (matchMedia("(hover:hover)").matches) openCard(i, td); }; td.onclick = (e) => { if (e.target.closest("a") || matchMedia("(hover:hover)").matches) return; open === i ? closeCard() : openCard(i, td); }; });
-      tbl.querySelectorAll(".ins-cl").forEach((c) => (c.onclick = c.onkeydown = (e) => { if (e.type === "keydown" && e.key !== "Enter" && e.key !== " ") return; e.preventDefault(); const on = c.classList.toggle("open"); c.setAttribute("aria-expanded", String(on)); }));
+      tbl.querySelectorAll(".ins-cl,.thc .tt").forEach((c) => {
+        const cut = () => c.scrollHeight > c.clientHeight + 1 || c.scrollWidth > c.clientWidth + 1;
+        c.onmouseenter = () => { if (matchMedia("(hover:hover)").matches && cut()) showTip(c); };
+        c.onmouseleave = () => { if (matchMedia("(hover:hover)").matches) hideTip(); };
+        c.onfocus = () => { if (cut()) showTip(c); }; c.onblur = hideTip;
+        c.onclick = (e) => { if (matchMedia("(hover:hover)").matches) return; e.preventDefault(); tip.hidden && cut() ? showTip(c) : hideTip(); };
+      });
       tbl.querySelectorAll(".fi").forEach((b) => (b.onclick = (e) => { e.stopPropagation(); openFilter(b, cols.find((x) => x.id === b.dataset.f)); }));
       fit();
     };
-    wrap.onmouseleave = () => { if (matchMedia("(hover:hover)").matches) closeCard(); };
-    sx.onscroll = closeCard;
+    const tip = document.createElement("div"); tip.className = "ins-tip"; tip.hidden = true; tip.setAttribute("role", "tooltip"); wrap.appendChild(tip);
+    const hideTip = () => { tip.hidden = true; };
+    const showTip = (el) => {   // the whole text of a cut-off cell or column title, beside it
+      tip.innerHTML = `${el.dataset.ttl ? `<small>${esc(el.dataset.ttl)}</small>` : ""}${esc(el.dataset.tip || "")}`; tip.hidden = false;
+      const wr = wrap.getBoundingClientRect(), a = el.getBoundingClientRect();
+      tip.style.left = Math.max(4, Math.min(wr.width - tip.offsetWidth - 4, a.left - wr.left)) + "px";
+      tip.style.top = (a.bottom - wr.top + 4 + tip.offsetHeight > wrap.offsetHeight ? Math.max(0, a.top - wr.top - tip.offsetHeight - 4) : a.bottom - wr.top + 4) + "px";
+    };
+    wrap.onmouseleave = () => { if (matchMedia("(hover:hover)").matches) { closeCard(); hideTip(); } };
+    sx.onscroll = () => { closeCard(); hideTip(); };
     /* a column's filter: choices (and labels) get a tick list with counts, 全选 / 清除; an open question only gets a search box */
     function openFilter(btn, c) {
       if (!filterable(c) && c.id !== "status" && c.id !== "tags") return;
@@ -236,22 +260,40 @@ async function insightsHub(p, my) {
       } finally { mod.remove(); await report(box); } });
   }
 
-  /* ---------- 问题分析 ---------- */
+  /* ---------- 问题分析：问题列表就是“访谈”页大纲的那一版（语言 × 访谈形式），两处共用同一个选择 ---------- */
   const done = {};  // question text -> the answer, kept while the page is open
   async function questions(box) {
-    const o = await api(`/projects/${p.id}/outline`); if (stale(my)) return;
-    const qs = o.summary ? o.summary.parts.flatMap((x) => x.questions.filter((y) => !y.cover).map((y) => y.text)) : [];
-    if (!qs.length) { box.innerHTML = `<div class="card empty"><b>还没有访谈大纲。</b><span>先到“访谈”页写好大纲，这里会按每个问题归纳回答。</span><a class="btn p" href="#/p/${p.id}/outline">去访谈页</a></div>`; return; }
-    let cur = 0;
+    const vkey = "ol_v_" + p.id;   // the same key the 访谈 page keeps its open version in: change it in either place and the other follows
+    const fetchOutline = async (k) => { try { return await api(`/projects/${p.id}/outline${k ? `?v=${encodeURIComponent(k)}` : ""}`); } catch (e) { if (k) return fetchOutline(""); throw e; } };
+    let o = await fetchOutline(sessionStorage.getItem(vkey) || ""); if (stale(my)) return;
+    const qsOf = () => (o.summary ? o.summary.parts.flatMap((x) => x.questions.filter((y) => !y.cover).map((y) => y.text)) : []);
+    let qs = qsOf(), cur = 0, menu = false;
+    if (!qs.length && !(o.versions || []).length) { box.innerHTML = `<div class="card empty"><b>还没有访谈大纲。</b><span>先到“访谈”页写好大纲，这里会按每个问题归纳回答。</span><a class="btn p" href="#/p/${p.id}/outline">去访谈页</a></div>`; return; }
+    const verBar = () => { const vs = (o.versions || []).filter((x) => x.exists !== false); if (vs.length < 2) return "";
+      const c = vs.find((x) => x.key === o.v) || vs[0];
+      return `<div class="row ins-tool"><span class="sm mut">访谈大纲版本</span><div class="rf-ver"><button type="button" id="qver" aria-haspopup="true" aria-expanded="${menu}">${esc(c.name)} ▾</button>${menu ? `<div class="rf-vm" role="menu">${vs.map((x) => `<button type="button" class="rf-vi${x.key === c.key ? " on" : ""}" role="menuitemradio" aria-checked="${x.key === c.key}" data-qv="${esc(x.key)}"><span>${esc(x.name)}${x.base ? "（原文）" : ""}</span></button>`).join("")}</div>` : ""}</div></div>`; };
     const right = () => {
       const q = qs[cur], r = done[q];
+      if (!q) { $("#qapane").innerHTML = `<div class="card empty"><b>这个版本的大纲里还没有问题</b><a class="btn p" href="#/p/${p.id}/outline">去访谈页</a></div>`; return; }
       $("#qapane").innerHTML = `<div class="row ins-tool"><b>问题 ${cur + 1}</b><span class="sp"></span><button type="button" class="p" id="qago">${r ? "重新生成这题的分析" : "生成这题的分析"}</button></div><div class="card"><div><b>${esc(q)}</b></div>${insAiNotice()}</div>
         ${r ? `<div class="card"><h4 style="margin:0 0 6px">受访者怎么回答的</h4>${insAnswer(r)}</div>` : `<div class="card empty"><b>还没有分析</b><span>点右上角的按钮，按已有的转写归纳这一题。</span></div>`}`;
       $("#qago").onclick = guard(async () => { const b = $("#qago"); b.disabled = true; b.textContent = "正在分析…"; try { done[q] = await api("/repo/ask", { method: "POST", body: { question: `受访者是怎么回答这个问题的：${q}`, project_id: p.id } }); } finally { right(); list(); } });
     };
     const list = () => { $("#qalist").innerHTML = qs.map((q, i) => `<div role="button" tabindex="0" class="ins-ql${i === cur ? " on" : ""}" data-qi="${i}"><span>${i + 1}</span><div>${esc(q)}</div>${done[q] ? `<em>已分析</em>` : ""}</div>`).join(""); document.querySelectorAll("[data-qi]").forEach((b) => { const go = () => { cur = +b.dataset.qi; list(); right(); }; b.onclick = go; b.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } }; }); };
-    box.innerHTML = `<div class="ins-qa"><div><div class="sm mut" style="margin:0 0 6px">访谈大纲里的问题</div><div id="qalist" class="ins-qls"></div></div><div id="qapane"></div></div>`;
-    list(); right();
+    const draw = () => {
+      box.innerHTML = `<div id="qverbar">${verBar()}</div><div class="ins-qa"><div><div class="sm mut" style="margin:0 0 6px">访谈大纲里的问题</div><div id="qalist" class="ins-qls"></div></div><div id="qapane"></div></div>`;
+      const vb = $("#qver"); if (vb) vb.onclick = (e) => { e.stopPropagation(); menu = !menu; $("#qverbar").innerHTML = verBar(); wireVer(); };
+      list(); right();
+    };
+    const wireVer = () => {
+      const vb = $("#qver"); if (vb) vb.onclick = (e) => { e.stopPropagation(); menu = !menu; $("#qverbar").innerHTML = verBar(); wireVer(); };
+      box.querySelectorAll("[data-qv]").forEach((b) => (b.onclick = guard(async () => {
+        const k = b.dataset.qv; menu = false; try { sessionStorage.setItem(vkey, k); } catch { /* no storage: this page only */ }
+        o = await fetchOutline(k); qs = qsOf(); cur = 0; draw(); wireVer();
+      })));
+    };
+    document.addEventListener("click", () => { if (menu && $("#qverbar")) { menu = false; $("#qverbar").innerHTML = verBar(); wireVer(); } });
+    draw(); wireVer();
   }
 
   /* ---------- 精彩片段 ---------- */

@@ -447,6 +447,12 @@ def insights_section(br, D):
     """The insights page's five tabs: respondent data (numbers, table, hover card, search), report, question analysis, highlight wall, chat; a client observer only gets the table."""
     adm, pid = D["tok"]["admin"], D["pid"]
     call(f"/projects/{pid}/outline/chat", {"message": "帮我起草一份大纲"}, adm)  # so the question tab has questions
+    for it in call(f"/projects/{pid}/interviews", None, adm):   # work out the answers of finished interviews, so the table has answer cells
+        if it["status"] == "ended":
+            try:
+                call(f"/interviews/{it['id']}/answers/generate", {}, adm)
+            except Exception:  # noqa: BLE001 - a transcript without matching questions just leaves the cells empty
+                pass
     ctx, pg, errs = new_page(br, 1280, token=adm)
     pg.goto(B + "/"); pg.evaluate("sessionStorage.setItem('itab', 'r')")
     pg.goto(B + f"/#/p/{pid}/insights"); pg.wait_for_selector(".ins-tbl2 tbody tr")
@@ -456,8 +462,17 @@ def insights_section(br, D):
     ok(pg.locator(".ins-kp .rd-k").count() == 3 and "已完成访谈" in pg.inner_text(".ins-kp"), "[insights] three numbers on top")
     heads = [x.strip() for x in pg.locator(".ins-tbl2 thead tr.c th").all_inner_texts()]
     ok(heads[0] == "编号" and all(h in " ".join(heads) for h in ("开始时间", "访谈时长", "状态", "标签", "洞察 / 片段")), f"[insights] the table starts with 编号, then the base columns (got {heads[:7]})")
-    groups = [x.strip() for x in pg.locator(".ins-tbl2 thead tr.g th").all_inner_texts()]
-    ok("基本信息" in groups and any("问卷答案" in g for g in groups) or "基本信息" in groups, f"[insights] a bar above the columns groups them (got {groups})")
+    ok(pg.locator(".ins-tbl2 thead tr").count() == 1 and pg.locator(".ins-tbl2 thead tr.g").count() == 0, "[insights] one header row only: no group bar above the columns")
+    ok(not any("待开始" in x for x in pg.locator(".ins-tbl2 tbody td:nth-child(4)").all_inner_texts()), "[insights] only finished interviews are listed (no 待开始 rows)")
+    fi_gap = pg.evaluate("""(() => { const th = [...document.querySelectorAll('.ins-tbl2 thead tr.c th')].find((t) => t.querySelector('.fi')); if (!th) return [0, 0]; const a = th.getBoundingClientRect(), b = th.querySelector('.fi').getBoundingClientRect(); return [Math.round(a.right - b.right), Math.round(b.left - a.left)]; })()""")
+    ok(fi_gap[0] <= 10 and fi_gap[1] > 30, f"[insights] a column's filter sits at the right end of its header cell (got {fi_gap})")
+    long_cell = pg.locator(".ins-tbl2 .ins-cl").first
+    if long_cell.count():
+        cut = long_cell.evaluate("e => e.scrollHeight > e.clientHeight + 1")
+        if cut:
+            long_cell.hover(); pg.wait_for_selector(".ins-tip:not([hidden])")
+            ok(len(pg.inner_text(".ins-tip")) > len(long_cell.inner_text()) - 1, "[insights] hovering a cut-off answer shows its whole text beside it")
+            pg.mouse.move(5, 5)
     ok(pg.locator("#ipop").is_hidden(), "[insights] no card until the mouse is on a code")
     pg.locator(".ins-tbl2 tbody td.pin").first.hover(); pg.wait_for_selector("#ipop:not([hidden])")
     card = pg.inner_text("#ipop")
@@ -480,11 +495,11 @@ def insights_section(br, D):
     pg.click("#iview"); pg.wait_for_selector(".rmpop .rmfo"); pg.locator(".rmpop .rmfo input").nth(1).check(); pg.mouse.click(5, 300)
     # the fixed header rows and the fixed first column stay put when the table is scrolled both ways
     pg.evaluate("document.getElementById('isx').scrollTo(400, 60)")
-    fixed = pg.evaluate("""(() => { const box = document.getElementById('isx').getBoundingClientRect(), g = document.querySelector('.ins-tbl2 thead tr.g th:nth-child(2)').getBoundingClientRect(),
+    fixed = pg.evaluate("""(() => { const box = document.getElementById('isx').getBoundingClientRect(),
       c = document.querySelector('.ins-tbl2 thead tr.c th:nth-child(2)').getBoundingClientRect(), pin = document.querySelector('.ins-tbl2 thead tr.c th.pin').getBoundingClientRect(), cellPin = document.querySelector('.ins-tbl2 tbody td.pin').getBoundingClientRect();
-      const probe = document.elementFromPoint(box.left + 200, box.top + 45);
-      return [Math.abs(g.top - box.top) <= 1, Math.abs(c.top - box.top - 28) <= 2, Math.abs(pin.left - box.left) <= 1, Math.abs(cellPin.left - box.left) <= 1, probe && probe.tagName === 'TH']; })()""")
-    ok(all(fixed), f"[insights] both header rows and the code column stay fixed while the table scrolls sideways and down, and no row shows through between them {fixed}")
+      const probe = document.elementFromPoint(box.left + 200, box.top + 18);
+      return [Math.abs(c.top - box.top) <= 1, Math.abs(pin.left - box.left) <= 1, Math.abs(cellPin.left - box.left) <= 1, probe && !!probe.closest('th')]; })()""")
+    ok(all(fixed), f"[insights] the header row and the code column stay fixed while the table scrolls sideways and down, and no row shows through between them {fixed}")
     pg.evaluate("document.getElementById('isx').scrollTo(0, 0)")
     ok(pg.locator("#xw").count() == 1 and pg.locator("#xc").count() == 1, "[insights] the export buttons are on the respondent tab")
     pg.screenshot(path=os.path.join(ROOT, "qa_shots", "insights_r_1280.png"))
@@ -509,6 +524,11 @@ def insights_section(br, D):
     audit_page(pg, "insights p/desktop", errs)
     pg.click("#itabs a[data-k=q]"); pg.wait_for_selector(".ins-ql")
     ok(pg.locator(".ins-ql").count() >= 3, "[insights] the question tab lists the questions of the interview outline")
+    if pg.locator("#qver").count():   # the outline has several versions: the page shares the choice with the 访谈 page
+        pg.click("#qver"); pg.wait_for_selector("[data-qv]")
+        other = pg.locator("[data-qv]:not(.on)").first; key = other.get_attribute("data-qv"); other.click()
+        pg.wait_for_selector(".ins-ql")
+        ok(pg.evaluate("(k) => sessionStorage.getItem('ol_v_' + k)", pid) == key, "[insights] picking another outline version on the question tab is the same choice the 访谈 page keeps")
     pg.click("#qago"); ok(wait_until(lambda: pg.locator(".ins-claim").count() > 0 or "没有足够的证据" in pg.inner_text("#qapane") or "没有成功" in pg.inner_text("#qapane") or pg.locator("#qago").inner_text().startswith("重新"), 15), "[insights] 'generate the analysis' gives an answer or says the evidence is not enough")
     audit_page(pg, "insights q/desktop", errs)
     pg.click("#itabs a[data-k=v]"); pg.wait_for_selector("#reels .card")

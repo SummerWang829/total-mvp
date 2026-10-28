@@ -73,3 +73,12 @@ def interview_columns(questions: list[str], itvs: list[Interview]) -> tuple[list
                 cells[i.id][f"a{n}"] = it["a"]
                 cells[i.id][f"t{n}"] = it.get("themes") or []
     return cols, cells
+
+
+def progress(questions: list[str], itv: Interview) -> dict | None:
+    """How many outline questions this finished interview got an answer to: {"answered", "asked"}; None when the answers were not worked out yet (nothing can be said).
+    Fewer answered than asked is how an interview that was cut off midway shows (the table marks it)."""
+    if not questions or not itv.answers_json:
+        return None
+    stored = interview_answers.load(itv)
+    return {"answered": sum(1 for q in questions if stored.get(q, {}).get("a")), "asked": len(questions)}

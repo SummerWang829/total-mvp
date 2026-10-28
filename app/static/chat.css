@@ -42,3 +42,16 @@
 @media (max-width:900px){.rp-wrap{grid-template-columns:minmax(0,1fr)}.rp-side{position:static;max-height:none}}
 .rp-wrap small{font-size:12px}
 .rp-app h4.ins-h1{font-size:16px}.rp-app h5.ins-h2{font-size:14px}
+
+/* 洞察与片段 · 受访者数据表：一行表头、列宽跟内容走、长内容两行加悬停全文、筛选在列右端 */
+.ins-tbl2{table-layout:fixed}
+.ins-tbl2 th,.ins-tbl2 td{border-left:1px solid var(--line)}
+.ins-tbl2 th.pin,.ins-tbl2 td.pin{border-left:0}
+.ins-tbl2 thead tr.c th{top:0;padding:0}
+.ins-tbl2 thead tr.c th.pin{padding:0 10px}
+.ins-tbl2 .thc{display:flex;align-items:center;justify-content:space-between;gap:6px;height:36px;padding:0 6px 0 10px}
+.ins-tbl2 .thc .tt{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ins-tbl2 .thc .fi{flex:none;margin-left:0}
+.ins-tbl2 .ins-cl{-webkit-line-clamp:2;cursor:default}
+.ins-tip{position:absolute;z-index:20;max-width:min(440px,92%);background:var(--surface);border:1px solid var(--line2);border-radius:10px;padding:8px 12px;box-shadow:0 8px 24px rgba(6,35,25,.18);font-size:14px;line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere}
+.ins-tip[hidden]{display:none}.ins-tip small{display:block;color:var(--muted);font-size:12px}
