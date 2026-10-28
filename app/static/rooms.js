@@ -178,7 +178,7 @@ async function roomsView(p) {
   }
   /* a column filter opens as a small panel floating over the table, with search, 全选 / 清除 and a tick list; it only applies to the page (tab) you are on */
   function openFilter(btn, k, label, get) {
-    const pop = rmPop(btn, `<div class="lb">${esc(label)}（只作用于“${RM_TABS.find((t) => t[0] === RM.tab)[1]}”这一页）</div><input class="mss" placeholder="搜索" aria-label="搜索${esc(label)}"><div class="rmfa"><button type="button" class="lnk" data-all>全选</button><button type="button" class="lnk" data-none>清除</button></div><div class="rmopts rmfl"></div>`);
+    const pop = rmPop(btn, `<input class="mss" placeholder="搜索" aria-label="搜索${esc(label)}"><div class="rmfa"><button type="button" class="lnk" data-all>全选</button><button type="button" class="lnk" data-none>清除</button></div><div class="rmopts rmfl"></div>`);
     const list = pop.querySelector(".rmfl"), inp = pop.querySelector("input");
     const apply = () => { drawBody(); drawTabs(); markHeads(); };
     const fill = () => { const q = inp.value.trim(), os = options(k, get).filter((v) => !q || v.includes(q));

@@ -4,6 +4,7 @@ Who may do what: the moderator and the research team run the room (show a materi
 a hidden observer may read captions and mark quotes / suggest follow-ups; the participant only posts captions of their own microphone
 and sees the current material. Quote text is always copied from the caption line by the server, never taken from the browser.
 """
+import json
 import logging
 import threading
 import time
@@ -21,7 +22,7 @@ from ..asr_live import token_out
 from ..audit import audit
 from ..db import SessionLocal, get_db
 from ..deps import STAFF, Ctx, current_ctx, require_roles, visible_interview
-from ..models import BackroomMessage, CaptionLine, Highlight, Interview, RoomState, Stimulus, utcnow
+from ..models import BackroomMessage, CaptionLine, Highlight, Interview, RoomState, Stimulus, User, utcnow
 from ..providers import get_llm
 from .interviews import _ingest
 from .public import _consented, resolve_join
@@ -32,6 +33,8 @@ router = APIRouter(prefix="/api", tags=["concept"])
 
 OPERATE = ("admin", "researcher", "support", "moderator")
 MAX_TEXT = 600
+MAX_QUOTES = 6   # caption lines one follow-up may be built from
+PROPOSER_LABEL = {"admin": "管理员", "researcher": "研究员", "support": "技术支持", "moderator": "主持人", "viewer": "客户", "observer": "观察员", "recruiter": "项目经理"}
 MAX_LINES_PER_INTERVIEW = 5000
 PARTIAL_TTL_S = 8.0
 _PARTIAL: dict[tuple[str, str], tuple[str, float]] = {}  # the sentence being spoken right now, per (interview, speaker); memory only, never stored
@@ -386,11 +389,21 @@ class HighlightIn(BaseModel):
     kind: Literal["quote", "probe"]
     caption_id: str | None = None  # the caption line being quoted / followed up (its text is copied by the server)
     text: str | None = Field(default=None, max_length=300)  # a typed follow-up question when there is no caption line
+    caption_ids: list[str] = Field(default_factory=list, max_length=MAX_QUOTES)  # several caption lines the follow-up is about (probe only); the guidance goes in `text`
+    depth: Literal["shallow", "deep"] | None = None
 
 
-def highlight_out(h: Highlight, ctx: Ctx) -> dict:
+def highlight_out(h: Highlight, ctx: Ctx, by: str = "") -> dict:
     return {"id": h.id, "kind": h.kind, "speaker": h.speaker, "text": h.text, "caption_id": h.caption_id, "stimulus_key": h.stimulus_key,
-            "at_ms": h.at_ms, "status": h.status, "created_at": h.created_at.isoformat(), "mine": h.created_by == ctx.user.id}
+            "at_ms": h.at_ms, "status": h.status, "created_at": h.created_at.isoformat(), "mine": h.created_by == ctx.user.id,
+            "quotes": json.loads(h.quotes_json) if h.quotes_json else [], "depth": h.depth or "", "by": by}
+
+
+def _by_labels(db: Session, hs: list[Highlight]) -> dict[str, str]:
+    """Who proposed each follow-up, by role only (never a name): the team and the client's observers all see these."""
+    ids = {h.created_by for h in hs if h.created_by}
+    users = {u.id: u for u in db.scalars(select(User).where(User.id.in_(ids))).all()} if ids else {}
+    return {h.id: PROPOSER_LABEL.get(users[h.created_by].role, "团队") for h in hs if h.created_by in users}
 
 
 @router.post("/interviews/{iid}/highlights", status_code=201)
@@ -399,16 +412,27 @@ def create_highlight(iid: str, body: HighlightIn, ctx: Ctx = Depends(current_ctx
     if itv.purged_at:
         raise HTTPException(404, "访谈不存在")
     speaker, text, cap_id, when = "", (body.text or "").strip(), None, at_ms(itv)
-    if body.caption_id:
+    quotes: list[dict] = []
+    if body.caption_ids:
+        if body.kind != "probe":
+            raise HTTPException(422, "只有追问可以引用多句")
+        ids = list(dict.fromkeys(body.caption_ids))
+        lines = {x.id: x for x in db.scalars(select(CaptionLine).where(CaptionLine.id.in_(ids), CaptionLine.interview_id == itv.id)).all()}
+        if len(lines) != len(ids):
+            raise HTTPException(404, "没有这条字幕")
+        quotes = [{"id": x.id, "speaker": x.speaker, "text": x.text, "at_ms": x.at_ms} for x in sorted(lines.values(), key=lambda x: x.at_ms)]  # verbatim, from the stored lines
+        when = quotes[0]["at_ms"]
+    elif body.caption_id:
         line = db.get(CaptionLine, body.caption_id)
         if not line or line.interview_id != itv.id:
             raise HTTPException(404, "没有这条字幕")
         speaker, text, cap_id, when = line.speaker, line.text, line.id, line.at_ms  # verbatim, from the stored line
-    elif body.kind == "quote" or not text:
+    if not body.caption_ids and not body.caption_id and (body.kind == "quote" or not text):
         raise HTTPException(422, "引用必须来自一条字幕；追问需要一句话")
     stim = concept.current_stimulus(db, itv.id, staff=True)
     h = Highlight(org_id=ctx.org_id, interview_id=itv.id, kind=body.kind, speaker=speaker, text=text, caption_id=cap_id,
-                  stimulus_key=(stim or {}).get("key", ""), at_ms=when, created_by=ctx.user.id)
+                  stimulus_key=(stim or {}).get("key", ""), at_ms=when, created_by=ctx.user.id,
+                  quotes_json=json.dumps(quotes, ensure_ascii=False) if quotes else "", depth=body.depth or "")
     db.add(h)
     audit(db, ctx.org_id, ctx.actor, f"highlight.{body.kind}", itv.id, ip=ctx.ip)
     db.commit()
@@ -421,7 +445,9 @@ def list_highlights(iid: str, kind: str | None = None, ctx: Ctx = Depends(curren
     q = select(Highlight).where(Highlight.interview_id == itv.id)
     if kind in ("quote", "probe"):
         q = q.where(Highlight.kind == kind)
-    return [highlight_out(h, ctx) for h in db.scalars(q.order_by(Highlight.created_at)).all()]
+    rows = db.scalars(q.order_by(Highlight.created_at)).all()
+    by = _by_labels(db, rows)
+    return [highlight_out(h, ctx, by.get(h.id, "")) for h in rows]
 
 
 def _highlight(db: Session, ctx: Ctx, hid: str) -> Highlight:

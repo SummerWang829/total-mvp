@@ -268,6 +268,9 @@ def rooms_section(br, D):
     ok(pg.locator(".rmpop [data-all]").count() == 1 and pg.locator(".rmpop [data-none]").count() == 1 and pg.locator(".rmpop .rmfo").count() >= 1, "[rooms] a column header opens a floating panel with search, 全选, 清除 and a tick list")
     box = pg.evaluate("(() => { const p = document.querySelector('.rmpop').getBoundingClientRect(); return [p.bottom <= innerHeight, p.top >= 0]; })()")
     ok(all(box), "[rooms] the panel is fully on screen (not cut off by the table's box)")
+    seen = pg.evaluate("(() => { const p = document.querySelector('.rmpop').getBoundingClientRect(); return [...document.querySelectorAll('.rmpop .rmfo span')].map((s) => { const r = s.getBoundingClientRect(); return r.width > 4 && r.left >= p.left && r.right <= p.right + 1 && s.textContent.trim().length > 0; }); })()")
+    ok(bool(seen) and all(seen), f"[rooms] every option in a filter panel shows its text inside the panel {seen}")
+    ok(pg.locator(".rmpop .lb").count() == 0, "[rooms] the filter panel has no page-scope hint line")
     pg.locator(".rmpop .rmfo input").first.check()
     ok(wait_until(lambda: pg.locator("#rmb tr").count() <= n_all and pg.locator("#rmh .rmhb.on").count() == 1, 5) and pg.evaluate("document.querySelector('#rmtabs').dataset.mark") == "same-page", "[rooms] ticking a filter narrows the table and marks the header, without redrawing the page")
     pg.locator(".rmt", has_text="已结束").click()
@@ -1805,7 +1808,7 @@ def concept_room_section(br, D):
                 pg.goto(B + f"/room.html?i={iid}&as={asr}"); pg.wait_for_selector("#claims", timeout=8000)
                 ok(wait_until(lambda: pg.locator("#caps .cap").count() == 4 and pg.locator("#probes .pr").count() == 2, 10), f"[{tag} {role}] four sentences and two follow-ups are on screen")
                 ok(wait_until(lambda: pg.locator("#brlog .m").count() == 2, 8) and pg.locator("#brform").count() == 1, f"[{tag} {role}] the private chat shows both messages and has an input")
-                ok(pg.locator("#caps .cap .hd button", has_text="引用").count() == 4 and pg.locator("#caps .cap .hd button", has_text="追问").count() == 4, f"[{tag} {role}] every sentence has quote / follow-up buttons")
+                ok(pg.locator("#caps .cap .hd button", has_text="引用").count() == 4 and pg.locator("#caps .cap [data-qid]").count() == 4, f"[{tag} {role}] every sentence has a quote button and can be clicked to quote into 追问")
                 ok(wait_until(lambda: pg.locator("#stim img").is_visible(), 8), f"[{tag} {role}] the material on screen is visible")
                 if role == "moderator":
                     ok(wait_until(lambda: pg.locator("#plan details").count() == 5 and "已用" in pg.inner_text("#plantm"), 8), f"[{tag}] the script and the timer are shown")

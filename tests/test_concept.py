@@ -497,3 +497,25 @@ def test_the_private_chat_is_deleted_with_the_interview(org):
         purge_interview(db, db.get(Interview, itv["id"]), "test")
         db.commit()
         assert db.query(BackroomMessage).count() == 0
+
+
+def test_a_follow_up_can_quote_several_lines_and_carries_depth_and_proposer(org):
+    itv = _live_room(org)
+    _caption(org, itv, "人太多了，有点累。", who="participant")
+    _caption(org, itv, "广告我印象不深。", who="participant")
+    ids = [x["id"] for x in _lines(org, itv)["lines"]]
+    r = _highlight(org, itv, role="observer", kind="probe", caption_ids=ids, text="累和看不过来有什么关系？", depth="deep")
+    assert r.status_code == 201
+    got = org.c.get(f"/api/interviews/{itv['id']}/highlights?kind=probe", headers=org.h("moderator")).json()[0]
+    assert [q["text"] for q in got["quotes"]] == ["人太多了，有点累。", "广告我印象不深。"] and got["depth"] == "deep" and got["text"] == "累和看不过来有什么关系？"
+    assert got["by"] and "@" not in got["by"]  # a role label, never a name or address
+    assert _highlight(org, itv, kind="probe", caption_ids=ids).status_code == 201  # the quotes alone are enough
+    assert _highlight(org, itv, kind="quote", caption_ids=ids).status_code == 422  # only follow-ups take several lines
+    assert _highlight(org, itv, kind="probe", caption_ids=["nope"], text="x").status_code == 404
+
+
+def test_a_follow_up_cannot_quote_lines_of_another_interview(org):
+    a, b = _live_room(org), _live_room(org)
+    _caption(org, a, "只在 A 里")
+    cap = _lines(org, a)["lines"][0]["id"]
+    assert _highlight(org, b, kind="probe", caption_ids=[cap], text="x").status_code == 404

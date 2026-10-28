@@ -1081,7 +1081,7 @@ button.ed:hover:not(:disabled){color:var(--ink);background:var(--orange-soft);bo
 .rmfa{display:flex;gap:12px;margin:4px 0 6px}
 .rmfl{max-height:240px;overflow:auto}
 .rmfo{display:flex;gap:8px;align-items:center;padding:5px 4px;border-radius:6px;cursor:pointer;min-height:32px}.rmfo:hover{background:var(--orange-soft)}
-.rmfo input{margin:0}
+.rmpop .rmfo input{width:auto;flex:none;margin:0}.rmfo span{min-width:0;overflow-wrap:anywhere}
 .rmhb.on{color:var(--orange-ink)}
 .rmscroll .rmbox{overflow-x:auto}
 @media (max-width:900px){.rmcard{display:none}}
@@ -1225,3 +1225,19 @@ body.q4mode .q4{display:grid;grid-template-columns:1.3fr 1.3fr 1fr 1fr;gap:10px;
 .ol-bq{cursor:pointer;align-items:center}.ol-pk{width:18px;height:18px;flex:none;accent-color:#0B382C}
 .rt-st.r{color:#A32D2D}
 @media (max-width:900px){.ol-bt{flex-wrap:wrap}.ol-bs,.ol-bd,.ol-bx{min-height:36px}.ol-pk{width:22px;height:22px}}
+/* 直播间四列：第 1 列顶部并排主持人和受访者画面，字幕独占第 2 列；点字幕引用到“追问”输入框 */
+.q4 .qrow{flex:none;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;height:28%;min-height:130px}
+.q4 .qrow .qt{height:auto;min-height:0}
+[data-qid]{cursor:pointer;border-radius:8px}[data-qid]:focus-visible{outline:2px solid var(--orange);outline-offset:2px}
+.qsel{outline:2px solid var(--orange);outline-offset:1px;background:rgba(255,106,0,.22)}
+.qqh{color:var(--r-mut)}
+.qqchips{display:flex;flex-direction:column;gap:4px}
+.qqc{display:flex;gap:6px;align-items:flex-start;justify-content:space-between;border-left:3px solid var(--orange);background:var(--r-tile);border-radius:0 8px 8px 0;padding:4px 6px 4px 8px;font-size:14px;line-height:1.5;overflow-wrap:anywhere}
+.qqc button{flex:none;min-width:28px;height:28px;padding:0;font-size:16px;background:transparent;border-color:transparent;color:var(--r-mut)}
+.qdepth{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}
+.qdepth button{height:32px;padding:0 12px;border-radius:999px;font-size:13px;background:var(--r-btn);border-color:var(--r-btnline);color:var(--r-btnink)}.qdepth button::before{background:var(--r-sweep)}
+.qdepth button[aria-pressed=true]{background:var(--orange);color:var(--on-orange);border-color:var(--orange)}
+.q4 .pr .pby{font-size:12px;color:var(--r-mut)}.q4 .pr .pq{border-left:3px solid var(--orange);padding:2px 8px;margin:3px 0;background:var(--r-tile);border-radius:0 8px 8px 0;font-size:14px;line-height:1.5;overflow-wrap:anywhere}.q4 .pr .pg{font-size:14px;line-height:1.5;margin:3px 0}
+@media (max-width:1000px){.q4 .qrow{height:220px}}
+@media (max-width:900px){[data-qid]{min-height:36px;padding-top:7px;padding-bottom:7px;box-sizing:border-box}.qdepth button,.qqc button{min-height:36px}.qqc button{min-width:36px}}
+.q4 .pr.rich{display:block}.q4 .pr.rich button{margin:4px 6px 0 0}

@@ -571,8 +571,11 @@ def concept_phase(pw, tok, ids, pid, errs):
     hl = lambda: call(f"/interviews/{iid}/highlights", token=tok["moderator"])
     ok(wait_for(lambda: any(h["kind"] == "quote" and h["text"] == "我最担心买到假货。" and h["speaker"] == "participant" for h in hl()), 8),
        f"concept test: a quote is stored word for word, attributed to the participant ({hl()})")
-    pm.locator("#caps .cap.pt", has_text="成分").locator("button", has_text="追问").click()
-    ok(wait_for(lambda: pm.locator("#probes .pr").count() == 1 and "成分" in pm.inner_text("#probes"), 8), "concept test: a follow-up on a sentence is queued for the moderator")
+    pm.locator("#caps .cap.pt", has_text="成分").locator("[data-qid]").click()
+    ok(wait_for(lambda: pm.locator("#qq .qqc").count() == 1 and "成分" in pm.inner_text("#qq"), 5), "concept test: clicking a caption sentence quotes it into the follow-up box")
+    pm.fill("#pin", "说说为什么在意成分"); pm.click("#psend")
+    ok(wait_for(lambda: pm.locator("#probes .pr").count() == 1 and "成分" in pm.inner_text("#probes") and "为什么在意成分" in pm.inner_text("#probes"), 8), "concept test: a follow-up built on a sentence plus guidance is queued for the moderator")
+    ok(pm.locator("#qq .qqc").count() == 0, "concept test: the follow-up box is empty again after sending")
     ok(wait_for(lambda: "成分" in po.inner_text("#probes"), 10), "concept test: the observer sees the queued follow-up")
     po.fill("#pin", "价格多少算贵？"); po.click("#psend")
     ok(wait_for(lambda: "价格多少算贵" in pm.inner_text("#probes"), 10), "concept test: a follow-up typed by the observer reaches the moderator")

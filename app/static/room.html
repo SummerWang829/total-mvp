@@ -24,10 +24,13 @@
   <aside class="rpan side" id="rpan" hidden><h3>实时字幕</h3><p>录制结束后的逐字转写在访谈页。</p></aside>
 </div>
 <div class="q4" id="q4" aria-label="访谈房间">
-  <div class="qc qc1"><div class="qt" id="c1t"></div><div class="qp fill" id="c1o"><h3>访谈大纲 <span id="olcount"></span></h3><div id="olbody"><p>加载中…</p></div></div><div class="qp qs" id="c1s"><h3>说话占比 · 节奏</h3><div id="talk"><p>访谈开始后显示</p></div></div></div>
-  <div class="qc qc2"><div class="qt" id="c2t"></div><div class="qp cp fill" id="c2c"><h3>实时字幕 <span id="capst" role="status">等访谈开始后，字幕会自动开启</span></h3><div class="caps" id="caps" role="log" aria-live="polite" tabindex="0"></div><div class="cap live" id="cappart" hidden style="white-space:pre-wrap"></div></div></div>
-  <div class="qc qc3"><div class="qp fill" id="c3"><h3>追问 <span id="sugnote"></span></h3><div id="sugg"></div><h3 style="margin-top:6px">待追问</h3><div class="probes" id="probes"></div>
-    <form id="pform"><label for="pin" class="sm">想追问什么（写给自己）</label><textarea id="pin" rows="2" maxlength="300"></textarea><button id="psend" type="submit">加入待追问</button></form></div></div>
+  <div class="qc qc1"><div class="qrow"><div class="qt" id="c1t"></div><div class="qt" id="c2t"></div></div><div class="qp fill" id="c1o"><h3>访谈大纲 <span id="olcount"></span></h3><div id="olbody"><p>加载中…</p></div></div><div class="qp qs" id="c1s"><h3>说话占比 · 节奏</h3><div id="talk"><p>访谈开始后显示</p></div></div></div>
+  <div class="qc qc2"><div class="qp cp fill" id="c2c"><h3>实时字幕 <span id="capst" role="status">等访谈开始后，字幕会自动开启</span></h3><div class="caps" id="caps" role="log" aria-live="polite" tabindex="0"></div><div class="cap live" id="cappart" hidden style="white-space:pre-wrap"></div></div></div>
+  <div class="qc qc3"><div class="qp fill" id="c3"><h3>追问</h3>
+    <form id="pform"><div class="qqh sm" id="qqh">点左边字幕里的话，会引用到这里</div><div class="qqchips" id="qq"></div><label for="pin" class="sm">想深挖什么</label><textarea id="pin" rows="2" maxlength="200"></textarea>
+      <div class="qdepth" id="qdepth" role="group" aria-label="追问深度"><button type="button" data-d="shallow">轻问 1 个</button><button type="button" data-d="deep">深挖 2–3 个</button></div><button id="psend" type="submit" class="p">发给主持人</button></form>
+    <h3 style="margin-top:6px">待追问</h3><div class="probes" id="probes"></div>
+    <h3 style="margin-top:6px" id="sugh">系统建议 <span id="sugnote"></span></h3><div id="sugg"></div></div></div>
   <div class="qc qc4"><div class="qp fill" id="c4"><h3>章节总结 <span id="chapnote"></span></h3><div id="chap"><p>每章问完后，这里出本章要点和没展开的地方。</p></div></div></div>
 </div>
 <div class="brpop" id="brpop" hidden></div>
@@ -318,6 +321,7 @@ function addLine(m) {
   d.className = "m" + (m.sender === "participant" && role === "participant" ? " me" : m.sender === "moderator" ? " human" : m.sender === "whisper" ? " whisper" : "");
   const w = document.createElement("span"); w.className = "who"; w.textContent = whoLabel(m.sender); d.appendChild(w);
   d.appendChild(document.createTextNode(m.text));
+  if (role !== "participant" && m.sender !== "whisper" && $id("qq")) qqMake(d, { id: "c" + m.seq, text: m.text });
   if (m.note && role === "moderator") {  // why the AI asked this: for the research team only
     const det = document.createElement("details"), sm = document.createElement("summary"); sm.textContent = "AI 的思路";
     det.appendChild(sm);
@@ -395,7 +399,8 @@ function buildAiPanel() {  // the team's side: status, alert, controls (moderato
     ${ctl ? `<div class="row"><button class="p" id="a-start" type="button">启动 AI 主持</button><button id="a-take" type="button">接管</button><button id="a-back" type="button">交还 AI</button></div>` : ""}
     <div class="chat"><div class="log" id="clog" role="log" aria-live="polite" tabindex="0"></div></div>
     ${ctl ? `<form id="hform" hidden><label for="hin">你接管了：以主持人身份回复受访者</label><textarea id="hin" rows="2" maxlength="2000"></textarea><button class="p" id="hsend" type="submit">发送给受访者</button></form>
-    <form id="wform"><label for="win">悄悄话：只给 AI 看，受访者看不到，AI 也不会照念</label><textarea id="win" rows="2" maxlength="500"></textarea><button id="wsend" type="submit">发送悄悄话</button></form>` : `<p>你是观察员：可以看对话，不能操作。</p>`}`;
+    <form id="wform"><div class="qqh sm" id="qqh">点上面对话里的某一句，可以把它引用到这里，让 AI 围绕它追问</div><div class="qqchips" id="qq"></div><label for="win">悄悄话：只给 AI 看，受访者看不到，AI 也不会照念</label><textarea id="win" rows="2" maxlength="500"></textarea>
+      <div class="qdepth" id="qdepth" role="group" aria-label="追问深度"><button type="button" data-d="shallow">轻问 1 个</button><button type="button" data-d="deep">深挖 2–3 个</button></div><button id="wsend" type="submit">发送悄悄话</button></form>` : `<p>你是观察员：可以看对话，不能操作。</p>`}`;
   buildBackroom($id("rpan"));
   if (!ctl) return;
   const call = (path, body) => api(`/interviews/${iid}/ai/${path}`, { method: "POST", body: body || {} });
@@ -421,7 +426,20 @@ function buildAiPanel() {  // the team's side: status, alert, controls (moderato
     e.preventDefault(); const ta = $id(tid), text = ta.value.trim(); if (!text) return;
     await call(path, { text }); ta.value = ""; toast(okMsg); await pollChat();
   }));
-  form("wform", "win", "whisper", "悄悄话已发给 AI（下一轮生效）"); form("hform", "hin", "say", "已发送");
+  qqInit();
+  const topicWhisper = (guidance) => {  // quoted lines go to the AI only as a topic: it is told to write its own complete question, never to repeat them
+    const cut = (s) => (s.length > 80 ? s.slice(0, 80) + "…" : s);
+    const topic = QQ.items.map((x) => `「${cut(x.text)}」`).join("");
+    const how = QQ.depth === "deep" ? "可以连续深挖 2–3 个问题" : "问 1 个问题即可";
+    return `追问主题（只当提示，不要照念原话，请自己组织一个完整的问题）：围绕${topic}${guidance ? "，指引：" + guidance : ""}。${how}。`;
+  };
+  $id("wform").onsubmit = guard(async (e) => {
+    e.preventDefault(); const ta = $id("win"), g = ta.value.trim(); if (!g && !QQ.items.length) return;
+    const text = QQ.items.length ? topicWhisper(g) : g;
+    if (text.length > 500) { toast("引用和指引合起来太长了，请少引用几句或写短一点"); return; }
+    await call("whisper", { text }); ta.value = ""; qqClear(); toast("悄悄话已发给 AI（下一轮生效）"); await pollChat();
+  });
+  form("hform", "hin", "say", "已发送");
 }
 
 // ---------------- concept test: the material on the participant's screen ----------------
@@ -600,6 +618,38 @@ function buildBackroom(host) {
 
 // ---- the team's caption panel: both speakers, quote and follow-up on any sentence ----
 const CP = { after: 0 };
+// ---- follow-up composer: click a line to quote it, then write what to dig into; the same state serves the caption panel and the AI room's conversation ----
+const QQ = { items: [], depth: "shallow" }, QQ_MAX = 6;
+function qqToggle(item) {
+  const i = QQ.items.findIndex((x) => x.id === item.id);
+  if (i >= 0) QQ.items.splice(i, 1);
+  else if (QQ.items.length >= QQ_MAX) { toast(`最多引用 ${QQ_MAX} 句`); return; }
+  else QQ.items.push(item);
+  qqDraw();
+}
+function qqMake(el, item) {  // a line that can be clicked (or Enter / Space) to quote it; dragging to select text for copying does not quote
+  el.dataset.qid = item.id; el.tabIndex = 0; el.setAttribute("role", "button"); el.setAttribute("aria-pressed", "false"); el.title = "点一下引用这句话";
+  el.onclick = (e) => { if (e.target.closest("button, summary, details")) return; const s = getSelection(); if (s && s.toString().trim()) return; qqToggle(item); };
+  el.onkeydown = (e) => { if ((e.key === "Enter" || e.key === " ") && e.target === el) { e.preventDefault(); qqToggle(item); } };
+}
+function qqDraw() {
+  document.querySelectorAll("[data-qid]").forEach((e) => { const on = QQ.items.some((x) => x.id === e.dataset.qid); e.classList.toggle("qsel", on); e.setAttribute("aria-pressed", String(on)); });
+  document.querySelectorAll("#qdepth button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.d === QQ.depth)));
+  const box = $id("qq"); if (!box) return;
+  box.textContent = "";
+  QQ.items.forEach((x) => {
+    const c = document.createElement("div"); c.className = "qqc";
+    const s = document.createElement("span"); s.textContent = `${x.at != null ? mmss(x.at) + " " : ""}“${x.text}”`;
+    const b = document.createElement("button"); b.type = "button"; b.textContent = "×"; b.setAttribute("aria-label", "取消引用这句话"); b.onclick = () => qqToggle(x);
+    c.append(s, b); box.appendChild(c);
+  });
+  const h = $id("qqh"); if (h) h.hidden = QQ.items.length > 0;
+}
+function qqInit() {
+  document.querySelectorAll("#qdepth button").forEach((b) => (b.onclick = () => { QQ.depth = b.dataset.d; qqDraw(); }));
+  qqDraw();
+}
+function qqClear() { QQ.items = []; qqDraw(); }
 const mmss = (ms) => `${String(Math.floor(ms / 60000)).padStart(2, "0")}:${String(Math.floor(ms / 1000) % 60).padStart(2, "0")}`;
 const seatVoice = (k) => k === "participant" || /^p([1-9]|10)$/.test(k || "");
 async function markCap(kind, id) {
@@ -615,11 +665,13 @@ function addCap(c) {
   const who = document.createElement("b"); who.textContent = speakerName(c.speaker);
   const sp = document.createElement("span"); sp.className = "sp";
   const q = document.createElement("button"); q.type = "button"; q.textContent = "引用"; q.setAttribute("aria-label", "引用这句话"); q.onclick = guard(() => markCap("quote", c.id));
-  const p = document.createElement("button"); p.type = "button"; p.textContent = "追问"; p.setAttribute("aria-label", "就这句话加入待追问"); p.onclick = guard(() => markCap("probe", c.id));
-  hd.append(t, who, sp, q, p);
+  hd.append(t, who, sp, q);
   const tx = document.createElement("div"); tx.textContent = c.text;
+  if (Q4.on) qqMake(tx, { id: c.id, text: c.text, at: c.at_ms });   // four-column room: a click quotes the line into 追问
+  else { const p = document.createElement("button"); p.type = "button"; p.textContent = "追问"; p.setAttribute("aria-label", "就这句话加入待追问"); p.onclick = guard(() => markCap("probe", c.id)); hd.appendChild(p); }
   const zh = document.createElement("div"); zh.className = "zh"; zh.textContent = c.text_zh || ""; zh.hidden = !c.text_zh;  // Chinese translation (English interviews), may arrive later
   d.append(hd, tx, zh);
+  if (QQ.items.some((x) => x.id === c.id)) qqDraw();
   if (c.hints && c.hints.length) { const h = document.createElement("div"); h.className = "hints"; h.textContent = c.hints.join(" · ") + "（仅供参考）"; d.appendChild(h); }
   const stick = log.scrollTop + log.clientHeight >= log.scrollHeight - 40;
   log.appendChild(d); if (stick) log.scrollTop = log.scrollHeight;
@@ -645,10 +697,15 @@ async function pollProbes() {
   const box = $id("probes"); if (!box || ended) return;
   let list; try { list = await api(`/interviews/${iid}/highlights?kind=probe`); } catch { return; }
   box.textContent = "";
-  if (!list.length) { const e = document.createElement("p"); e.textContent = "还没有。点字幕旁的“追问”，或在下面直接写一句。"; box.appendChild(e); return; }
+  if (!list.length) { const e = document.createElement("p"); e.textContent = "还没有。点左边字幕里的话，再写想深挖什么。"; box.appendChild(e); return; }
   list.sort((a, b) => (a.status === "done") - (b.status === "done")).forEach((h) => {
     const row = document.createElement("div"); row.className = "pr" + (h.status === "done" ? " done" : "");
-    const s = document.createElement("span"); s.textContent = `${mmss(h.at_ms)} ${h.speaker ? "「" + h.text + "」" : h.text}`; row.appendChild(s);
+    if (h.quotes && h.quotes.length) {
+      row.classList.add("rich");
+      const hd = document.createElement("div"); hd.className = "pby"; hd.textContent = `${h.by || "团队"} · ${mmss(h.at_ms)}${h.depth ? " · " + (h.depth === "deep" ? "深挖 2–3 个" : "轻问 1 个") : ""}`; row.appendChild(hd);
+      h.quotes.forEach((x) => { const q = document.createElement("div"); q.className = "pq"; q.textContent = `“${x.text}”`; row.appendChild(q); });
+      if (h.text) { const g = document.createElement("div"); g.className = "pg"; g.textContent = h.text; row.appendChild(g); }
+    } else { const s = document.createElement("span"); s.textContent = `${mmss(h.at_ms)} ${h.speaker ? "「" + h.text + "」" : h.text}`; row.appendChild(s); }
     if (role === "moderator" && h.status !== "done") {
       const b = document.createElement("button"); b.type = "button"; b.textContent = "已问"; b.onclick = guard(async () => { await api(`/highlights/${h.id}`, { method: "PATCH", body: { status: "done" } }); await pollProbes(); }); row.appendChild(b);
     }
@@ -835,14 +892,16 @@ function buildQ4() {
   const wb = $id("wbox"); if (wb) { wb.hidden = role !== "moderator"; $id("c1o").insertBefore(wb, $id("olbody")); }   // who is in the room, above the outline
   const pb = $id("prebox"), plb = $id("planbox"); [pb, plb].forEach((b) => { if (b) $id("c1o").appendChild(b); });
   const stim = $id("stim"); if (stim) $id("c1o").insertBefore(stim, $id("olbody"));   // the material on the participant's screen, small, above the outline   // the pre-interview answers and the concept-test script, when there are any
+  $id("psend").textContent = role === "moderator" ? "加入待追问" : "发给主持人"; qqInit();
   $id("pform").onsubmit = guard(async (e) => {
-    e.preventDefault(); const ta = $id("pin"), text = ta.value.trim(); if (!text) return;
-    await api(`/interviews/${iid}/highlights`, { method: "POST", body: { kind: "probe", text } }); ta.value = ""; toast("已加入待追问"); await pollProbes();
+    e.preventDefault(); const ta = $id("pin"), text = ta.value.trim(); if (!text && !QQ.items.length) { toast("先点一句字幕，或写想深挖什么"); return; }
+    const body = QQ.items.length ? { kind: "probe", caption_ids: QQ.items.map((x) => x.id), text, depth: QQ.depth } : { kind: "probe", text, depth: QQ.depth };
+    await api(`/interviews/${iid}/highlights`, { method: "POST", body }); ta.value = ""; qqClear(); toast(role === "moderator" ? "已加入待追问" : "已发给主持人"); await pollProbes();
   });
   pollCaps(); pollProbes(); setInterval(pollCaps, 1000); setInterval(pollProbes, 4000);
   addReactionFeed($id("c3"));
   if (role === "moderator") { pollAssist(); Q4.timer = setInterval(pollAssist, 3000); }
-  else { $id("olbody").innerHTML = `<p>大纲进度只给主持人看。</p>`; $id("talk").innerHTML = `<p>只给主持人看。</p>`; $id("sugg").innerHTML = ""; }
+  else { $id("olbody").innerHTML = `<p>大纲进度只给主持人看。</p>`; $id("talk").innerHTML = `<p>只给主持人看。</p>`; $id("sugg").innerHTML = ""; $id("sugh").hidden = true; }
 }
 const olBar = (label, pct, color) => `<div class="qbar"><span>${label}</span><div><i style="width:${Math.min(100, pct || 0)}%;background:${color}"></i></div><span>${pct == null ? "—" : pct + "%"}</span></div>`;
 function renderAssist(d) {

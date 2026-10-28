@@ -596,6 +596,8 @@ class Highlight(Base):
     stimulus_key: Mapped[str] = mapped_column(String(40), default="")  # which material was on screen when it was said
     at_ms: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[str] = mapped_column(String(10), default="open")  # open | done (a probe that was asked)
+    quotes_json: Mapped[str] = mapped_column(Text, default="")  # a follow-up built from several caption lines: JSON list of {id, speaker, text, at_ms}, copied word for word by the server; `text` is then the team's guidance
+    depth: Mapped[str] = mapped_column(String(10), default="")  # how deep the follow-up should go: shallow (one question) | deep (two or three) | "" (not said)
     created_by: Mapped[str] = mapped_column(String(32), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
