@@ -155,29 +155,85 @@ async function insightsHub(p, my) {
     draw();
   }
 
-  /* ---------- 报告 ---------- */
+  /* ---------- 报告：带框的分析卡片 + 文字解读；点图表，右侧看对应受访者的回答；分析块可开关、排序 ---------- */
   async function report(box) {
-    const d = await api(`/projects/${p.id}/report?format=json`); if (stale(my)) return;
-    const blocks = d.blocks, heads = blocks.filter((b) => b[0] === "h1").map((b) => b[1]);
-    let html = "", list = false;
-    blocks.forEach((b) => {
-      if (b[0] !== "bullet" && list) { html += "</ul>"; list = false; }
-      if (b[0] === "title") html += `<h2 class="ins-rt">${esc(b[1])}</h2>`;
-      else if (b[0] === "subtitle") html += `<p class="mut">${esc(b[1])}</p>`;
-      else if (b[0] === "h1") html += `<h3 id="rp-${heads.indexOf(b[1])}" class="ins-h1">${esc(b[1])}</h3>`;
-      else if (b[0] === "h2") html += `<h4 class="ins-h2">${esc(b[1])}</h4>`;
-      else if (b[0] === "p") html += `<p>${esc(b[1])}</p>`;
-      else if (b[0] === "note") html += `<p class="mut sm">${esc(b[1])}</p>`;
-      else if (b[0] === "bullet") { if (!list) { html += "<ul>"; list = true; } html += `<li>${esc(b[1])}</li>`; }
-      else if (b[0] === "quote") html += `<div class="ins-q">${esc(b[1])}</div>`;
-      else if (b[0] === "table") html += `<div class="scroll"><table class="tbl"><thead><tr>${b[1].map((h) => `<th>${esc(h)}</th>`).join("")}</tr></thead><tbody>${b[2].map((r) => `<tr>${r.map((c) => `<td>${esc(c)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
-    });
-    if (list) html += "</ul>";
-    box.innerHTML = `<div class="row ins-tool"><b>研究报告</b><span class="sp"></span><button type="button" id="rpre">重新生成</button><button type="button" class="p" id="rpdl">下载 Word</button></div>
-      <div class="ins-rep"><nav class="ins-toc" aria-label="目录"><b>目录</b>${heads.map((h, i) => `<a href="#" data-to="rp-${i}">${esc(h)}</a>`).join("")}</nav><div class="card ins-doc">${html}</div></div>`;
-    $("#rpre").onclick = () => show("p");
+    const d = await api(`/projects/${p.id}/report/analysis`); if (stale(my)) return;
+    const team = STAFF(), wantApp = !team || d.blocks.some((b) => b.id === "appendix" && b.on);
+    const oldBlocks = wantApp ? (await api(`/projects/${p.id}/report?format=json`).catch(() => ({ blocks: [] }))).blocks : [];
+    if (stale(my)) return;
+    let sel = null;   // { c: card id, i: bar index }
+    const noteHtml = (n) => `<div class="rp-note"><b>解读：</b>${esc(n.t)}${n.ai ? ` <span class="tag">AI 的判断</span>` : ""}${n.stale ? ` <span class="tag o">数据已更新</span>` : ""}</div>`;
+    const cardHtml = (c) => `<div class="rp-card${sel && sel.c === c.id ? " sel" : ""}" data-c="${esc(c.id)}"><div class="rp-t"><b>${esc(c.title)}</b></div><div class="rp-d">${esc(c.desc)}</div>
+      ${c.bars.map((b, i) => `<div role="button" tabindex="0" class="rp-row${sel && sel.c === c.id && sel.i === i ? " on" : ""}" data-c="${esc(c.id)}" data-i="${i}"><span class="rp-h"><span>${esc(b.label)}</span><span>${b.k} / ${b.n}</span></span><span class="rp-tr"><span class="rp-f" style="width:${b.n ? Math.round(b.k * 100 / b.n) : 0}%"></span></span></div>`).join("")}</div>${noteHtml(c.note)}`;
+    const appendix = () => {
+      let html = "", list = false;
+      oldBlocks.slice(2).forEach((b) => {
+        if (b[0] !== "bullet" && list) { html += "</ul>"; list = false; }
+        if (b[0] === "h1") html += `<h4 class="ins-h1">${esc(b[1])}</h4>`;
+        else if (b[0] === "h2") html += `<h5 class="ins-h2">${esc(b[1])}</h5>`;
+        else if (b[0] === "p") html += `<p>${esc(b[1])}</p>`;
+        else if (b[0] === "note") html += `<p class="mut sm">${esc(b[1])}</p>`;
+        else if (b[0] === "bullet") { if (!list) { html += "<ul>"; list = true; } html += `<li>${esc(b[1])}</li>`; }
+        else if (b[0] === "quote") html += `<div class="ins-q">${esc(b[1])}</div>`;
+        else if (b[0] === "table") html += `<div class="scroll"><table class="tbl"><thead><tr>${b[1].map((h) => `<th>${esc(h)}</th>`).join("")}</tr></thead><tbody>${b[2].map((r) => `<tr>${r.map((x) => `<td>${esc(x)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+      });
+      return list ? html + "</ul>" : html;
+    };
+    const docHtml = `<div class="ins-doc"><h2 class="ins-rt">${esc(p.name)}</h2>
+      <h3 class="ins-h1">总体结论</h3><p class="rp-sum">${esc(d.summary.t)}${d.summary.ai ? ` <span class="tag">AI 的判断</span>` : ""}</p>
+      ${d.cards.length ? d.cards.map(cardHtml).join("") : `<div class="card empty"><b>还没有可分析的数据</b><span>访谈结束并整理出回答的主题后，图表会出现在这里。</span></div>`}
+      ${oldBlocks.length ? `<details class="rp-app"><summary>附录：研究背景、方法与样本</summary>${appendix()}</details>` : ""}</div>`;
+    const detail = () => {
+      const c = d.cards.find((x) => x.id === sel.c), b = c.bars[sel.i];
+      return `<div class="row"><b>${esc(b.label)} · ${b.k} 位的回答</b><span class="sp"></span><button type="button" class="lnk" id="rpx">关闭</button></div>
+        ${b.people.length ? b.people.map((x) => `<div class="rp-pa"><div class="rp-ph"><b>${esc(x.code)}</b><small>${esc(x.group || "")} · <a href="#/i/${x.interview_id}">看原文</a></small></div>
+          ${x.items.map((it) => `<div class="rp-q"><span class="mut sm">${esc(it.q)}${it.at_ms ? " · " + insClock(it.at_ms) : ""}</span><div>“${esc(it.a)}”</div>${it.themes.map((t) => `<span class="tag">${esc(t)}</span>`).join(" ")}</div>`).join("")}</div>`).join("")
+          : `<div class="mut sm">没有可显示的回答</div>`}<button type="button" class="lnk" id="rpall">在受访者数据里查看全部</button>`;
+    };
+    const blocksPanel = () => `<div class="row"><b>这份报告的分析块</b></div>${d.blocks.map((b, i) => `<div class="rp-bk"><label class="chk"><input type="checkbox" data-bk="${esc(b.id)}" ${b.on ? "checked" : ""}><span><b>${esc(b.title)}</b><small>${esc(b.source)}</small></span></label>
+        <span class="rp-mv"><button type="button" class="s" data-up="${i}" aria-label="上移" ${i === 0 ? "disabled" : ""}>↑</button><button type="button" class="s" data-dn="${i}" aria-label="下移" ${i === d.blocks.length - 1 ? "disabled" : ""}>↓</button></span></div>`).join("")}
+      <button type="button" class="rp-add" id="rpadd">＋ 自己加一块：写一句想看什么</button>`;
+    box.innerHTML = `<div class="row ins-tool"><b>研究报告</b><span class="sp"></span>${team ? `<button type="button" id="rpimp">导入报告模版</button>` : ""}<button type="button" class="p" id="rpdl">下载 Word</button></div>
+      <div class="rp-wrap${team ? "" : " one"}"><div class="rp-main">${docHtml}</div>${team ? `<aside class="rp-side card" id="rpside"></aside>` : ""}</div>`;
+    const ids = d.blocks.map((b) => b.id), onIds = () => d.blocks.filter((b) => b.on).map((b) => b.id);
+    const save = guard(async (order, on, off) => { await api(`/projects/${p.id}/report/template`, { method: "PUT", body: { order, on, off } }); await report(box); });
+    const wire = () => {
+      const x = $("#rpx"); if (x) x.onclick = () => { sel = null; box.querySelectorAll(".rp-card.sel,.rp-row.on").forEach((e) => e.classList.remove("sel", "on")); side(); };
+      const all = $("#rpall"); if (all) all.onclick = () => show("r");
+      box.querySelectorAll("[data-bk]").forEach((c) => (c.onchange = () => { const s = new Set(onIds()); c.checked ? s.add(c.dataset.bk) : s.delete(c.dataset.bk); save(ids, ids.filter((i) => s.has(i)), ids.filter((i) => !s.has(i))); }));
+      const move = (i, j) => { const o = ids.slice(); [o[i], o[j]] = [o[j], o[i]]; save(o, onIds(), ids.filter((k) => !onIds().includes(k))); };
+      box.querySelectorAll("[data-up]").forEach((b) => (b.onclick = () => move(+b.dataset.up, +b.dataset.up - 1)));
+      box.querySelectorAll("[data-dn]").forEach((b) => (b.onclick = () => move(+b.dataset.dn, +b.dataset.dn + 1)));
+      const add = $("#rpadd"); if (add) add.onclick = () => reportAsk(box);
+    };
+    const side = () => { const el = $("#rpside"); if (!el) return; el.innerHTML = sel ? detail() : blocksPanel(); wire(); };
+    box.querySelectorAll(".rp-row").forEach((r) => { const go = () => { if (!team) return; sel = { c: r.dataset.c, i: +r.dataset.i }; box.querySelectorAll(".rp-card").forEach((e) => e.classList.toggle("sel", e.dataset.c === sel.c)); box.querySelectorAll(".rp-row").forEach((e) => e.classList.toggle("on", e === r)); side(); }; r.onclick = go; r.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } }; });
+    side();
     $("#rpdl").onclick = insDownload(p, `/api/projects/${p.id}/report?format=docx`, `${p.name}-研究报告.docx`);
-    box.querySelectorAll("[data-to]").forEach((a) => (a.onclick = (e) => { e.preventDefault(); const t = document.getElementById(a.dataset.to); if (t) t.scrollIntoView({ block: "start" }); }));
+    const imp = $("#rpimp"); if (imp) imp.onclick = () => reportTemplate(d, box);
+  }
+  /** One more block written by hand: the words go to the AI service when a model is used. */
+  function reportAsk(box) {
+    const mod = modal(`<h2>自己加一块</h2><label class="f"><span>想看什么</span><textarea id="rfocus" rows="3" maxlength="600" placeholder="价格敏感度，按家庭月收入比较"></textarea></label>${insAiNotice().replace("你的提问和相关的访谈转写会发送给", "你写的内容会发送给")}
+      <div class="row"><button class="p" id="rfok">挑出对应的图表</button><button type="button" id="rfno">取消</button></div>`);
+    $("#rfno", mod).onclick = () => mod.remove();
+    $("#rfok", mod).onclick = guard(async () => { const t = $("#rfocus", mod).value.trim(); if (!t) throw new Error("先写一句想看什么");
+      const r = await api(`/projects/${p.id}/report/focus`, { method: "POST", body: { text: t, add: true } }); mod.remove(); toast(r.picked.length ? `已加入 ${r.picked.length} 张图表` : "没有找到对应的问卷题或主题，换个说法试试", !r.picked.length); await report(box); });
+  }
+  function reportTemplate(d, box) {
+    const mod = modal(`<h2>导入报告模版</h2><label class="f"><span>这个项目最想看清什么</span><textarea id="rfocus" rows="3" maxlength="600">${esc(d.focus || "")}</textarea></label>${insAiNotice().replace("你的提问和相关的访谈转写会发送给", "你写的内容会发送给")}
+      <div class="row"><button type="button" id="rtdl">下载系统默认模版修改</button><label class="btn" id="rtup" tabindex="0">上传我改好的 .docx<input type="file" id="rtfile" accept=".docx" hidden></label></div>
+      <div class="row"><button class="p" id="rtok">用这个模版生成</button><button type="button" id="rtno">取消</button></div>`);
+    $("#rtno", mod).onclick = () => mod.remove();
+    $("#rtdl", mod).onclick = insDownload(p, `/api/projects/${p.id}/report/template/file`, `${p.name}-报告模版.docx`);
+    $("#rtfile", mod).onchange = guard(async (e) => { const f = e.target.files[0]; if (!f) return;
+      const r = await fetch(`/api/projects/${p.id}/report/template/import`, { method: "POST", headers: { Authorization: "Bearer " + store.get("tt_token"), "Content-Type": "application/octet-stream" }, body: f });
+      const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.detail || "导入失败");
+      mod.remove(); toast(j.unmatched && j.unmatched.length ? `已导入。这几章没找到对应的数据：${j.unmatched.join("、")}` : "已按你的模版排好分析块", !!(j.unmatched && j.unmatched.length)); await report(box); });
+    $("#rtok", mod).onclick = guard(async () => { const t = $("#rfocus", mod).value.trim(), b = $("#rtok", mod); b.disabled = true; b.textContent = "正在生成…";
+      try { if (t && t !== (d.focus || "")) await api(`/projects/${p.id}/report/focus`, { method: "POST", body: { text: t, add: false } });
+        if (d.ai.ready) await api(`/projects/${p.id}/report/generate`, { method: "POST" }); else toast(d.ai.mock ? "演示模式：没有连接 AI 模型，解读用统计句子" : d.ai.message, true);
+      } finally { mod.remove(); await report(box); } });
   }
 
   /* ---------- 问题分析 ---------- */

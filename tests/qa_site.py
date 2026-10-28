@@ -84,7 +84,7 @@ AUDIT_JS = r"""
     const el = n.parentElement; if (!el || seen.has(el) || /SCRIPT|STYLE|OPTION|NOSCRIPT/.test(el.tagName) || el.closest('svg') || el.closest('pre') || el.closest('[aria-hidden=true]')) continue;
     if (!visible(el)) continue; seen.add(el);
     const cs = getComputedStyle(el), fs = parseFloat(cs.fontSize);
-    if (fs < 12) out.small.push(`${fs}px "${t.slice(0, 30)}"`);
+    if (fs < 12) out.small.push(`${fs}px <${el.tagName.toLowerCase()}${el.className ? '.' + String(el.className).split(' ')[0] : ''}> "${t.slice(0, 30)}"`);
     else if (t.length > 40 && fs < 14) out.small.push(`${fs}px (long text) "${t.slice(0, 30)}"`);
     const fg = parse(cs.color), bg = bgOf(el);
     if (fg && bg) {
@@ -227,9 +227,20 @@ def rooms_section(br, D):
     ok(all(reach), f"[rooms] with many columns the table scrolls sideways inside its box, but the name (left) and the action buttons (right) are always in view {reach}")
     ok(pg.locator("#rmh th", has_text="邀请进度").count() == 1 and pg.locator("#rmh th", has_text="预计 / 访谈时长").count() == 1 and pg.locator("#rmh th", has_text="关键回答").count() == 1, "[rooms] the table has 关键回答, 邀请进度 and 预计 / 访谈时长 columns")
     ok("/" in pg.locator("#rmb tr").first.locator("td[data-l='预计 / 访谈时长']").inner_text(), "[rooms] under 全部 the length cell reads 'planned / real'")
+    people = call(f"/projects/{pid}/participants", None, adm)
+    long_q = "During your trip to Hong Kong between 1 and 7 October 2026, did you notice any advertising or promotional messages about insurance, for example on billboards, in shopping malls, on public transport or on the internet?"
+    for person in people[:3]:   # give the people in the first rows long questionnaire answers so the card has something to show
+        text = "\n".join(["What is your age?：25 to 34", "Where do you currently live?：Mainland China, outside the Greater Bay Area", long_q + "：Yes, I noticed some of them, mostly in shopping malls and at MTR stations", "Which of these areas did you visit?：Tsim Sha Tsui、Mong Kok"])
+        call(f"/participants/{person['id']}/screener", {"text": text}, adm, "PUT")
+    pg.reload(); pg.wait_for_selector("#rmb tr")
     pg.locator("#rmb tr").first.hover(); pg.wait_for_selector("#rmcard")
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "rooms_card_1280.png"))
     ok("预计" in pg.inner_text("#rmcard"), "[rooms] the mouse on a row opens its card (key answers and the two lengths)")
-    pg.mouse.move(5, 5); ok(pg.locator("#rmcard").count() == 0, "[rooms] the card goes away with the mouse")
+    cardbox = pg.evaluate("(() => { const c = document.querySelector('#rmcard'), r = c.getBoundingClientRect(); return [r.width <= 722, r.height <= Math.min(362, innerHeight * 0.7 + 2), r.left >= 0 && r.right <= innerWidth, c.scrollHeight >= c.clientHeight]; })()")
+    ok(all(cardbox), f"[rooms] the card stays within its largest width (720) and height (360 or 70% of the window) and on the screen {cardbox}")
+    pg.locator("#rmcard").hover(); pg.wait_for_timeout(400)
+    ok(pg.locator("#rmcard").count() == 1, "[rooms] the mouse can move into the card without it closing")
+    pg.mouse.move(5, 5); ok(wait_until(lambda: pg.locator("#rmcard").count() == 0, 3), "[rooms] the card goes away when the mouse leaves it")
     row_id = pg.locator("[data-edm]").first.get_attribute("data-edm")
     pg.locator("[data-edm]").first.click(); pg.wait_for_selector(".rmpop .rmopt")
     names = [x.strip() for x in pg.locator(".rmpop .rmopt span:first-child").all_inner_texts()]
@@ -454,7 +465,23 @@ def insights_section(br, D):
     ok(pg.locator("#xw").count() == 1 and pg.locator("#xc").count() == 1, "[insights] the export buttons are on the respondent tab")
     pg.screenshot(path=os.path.join(ROOT, "qa_shots", "insights_r_1280.png"))
     pg.click("#itabs a[data-k=p]"); pg.wait_for_selector(".ins-doc")
-    ok(pg.locator("#rpdl").count() == 1 and pg.locator(".ins-toc a").count() >= 1 and pg.locator(".ins-rt").count() == 1, "[insights] the report tab shows the report with a table of contents and a Word download")
+    ok(pg.locator("#rpdl").count() == 1 and pg.locator("#rpimp").count() == 1 and pg.locator(".ins-rt").count() == 1 and pg.locator(".rp-sum").count() == 1, "[insights] the report tab shows the overall conclusion, a Word download and 导入报告模版")
+    pg.wait_for_selector(".rp-side [data-bk]")
+    ok(pg.locator(".rp-side [data-bk]").count() >= 3 and pg.locator(".rp-side [data-bk=summary]:checked").count() == 1, "[insights] the right side lists the analysis blocks with switches (summary on)")
+    ok(pg.locator(".rp-card").count() >= 1 or pg.locator(".card.empty").count() == 1, "[insights] the report has chart cards, or says there is nothing to analyse yet")
+    if pg.locator(".rp-row").count():
+        pg.locator(".rp-row").first.click(); pg.wait_for_selector("#rpx")
+        ok(pg.locator(".rp-card.sel").count() == 1 and pg.locator(".rp-pa").count() >= 1 and pg.locator("#rpall").count() == 1, "[insights] clicking a bar frames its card and lists that group's people with their own words on the right")
+        pg.click("#rpx"); ok(pg.locator("#rpside [data-bk]").count() >= 3, "[insights] closing the detail brings the block list back")
+    pg.click("#rpimp"); pg.wait_for_selector("#rtdl")
+    ok(pg.locator("#rfocus").count() == 1 and pg.locator("#rtup").count() == 1 and pg.locator("#rtok").count() == 1 and pg.locator("#rtdl").count() == 1, "[insights] the template dialog has the focus box, download default, upload, and generate")
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "insights_report_dialog_1280.png"))
+    pg.click("#rtno"); ok(pg.locator("#rtok").count() == 0, "[insights] the template dialog closes")
+    pg.click("#rpadd"); pg.wait_for_selector("#rfok"); ok(pg.locator("#rfocus").count() == 1, "[insights] 自己加一块 opens a box to write what to look at"); pg.click("#rfno")
+    pg.locator("[data-bk=appendix]").uncheck(); pg.wait_for_function("document.querySelectorAll('.rp-app').length === 0")
+    ok(pg.locator("[data-bk=appendix]:checked").count() == 0, "[insights] switching a block off removes it from the report and the choice is kept")
+    pg.locator("[data-bk=appendix]").check(); pg.wait_for_selector(".rp-app")
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "insights_report_1280.png"))
     audit_page(pg, "insights p/desktop", errs)
     pg.click("#itabs a[data-k=q]"); pg.wait_for_selector(".ins-ql")
     ok(pg.locator(".ins-ql").count() >= 3, "[insights] the question tab lists the questions of the interview outline")

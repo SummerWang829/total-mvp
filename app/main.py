@@ -12,7 +12,7 @@ from .config import settings
 from . import participant_code
 from .db import Base, SessionLocal, engine, ensure_columns
 from .recording import start_worker
-from . import chat_models  # noqa: F401  (registers the chat_threads table)
+from . import chat_models, report_models  # noqa: F401  (registers the chat_threads and report_templates tables)
 from .routers import languages as languages_router, recruit_translate as recruit_translate_router, admin_data, ai_room, group_analysis as group_analysis_router, analysis, auth, concept, cues, group_metrics, interviews, listening, outline, room_assist as room_assist_router, insight_chat as insight_chat_router, pool, jobs as jobs_router, plans as plans_router, quant, recruit, screen_public, reels as reels_router, report, signals, studies, repo, overview, projects, public
 
 @asynccontextmanager
