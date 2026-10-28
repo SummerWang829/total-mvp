@@ -22,7 +22,6 @@ def test_invite_state_follows_the_participant(org):
     assert org.c.get(f"/api/public/join/{t}").json()["device_ok"] is True
     give_consent(org, itv)
     assert state(org, itv) == "consented"
-    assert org.c.post(f"/api/interviews/{itv['id']}/admit", headers=org.h("moderator"), json={"admit": True}).status_code == 200
     assert org.c.post(f"/api/public/join/{t}/enter").status_code == 200
     assert state(org, itv) == "entered"
     org.c.post(f"/api/interviews/{itv['id']}/end", headers=org.h("moderator"))
@@ -59,12 +58,11 @@ def test_journey_events_are_audited_without_the_token(org):
     assert t not in str(rows)
 
 
-# ---- device gate + waiting room (decisions 2026-10-10: the device test must pass; the moderator admits or holds) ----
+# ---- device gate and free entry (decisions 2026-10-10: the device test must pass; 2026-10-28: nobody has to let the participant in) ----
 def test_cannot_enter_without_a_passed_device_test(org):
     itv = org.interview()
     t = itv["invite_token"]
     give_consent(org, itv)
-    org.c.post(f"/api/interviews/{itv['id']}/admit", headers=org.h("moderator"), json={"admit": True})
     org.c.post(f"/api/public/join/{t}/device", json={"camera": True, "microphone": False, "speaker": True})
     r = org.c.post(f"/api/public/join/{t}/enter")
     assert r.status_code == 403 and "device" in r.json()["detail"]
@@ -72,38 +70,38 @@ def test_cannot_enter_without_a_passed_device_test(org):
     assert org.c.post(f"/api/public/join/{t}/enter").status_code == 200
 
 
-def test_waiting_room_admit_hold_and_leave(org):
+def test_entry_needs_consent_and_a_device_test_but_not_the_moderator(org):
+    itv = org.interview()
+    t, iid = itv["invite_token"], itv["id"]
+    assert org.c.post(f"/api/public/join/{t}/enter").status_code == 403   # no consent yet
+    give_consent(org, itv)
+    assert org.c.post(f"/api/public/join/{t}/enter").status_code == 403   # no device test yet
+    org.c.post(f"/api/public/join/{t}/device", json={"camera": True, "microphone": True, "speaker": True})
+    assert org.c.post(f"/api/public/join/{t}/enter").status_code == 200   # the interview has not even started: still in, nobody had to say yes
+    assert org.c.post(f"/api/public/join/{t}/admit", json={"admit": True}).status_code in (404, 405)
+    assert org.c.post(f"/api/interviews/{iid}/admit", headers=org.h("moderator"), json={"admit": True}).status_code in (404, 405)   # the admit call is gone
+    org.c.post(f"/api/interviews/{iid}/end", headers=org.h("moderator"))
+    assert org.c.post(f"/api/public/join/{t}/enter").status_code == 409   # an ended interview is closed
+
+
+def test_leaving_and_coming_back_needs_nobody_and_the_team_sees_who_is_there(org):
     itv = org.interview()
     t, iid = itv["invite_token"], itv["id"]
     give_consent(org, itv)
     org.c.post(f"/api/public/join/{t}/device", json={"camera": True, "microphone": True, "speaker": True})
-    assert org.c.post(f"/api/public/join/{t}/enter").status_code == 409  # not admitted yet
     live = lambda: org.c.get(f"/api/public/join/{t}/live").json()
     staff = lambda role="moderator": org.c.get(f"/api/interviews/{iid}/live", headers=org.h(role)).json()
     assert staff()["participant"]["waiting"] is False
-    org.c.get(f"/api/public/join/{t}/live?waiting=1")  # the waiting room page polls with waiting=1
+    org.c.get(f"/api/public/join/{t}/live?waiting=1")   # the participant's page polls with waiting=1 while it is open
     assert staff()["participant"]["waiting"] is True and org.c.get(f"/api/interviews/{iid}", headers=org.h()).json()["waiting"] is True
-    assert "participant" not in staff("observer")  # the client does not see the waiting room
-    # hold, then admit
-    assert org.c.post(f"/api/interviews/{iid}/admit", headers=org.h("moderator"), json={"admit": False}).json() == {"admitted": False, "held": True}
-    assert live()["held"] is True and live()["admitted"] is False
-    assert org.c.post(f"/api/public/join/{t}/enter").status_code == 409
-    org.c.post(f"/api/interviews/{iid}/admit", headers=org.h("moderator"), json={"admit": True})
-    assert live() == {**live(), "admitted": True, "held": False} and staff()["participant"]["waiting"] is False
+    assert "participant" not in staff("observer")   # the client does not see who is there
+    assert live()["admitted"] is True and "held" not in live()
     assert org.c.post(f"/api/public/join/{t}/enter").status_code == 200
-    assert org.c.post(f"/api/public/join/{t}/enter").status_code == 200  # a page reload re-enters without a new admit
-    # pressing Leave means the moderator has to let them in again
+    assert staff()["participant"]["entered"] is True
+    assert org.c.post(f"/api/public/join/{t}/enter").status_code == 200   # a page reload re-enters
     assert org.c.post(f"/api/public/join/{t}/leave").status_code == 204
-    assert live()["admitted"] is False and org.c.post(f"/api/public/join/{t}/enter").status_code == 409
-
-
-def test_only_the_team_can_admit(org):
-    itv = org.interview()
-    assert org.c.post(f"/api/interviews/{itv['id']}/admit", headers=org.h("observer"), json={"admit": True}).status_code == 403
-    other = org.interview(moderator=False)  # a moderator who is not assigned cannot see it at all
-    assert org.c.post(f"/api/interviews/{other['id']}/admit", headers=org.h("moderator"), json={"admit": True}).status_code == 404
-    org.c.post(f"/api/interviews/{itv['id']}/end", headers=org.h("moderator"))
-    assert org.c.post(f"/api/interviews/{itv['id']}/admit", headers=org.h("moderator"), json={"admit": True}).status_code == 409
+    assert staff()["participant"]["waiting"] is False   # gone from the room
+    assert org.c.post(f"/api/public/join/{t}/enter").status_code == 200   # and back in, with nobody's permission
 
 
 # ---- project home: progress, next step, recent activity ----

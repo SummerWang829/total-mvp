@@ -207,26 +207,21 @@ def run(tmp):
         ok("Singapore" in pp.inner_text("form.card") and "China" in pp.inner_text("form.card"), "consent page says data is stored in Singapore and accessed from China")
         pp.screenshot(path=f"{SHOTS}/e2e_consent.png")
         pp.click("form button")
-        pp.wait_for_selector("#enter")
-        ok(st() == "consented", "staff sees the consent")
-        ok("Waiting for the moderator" in pp.inner_text("#pw") and pp.get_attribute("#enter", "aria-disabled") == "true", "participant waits in the waiting room until the moderator starts")
+        pp.wait_for_url("**/room.html*", timeout=20000)
+        ok(wait_for(lambda: st() == "entered", 10), "staff sees the participant in the room right after consent (nobody had to let them in)")
+        ok(wait_for(lambda: "moderator" in pp.inner_text("#msg").lower(), 15), "inside the room the participant is told the moderator will start soon")
         # ---- moderator + observer ----
         cm, pm = ctx("moderator", tok["moderator"])
         pm.goto(f"{B}/room.html?i={iid}")
         co, po = ctx("observer", tok["observer"])
         po.goto(f"{B}/room.html?i={iid}&as=observer")
         ok(wait_for(lambda: pm.is_visible("#b-start") and pm.is_disabled("#b-rec"), 15), "record button disabled before the interview starts")
-        ok(wait_for(lambda: "在候场室" in pm.inner_text("#wst"), 10), "moderator sees the participant waiting in the waiting room")
-        ok(not po.is_visible("#wbox"), "the observer does not see the waiting room controls")
+        ok(wait_for(lambda: "已在房间" in pm.inner_text("#wst"), 10), "moderator sees the participant already in the room")
+        ok(pm.locator("#b-admit, #b-hold").count() == 0, "the moderator has nothing to let in or hold")
+        ok(not po.is_visible("#wbox"), "the observer does not see who is in the room")
         ok("t-light" in pm.evaluate("document.body.className") and "t-light" in po.evaluate("document.body.className"), "rooms open in the white light theme by default")
+        pp.screenshot(path=f"{SHOTS}/e2e_before_start.png")
         pm.click("#b-start")
-        time.sleep(3.5)
-        ok(pp.get_attribute("#enter", "aria-disabled") == "true", "started, but the participant waits until the moderator lets them in")
-        pm.click("#b-admit")
-        ok(wait_for(lambda: "已放行" in pm.inner_text("#wst") and pm.is_disabled("#b-admit"), 10), "moderator sees the participant as let in")
-        ok(wait_for(lambda: pp.get_attribute("#enter", "aria-disabled") == "false", 10), "waiting room unlocks once the moderator lets the participant in")
-        pp.screenshot(path=f"{SHOTS}/e2e_waiting_room.png")
-        pp.click("#enter")
 
         def videos(page):
             return page.evaluate("""() => [...document.querySelectorAll('.tile')].map(t => { const v = t.querySelector('video'); return {id: t.id, w: v ? v.videoWidth : 0, playing: v ? (!v.paused && v.readyState >= 2) : false, name: t.querySelector('.nm').textContent}; })""")
@@ -254,8 +249,8 @@ def run(tmp):
         ok(audio_ok(pm) and audio_ok(pp) and audio_ok(po), "audio tracks are subscribed everywhere")
         pm.screenshot(path=f"{SHOTS}/e2e_room_moderator.png"); pp.screenshot(path=f"{SHOTS}/e2e_room_participant.png"); po.screenshot(path=f"{SHOTS}/e2e_room_observer.png")
         ok(st() == "entered", "staff sees the participant as entered")
-        ok(pp.locator("#lpan:visible, #rpan:visible").count() == 0 and pm.is_visible("#lpan") and pm.is_visible("#rpan"), "side panels for staff only, never for the participant")
-        ok("Wei Ling" not in pm.inner_text("#lpan") and "Wei Ling" not in po.inner_text("body"), "no participant name in the room panels")
+        ok(pp.locator("#lpan:visible, #rpan:visible").count() == 0 and pm.is_visible("#q4") and pm.locator("#lpan:visible, #rpan:visible").count() == 0, "the four-column room is for staff only, never for the participant")
+        ok("Wei Ling" not in pm.inner_text("#q4") and "Wei Ling" not in po.inner_text("body"), "no participant name in the room panels")
 
         # ---- run the interview ----
         ok(wait_for(lambda: "in progress" in pp.inner_text("#msg"), 10), "participant sees the interview started")
@@ -349,10 +344,11 @@ def run(tmp):
         # ---- the researcher's own pages after the interview ----
         cr, pr2 = ctx("researcher", tok["researcher"])
         pr2.goto(f"{B}/#/i/{iid}/transcript")
-        pr2.wait_for_selector("#recs")
-        ok("已就绪" in pr2.inner_text("#recs"), "researcher sees the recording as ready")
-        ok(bool(wait_for(lambda: pr2.is_visible("#pv") and pr2.get_attribute("#pv", "src"), 10)), "researcher gets a player for the full recording")
-        ok(pr2.locator("[data-seek]").count() == len(segs), "every transcript time is a click-to-seek link")
+        pr2.wait_for_selector(".rsp .rsp-ln")
+        ok(bool(wait_for(lambda: pr2.locator("#rsp-v").count() == 1 and pr2.get_attribute("#rsp-v", "src"), 15)), "researcher gets a player for the full recording in the respondent window")
+        ok(pr2.locator(".rsp-ln").count() == len(segs), "every transcript line is there and a click on it seeks the video")
+        pr2.locator(".rsp-ln").nth(min(2, len(segs) - 1)).click()
+        ok(wait_for(lambda: pr2.evaluate("document.getElementById('rsp-v').currentTime") > 0 or len(segs) < 3, 5), "clicking a line moves the video to that time")
         ok(not pr2.is_disabled("#tr"), "transcribe button is enabled once the recording is ready")
         pr2.screenshot(path=f"{SHOTS}/e2e_staff_transcript.png", full_page=True)
         # proofread a line that an approved insight quotes -> that insight must flip to "needs review"
@@ -428,7 +424,6 @@ def run(tmp):
             ok(e.code == 422, "AI interview: consent without the AI box is refused")
         call(f"/public/join/{atk}/consent", {"country": "SG", "recording": True, "observers": True, "cross_border": True, "ai": True})
         call(f"/interviews/{aid}/start", {}, tok["moderator"])
-        call(f"/interviews/{aid}/admit", {"admit": True}, tok["moderator"])
         cam, pam = ctx("ai-moderator", tok["moderator"])
         cap, pap = ctx("ai-participant")
         cao, pao = ctx("ai-observer", tok["observer"])
@@ -548,10 +543,7 @@ def concept_phase(pw, tok, ids, pid, errs):
 
     # ---- the participant arrives the way a person does: invitation page -> waiting room -> "enter" (a real click) ----
     pp.goto(f"{B}/join.html?t={T}")
-    pp.wait_for_selector("#enter")
-    pm.click("#b-admit")
-    ok(wait_for(lambda: pp.get_attribute("#enter", "aria-disabled") != "true", 10), "concept test: the participant can enter once the moderator lets them in")
-    pp.click("#enter")
+    pp.wait_for_url("**/room.html*", timeout=20000)   # consented and device-tested earlier: the invitation page sends them straight in
     ok(wait_for(lambda: in_room(pp), 30), "concept test: the participant is in the real video room")
     two = wait_for(lambda: len(FAKE.phase) >= 2, 45)
     ok(two, f"concept test: the participant's browser opened its own speech-recognition session (no autoplay override) {timeline()} participant caption state: {pp.evaluate(CAPSTATE)} slowest calls: {slow(pp)}")
@@ -590,6 +582,7 @@ def concept_phase(pw, tok, ids, pid, errs):
        "concept test: an observer can delete only their own follow-up")
 
     # ---- the team's private chat ----
+    po.click("#b-chat"); pm.click("#b-chat")   # the private chat is a small button that opens it over the page
     po.fill("#brin", "能追问一下价格吗？"); po.click("#brsend")
     ok(wait_for(lambda: "能追问一下价格吗" in pm.inner_text("#brlog"), 10), "concept test: the observer's private message reaches the moderator")
     pm.fill("#brin", "好的，下一题问。"); pm.click("#brsend")
@@ -650,7 +643,7 @@ def _join_group_participant(page, token):
     for n in ("recording", "observers", "cross_border"):
         page.check(f"input[name={n}]")
     page.click("form button")
-    page.wait_for_selector("#enter")
+    page.wait_for_url("**/room.html*", timeout=20000)
 
 
 def _tiles(page):
@@ -698,20 +691,17 @@ def run_group(tmp):
             contexts.append(c)
             pages.append(p)
             _join_group_participant(p, g["invite_token"])
-            ok("Waiting for the moderator" in p.inner_text("#pw"), f"seat {i + 1} waits until admitted")
+            ok("room.html" in p.url, f"seat {i + 1} is in the room right after consent")
         cm, pm = ctx("moderator", tok["moderator"])
         co, po = ctx("observer", tok["observer"])
         contexts += [cm, co]
         pm.goto(f"{B}/room.html?i={iid}")
         po.goto(f"{B}/room.html?i={iid}&as=observer")
-        ok(wait_for(lambda: pm.locator("#gwait [data-admit]").count() == 3, 15), "moderator sees one admit button per seat")
+        ok(wait_for(lambda: pm.locator("#gwait .row").count() == 3, 15), "moderator sees one line per seat")
+        ok(pm.locator("[data-admit], [data-hold]").count() == 0, "and nothing to admit or hold")
         ok("参与者 ·01" in pm.inner_text("#gwait") and "参与者 ·03" in pm.inner_text("#gwait"), "waiting list uses seat labels")
-        ok(not po.is_visible("#wbox"), "the observer does not see the waiting list or anyone's name")
+        ok(not po.is_visible("#wbox"), "the observer does not see the list or anyone's name")
         pm.click("#b-start")
-        for i, (page, g) in enumerate(zip(pages, invites)):
-            pm.locator(f'#gwait [data-admit="{g["participant_id"]}"]').click()
-            ok(wait_for(lambda page=page: page.get_attribute("#enter", "aria-disabled") == "false", 15), f"seat {i + 1} is let in")
-            page.click("#enter")
         ok(wait_for(_tiles_ready(pm, 4), 45), "moderator sees self and three participants")
         for i, page in enumerate(pages):
             ok(wait_for(_tiles_ready(page, 4), 45), f"seat {i + 1} sees the moderator and the other two")
@@ -738,6 +728,7 @@ def run_group(tmp):
         ok("p1" not in pm.inner_text("#caps"), "live captions do not show the raw speaker key")
         pm.screenshot(path=f"{SHOTS}/e2e_group_captions.png")
         # the speaking-fairness panel: seat 1 talks a lot, seat 2 a little, seat 3 not at all
+        time.sleep(7)   # nobody waits for an admit any more, so the interview is only seconds old: let the clock pass the longest sentence below, or its span would be cut at zero
         for text, ms in (("I read every label before I buy anything, even in a hurry.", 6000), ("Price matters less to me than the texture and the smell.", 5000)):
             call(f"/public/join/{invites[0]['invite_token']}/captions", {"text": text, "final": True, "dur_ms": ms})
         call(f"/public/join/{invites[1]['invite_token']}/captions", {"text": "I usually ask my sister first.", "final": True, "dur_ms": 2000})
@@ -819,8 +810,7 @@ def run_group(tmp):
         ok(speakers >= {"moderator", "p1", "p2", "p3"}, f"the mix kept one track per seat ({sorted(speakers)})")
         pages[2].click("#b-leave")
         left = invites[2]["participant_id"]
-        ok(wait_for(lambda: pm.locator(f'#gwait [data-admit="{left}"]:not([disabled])').count() == 1, 12), "the person who left needs a fresh admit")
-        ok(pm.locator(f'#gwait [data-admit="{invites[0]["participant_id"]}"]').is_disabled(), "the others stay admitted")
+        ok(wait_for(lambda: "进过房间" in pm.inner_text("#gwait"), 15), "the person who left shows as having been in the room (and can come back without anyone's say-so)")
         ok(wait_for(_tiles_ready(pm, 3), 20), "moderator's grid drops the person who left")
         pm.click("#theme")
         ok("t-dark" in pm.evaluate("document.body.className"), "group room switches to dark green")

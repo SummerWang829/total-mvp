@@ -171,6 +171,46 @@ def new_page(br, w, h=860, token=None, room_theme=None, **kw):
     return ctx, pg, errs
 
 
+def respondent_window_section(br, D):
+    """The window that opens when a respondent code is clicked: header, player and timeline, tabs, keyboard and Back, the address #/i/<id> opens it too, and what it hides from a client observer."""
+    adm, pid, mi = D["tok"]["admin"], D["pid"], D["main"]["id"]
+    ctx, pg, errs = new_page(br, 1280, token=adm)
+    pg.goto(B + "/"); pg.evaluate("sessionStorage.setItem('itab', 'r')")
+    pg.goto(B + f"/#/p/{pid}/insights"); pg.wait_for_selector(".ins-tbl2 tbody td.pin a")
+    ok(pg.locator(".rsp").count() == 0, "[window] nothing is open until a code is clicked")
+    pg.locator(".ins-tbl2 tbody td.pin a").first.click(); pg.wait_for_selector(".rsp .rsp-tabs")
+    ok(pg.url.split("#")[1].startswith(f"/p/{pid}/insights"), "[window] clicking a code opens a window over the table (the address does not change to another page)")
+    labels = [x.strip() for x in pg.locator(".rsp-tabs button").all_inner_texts()]
+    ok(labels[:3] == ["转写", "洞察", "片段"] and "资料" in labels, f"[window] tabs: 转写, 洞察, 片段 ... 资料 (got {labels})")
+    ok(pg.locator("#rsp-tl").count() == 1 and pg.locator("#rsp-ph").count() == 1 and pg.locator(".rsp-lg").count() == 1, "[window] the timeline with its playhead and legend is there")
+    ok(pg.evaluate("document.documentElement.scrollHeight <= innerHeight + 1"), "[window] the page behind does not grow")
+    before = pg.locator("#rsp-tm").inner_text()
+    box = pg.locator("#rsp-tl").bounding_box()
+    pg.mouse.click(box["x"] + box["width"] * 0.6, box["y"] + 20)
+    ok(pg.locator("#rsp-tm").inner_text() != before or pg.locator("#rsp-vbox video").count() == 0, "[window] clicking the timeline moves the playhead")
+    pg.locator(".rsp-ln").first.click() if pg.locator(".rsp-ln").count() else None
+    audit_page(pg, "respondent window/desktop", errs)
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "respondent_window_1280.png"))
+    pg.locator(".rsp-tabs button", has_text="资料").click(); pg.wait_for_selector("#timeslotcard, #groupcard")
+    ok(pg.locator("#timeslotcard").count() == 1 and pg.locator("#pretaskcard").count() == 1, "[window] 资料 holds the candidate times and the pre-interview questions")
+    pg.keyboard.press("Escape"); ok(wait_until(lambda: pg.locator(".rsp").count() == 0, 3), "[window] Esc closes it")
+    pg.wait_for_timeout(500)   # (closing steps the browser history back once; let that finish before opening again)
+    pg.locator(".ins-tbl2 tbody td.pin a").first.click(); pg.wait_for_selector(".rsp"); pg.go_back()
+    ok(wait_until(lambda: pg.locator(".rsp").count() == 0, 3), "[window] the browser's Back button closes it")
+    pg.goto(B + f"/#/i/{mi}/insights"); pg.wait_for_selector(".rsp .rsp-tabs")
+    ok(pg.locator(".rsp-tabs button.on", has_text="洞察").count() == 1 and f"/p/{pid}/insights" in pg.url, "[window] the old address #/i/<id>/insights opens the window on the 洞察 tab over the insights page")
+    ctx.close()
+    ctx, pg, errs = new_page(br, 1280, token=D["tok"]["observer"])
+    pg.goto(B + f"/#/i/{mi}"); pg.wait_for_selector(".rsp .rsp-tabs")
+    labels = [x.strip() for x in pg.locator(".rsp-tabs button").all_inner_texts()]
+    ok(labels == ["转写", "洞察", "片段"] and pg.locator("#rsp-vbox video").count() == 0 and pg.locator("#rsp-cut, #rot, #tr").count() == 0, f"[window] a client observer gets no recording, no clipping, no invite and no extra tabs (got {labels})")
+    ctx.close()
+    ctx, pg, errs = new_page(br, 390, token=adm)
+    pg.goto(B + f"/#/i/{mi}"); pg.wait_for_selector(".rsp .rsp-tabs")
+    audit_page(pg, "respondent window/phone", errs)
+    ctx.close()
+
+
 def rooms_section(br, D):
     """The live room page: status buttons (全部 / 待开始 / 进行中 / 已结束), a 状态 column only under 全部, column header filters that redraw only the table, and the 全部预览 wall."""
     adm, pid = D["tok"]["admin"], D["pid"]
@@ -608,7 +648,7 @@ def group_section(br, D):
     pg.goto(B + f"/#/p/{pid}/rooms"); pg.wait_for_selector("#rmb tr")
     ok(pg.locator("#rmb tr").count() >= 1 and pg.locator(".rmt", has_text="待开始").count() == 1, "[group] the live room page lists the sessions under status buttons")
     audit_page(pg, "group rooms/desktop", errs)
-    pg.goto(B + f"/#/i/{iid}"); pg.wait_for_selector("#groupcard")
+    pg.goto(B + f"/#/i/{iid}/info"); pg.wait_for_selector("#groupcard")
     ok(pg.locator("#groupcard li").count() == 3 and "参与者 ·01" in pg.inner_text("#groupcard"), "[group] the roster lists three numbered seats")
     audit_page(pg, "group roster/desktop", errs)
     pg.screenshot(path=os.path.join(ROOT, "qa_shots", "group_roster_1280.png"), full_page=True)
@@ -623,25 +663,22 @@ def group_section(br, D):
     ctx.close()
     ctx, pg, errs = new_page(br, 1280, token=mod)
     pg.goto(B + f"/room.html?i={iid}&as=moderator"); pg.wait_for_selector("#claims")
-    ok(wait_until(lambda: pg.locator("#gwait [data-admit]").count() == 3, 8), "[group room] one admit button per seat")
-    ok(pg.locator("#wadmit").is_hidden(), "[group room] the single-person admit row is hidden")
+    ok(wait_until(lambda: pg.locator("#gwait .row").count() == 3, 8), "[group room] the moderator sees one line per seat")
+    ok(pg.locator("[data-admit], [data-hold], #b-admit, #b-hold, #wadmit").count() == 0, "[group room] there is nothing to admit or hold any more")
     audit_page(pg, "group room moderator/desktop", errs)
-    pg.locator("#gwait [data-admit]").first.click()
-    ok(wait_until(lambda: pg.locator("#gwait .sm", has_text="已放行").count() == 1, 8), "[group room] admitting one seat leaves the others unadmitted")
     pg.screenshot(path=os.path.join(ROOT, "qa_shots", "group_room_moderator_1280.png"), full_page=True)
     ctx.close()
-    seat = it["group_invites"][1]  # seat 1 was admitted above without consent; seat 2 walks the real path
+    seat = it["group_invites"][1]  # seat 2 walks the real path
     tok = seat["invite_token"]
     call(f"/public/join/{tok}/device", {"camera": True, "microphone": True, "speaker": True})
     call(f"/public/join/{tok}/consent", {"country": "SG", "recording": True, "observers": True, "cross_border": True})
     call(f"/interviews/{iid}/start", {}, mod)
-    call(f"/interviews/{iid}/admit", {"admit": True, "participant_id": seat["participant_id"]}, mod)
     call(f"/public/join/{tok}/enter", {})
     call(f"/public/join/{tok}/captions", {"text": "我先说成分。", "final": True, "dur_ms": 800})
     call(f"/interviews/{iid}/transcript/from-captions", {}, adm)
     ctx, pg, errs = new_page(br, 1280, token=adm)
-    pg.goto(B + f"/#/i/{iid}/transcript"); pg.wait_for_selector(".seg")
-    said = pg.locator(".seg .s").all_inner_texts()
+    pg.goto(B + f"/#/i/{iid}/transcript"); pg.wait_for_selector(".rsp-ln")
+    said = " ".join(pg.locator(".rsp-ln b").all_inner_texts())
     ok("参与者 ·02" in said and "p2" not in said and "我先说成分。" in pg.inner_text("#tab"), "[group] the transcript names the seat, not the raw key")
     audit_page(pg, "group transcript/desktop", errs)
     pg.screenshot(path=os.path.join(ROOT, "qa_shots", "group_transcript_1280.png"), full_page=True)
@@ -1431,21 +1468,17 @@ def admin_data_section(br, D):
 
 
 def segcode_section(br, D):
-    """Transcript: search inside it, tag a line with a code (also a new code made on the spot), and see the tag on the line."""
+    """Transcript in the respondent window: search inside it and see the lines come back (tagging lines with codes went away with the 编码与分析 page)."""
     rs, mi = D["tok"]["researcher"], D["main"]["id"]
     ctx, pg, errs = new_page(br, 1280, token=rs)
     pg.goto(B + f"/#/i/{mi}"); pg.wait_for_selector("#tsearch")
-    total = pg.locator(".seg").count()
+    total = pg.locator(".rsp-ln").count()
     ok(total >= 2, "[transcript] the transcript has lines")
     pg.fill("#tsearch", "zzzz-no-such-word")
-    ok(wait_until(lambda: pg.locator(".seg:visible").count() == 0 and "0 句" in pg.inner_text("#tcount"), 5), "[transcript] searching for a word that is not there hides every line")
+    ok(wait_until(lambda: pg.locator(".rsp-ln:visible").count() == 0 and "0 句" in pg.inner_text("#tcount"), 5), "[transcript] searching for a word that is not there hides every line")
     pg.fill("#tsearch", "")
-    ok(wait_until(lambda: pg.locator(".seg:visible").count() == total, 5), "[transcript] clearing the search brings every line back")
-    pg.locator("[data-tag]").first.click(); pg.wait_for_selector("#f [name=newcode]")
-    audit_page(pg, "transcript tag modal/desktop", errs)
-    pg.fill("[name=newcode]", "价格敏感QA"); pg.click("#f button.p")
-    ok(wait_until(lambda: pg.locator(".segacts .tag", has_text="价格敏感QA").count() == 1, 10), "[transcript] a new code is made and shown on the tagged line")
-    audit_page(pg, "transcript tagged/desktop", errs)
+    ok(wait_until(lambda: pg.locator(".rsp-ln:visible").count() == total, 5), "[transcript] clearing the search brings every line back")
+    ok(pg.locator("[data-tag]").count() == 0, "[transcript] there is no line-tagging any more (the coding page is gone)")
     ctx.close()
 
 
@@ -1468,7 +1501,7 @@ def vote_section(br, D):
     ok(wait_until(lambda: "谢谢" in pg.inner_text("#tf") and pg.locator("input[name=slot]:checked").count() == 2, 8), "[vote] saving shows thanks and keeps the ticks")
     call(f"/public/join/{invs[1]['invite_path'].split('t=')[1]}/slot", {"slot_ids": [slots[1]["id"]]})
     ctx2, pg2, errs2 = new_page(br, 1280, token=adm)
-    pg2.goto(B + f"/#/i/{iid}"); pg2.wait_for_selector("#timeslotcard [data-confirm]")
+    pg2.goto(B + f"/#/i/{iid}/info"); pg2.wait_for_selector("#timeslotcard [data-confirm]")
     ok("最多人能来" in pg2.inner_text("#timeslotcard") and "2 人能来" in pg2.inner_text("#timeslotcard"), "[vote] the team sees how many can make each time and which is best")
     audit_page(pg2, "group vote staff/desktop", errs2)
     pg2.on("dialog", lambda d: d.accept())
@@ -1490,7 +1523,7 @@ def gmap_section(br, D):
     ctx, pg, errs = new_page(br, 1280, token=adm)
     pg.on("dialog", lambda d: d.accept())
     pg.goto(B + f"/#/i/{iid}/disagree"); pg.wait_for_selector("#danalyze")
-    ok(pg.locator(".tabs a", has_text="分歧地图").count() == 1 and "还没有分析" in pg.inner_text("#tab"), "[gmap] a focus group has the map tab, empty at first")
+    ok(pg.locator(".rsp-tabs button", has_text="分歧地图").count() == 1 and "还没有分析" in pg.inner_text("#tab"), "[gmap] a focus group has the map tab, empty at first")
     audit_page(pg, "disagreement empty/desktop", errs)
     pg.click("#danalyze"); pg.wait_for_selector("#dmatrix", timeout=15000)
     ok(pg.locator("#dmatrix .dcell").count() >= 4 and "香味" in pg.inner_text("#dmatrix") and "价格" in pg.inner_text("#dmatrix"), "[gmap] the matrix lists topics with each person's stance")
@@ -1620,7 +1653,6 @@ def concept_room_section(br, D):
     call(f"/public/join/{T}/device", {"camera": True, "microphone": True, "speaker": True})
     call(f"/public/join/{T}/consent", {"country": "SG", "recording": True, "observers": True, "cross_border": True})
     call(f"/interviews/{iid}/start", {}, mod)
-    call(f"/interviews/{iid}/admit", {"admit": True}, mod)
     call(f"/public/join/{T}/enter", {})
     for who, text in (("m", "先聊聊你平时的护肤习惯。"), ("p", "我平时先看成分，再看价格，最担心买到假货。"), ("m", "你为什么会选这一款？"), ("p", "因为朋友推荐，而且旗舰店有保障。")):
         if who == "m":
@@ -1666,8 +1698,8 @@ def concept_room_section(br, D):
     ctx.close()
     for role in ("moderator", "observer"):
         c, g, e = new_page(br, 1280, token=D["tok"][role])
-        g.goto(B + f"/#/i/{iid}"); g.wait_for_selector("main .tabs")
-        ok(g.locator(".tabs a:has-text('引用与追问')").count() == 0, f"[interview page] {role} does not get the quotes tab")
+        g.goto(B + f"/#/i/{iid}"); g.wait_for_selector(".rsp-tabs")
+        ok(g.locator(".rsp-tabs button:has-text('引用与追问')").count() == 0, f"[interview page] {role} does not get the quotes tab")
         c.close()
 
 
@@ -1678,7 +1710,6 @@ def ai_room_section(br, D):
     call(f"/public/join/{tk}/device", {"camera": True, "microphone": True, "speaker": True})
     call(f"/public/join/{tk}/consent", {"country": "SG", "recording": True, "observers": True, "cross_border": True, "ai": True})
     call(f"/interviews/{it['id']}/start", {}, mod)
-    call(f"/interviews/{it['id']}/admit", {"admit": True}, mod)
     call(f"/public/join/{tk}/enter", {})
     log_texts = lambda pg: pg.locator("#clog .m").all_inner_texts()
     for theme in (None, "dark"):
@@ -1747,8 +1778,8 @@ def ai_room_section(br, D):
     # ending turns the chat into a transcript with the AI labelled
     call(f"/interviews/{it['id']}/end", {}, mod)
     ctx, pg, errs = new_page(br, 1280, token=adm)
-    pg.goto(B + f"/#/i/{it['id']}/transcript"); pg.wait_for_selector(".seg")
-    ok(pg.locator(".seg .s:has-text('AI 主持人')").count() >= 1 and pg.locator(".seg .s:has-text('受访者')").count() >= 1, "[ai room] the transcript labels the AI moderator")
+    pg.goto(B + f"/#/i/{it['id']}/transcript"); pg.wait_for_selector(".rsp-ln")
+    ok(pg.locator(".rsp-ln b:has-text('AI 主持人')").count() >= 1 and pg.locator(".rsp-ln b:has-text('受访者')").count() >= 1, "[ai room] the transcript labels the AI moderator")
     audit_page(pg, "ai interview transcript/desktop", errs)
     ctx.close()
 
@@ -1762,7 +1793,7 @@ def pretask_section(br, D):
     iid, T = it["id"], it["invite_token"]
     # (a) staff config card on the session page: one required + one optional question
     ctx, pg, errs = new_page(br, 1280, token=adm)
-    pg.goto(B + f"/#/i/{iid}"); pg.wait_for_selector("#pretaskcard #pted")
+    pg.goto(B + f"/#/i/{iid}/info"); pg.wait_for_selector("#pretaskcard #pted")
     pg.click("#pted"); pg.wait_for_selector(".modal #ptrows .ptrow")
     pg.locator(".modal .ptq").first.fill("你平时的护肤步骤是怎样的？")
     pg.click(".modal #ptadd"); pg.wait_for_selector(".modal .ptrow:nth-child(2)")
@@ -1785,8 +1816,8 @@ def pretask_section(br, D):
     audit_page(pg, "pretask participant step/phone", errs)
     pg.screenshot(path=os.path.join(ROOT, "qa_shots", "join_pretask_390.png"), full_page=True)
     pg.locator("#pf textarea").first.fill("洁面、爽肤水、面霜")
-    pg.click("#pf button"); pg.wait_for_selector("#pw")
-    ok("候场室" in pg.inner_text("#box"), "[pretask] submitting the answers reaches the waiting room")
+    pg.click("#pf button"); pg.wait_for_url("**/room.html*", timeout=15000)
+    ok("room.html" in pg.url, "[pretask] submitting the answers goes straight into the room (nobody has to let the participant in)")
     ctx.close()
     # (c) the moderator sees the answers in the room; the client observer never does
     ctx, pg, errs = new_page(br, 1280, token=mod)
@@ -1811,7 +1842,7 @@ def timeslot_section(br, D):
     iid, T = it["id"], it["invite_token"]
     # (a) staff config card: offer two candidate times through the dialog
     ctx, pg, errs = new_page(br, 1280, token=adm)
-    pg.goto(B + f"/#/i/{iid}"); pg.wait_for_selector("#timeslotcard #tsed")
+    pg.goto(B + f"/#/i/{iid}/info"); pg.wait_for_selector("#timeslotcard #tsed")
     pg.click("#tsed"); pg.wait_for_selector(".modal #tsrows .tsq")
     pg.fill(".modal .tsq", "2099-01-01T09:00")
     pg.click(".modal #tsadd"); pg.wait_for_selector(".modal .ptrow:nth-child(2) .tsq")
@@ -1835,7 +1866,7 @@ def timeslot_section(br, D):
     ctx.close()
     # (c) the session page now marks which time the participant chose
     ctx, pg, errs = new_page(br, 1280, token=adm)
-    pg.goto(B + f"/#/i/{iid}"); pg.wait_for_selector("#timeslotcard .ptlist")
+    pg.goto(B + f"/#/i/{iid}/info"); pg.wait_for_selector("#timeslotcard .ptlist")
     ok(pg.locator("#timeslotcard .tag.ok").count() == 1, "[timeslot] the session page marks the time the participant chose")
     ctx.close()
 
@@ -1851,7 +1882,6 @@ def marks_section(br, D):
     call(f"/public/join/{T}/device", {"camera": True, "microphone": True, "speaker": True})
     call(f"/public/join/{T}/consent", {"country": "SG", "recording": True, "observers": True, "cross_border": True})
     call(f"/interviews/{iid}/start", {}, mod)
-    call(f"/interviews/{iid}/admit", {"admit": True}, mod)
     call(f"/public/join/{T}/enter", {})
     shown = next(s for s in call(f"/interviews/{iid}/concept", token=mod)["stimuli"] if s["key"] == "concept_a")
     call(f"/interviews/{iid}/stimulus/show", {"stimulus_id": shown["id"]}, mod)
@@ -1885,7 +1915,7 @@ def marks_section(br, D):
     ctx.close()
     # (d) staff heatmap card on the session page: the image with counts and pins
     ctx, pg, errs = new_page(br, 1280, token=adm)
-    pg.goto(B + f"/#/i/{iid}"); pg.wait_for_selector("#markcard .hmstim")
+    pg.goto(B + f"/#/i/{iid}/info"); pg.wait_for_selector("#markcard .hmstim")
     ok(pg.locator("#markcard .hmstim").count() >= 1 and pg.locator("#markcard .pins .pin").count() >= 1, "[marks] the heatmap card shows the image with marks overlaid")
     ok("♥ 1" in pg.inner_text("#markcard"), "[marks] the heatmap shows the like count")
     audit_page(pg, "marks heatmap card/desktop", errs)
@@ -1959,7 +1989,7 @@ def run():
                         ok(not pg.is_visible("#wbox"), f"[room {role}/{vp}] observer must not see the waiting room controls")
                     else:
                         ok(claims["canPublish"] is True and claims["hidden"] is False, f"[room {role}/{vp}] moderator grants wrong")
-                        ok(pg.is_visible("#b-admit") and pg.is_visible("#b-hold"), f"[room {role}/{vp}] moderator has admit / hold")
+                        ok(pg.is_visible("#wbox") and pg.locator("#b-admit, #b-hold").count() == 0, f"[room {role}/{vp}] moderator sees who is in the room and has no admit / hold")
                     audit_page(pg, f"room-{role}/{theme or 'light'}/{vp}", errs)
                     ctx.close()
             # theme switch: one click, takes effect at once, remembered in this browser
@@ -2059,7 +2089,11 @@ def run():
 
         # role-based UI: what each role must NOT see
         def see(role, route, sel):
-            c, g, e = new_page(br, 1280, token=D["tok"][role]); g.goto(B + "/" + route); g.wait_for_selector("main"); g.wait_for_timeout(300)
+            c, g, e = new_page(br, 1280, token=D["tok"][role]); g.goto(B + "/" + route); g.wait_for_selector("main")
+            if route.startswith("#/i/"):
+                g.wait_for_selector(".rsp .rsp-sc")
+                g.wait_for_selector(".rsp-sc .rsp-ln, .rsp-sc .card, .rsp-sc .empty", timeout=15000)
+            g.wait_for_timeout(500)
             n = g.locator(sel).count(); c.close(); return n
         ok(see("observer", "#/projects", "#np") == 0, "observer must not see 'new project'")
         ok(see("moderator", "#/projects", "#np") == 0, "moderator must not see 'new project'")
@@ -2153,40 +2187,29 @@ def run():
                 pg.check(f"input[name={k}]")
             pg.click("form button"); pg.wait_for_selector(".toast.err")
             ok(pg.locator("form#f").count() == 1, f"[join AI {lang}] must not go on without agreeing to the AI interviewer")
-            pg.check("input[name=ai]"); pg.click("form button"); pg.wait_for_selector("#pw")
-            ok(state(it) == "consented", f"[join AI {lang}] agreeing to all four items reaches the waiting room")
+            pg.check("input[name=ai]"); pg.click("form button"); pg.wait_for_url("**/room.html*", timeout=20000)
+            ok(state(it) in ("consented", "entered"), f"[join AI {lang}] agreeing to all four items goes into the room")
             ctx.close()
-        # (c) full journey: consent -> waiting room (locked until started AND let in) -> hold -> admit -> room -> leave
+        # (c) full journey: consent -> straight into the room (nobody lets anyone in) -> leave -> back in
         ctx, pg, errs = new_page(fake, 390, **media)
         it = D["itv"]["zh"]
         mod = D["tok"]["moderator"]
         pg.goto(B + f"/join.html?t={it['invite_token']}"); pg.wait_for_selector("form#f")  # the device test passed above, so it resumes at consent
         pg.select_option("[name=country]", "SG")
         for i in range(3): pg.locator("input[type=checkbox]").nth(i).check()
-        pg.click("form button"); pg.wait_for_selector("#enter")
-        ok(state(it) == "consented", "staff should see the participant as consented")
-        ok(pg.get_attribute("#enter", "aria-disabled") == "true" and "等待主持人开始" in pg.inner_text("#pw"), "waiting room: the entry is locked")
-        pg.click("#enter", force=True); pg.wait_for_timeout(300); ok("join.html" in pg.url, "a locked entry button must not open the room")
-        ok(wait_until(lambda: call(f"/interviews/{it['id']}/live", token=mod)["participant"]["waiting"], 8), "the moderator sees the participant in the waiting room")
-        audit_page(pg, "join zh waiting room/phone", errs)
-        pg.screenshot(path=os.path.join(ROOT, "qa_shots", "join_zh_4waiting_390.png"), full_page=True)
-        pg.reload(); pg.wait_for_selector("#enter"); ok("候场室" in pg.inner_text("#box"), "reopening the link after consent goes straight back to the waiting room")
-        call(f"/interviews/{it['id']}/start", {}, mod)
-        pg.wait_for_timeout(3500); ok(pg.get_attribute("#enter", "aria-disabled") == "true", "started but not let in yet: still locked")
-        call(f"/interviews/{it['id']}/admit", {"admit": False}, mod)
-        ok(wait_until(lambda: "稍等" in pg.inner_text("#pw"), 8), "held: the participant is asked to wait a little longer")
-        audit_page(pg, "join zh waiting room held/phone", errs)
-        call(f"/interviews/{it['id']}/admit", {"admit": True}, mod)
-        ok(wait_until(lambda: pg.get_attribute("#enter", "aria-disabled") == "false", 8), "let in: the waiting room unlocks")
-        pg.click("#enter")
-        pg.wait_for_selector("#claims"); cl = json.loads(pg.inner_text("#claims")); ok(cl["canPublish"] and not cl["hidden"] and not cl["canPublishData"], f"participant grants wrong {cl}")
+        pg.click("form button")
+        pg.wait_for_selector("#claims", timeout=20000)   # consent done: straight into the room, before the interview has started
+        cl = json.loads(pg.inner_text("#claims")); ok(cl["canPublish"] and not cl["hidden"] and not cl["canPublishData"], f"participant grants wrong {cl}")
         ok(state(it) == "entered", "staff should see the participant as entered")
+        ok(wait_until(lambda: call(f"/interviews/{it['id']}/live", token=mod)["participant"]["waiting"], 10), "the moderator sees the participant in the room before starting")
+        ok("主持人" in pg.inner_text("#msg") or "moderator" in pg.inner_text("#msg").lower() or "稍等" in pg.inner_text("#msg"), "the participant is told to wait for the moderator inside the room")
         ok(pg.locator("#lpan:visible, #rpan:visible").count() == 0, "participant room shows no internal side panels")
         ok("t-light" in pg.evaluate("document.body.className") and "Dark" not in pg.inner_text("#theme"), "participant room: light by default, theme button in the interview language")
         audit_page(pg, "participant room/light/phone", errs)
         pg.click("#theme"); audit_page(pg, "participant room/dark/phone", errs); pg.click("#theme")
         pg.click("#b-leave"); pg.wait_for_timeout(500)
-        ok("邀请链接" in pg.inner_text("#msg") and not call(f"/interviews/{it['id']}/live", token=mod)["participant"]["admitted"], "after leaving, coming back needs the moderator to let them in again")
+        ok("邀请链接" in pg.inner_text("#msg"), "after leaving the participant is told the link works again")
+        ok(call(f"/public/join/{it['invite_token']}/enter", {})["token"], "coming back needs nobody's permission")
         ctx.close(); fake.close()
 
 
@@ -2201,6 +2224,7 @@ def run():
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "review_section": review_section(br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "insights_section": insights_section(br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "languages_section": languages_section(br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "respondent_window_section": respondent_window_section(br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "rooms_section": rooms_section(br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "members_section": members_section(br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "studies_section": studies_section(br, D)
@@ -2221,7 +2245,7 @@ def run():
         for w, vp in ((1280, "desktop"), (390, "phone")):
             ctx, pg, errs = new_page(br, w, token=D["tok"]["admin"])
             pg.goto(B + f"/#/i/{mi}/transcript"); pg.wait_for_selector("[data-edit]")
-            ok(pg.locator("#recs").count() == 1 and pg.locator("#tr").count() == 1, f"[{vp}] recordings card + transcribe button present")
+            ok(pg.locator("#tr").count() == 1, f"[{vp}] the transcribe button is in the window")
             pg.locator("[data-edit]").first.click(); pg.wait_for_selector(".modal form#f textarea")
             audit_page(pg, f"dialog 校对/{vp}", errs)
             ok(pg.locator(".modal textarea[name=text_orig]").input_value() != "", f"[{vp}] edit dialog is prefilled")
@@ -2246,7 +2270,7 @@ def run():
             # the live room page: a status button shows only that status
             pg.goto(B + f"/#/p/{pid}/rooms"); pg.wait_for_selector(".rmt")
             pg.locator(".rmt", has_text="已结束").click()
-            ok(pg.locator("#rmb tr").count() == 0 or all("看转写和洞察" in t or "已按保留期" in t for t in pg.locator("#rmb tr").all_inner_texts()), f"[{vp}] the 已结束 button shows only ended sessions")
+            ok(pg.locator("#rmb tr").count() == 0 or all("转写和洞察" in t or "已按保留期" in t for t in pg.locator("#rmb tr").all_inner_texts()), f"[{vp}] the 已结束 button shows only ended sessions")
             pg.locator(".rmt", has_text="全部").first.click()
             ctx.close()
 
@@ -2272,7 +2296,7 @@ def run():
         pg.wait_for_timeout(300); settle(pg); pg.wait_for_timeout(600)
         body = pg.inner_text("main")
         ok("打不开这个页面" not in pg.inner_text("body") and "Cannot set properties" not in body, "rapid navigation never shows an error page")
-        ok(pg.url.endswith(f"/p/{pid}/home") and pg.locator("main .tabs").count() == 0, "rapid navigation: the last page clicked is the one left on screen (no stale interview page painted over it)")
+        ok(pg.url.endswith(f"/p/{pid}/home") and pg.locator("main .tabs").count() == 0 and pg.locator(".rsp").count() == 0, "rapid navigation: the last page clicked is the one left on screen (no stale interview window painted over it)")
         ctx.close()
 
         # ---------- F. screenshots for a human glance ----------

@@ -16,7 +16,6 @@ def _walk_into_the_room(org: Org, **kw) -> dict:
     r = org.c.post(f"/api/public/join/{t}/consent", json={"country": "SG", "recording": True, "observers": True, "cross_border": True, "ai": True})
     assert r.status_code == 201, r.text
     org.c.post(f"/api/interviews/{itv['id']}/start", headers=org.h("moderator"))
-    org.c.post(f"/api/interviews/{itv['id']}/admit", headers=org.h("moderator"), json={"admit": True})
     assert org.c.post(f"/api/public/join/{t}/enter").status_code == 200
     return itv
 

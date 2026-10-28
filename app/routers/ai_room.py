@@ -110,7 +110,7 @@ def ai_ack_alert(iid: str, ctx: Ctx = Depends(require_roles(*STAFF_AND_MODERATOR
 def _in_room(db: Session, token: str) -> Interview:
     """The interview of this invitation, for a participant who has been let in (the same gate as entering the room)."""
     j = resolve_join(db, token)
-    if not j.seat.admitted_at or not j.seat.entered_at:
+    if not j.seat.entered_at:
         raise HTTPException(409, "Not in the room yet / 还没有进入房间")
     return j.itv
 

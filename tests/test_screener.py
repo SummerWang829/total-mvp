@@ -93,7 +93,6 @@ def test_the_ai_room_gives_the_engine_this_participants_answers(org):
     org.c.post(f"/api/public/join/{t}/device", json={"camera": True, "microphone": True, "speaker": True})
     org.c.post(f"/api/public/join/{t}/consent", json={"country": "SG", "recording": True, "observers": True, "cross_border": True, "ai": True})
     org.c.post(f"/api/interviews/{itv['id']}/start", headers=org.h("moderator"))
-    org.c.post(f"/api/interviews/{itv['id']}/admit", headers=org.h("moderator"), json={"admit": True})
     org.c.post(f"/api/public/join/{t}/enter")
     assert _start(org, itv).status_code == 200
     assert ai_room._ENGINES[itv["id"]].memory.profile[0] == "多久用一次护肤品 → 每天"

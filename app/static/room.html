@@ -17,14 +17,20 @@
      Theme: white light by default, dark green on request (remembered in this browser only). -->
 <div class="rbody">
   <aside class="rpan side" id="lpan" hidden><h3>本场</h3><div id="kv"></div>
-    <div id="wbox" hidden><h3 style="margin-top:6px">候场室</h3><div class="wst" id="wst" role="status"></div>
-      <div class="row" id="wadmit" style="margin-top:8px"><button class="p s" id="b-admit" type="button">放行</button><button class="s" id="b-hold" type="button">暂缓</button></div>
-      <div id="gwait" hidden></div></div>
+    <div id="wbox" hidden><h3 style="margin-top:6px">受访者</h3><div class="wst" id="wst" role="status"></div><div id="gwait" hidden></div></div>
     <div id="prebox" hidden><h3 style="margin-top:6px">访谈前问题</h3><div class="plan" id="pre"></div></div>
     <div id="planbox" hidden><h3 style="margin-top:6px">访谈提纲</h3><div class="plan" id="plan"></div></div></aside>
   <section><div class="stim" id="stim" hidden></div><div class="vgrid" id="grid"></div></section>
   <aside class="rpan side" id="rpan" hidden><h3>实时字幕</h3><p>录制结束后的逐字转写在访谈页。</p></aside>
 </div>
+<div class="q4" id="q4" aria-label="访谈房间">
+  <div class="qc qc1"><div class="qt" id="c1t"></div><div class="qp fill" id="c1o"><h3>访谈大纲 <span id="olcount"></span></h3><div id="olbody"><p>加载中…</p></div></div><div class="qp qs" id="c1s"><h3>说话占比 · 节奏</h3><div id="talk"><p>访谈开始后显示</p></div></div></div>
+  <div class="qc qc2"><div class="qt" id="c2t"></div><div class="qp cp fill" id="c2c"><h3>实时字幕 <span id="capst" role="status">等访谈开始后，字幕会自动开启</span></h3><div class="caps" id="caps" role="log" aria-live="polite" tabindex="0"></div><div class="cap live" id="cappart" hidden style="white-space:pre-wrap"></div></div></div>
+  <div class="qc qc3"><div class="qp fill" id="c3"><h3>追问 <span id="sugnote"></span></h3><div id="sugg"></div><h3 style="margin-top:6px">待追问</h3><div class="probes" id="probes"></div>
+    <form id="pform"><label for="pin" class="sm">想追问什么（写给自己）</label><textarea id="pin" rows="2" maxlength="300"></textarea><button id="psend" type="submit">加入待追问</button></form></div></div>
+  <div class="qc qc4"><div class="qp fill" id="c4"><h3>章节总结 <span id="chapnote"></span></h3><div id="chap"><p>每章问完后，这里出本章要点和没展开的地方。</p></div></div></div>
+</div>
+<div class="brpop" id="brpop" hidden></div>
 <div class="bar" id="bar"></div>
 <script>  // remember every peer connection the video component creates, so the room can read its standard WebRTC statistics (see netProbe below)
 window.__pcs = [];
@@ -154,7 +160,11 @@ function addBtn(id, label, fn, cls = "") {
 }
 function tile(id, name) {
   let el = document.getElementById("t_" + id);
-  if (!el) { el = document.createElement("div"); el.className = "tile"; el.id = "t_" + id; el.innerHTML = `<div class="nm"></div><div class="off" hidden></div>`; grid.appendChild(el); }
+  if (!el) {
+    el = document.createElement("div"); el.className = "tile"; el.id = "t_" + id; el.innerHTML = `<div class="nm"></div><div class="off" hidden></div>`;
+    const slot = Q4.on ? $id(String(id).startsWith("participant:") ? "c2t" : "c1t") : null;   // four-column room: me and the moderator on the left, the participant in the middle
+    (slot || grid).appendChild(el);
+  }
   $(".nm", el).textContent = name; return el;
 }
 function setTileVideo(el, track) { el.querySelectorAll("video").forEach((v) => v.remove()); const v = track.attach(); v.setAttribute("playsinline", ""); el.prepend(v); }
@@ -244,7 +254,7 @@ async function poll() {
   const t0 = performance.now();
   let st;
   try {
-    const r = await fetch(inviteT ? `/api/public/join/${encodeURIComponent(inviteT)}/live` : `/api/interviews/${iid}/live`, { headers: authHdr() });
+    const r = await fetch(inviteT ? `/api/public/join/${encodeURIComponent(inviteT)}/live?waiting=1` : `/api/interviews/${iid}/live`, { headers: authHdr() });   // waiting=1: tells the moderator this person's page is open
     if (!r.ok) return;
     st = await r.json();
   } catch { return; }
@@ -272,29 +282,21 @@ async function poll() {
     if (st.participants) renderGroupWaiting(st);
     else {
       const P = st.participant || {};
-      $id("gwait").hidden = true; $id("wadmit").hidden = false;
-      $id("wst").textContent = P.admitted ? "已放行：受访者可以进入房间" : P.waiting ? "受访者在候场室，等你放行" : P.held ? "已请受访者稍等" : "受访者还没进候场室";
-      $id("b-admit").disabled = !!P.admitted || st.status === "ended"; $id("b-hold").disabled = !!P.held || st.status === "ended";
-      msg(`你是<b>主持人</b>。${P.waiting ? "受访者在候场室，点左侧“放行”让 TA 进来。" : ""}${st.status === "scheduled" ? "点“开始访谈”后，放行的受访者才能进入。" : st.consented ? (st.recording ? "正在录制，你和受访者的画面声音都在被记录。" : "受访者已同意，可以点“开始录制”。") : "受访者还没有同意录制，同意后才能录制。"}`);
+      $id("gwait").hidden = true;
+      $id("wst").textContent = P.waiting ? "受访者已在房间" : P.entered ? "受访者进过房间，现在不在" : "受访者还没来（链接随时可以进入）";
+      msg(`你是<b>主持人</b>。${P.waiting && st.status === "scheduled" ? "受访者已在房间等你。" : ""}${st.status === "scheduled" ? "点“开始访谈”开始计时；受访者随时可以进入，不需要你放行。" : st.consented ? (st.recording ? "正在录制，你和受访者的画面声音都在被记录。" : "受访者已同意，可以点“开始录制”。") : "受访者还没有同意录制，同意后才能录制。"}`);
     }
     set("b-start", st.status === "scheduled"); set("b-rec", st.status === "live" && st.consented && !st.recording); set("b-stop", !!st.recording); set("b-end", true);
     if (C.on) pollChat();
   }
 }
 function renderGroupWaiting(st) {
-  $id("wadmit").hidden = true; $id("gwait").hidden = false;
-  const waiting = st.participants.filter((p) => p.waiting).length;
-  $id("wst").textContent = waiting ? `有 ${waiting} 位在候场，逐个放行` : "还没有人在候场。到了的人会出现在下面。";
-  const state = (p) => p.entered ? "已进入" : p.admitted ? "已放行" : p.waiting ? "在候场" : p.held ? "已暂缓" : "未到";
-  $id("gwait").innerHTML = st.participants.map((p) => `<div class="row" style="margin-top:8px"><b>${esc(p.label)}</b><span class="sm">${esc(state(p))}</span><span class="sp"></span>
-    <button type="button" class="p s" data-admit="${esc(p.participant_id)}" ${p.admitted || st.status === "ended" ? "disabled" : ""}>放行</button>
-    <button type="button" class="s" data-hold="${esc(p.participant_id)}" ${p.held || st.status === "ended" ? "disabled" : ""}>暂缓</button></div>`).join("");
-  const act = (sel, admit) => $id("gwait").querySelectorAll(sel).forEach((b) => b.onclick = guard(async () => {
-    await api(`/interviews/${iid}/admit`, { method: "POST", body: { admit, participant_id: b.dataset.admit || b.dataset.hold } });
-    toast(admit ? "已放行" : "已请这位稍等"); await poll();
-  }));
-  act("[data-admit]", true); act("[data-hold]", false);
-  msg(`你是<b>主持人</b>。座谈会要逐个放行。${st.status === "scheduled" ? "点“开始访谈”后，放行的人才能进入。" : st.consented ? (st.recording ? "正在录制。" : "已有人同意录制，可以开始录制。") : "还没有人同意录制。"}`);
+  $id("gwait").hidden = false;
+  const here = st.participants.filter((p) => p.waiting).length;
+  $id("wst").textContent = here ? `有 ${here} 位在房间里` : "还没有人在房间里。链接随时可以进入，不需要你放行。";
+  const state = (p) => (p.waiting ? "在房间" : p.entered ? "进过房间" : "未到");
+  $id("gwait").innerHTML = st.participants.map((p) => `<div class="row" style="margin-top:8px"><b>${esc(p.label)}</b><span class="sm">${esc(state(p))}</span></div>`).join("");
+  msg(`你是<b>主持人</b>。${st.status === "scheduled" ? "点“开始访谈”开始计时；大家随时可以进入，不需要你放行。" : st.consented ? (st.recording ? "正在录制。" : "已有人同意录制，可以开始录制。") : "还没有人同意录制。"}`);
 }
 function tick() { updatePlanTimer(); if (recStart) { const s = Math.floor((performance.now() - recStart.at) / 1000); $id("recdot").textContent = `${T.rec} ${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`; } }
 function finish() {
@@ -823,6 +825,57 @@ async function loadPretask() {  // the participant's pre-interview answers, for 
   $id("pre").innerHTML = qs.map((q) => `<div class="preq"><div class="preqq">${esc(q.prompt)}</div><div class="preqa">${q.answer ? esc(q.answer) : "<span class=\"mut\">受访者还没有填写</span>"}</div></div>`).join("");
 }
 
+// ---------------- the four-column moderator room: outline and pace, captions, follow-ups, chapter summaries (rules in app/room_assist.py) ----------------
+const Q4 = { on: false, asked: new Set(), later: new Set(), timer: null };
+const askedKey = () => "tt_asked_" + iid;
+function loadAsked() { try { Q4.asked = new Set(JSON.parse(localStorage.getItem(askedKey()) || "[]")); } catch { Q4.asked = new Set(); } }
+function saveAsked2() { try { localStorage.setItem(askedKey(), JSON.stringify([...Q4.asked].slice(-60))); } catch {} }
+function buildQ4() {
+  Q4.on = true; document.body.classList.add("q4mode"); loadAsked();
+  const wb = $id("wbox"); if (wb) { wb.hidden = role !== "moderator"; $id("c1o").insertBefore(wb, $id("olbody")); }   // who is in the room, above the outline
+  const pb = $id("prebox"), plb = $id("planbox"); [pb, plb].forEach((b) => { if (b) $id("c1o").appendChild(b); });
+  const stim = $id("stim"); if (stim) $id("c1o").insertBefore(stim, $id("olbody"));   // the material on the participant's screen, small, above the outline   // the pre-interview answers and the concept-test script, when there are any
+  $id("pform").onsubmit = guard(async (e) => {
+    e.preventDefault(); const ta = $id("pin"), text = ta.value.trim(); if (!text) return;
+    await api(`/interviews/${iid}/highlights`, { method: "POST", body: { kind: "probe", text } }); ta.value = ""; toast("已加入待追问"); await pollProbes();
+  });
+  pollCaps(); pollProbes(); setInterval(pollCaps, 1000); setInterval(pollProbes, 4000);
+  addReactionFeed($id("c3"));
+  if (role === "moderator") { pollAssist(); Q4.timer = setInterval(pollAssist, 3000); }
+  else { $id("olbody").innerHTML = `<p>大纲进度只给主持人看。</p>`; $id("talk").innerHTML = `<p>只给主持人看。</p>`; $id("sugg").innerHTML = ""; }
+}
+const olBar = (label, pct, color) => `<div class="qbar"><span>${label}</span><div><i style="width:${Math.min(100, pct || 0)}%;background:${color}"></i></div><span>${pct == null ? "—" : pct + "%"}</span></div>`;
+function renderAssist(d) {
+  if (!d.has_outline) { $id("olbody").innerHTML = `<p>项目还没有访谈大纲。到“访谈”页写好大纲，这里会显示进度。</p>`; $id("olcount").textContent = ""; }
+  else {
+    const o = d.outline; $id("olcount").textContent = `已覆盖 ${o.covered} / ${o.total}`;
+    let n = -1;
+    $id("olbody").innerHTML = o.parts.map((p) => p.questions.map((q, qi) => { n++; const cur = n === o.current; return `<div class="qo ${q.covered ? "dn" : ""}${cur ? " now" : ""}"><i></i><span>${esc(q.text)}${qi === 0 ? `<small>${esc(p.title)} · 预算 ${p.minutes} 分钟</small>` : ""}</span></div>`; }).join("")).join("")
+      + (d.pacing && d.pacing.used_pct != null ? olBar("进度", d.pacing.covered_pct, "#1F6B54") + olBar("时间", d.pacing.used_pct, "#EF9F27") : "");
+  }
+  const t = d.talk, p = d.pacing;
+  $id("talk").innerHTML = t.moderator_pct == null ? `<p>${last && last.status === "live" ? "说得还不够多，稍后显示" : "访谈开始后显示"}</p>`
+    : `<div class="qbar"><span>主持 ${t.moderator_pct}%</span><div><i style="width:${t.moderator_pct}%;background:#9FC9B8"></i><i style="width:${t.participant_pct}%;background:#1F6B54"></i></div><span>受访 ${t.participant_pct}%</span></div>${t.advice ? `<div class="qwarn">${esc(t.advice)}</div>` : ""}`;
+  if (p && p.advice) $id("talk").innerHTML += `<div class="qwarn" style="margin-top:6px">${esc(p.advice)}</div>`;
+  const sug = d.probes.filter((x) => !Q4.later.has(x.key));
+  $id("sugnote").textContent = sug.length ? "根据刚才的回答" : "";
+  $id("sugg").innerHTML = sug.length ? sug.map((x) => `<div class="qsug" data-k="${esc(x.key)}"><small>“${esc(x.trigger)}”（${esc(x.rule)}）</small>${esc(x.question)}<div class="row"><button type="button" class="p" data-use>用这句</button><button type="button" data-later>稍后</button><button type="button" data-no>不合适</button></div></div>`).join("")
+    : `<p class="sm" style="color:var(--r-mut)">${last && last.status === "live" ? "暂时没有要追问的地方" : "访谈开始后，这里根据受访者的回答给出追问建议；观察员提的追问也在下面的待追问里。"}</p>`;
+  $id("sugg").querySelectorAll(".qsug").forEach((el) => {
+    const k = el.dataset.k, q = sug.find((x) => x.key === k);
+    el.querySelector("[data-use]").onclick = guard(async () => { await api(`/interviews/${iid}/highlights`, { method: "POST", body: { kind: "probe", text: q.question } }); Q4.asked.add(k); saveAsked2(); toast("已加入待追问"); await pollProbes(); pollAssist(); });
+    el.querySelector("[data-later]").onclick = () => { Q4.later.add(k); renderAssist(d); };
+    el.querySelector("[data-no]").onclick = () => { Q4.asked.add(k); saveAsked2(); pollAssist(); };
+  });
+  $id("chapnote").textContent = d.chapters && d.chapters.length ? `${d.chapters.length} 章已问完` : "";
+  $id("chap").innerHTML = d.chapters && d.chapters.length ? d.chapters.map((c) => `<div style="margin:0 0 10px"><b>${esc(c.title)}</b>${c.points.map((x) => `<div class="qq">“${esc(x.text)}” <small>${mmss(x.at_ms)}</small></div>`).join("")}${c.unexpanded.length ? `<div class="qwarn">没展开：${c.unexpanded.map((u) => `“${esc(u)}”`).join("、")}</div>` : ""}</div>`).join("")
+    : `<p>每章问完后，这里出本章要点（受访者的原话）和没展开的地方。</p>`;
+}
+async function pollAssist() {
+  if (!Q4.on || ended || role !== "moderator") return;
+  try { renderAssist(await api(`/interviews/${iid}/assist?asked=${encodeURIComponent([...Q4.asked].slice(-40).join(","))}`)); } catch {}
+}
+
 // ---------------- start ----------------
 async function start() {
   msg(T.connecting);
@@ -831,17 +884,19 @@ async function start() {
       : await api(`/interviews/${iid}/token`, { method: "POST", body: asRole ? { as: asRole } : {} });
   } catch (e) { msg(`<b>${esc(T.cantEnter)}：</b>${esc(e.message)}`); return; }
   role = S.role;
+  if (role === "participant") { $id("q4").remove(); $id("brpop").remove(); }   // the team's four columns are not even in the participant's page
   if (role === "participant") { T = I18N[S.language] || I18N.en; document.documentElement.lang = S.language || "en"; document.body.classList.add("solo"); themeLabel(); }
+  else if (S.moderation !== "ai" && S.kind !== "group") buildQ4();   // the four-column room
   else { $id("lpan").hidden = false; $id("rpan").hidden = false; }
-  if (role === "moderator") {  // waiting room: let the participant in, or ask them to wait
+  if (role === "moderator") {  // who is in the room (nobody has to let the participant in)
     $id("wbox").hidden = false;
-    const setAdmit = (admit) => guard(async () => { await api(`/interviews/${iid}/admit`, { method: "POST", body: { admit } }); toast(admit ? "已放行，受访者现在可以进入" : "已请受访者稍等"); await poll(); });
-    $id("b-admit").onclick = setAdmit(true); $id("b-hold").onclick = setAdmit(false);
     loadPretask();  // show the participant's pre-interview answers (both human and AI moderation)
   }
   if (S.moderation === "ai") {
     C.on = true;
     if (role === "participant") buildParticipantChat(); else buildAiPanel();
+  } else if (role !== "participant" && Q4.on) {
+    if (role === "moderator") loadPlan();  // the concept-test script and materials, when there are any (the panels were built with the four columns)
   } else if (role !== "participant") {
     buildCaptionPanel();  // human-moderated: live captions with quote / follow-up buttons
     if (S.kind === "group") buildFairnessPanel();  // a focus group: who has talked how much, who has been quiet
@@ -863,9 +918,13 @@ async function start() {
     addBtn("b-cam", T.cam, async (b) => { if (!camTrack) return; const on = (camTrack.mediaStreamTrack.enabled = !camTrack.mediaStreamTrack.enabled); b.textContent = on ? T.cam : T.camOff; b.setAttribute("aria-pressed", String(!on)); const o = $id("t_me")?.querySelector(".off"); if (o) { o.hidden = on; o.textContent = T.camOff; } });
   }
   if (role === "participant") buildReactionButton();
+  if (Q4.on) {   // the team's private chat: a small button that opens it over the page
+    buildBackroom($id("brpop"));
+    addBtn("b-chat", "后台聊天", () => { $id("brpop").hidden = !$id("brpop").hidden; });
+  }
   addBtn("b-leave", T.leave, async () => {
     stopRecorder(); await R.q; localTracks.forEach((t) => { try { t.stop(); } catch {} }); if (room) room.disconnect(); ended = true;
-    if (inviteT) fetch(`/api/public/join/${encodeURIComponent(inviteT)}/leave`, { method: "POST" }).catch(() => {});  // coming back needs a new admit
+    if (inviteT) fetch(`/api/public/join/${encodeURIComponent(inviteT)}/leave`, { method: "POST" }).catch(() => {});  // coming back needs nobody's permission
     msg(role === "participant" ? `${esc(T.left)} ${esc(T.leftBack)}` : "你已离开。"); bar.querySelectorAll("button").forEach((b) => (b.disabled = true));
   }, "bad");
   $id("b-mic")?.setAttribute("aria-pressed", "false"); $id("b-cam")?.setAttribute("aria-pressed", "false");
@@ -873,7 +932,7 @@ async function start() {
 
   if (!S.url) {  // no video server configured: show what this token would be allowed to do, so permissions can still be checked
     const claims = JSON.parse(atob(S.token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
-    grid.innerHTML = `<div style="grid-column:1/-1;padding:12px 14px;color:#CFE3DA;background:#15271F;border-radius:14px"><p><b>开发模式：</b>未配置 LIVEKIT_URL，没有视频。下面是这个令牌的实际权限（${role === "participant" ? "受访者" : { moderator: "主持人", observer: "观察员" }[role]}）。</p>
+    (Q4.on ? $id("c2t") : grid).innerHTML = `<div style="grid-column:1/-1;overflow:auto;max-height:100%;padding:12px 14px;color:#CFE3DA;background:#15271F;border-radius:14px"><p><b>开发模式：</b>未配置 LIVEKIT_URL，没有视频。下面是这个令牌的实际权限（${role === "participant" ? "受访者" : { moderator: "主持人", observer: "观察员" }[role]}）。</p>
       <pre id="claims" style="background:#1b2a24;padding:12px;border-radius:10px;overflow:auto">${esc(JSON.stringify({ room: claims.video.room, ...claims.video }, null, 2))}</pre></div>`;
     poll(); setInterval(poll, 2000); setInterval(tick, 500);
     return;

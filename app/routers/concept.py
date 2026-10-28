@@ -225,7 +225,7 @@ def post_staff_caption(iid: str, body: CaptionIn, ctx: Ctx = Depends(require_rol
 
 def _entered_participant(db: Session, token: str) -> groups.Joiner:
     j = resolve_join(db, token)
-    if j.itv.status != "live" or j.seat.admitted_at is None or not _consented(db, j.itv, j.participant.id):
+    if j.itv.status != "live" or j.seat.entered_at is None or not _consented(db, j.itv, j.participant.id):
         raise HTTPException(409, "还不能发送字幕")  # no consent to recording / not let in / not live: nothing is captured
     return j
 
@@ -284,7 +284,7 @@ def staff_asr(iid: str, ctx: Ctx = Depends(require_roles(*OPERATE)), db: Session
 @router.get("/public/join/{token}/asr")
 def participant_asr(token: str, db: Session = Depends(get_db)):
     j = resolve_join(db, token)
-    if j.itv.status != "live" or j.seat.admitted_at is None or not _consented(db, j.itv, j.participant.id):
+    if j.itv.status != "live" or j.seat.entered_at is None or not _consented(db, j.itv, j.participant.id):
         return {"enabled": False, "retry": True, "reason": "访谈开始、你同意录制并被放行后才会开启字幕"}  # temporary: the browser asks again
     return token_out(j.itv.language)
 
@@ -361,7 +361,7 @@ def post_staff_netstat(iid: str, body: NetStat, ctx: Ctx = Depends(current_ctx),
 @router.post("/public/join/{token}/netstat", status_code=204)
 def post_participant_netstat(token: str, body: NetStat, db: Session = Depends(get_db)):
     j = resolve_join(db, token)
-    if j.itv.status == "live" and j.seat.admitted_at is not None:
+    if j.itv.status == "live" and j.seat.entered_at is not None:
         _store_netstat(j.itv, groups.speaker_key(j.itv, j.seat), body)
 
 

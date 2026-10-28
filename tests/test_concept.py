@@ -17,15 +17,24 @@ from conftest import H, Org
 TEMPLATE = "loreal_skincare_concept"
 
 
+def _live_room_not_entered(org: Org, **kw) -> dict:
+    """Like _live_room, but the participant has consented and passed the device test without going into the room yet."""
+    itv = org.interview(**kw)
+    t = itv["invite_token"]
+    org.c.post(f"/api/public/join/{t}/device", json={"camera": True, "microphone": True, "speaker": True})
+    assert org.c.post(f"/api/public/join/{t}/consent", json={"country": "SG", "recording": True, "observers": True, "cross_border": True}).status_code == 201
+    org.c.post(f"/api/interviews/{itv['id']}/start", headers=org.h("moderator"))
+    return itv
+
+
 def _live_room(org: Org, **kw) -> dict:
-    """A human-moderated interview that is live, whose participant consented to recording, was let in and entered."""
+    """A human-moderated interview that is live, whose participant consented to recording and entered (nobody has to let them in)."""
     itv = org.interview(**kw)
     t = itv["invite_token"]
     org.c.post(f"/api/public/join/{t}/device", json={"camera": True, "microphone": True, "speaker": True})
     r = org.c.post(f"/api/public/join/{t}/consent", json={"country": "SG", "recording": True, "observers": True, "cross_border": True})
     assert r.status_code == 201, r.text
     org.c.post(f"/api/interviews/{itv['id']}/start", headers=org.h("moderator"))
-    org.c.post(f"/api/interviews/{itv['id']}/admit", headers=org.h("moderator"), json={"admit": True})
     assert org.c.post(f"/api/public/join/{t}/enter").status_code == 200
     return itv
 
@@ -99,12 +108,13 @@ def test_the_moderator_shows_a_material_and_only_people_in_the_room_see_it(org):
     assert org.c.get(f"/api/public/join/{itv['invite_token']}/live").json()["stimulus"] is None
 
 
-def test_a_participant_who_is_not_let_in_sees_no_material(org):
-    itv = _live_room(org)
+def test_a_participant_who_has_not_entered_the_room_sees_no_material(org):
+    itv = _live_room_not_entered(org)
     _install(org, itv)
     org.c.post(f"/api/interviews/{itv['id']}/stimulus/show", headers=org.h("moderator"), json={"stimulus_id": _stimuli(org, itv)["ad_film"]["id"]})
-    org.c.post(f"/api/public/join/{itv['invite_token']}/leave")  # leaving withdraws the admission
-    assert org.c.get(f"/api/public/join/{itv['invite_token']}/live").json()["stimulus"] is None
+    assert org.c.get(f"/api/public/join/{itv['invite_token']}/live").json()["stimulus"] is None   # consented and live, but not in the room
+    assert org.c.post(f"/api/public/join/{itv['invite_token']}/enter").status_code == 200
+    assert org.c.get(f"/api/public/join/{itv['invite_token']}/live").json()["stimulus"] is not None   # nobody had to let them in
 
 
 def test_showing_needs_a_live_interview_and_a_material_of_this_interview(org):
@@ -123,7 +133,6 @@ def test_captions_need_a_live_interview_a_consenting_participant_who_was_let_in(
     assert _caption(org, itv, "还没开始").status_code == 409
     assert _caption(org, itv, "还没开始", who="participant").status_code == 409
     org.c.post(f"/api/interviews/{itv['id']}/start", headers=org.h("moderator"))  # live and admitted, but the participant never consented
-    org.c.post(f"/api/interviews/{itv['id']}/admit", headers=org.h("moderator"), json={"admit": True})
     assert _caption(org, itv, "我不同意录制", who="participant").status_code == 409  # no consent to recording: nothing is captured
     assert _caption(org, itv, "主持人的话").status_code == 204
 
@@ -223,12 +232,12 @@ def test_malay_and_tamil_interviews_have_no_captions(org, tencent):
     assert r["enabled"] is False and "语言" in r["reason"]
 
 
-def test_only_the_team_and_an_admitted_consenting_participant_get_an_address(org, tencent):
-    itv = _live_room(org, language="zh")
+def test_only_the_team_and_a_consenting_participant_in_the_room_get_an_address(org, tencent):
+    itv = _live_room_not_entered(org, language="zh")
     assert org.c.get(f"/api/interviews/{itv['id']}/asr", headers=org.h("observer")).status_code == 403
+    assert org.c.get(f"/api/public/join/{itv['invite_token']}/asr").json()["enabled"] is False   # consented, but not in the room yet
+    org.c.post(f"/api/public/join/{itv['invite_token']}/enter")
     assert org.c.get(f"/api/public/join/{itv['invite_token']}/asr").json()["enabled"] is True
-    org.c.post(f"/api/public/join/{itv['invite_token']}/leave")
-    assert org.c.get(f"/api/public/join/{itv['invite_token']}/asr").json()["enabled"] is False
     assert org.c.get("/api/public/join/not-a-token/asr").status_code == 404
 
 
@@ -433,9 +442,8 @@ def test_a_bad_connection_is_written_to_the_server_log_once_it_looks_wrong(org, 
 
 
 def test_nonsense_reports_are_refused_and_a_participant_who_is_not_in_the_room_is_ignored(org, client):
-    itv = _live_room(org)
+    itv = _live_room_not_entered(org)
     assert _net(org, itv, "moderator", loss_pct=150).status_code == 422 and _net(org, itv, "moderator", transport="quic").status_code == 422
-    org.c.post(f"/api/public/join/{itv['invite_token']}/leave")
     assert _net(org, itv, "participant").status_code == 204
     assert "participant" not in org.c.get(f"/api/interviews/{itv['id']}/netstat", headers=org.h("moderator")).json()
     other = Org(client, "Other", "o@other.com")

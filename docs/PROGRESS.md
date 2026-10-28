@@ -33,6 +33,9 @@
 - 验证（按用户 2026-10-27 的要求只测改动到的部分，没跑整套）：相关 pytest 68 项通过（问卷建议、问卷、邀请函、配额、名单看板、候选人问卷）；网页检查只跑了 `recruit_section`（招募页、邀请函、名单）和新增的 `review_section`（问卷对话），都 0 失败。没跑：全站遍历、e2e 房间、一键启动（这次没碰房间和公共外壳；改了全局样式 `app.css` 里只新增了新类名，没改旧规则）。过程中发现并修好：建议提示条在手机上被判分行、测试里弹窗被重复处理、失败信息里的符号让 Windows 控制台崩溃。新增 `tests/test_recruit_review.py`，邀请函步骤按新流程改过。
 - 数据库：`recruit_forms.ai_items`、`recruit_forms.dismissed` 两列启动时自动加。新接口：`POST /projects/{id}/recruiting/form/review`、`.../suggestions/adopt`、`.../suggestions/dismiss`；`GET/PUT form` 和 `chat` 的返回多了 `suggestions`，`chat` 多了 `kind`。
 - 还差/风险：①“访谈”页左边的大纲对话还没升级成同样的做法（大纲的界面不一样，先出效果图）；②“采纳：让 AI …”这类建议是把一句话交给对话去改，没配云端模型时（演示模式）改不了；③“只影响以后作答的人”要看问卷发布后是否立即生效，页面里没有写这句；④“复制链接”在进行中的场次是灰的。
+## 2026-10-28 · 部署到新加坡测试服务器（提交 9a39510，LW：问卷对话框改版、访谈页分版本与设置页、直播间表格、受访者数据大表、点编号弹窗、取消放行、四列访谈房间）
+SW 执行。本机相关测试 50 项全过（outline_versions / outline / outline_chat / room_assist / interview_answers / room_list_facts / insights_overview / project_languages / formats）；服务器无进行中访谈；`deploy/.env` 里没有 JOIN_EARLY_MIN / JOIN_LATE_MIN，所以用新默认（预约时间前后各 60 分钟）；备份 `total-20261028-061027.db.gz` + COS 异地成功；先上传再构建，邮件 6 行仍在。检查：三容器运行、app healthy；projects.outline_versions、interviews.answers_json 两列已存在；“cannot add” 0、error/traceback 0；/api/health、/api/public/config、/index.html、/outline.js、/insights.js、/rooms.js、/screen.html、/screen_run.js、/wizard.js、/app.css 全 200；doctor 无必须解决项（仅剩告警 webhook 未配）。候选人页（LW 提到全站检查在此超时）：未登录只能测到 screen.html 3.3 秒、screen_run.js 1.6 秒、无效链接 404 约 1 秒（本机到新加坡的网络延迟），能否真正作答待用户用问卷链接试。未做：登录后的界面冒烟待用户。
+
 ## 2026-10-27 · 部署到新加坡测试服务器（提交 a4c2596，LW：项目语言多选并可在总览加减、招募问卷语言版本、访谈形式 5 种）
 SW 执行。本机相关测试 69 项全过（formats / project_languages / recruit_translate / screen_form / plans / invitations）；服务器无进行中访谈；备份 `total-20261027-114428.db.gz` + COS 异地成功；先上传再构建，`deploy/.env` 保留（邮件 6 行仍在）。检查：三容器运行、app healthy；6 个新列（projects.languages、projects.formats、interviews.format、participants.pref_langs、participants.pref_formats、recruit_forms.translations）已存在；“cannot add” 0、error/traceback 0；/api/health、/api/public/config、/index.html、/rtrans.js、/home.js、/screen.html、/screen_run.js、/invite.js、/wizard.js、/app.css 全 200；doctor 无必须解决项（仅剩告警 webhook 未配）。未做：登录后的界面冒烟待用户；房间里按访谈形式的实际行为 LW 也还没做。
 
@@ -55,6 +58,19 @@ SW 执行。本机 pytest 1603 项全过；部署时服务器上有 1 场进行�
 - 测试（只测改动的部分，按用户新规定）：pytest 相关 10 个文件 + 项目/参与者/访谈相关 10 个文件共 213 项通过（新增 test_formats、test_project_languages、test_recruit_translate）；浏览器只跑了 languages_section（新增）、wizard_section、recruit_section，0 失败。**没跑**：整套 pytest、全站遍历、e2e_room、smoke。
 - 数据库：`projects.languages`、`projects.formats`、`interviews.format`、`participants.pref_langs`、`participants.pref_formats`、`recruit_forms.translations` 启动时自动新增。
 - 还差/风险：①房间里的实际行为没动（纯音频不开摄像头、屏幕共享、文字+语音转录后面逐个做），形式现在只是“存下来、显示、写进邀请函”；②AI 主持的语言没改（仍只支持中文、English）；③马来语、泰米尔语的候选人页文字和翻译是首稿，没经母语者/法务复核；④没配云端模型时翻译是演示标记（在原文前加 [EN]），真翻译要 DeepSeek；⑤立项向导里“发送语言”和第 1 步的项目语言是同一份数据；已锁定的老计划不再把子项目语言写回项目。
+
+## 2026-10-28 · 取消放行 + 访谈房间四列版（用户逐张看过效果图后确认；赶在 15 点前，范围见“没做”）
+- 做了什么（取消放行）：受访者过了设备检测并同意后直接进房间，不需要主持人或管理员同意；进房间后在里面等主持人点“开始访谈”；离开后随时能再进。服务器：`POST /public/join/{token}/enter` 不再检查放行；`/interviews/{id}/admit` 删除；`leave` 不再收回；`live` 不再有 `held`；素材、实时字幕、网络上报、AI 对话改成看“已进房”（`entered_at`）。进入时间窗口改成预约时间前后各 1 小时（`JOIN_EARLY_MIN/JOIN_LATE_MIN` 默认 60/60），窗口外显示“还没到访谈时间，或访谈已结束”，到点自动进。受访者页面（join.html）不再有候场室按钮；主持人页面没有“放行/暂缓”，只显示“受访者已在房间/还没来”。直播间状态文字改成“已在房间/进过房间”。设备检测和同意书保留。
+- 做了什么（四列房间，真人主持的一对一访谈、主持人和观察员）：第 1 列主持人画面 / 访谈大纲（进度、时间预算、已问过的打钩）/ 说话占比与节奏提醒；第 2 列受访者画面（和主持人画面等大）/ 实时字幕；第 3 列追问（追问建议：用这句/稍后/不合适，加上待追问和观察员提的）；第 4 列章节总结（每章问完后：本章要点——受访者的原话逐字取自字幕——和没展开的地方）；后台聊天变成底部小按钮。算法在 `app/room_assist.py`（只按规则，不发给任何模型）：大纲覆盖按主持人字幕和问题词面重合判断；节奏 = 时间用掉的比例对比已问的比例；说话占比按字数，主持人超过 40% 提醒；追问建议找经历没展开、模糊词、转折、数字；接口 `GET /interviews/{id}/assist`（主持人和研究团队）。
+- 没做（明确留到下一批）：①受访者画像（标签、决策方式）和 AI 润色追问措辞——章节总结现在只有“要点原话 + 没展开的地方”，没有画像；②座谈会和 AI 主持的房间仍是原来的三列布局；③观察员看不到大纲进度和节奏（只给主持人）；④浅色/深色主题下四列的细节没有逐项调（QA 的颜色对比检查通过）。
+- 验证：新增/更新 pytest（旅程、座谈会、概念测试、流水线、`tests/test_room_assist.py`）；网页小节 group / pretask 通过；`tests/e2e_room.py` 见汇报数字。没跑整套 qa_site：它在“候选人作答”（`form#sf`）处超时，在我改动之前的提交上同样超时（别的会话上一次提交带来的）。
+
+## 2026-10-28 · 点受访者编号改成弹窗（取代“场次”整页）：录像 + 可拖动时间线 + 转写同步（用户逐张看过效果图后确认）
+- 做了什么：①点编号（洞察页大表、直播间“转写和洞察”、片段卡片、研究库里的“看原文”等所有指向 `#/i/<id>` 的链接）都在原地弹出窗口，关掉回到表格；浏览器“后退”和 Esc 也是关窗口；旧地址 `#/i/<id>[/页签]` 仍能用（打开项目的洞察页并弹出窗口）；②左边录像 + 时间线：橙点是播放位置，拖它或点任意位置跳转；条上画着谁在说话、洞察（三角）、已剪片段（橙条）；“选取片段”后拖橙框两端选起止，“剪成片段”直接生成；← → 前后 5 秒，空格播放/暂停；③右边页签：转写（随播放高亮，点哪句跳到哪句，搜索、校对、写一条洞察、转写录制/重新转写/用实时字幕生成）、洞察、片段、引用与追问、情绪、资料（关键回答、邀请链接重新生成、候选时间、访谈前问题、素材标记热力、座谈会名单），座谈会还有发言情况、分歧地图；上一位/下一位在当前表格的人之间切换；④客户观察员只有转写、洞察、片段，没有录像、剪片段、邀请和资料；⑤整页的 `interviewView` 删除。
+- 去掉的：转写里“给这句话打标签（编码）”——它跟着“编码与分析”页面一起去掉了（接口还在）。
+- 接口：`interview_out` 的 participant 多返回 `code`（研究团队）。无新数据库列。
+- 验证：新增 `respondent_window_section`（窗口、时间线固定、Esc/后退/旧地址、观察员权限、手机）；改了依赖旧整页的检查（座谈会名单、候选时间、访谈前问题、素材热力、转写搜索、观察员权限等）；pytest（invitations / room_list_facts / interview_answers / insights_overview / groups / journey）通过；QA 小节 respondent_window / insights / rooms / outline / ai_room / concept_room / pretask / timeslot / marks / group / vote / gmap 通过。
+- 没测/已知：整套 qa_site 目前在 `recruit_section` 的候选人作答（`form#sf`）处超时，在没有我改动的 a1ce91d 上同样超时（是别的会话上一次“项目语言 / 访谈形式”提交带来的，已另行告知）；“问卷聊天”手机点击区 28px 的失败也是那边的；视频播放本身（有录制的场次）没有真实录像可测，只测了没有录像时的表现。
 
 ## 2026-10-28 · 洞察与片段“受访者数据”大表：每个问题一列、编号和两行表头固定、列筛选、整理访谈回答（用户逐张看过效果图后确认）
 - 做了什么：①表改成横向滚动的大表：编号固定在左，两行表头（分组条 + 问题名）固定在上，向右向下都能滚动，整页不动；分三组：基本信息（开始时间、访谈时长、状态、标签、洞察/片段）、问卷答案（招募问卷每道题一列）、访谈回答（“访谈”页大纲每个问题一列回答 + 一列主题）；②每列表头一个筛选图标：选择题、多选题、状态、标签、主题列点开是带人数的选项清单（全选/清除），开放题只有搜索框；右上角“视图与筛选”可隐藏列（记在本浏览器）和清除全部筛选；底下“共 N 人 · 当前显示 M 人”；开放回答显示前 3 行，点一下展开；鼠标移到编号出资料卡（手机点一下）；③“整理访谈回答”按钮：按大纲问题从转写里整理每个人的回答——回答是受访者的原话（从提问那一轮到下一个大纲问题之前，中间的追问算在内），不由模型写；主题标签只在模型可用时生成（本地模型，或云端模型已在 .env 写明服务商，页面写明回答会发给谁）；没配时只有回答没有主题，不发任何内容。
