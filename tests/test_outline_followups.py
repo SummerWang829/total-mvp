@@ -63,3 +63,18 @@ def test_a_new_version_carries_the_guidance_and_the_draft_writes_it(org):
     assert r.status_code == 200
     qs = [q for p in r.json()["summary"]["parts"] for q in p["questions"] if not q.get("cover")]
     assert qs and all(q["guide"] and q["depth"] == "shallow" for q in qs)  # the offline draft writes guidance for every question
+
+
+def test_ask_only_answers_without_changing_or_keeping_anything(org, pid):
+    before = get(org, pid)
+    r = org.c.post(url(pid, "/chat"), headers=org.h(), json={"message": "针对这一处：“你平时是怎么防晒的？”\n这句话好吗？\n请只回答，不要修改大纲。", "ask_only": True})
+    assert r.status_code == 200 and r.json()["reply"] and "summary" not in r.json()
+    after = get(org, pid)
+    assert after["text"] == before["text"] and after["chat"] == before["chat"]  # nothing changed, nothing saved in the conversation
+
+
+def test_a_long_message_from_several_selected_passages_is_accepted(org, pid):
+    msg = "请一次性修改以下 3 处，其余保持不变：\n" + "\n".join(f"{i}. “{'问题' * 40}”——要求：更口语" for i in range(1, 4))
+    assert 1000 < len(msg + "x" * 900) <= 4000
+    r = org.c.post(url(pid, "/chat"), headers=org.h(), json={"message": msg + "x" * 900})
+    assert r.status_code == 200

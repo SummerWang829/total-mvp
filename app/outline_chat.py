@@ -240,6 +240,35 @@ def converse(chat: ModeratorChatProvider | None, history: list[dict], current: s
     raise study_draft.DraftError(MSG_FAIL)
 
 
+ASK_ONLY = "\nThe researcher only wants an ANSWER this time: reply with mode \"answer\" and a reply; do not change or propose any outline."
+
+
+def answer_only(chat: ModeratorChatProvider | None, current: str, message: str, brief: str, library: str, language: str, minutes: int) -> str:
+    """A reply to one question about the outline that changes nothing and is not kept (the "只问不改" of a selected passage).
+
+    Raises:
+        study_draft.DraftError: the model service is unavailable or never gave a reply.
+        ChatFatalError: the model service refused (bad key, no balance...).
+    """
+    if chat is None:
+        return MSG_MOCK_KEPT
+    system = SYSTEM.replace("{language}", language).replace("{max_topics}", str(study_draft.MAX_TOPICS)).replace("{minutes}", str(minutes)) + ASK_ONLY
+    for attempt in range(MAX_ATTEMPTS):
+        try:
+            raw = chat.complete([{"role": "system", "content": system}, {"role": "user", "content": _context(current, brief, library, language, minutes, message)}], temperature=0.4)
+        except ChatFatalError:
+            raise
+        except ChatError as e:
+            raise study_draft.DraftError("AI 暂时无法回答，请稍后再试") from e
+        except (ValueError, KeyError, TypeError) as e:
+            log.warning("outline ask-only attempt %d unusable: %s", attempt + 1, type(e).__name__)
+            continue
+        reply = str(raw.get("reply", "")).strip() if isinstance(raw, dict) else ""
+        if reply:
+            return reply[:MAX_REPLY]
+    raise study_draft.DraftError("AI 没能给出回答，请换个说法再试一次")
+
+
 def record_turn(history: list[dict], message: str, result: dict, current: str) -> tuple[list[dict], str]:
     """Add the researcher's message and the assistant's answer. Returns (history, the outline text now): an edit is applied at once, suggestions wait for adoption."""
     history = [*history, {"role": "user", "text": message}]

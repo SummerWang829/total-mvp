@@ -78,7 +78,7 @@ async function outlineView(p) {
   };
   const chatHtml = () => {
     const hello = `<div class="rf-msg">你好！我是访谈大纲助手。你可以让我起草大纲，也可以直接问我问题、让我解释或给建议；你说“帮我改成……”我就直接改，并写清楚改了什么，不满意可以一键撤销。</div>`;
-    const msgs = S.chat.map((m) => (m.role === "user" ? `<div class="rf-msg rf-me">${esc(m.text)}</div>` : `<div class="rf-msg">${aiBody(m)}</div>`)).join("");
+    const msgs = S.chat.map((m, i) => (m.role === "user" ? `<div class="rf-msg rf-me">${esc(m.text)}</div>` : `<div class="rf-msg" data-selk="m:${i}">${aiBody(m)}</div>`)).join("");
     const fix = S.problem && !pending ? `<div class="rf-msg"><div class="ol-tx">我发现大纲文字里有一处写得不对，系统看不懂：</div><div class="ol-sg"><div>${esc(S.problem)}</div></div><div class="row"><button class="p" type="button" data-fix="1">帮我修好</button></div></div>` : "";
     const chips = S.summary ? ["给每个核心问题补追问", "检查有没有引导性问题", "缩短到 30 分钟"] : ["帮我起草大纲"];
     return hello + msgs + fix + (pending ? `<div class="rf-msg rf-me">${esc(pending)}</div><div class="rf-msg mut">AI 正在想…</div>`
@@ -97,12 +97,28 @@ async function outlineView(p) {
   };
   const act = guard(async (mid, body) => { take(await api(`/projects/${p.id}/outline/chat/${mid}`, { method: "POST", body: { ...body, v: V } })); drawChat(); drawRight(); });
   async function send(text) {
-    text = (text || "").trim(); if (!text || sending) return;
+    text = (text || "").trim(); if (!text || sending) return false;
+    let done = true;
     sending = true; pending = text; $("#olmsg").value = ""; $("#olsend").disabled = true; drawChat();
     try { take(await api(`/projects/${p.id}/outline/chat`, { method: "POST", body: { message: text, use_library: useLib, v: V } })); }
-    catch (e) { S = { ...S, chat: [...S.chat, { role: "user", text }, { role: "ai", kind: "answer", text: "没有成功：" + e.message, changes: [], suggestions: [] }] }; toast(e.message, true); }
+    catch (e) { done = false; S = { ...S, chat: [...S.chat, { role: "user", text }, { role: "ai", kind: "answer", text: "没有成功：" + e.message, changes: [], suggestions: [] }] }; toast(e.message, true); }
     sending = false; pending = ""; const b = $("#olsend"); if (b) b.disabled = false; drawChat(); drawRight(); autoGen();
+    return done;
   }
+  const selLabel = (key) => {   // “第 N 题”：右边大纲里这道题现在的题号
+    const m = /^q:(\w+):(\d+):(\d+)$/.exec(key || ""); if (!m || !S.summary) return "";
+    let n = 0;
+    for (const part of S.summary.parts) for (let qi = 0; qi < part.questions.length; qi++) { if (part.questions[qi].cover) continue; n++; if (part.kind === m[1] && String(part.ref) === m[2] && String(qi) === m[3]) return `第 ${n} 题`; }
+    return "";
+  };
+  const wireSel = () => {   // 选中文字 → 弹窗对话 / 加入修改清单（共用组件 chatsel.js）；“一起修改”走原来的对话（出变更卡、可撤销）
+    if (window._olSel) window._olSel.destroy();
+    window._olSel = ChatSel.attach({
+      roots: [$("#olchat"), $("#olright")], bar: $("#olsel"), label: selLabel,
+      ask: async ({ quote, text }) => (await api(`/projects/${p.id}/outline/chat`, { method: "POST", body: { message: `针对这一处：“${quote}”\n${text}\n请只回答，不要修改大纲。`, use_library: useLib, v: V, ask_only: true } })).reply,
+      send: async ({ text }) => { const box = $("#olmsg"), draft = box ? box.value : ""; const ok = await send(text); if (box && draft) box.value = draft; return ok; },
+    });
+  };
 
   /* ---------- right: outline / text / settings / test ---------- */
   const edit = guard(async (body) => { const r = await api(`/projects/${p.id}/outline/edit`, { method: "POST", body: { ...body, v: V, sync: syncKeys() } }); take(r); editing = ""; drawRight(); drawChat(); syncNote(r.sync); });
@@ -119,7 +135,7 @@ async function outlineView(p) {
     if (batch) return `<label class="ol-q ol-bq"><input type="checkbox" class="ol-pk" data-pk="${key}" ${picked.has(key) ? "checked" : ""} aria-label="选择这个问题"><span class="rf-n">${label}</span><span class="ol-qt">${esc(q.text)}${refOf(pi, qi)}</span><span class="ol-dl">${DEPTH[q.depth || "shallow"][0]}</span></label>`;
     const mk = (S.marks || {})[q.text], on = opened.has(key), depth = q.depth || "shallow";
     const panel = !on ? "" : `<div class="ol-ex" data-ex="${key}"><div class="ol-exr"><label for="d-${key}">追问深度</label><select id="d-${key}" class="ol-dp" data-dp-sel="${key}" aria-label="追问深度">${Object.entries(DEPTH).map(([k, v]) => `<option value="${k}"${k === depth ? " selected" : ""}>${v[0]} · ${v[1]}</option>`).join("")}</select></div><label for="g-${key}" class="ol-gl">访谈指引</label><textarea id="g-${key}" class="ol-gt" data-gt="${key}" maxlength="500" rows="3" aria-label="访谈指引">${esc(q.guide || "")}</textarea><div class="ol-gc"><span data-gc>${(q.guide || "").length}</span> / 500</div></div>`;
-    return `<div class="ol-q${mk ? " ol-" + mk : ""}"><button class="ol-cv${on ? " on" : ""}" type="button" data-tg="${key}" aria-expanded="${on}" aria-label="${on ? "收起" : "展开"}这个问题的设置">›</button><span class="rf-n">${label}</span><span class="ol-qt">${esc(q.text)}${mk ? `<em class="ol-mk">${mk === "new" ? "新增" : "已修改"}</em>` : ""}${refOf(pi, qi)}</span><span class="ol-dl">${DEPTH[depth][0]}</span><span class="ol-qa"><button class="s" type="button" data-ed="${key}" aria-label="编辑这个问题">编辑</button><button class="s" type="button" data-rm="${key}" aria-label="删除这个问题">删除</button></span></div>${panel}`;
+    return `<div class="ol-q${mk ? " ol-" + mk : ""}"><button class="ol-cv${on ? " on" : ""}" type="button" data-tg="${key}" aria-expanded="${on}" aria-label="${on ? "收起" : "展开"}这个问题的设置">›</button><span class="rf-n">${label}</span><span class="ol-qt" data-selk="q:${key}">${esc(q.text)}${mk ? `<em class="ol-mk">${mk === "new" ? "新增" : "已修改"}</em>` : ""}${refOf(pi, qi)}</span><span class="ol-dl">${DEPTH[depth][0]}</span><span class="ol-qa"><button class="s" type="button" data-ed="${key}" aria-label="编辑这个问题">编辑</button><button class="s" type="button" data-rm="${key}" aria-label="删除这个问题">删除</button></span></div>${panel}`;
   };
   const partCard = (part, mins, pi, n0) => {
     let k = n0; const live = cur().family === "live";
@@ -270,12 +286,12 @@ async function outlineView(p) {
   /* ---------- the whole page ---------- */
   shell(`<div class="rf" style="padding:0"><div class="rf-ws" id="olws"><div class="rf-pane"><div class="rf-hd"><b>和 AI 一起写大纲</b>${S.model ? `<span class="ol-mdl" title="回答问题的模型">${esc(S.model)}</span>` : ""}<span class="sp"></span><label class="chk"><input type="checkbox" id="ollib" ${useLib ? "checked" : ""}>参考研究库</label></div>
       <div class="ol-ctx" id="olctx"></div><div class="rf-sc" id="olchat"></div>
-      <div class="rf-inp"><div class="sm mut" style="margin-bottom:6px">${esc(notice())}</div><div class="rf-box"><textarea id="olmsg" rows="2" maxlength="1000" placeholder="说说你想怎么改，或者直接问我问题……" aria-label="对话输入"></textarea><button class="p rf-send" type="button" id="olsend" aria-label="发送">↑</button></div></div></div>
+      <div id="olsel" hidden></div><div class="rf-inp"><div class="sm mut" style="margin-bottom:6px">${esc(notice())}</div><div class="rf-box"><textarea id="olmsg" rows="2" maxlength="1000" placeholder="说说你想怎么改，或者直接问我问题……" aria-label="对话输入"></textarea><button class="p rf-send" type="button" id="olsend" aria-label="发送">↑</button></div></div></div>
       <div class="rf-split" id="olsplit" role="separator" aria-orientation="vertical" aria-label="拖动调整对话和大纲的宽度（双击恢复）" tabindex="0"><i></i></div><div class="rf-pane" id="olright"></div></div></div>`, { active: "outline", p });
   document.body.classList.add("rfmode", "pgw");
   const ws = $("#olws"), fit = () => { if (ws && ws.offsetParent) ws.style.height = Math.max(380, innerHeight - ws.getBoundingClientRect().top - 18) + "px"; };
   fit(); addEventListener("resize", fit);
-  resetSync(); drawChat(); drawRight(); autoGen();
+  resetSync(); drawChat(); drawRight(); wireSel(); autoGen();
   const m = $("#olmsg");
   $("#olsend").onclick = () => send(m.value);
   m.onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(m.value); } };

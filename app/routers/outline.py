@@ -45,8 +45,9 @@ class BatchBody(BaseModel):
 
 
 class ChatBody(BaseModel):
-    message: str = Field(min_length=1, max_length=1000)
+    message: str = Field(min_length=1, max_length=4000)  # a message built from several selected passages is long
     use_library: bool = True
+    ask_only: bool = False  # answer only: change nothing, keep nothing (a question about one selected passage)
     v: str | None = Field(default=None, max_length=20)
 
 
@@ -246,6 +247,16 @@ def chat_outline(pid: str, body: ChatBody, ctx: Ctx = Depends(require_roles(*STA
     goals = _goals(db, pid)
     background = (proj.brief or "") + (("\n研究目标：" + "；".join(goals)) if goals else "")
     history, message = outline_chat.load(proj.outline_chat), body.message.strip()
+    if body.ask_only:
+        try:
+            reply = outline_chat.answer_only(chat, text, message, background, library, lang, minutes)
+        except ChatFatalError as e:
+            raise HTTPException(502, f"AI 模型服务拒绝了请求：{e.reason}") from e
+        except DraftError as e:
+            raise HTTPException(502, str(e)) from e
+        audit(db, ctx.org_id, ctx.actor, "outline.ask", pid, model="mock" if chat is None else chat.name)
+        db.commit()
+        return {"reply": reply}
     try:
         result = outline_chat.converse(chat, history, text, message, background, library, lang, minutes)
     except ChatFatalError as e:
