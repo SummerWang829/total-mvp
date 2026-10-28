@@ -31,7 +31,6 @@ async function outlineView(p) {
   const goto = guard(async (key) => {   // 打开一个版本；还没有的先生成（译文或文字访谈改写）
     const x = S.versions.find((y) => y.key === key); if (!x) return;
     if (!x.exists) {
-      if (!S.ai_local && !confirm(`生成“${x.name}”会把这份大纲的文字发送给 AI 服务商${S.ai_vendor ? `“${S.ai_vendor}”` : ""}翻译或改写，继续？`)) return;
       take(await api(`/projects/${p.id}/outline/versions/${encodeURIComponent(key)}/generate`, { method: "POST" }));
     } else take(await api(`/projects/${p.id}/outline?v=${encodeURIComponent(key)}`));
     pop = ""; editing = ""; step = 0; resetSync(); drawRight(); drawChat();
@@ -219,7 +218,7 @@ async function outlineView(p) {
     document.querySelectorAll("[data-tok]").forEach((b) => (b.onclick = () => { const [, kind, ref] = keyOf(b.dataset.tok), v = document.querySelector(".olt").value; edit({ op: "rename", kind, ref: +ref, value: v }); }));
     document.querySelectorAll(".olt").forEach((i) => (i.onkeydown = (e) => { if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); document.querySelector("[data-tok]").click(); } else if (e.key === "Escape") { editing = ""; drawRight(); } }));
     document.querySelectorAll("[data-rm]").forEach((b) => (b.onclick = () => { const [kind, ref, idx] = keyOf(b.dataset.rm); edit({ op: "delete", kind, ref: +ref, index: +idx }); }));
-    document.querySelectorAll("[data-dp]").forEach((b) => (b.onclick = () => { if (!confirm("删除这一段和它下面的所有问题？")) return; const [kind, ref] = keyOf(b.dataset.dp); edit({ op: "del_part", kind, ref: +ref }); }));
+    document.querySelectorAll("[data-dp]").forEach((b) => (b.onclick = () => { const [kind, ref] = keyOf(b.dataset.dp); edit({ op: "del_part", kind, ref: +ref }); }));
     document.querySelectorAll("[data-add]").forEach((b) => (b.onclick = () => { editing = "add:" + b.dataset.add; drawRight(); const i = document.querySelector(".olq"); if (i) i.focus(); }));
     document.querySelectorAll("[data-addok]").forEach((b) => (b.onclick = () => { const [kind, ref] = keyOf(b.dataset.addok), v = document.querySelector(".olq").value.trim(); if (!v) return toast("问题不能是空的", true); edit({ op: "add", kind, ref: +ref, value: v }); }));
     const ap = $("#oladdp"); if (ap) ap.onclick = () => { const t = $("#olnewt").value.trim(), q = $("#olnewq").value.trim(); if (!t || !q) return toast("话题名字和第一个问题都要写", true); edit({ op: "add_part", value: `${t.replace(/\|/g, " ")}|${q}` }); };
