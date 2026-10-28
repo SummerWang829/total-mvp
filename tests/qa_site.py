@@ -228,7 +228,7 @@ def rooms_section(br, D):
 
 
 def outline_section(br, D):
-    """The 访谈 page: the tab sits between 甄别设定 and 直播间 (and 编码与分析 is gone), left chat + right outline, edit / add / delete a question in place, settings, text, and the trial run."""
+    """The 访谈 page: the tab sits between 甄别设定 and 直播间 (and 编码与分析 is gone), left chat + right outline, edit / add / delete a question in place, settings (shared with the project), language and format versions, 同步到, and the trial run."""
     adm, pid = D["tok"]["admin"], D["pid"]
     ctx, pg, errs = new_page(br, 1280, token=adm)
     pg.goto(B + f"/#/p/{pid}/outline"); pg.wait_for_selector("#olws")
@@ -253,6 +253,9 @@ def outline_section(br, D):
     pg.click("[data-chip]"); pg.wait_for_selector(".ol-q")
     n0 = pg.locator(".ol-q").count()
     ok(n0 >= 3 and pg.locator(".ol-bar i").count() >= 3 and "分钟" in pg.inner_text("#olout"), "[outline] asking the AI to draft fills the outline with parts, questions and the time bar")
+    nums = pg.locator(".ol-q .rf-n").all_inner_texts()
+    ok(nums == [f"Q{i + 1}" for i in range(len(nums))] and "要了解" not in pg.inner_text("#olout"), f"[outline] questions are numbered Q1, Q2... straight through the parts and the Chinese version shows no 要了解 notes (got {nums})")
+    ok([x.strip() for x in pg.locator("#olright [role=tab]").all_inner_texts()] == ["大纲", "设置", "预览测试"], "[outline] the right side has 大纲 / 设置 / 预览测试 and no 文字 tab")
     ok(pg.locator("#olchat .rf-me").count() == 2, "[outline] the conversation keeps what was asked")
     pg.locator("[data-ed]").first.click(); pg.fill(".olq", "最近一次买这类产品，你是怎么挑的？"); pg.keyboard.press("Enter")
     ok(wait_until(lambda: "怎么挑的" in pg.inner_text("#olout"), 5), "[outline] a question can be edited in place")
@@ -264,15 +267,65 @@ def outline_section(br, D):
     audit_page(pg, "outline drafted/desktop", errs)
     pg.screenshot(path=os.path.join(ROOT, "qa_shots", "outline_1280.png"))
     pg.click("[data-seg=settings]"); pg.fill("#olset-min", "30"); pg.locator("#olset-min").dispatch_event("change")
+    ok(all(pg.locator(s).count() == 1 for s in ("#olset-topic", "#olset-brief", "#olset-goals", "#olset-min")) and pg.locator("[data-sl]").count() >= 2 and pg.locator("[data-sf]").count() == 5, "[outline] 设置 has the title, background, goals, languages, length and formats")
+    pg.fill("#olset-goals", "了解认知\n比较差异"); pg.locator("#olset-goals").dispatch_event("change"); pg.wait_for_timeout(500)
+    ok(call(f"/projects/{pid}/recruiting/form", None, adm)["goals"] == ["了解认知", "比较差异"], "[outline] the goals written in 设置 are the questionnaire's goals")
+    pg.fill("#olset-brief", "新的研究背景（访谈页里改）"); pg.locator("#olset-brief").dispatch_event("change"); pg.wait_for_timeout(500)
+    ok(call(f"/projects/{pid}", None, adm)["brief"] == "新的研究背景（访谈页里改）", "[outline] the background written in 设置 is the project's background")
+    audit_page(pg, "outline settings/desktop", errs)
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "outline_settings_1280.png"))
     pg.click("[data-seg=outline]")
     ok(wait_until(lambda: "30 分钟" in pg.inner_text("#olout"), 5), "[outline] the length set in 设置 shows in the outline")
-    pg.click("[data-seg=text]"); ok("目标" in pg.input_value("#oltext") and "时长: 30" in pg.input_value("#oltext"), "[outline] the 文字 view holds the whole outline text")
-    good = pg.input_value("#oltext")
-    pg.fill("#oltext", "第 2 行看不懂"); pg.wait_for_selector("[data-fix]", timeout=8000)
-    ok(pg.locator("#olnotes [data-fixnote]").count() == 1 and "系统看不懂" in pg.inner_text("#olchat"), "[outline] unreadable text is pointed out in the chat, with 帮我修好 and 我自己改, and beside the text")
+    # versions: switch a second language on in 设置, make that version, carry a change with 同步到
+    pid1, pid = pid, call("/projects", {"name": "QA 大纲版本", "market": "SG", "language": "zh"}, adm)["id"]   # a project of its own: the languages of the main QA project have interviews in use
+    call(f"/projects/{pid}/outline/chat", {"message": "帮我起草大纲"}, adm)
+    pg.goto(B + f"/#/p/{pid}/outline"); pg.reload()   # the project list is read once when the page opens
+    pg.wait_for_selector("#olws")
+    pg.wait_for_selector(".ol-q")
+    base, other = "zh", "en"
+    ok(pg.locator(".ol-q").count() >= 3 and pg.locator(".rf-o").count() == 0, "[outline] the Chinese version shows the questions and no 要了解 notes")
+
+    LN = {"en": "English", "zh": "中文"}
+
+    def open_ver(code):
+        pg.click("[data-pop=ver]"); pg.click(f".rf-vm [data-ver^='{code}']")
+        return wait_until(lambda: LN[code] in pg.inner_text("[data-pop=ver]") and pg.locator(".ol-q").count() > 0, 8)
+    ok(pg.locator("[data-pop=sync]").count() == 0 and pg.locator("[data-pop=ver]").count() == 0, "[outline] with one language and one format there is no version button and no 同步到")
+    pg.click("[data-seg=settings]"); pg.click(f"[data-sl={other}]")
+    ok(wait_until(lambda: pg.locator("[data-pop=ver]").count() == 1 and pg.locator("[data-pop=sync]").count() == 1, 6), "[outline] switching a second language on in 设置 brings the version button and 同步到")
+    ok("仅当前版本" in pg.inner_text("[data-pop=sync]"), "[outline] 同步到 starts as 仅当前版本")
+    pg.click("[data-pop=sync]")
+    ok(pg.locator(".ol-pop [data-all]").count() == 1 and pg.locator(".ol-pop [data-lang]").count() == 2 and pg.locator(".ol-pop [data-lang]:disabled").count() == 1, "[outline] the 同步到 list has 全部版本, the languages, and the open one is fixed")
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "outline_sync_1280.png"))
+    audit_page(pg, "outline sync menu/desktop", errs)
+    pg.click(".ol-pop [data-all]"); ok("全部版本" in pg.inner_text("[data-pop=sync]"), "[outline] ticking 全部版本 selects every version")
+    pg.click(".ol-pop [data-all]"); pg.mouse.click(5, 5)
+    pg.click("[data-seg=outline]")
+    ok(open_ver(other), "[outline] picking a version that is not made yet makes it (translation) and opens it")
+    ok(pg.locator(".ol-ref").count() >= 3 and pg.locator(".ol-q .rf-n").first.inner_text().strip() == "Q1", "[outline] another language shows the original under each question")
+    audit_page(pg, "outline english/desktop", errs)
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "outline_en_1280.png"))
+    # a change of words stays in this version unless 同步到 says otherwise
+    pg.locator("[data-ed]").first.click(); pg.fill(".olq", "仅此版本改过的问题？"); pg.keyboard.press("Enter")
+    ok(wait_until(lambda: "仅此版本改过" in pg.inner_text("#olout"), 5), "[outline] a change in the second version is made")
+    open_ver(base)
+    ok("仅此版本改过" not in pg.inner_text("#olout"), "[outline] with 仅当前版本 the other version did not change")
+    pg.click("[data-pop=sync]"); pg.click(f".ol-pop [data-lang={other}]"); pg.mouse.click(5, 5)
+    ok("同步到：全部版本" in pg.inner_text("[data-pop=sync]"), "[outline] choosing every language in 同步到 says 全部版本")
+    pg.locator("[data-ed]").first.click(); pg.fill(".olq", "同步修改过的问题？"); pg.keyboard.press("Enter")
+    ok(wait_until(lambda: "同步修改过的问题" in pg.inner_text("#olout"), 5), "[outline] the change is made in the Chinese version")
+    open_ver(other)
+    ok("同步修改过的问题" in pg.inner_text("#olout"), "[outline] and it reached the other version (translated; offline it gets a language mark)")
+    open_ver(base)
+    # unreadable text (written through the API: there is no 文字 tab any more) is pointed out and the assistant fixes it
+    good = call(f"/projects/{pid}/outline", None, adm)["text"]
+    call(f"/projects/{pid}/outline", {"text": "第 2 行看不懂", "v": call(f"/projects/{pid}/outline", None, adm)["v"]}, adm, method="PUT")
+    pg.reload(); pg.wait_for_selector("[data-fix]", timeout=8000)
+    ok(pg.locator("#olnotes [data-fixnote]").count() == 1 and "系统看不懂" in pg.inner_text("#olchat") and pg.locator("[data-own]").count() == 0, "[outline] unreadable text is pointed out in the chat (帮我修好) and beside the outline")
     audit_page(pg, "outline broken text/desktop", errs)
     pg.click("[data-fix]"); ok(wait_until(lambda: pg.locator("[data-fix]").count() == 0 and pg.locator("#olchat .ol-chg").count() >= 1, 10), "[outline] 帮我修好 redrafts the outline and the problem notice goes away")
-    pg.click("[data-seg=text]"); pg.fill("#oltext", good); pg.wait_for_timeout(900)
+    call(f"/projects/{pid}/outline", {"text": good}, adm, method="PUT")
+    pid = pid1; pg.goto(B + f"/#/p/{pid}/outline"); pg.reload(); pg.wait_for_selector(".ol-q")
     pg.click("[data-seg=test]"); pg.wait_for_selector(".ol-dev")
     first = pg.locator(".ol-bd > b").first.inner_text()
     pg.click("[data-step='1']")

@@ -78,6 +78,7 @@ class Project(Base):
     formats: Mapped[dict] = mapped_column(JSON, default=dict)  # method (depth | group) -> the interview formats it allows (app/formats.py); empty = video
     outline_text: Mapped[str] = mapped_column(Text, default="")  # the interview outline being written on the 访谈 page (app/guide_text.py format)
     outline_chat: Mapped[str] = mapped_column(Text, default="")  # the conversation with the AI that shaped it (JSON list of {role, text}); empty = none yet
+    outline_versions: Mapped[dict] = mapped_column(JSON, default=dict)  # the outline in the other languages / format families: "<lang>|<live or text>" -> outline text (app/outline_versions.py); the main version stays in outline_text
     retention_days: Mapped[int] = mapped_column(Integer, default=180)  # chosen in the plan (30/60/120/180, never above the platform's); the consent text names it
     created_by: Mapped[str] = mapped_column(String(32))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

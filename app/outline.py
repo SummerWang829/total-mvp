@@ -13,7 +13,7 @@ from .moderator.knowledge import InterviewGuide
 log = logging.getLogger(__name__)
 
 DEFAULT_MINUTES = 45
-LANGS = ("en", "zh")  # the languages the outline writer supports
+LANGS = ("en", "zh", "ms", "ta")  # the languages an outline can be written in
 
 def settings_of(text: str, fallback_language: str) -> tuple[str, int]:
     """(language, minutes) from the outline's header lines, else the project's language and the default length."""
@@ -124,6 +124,28 @@ def edit(text: str, op: str, kind: str, ref: int, index: int, value: str) -> str
             raise EditError("不认识这个操作")
     except (IndexError, KeyError) as e:
         raise EditError("这一条已经不存在了，刷新后再试") from e
+    new = guide_text.guide_to_text(g)
+    try:
+        guide_text.parse_guide_text(new)
+    except guide_text.GuideTextError as e:
+        raise EditError(str(e)) from e
+    return new
+
+
+def set_headers(text: str, topic: str | None, minutes: int | None) -> str:
+    """The outline text with a new participant topic (对外标题) and / or length; None leaves that one as it is.
+
+    Raises:
+        EditError: the text is not a valid outline yet, or the topic is too long.
+    """
+    try:
+        g = guide_text.parse_guide_text(text)
+    except guide_text.GuideTextError as e:
+        raise EditError("这个版本的大纲还没有可用的内容：" + str(e)) from e
+    if topic is not None:
+        g["participant_topic"] = topic.strip()
+    if minutes is not None:
+        g["duration_min"] = int(minutes)
     new = guide_text.guide_to_text(g)
     try:
         guide_text.parse_guide_text(new)
