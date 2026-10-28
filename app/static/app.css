@@ -1045,6 +1045,18 @@ button.ed:hover:not(:disabled){color:var(--ink);background:var(--orange-soft);bo
 .rf-ver>button:hover:not(:disabled){color:var(--ink);background:var(--wash);border-color:var(--ink)}
 .rf-hd{overflow:visible}
 
+/* 访谈页：版本、同步到、访谈形式、设置页 */
+.ol-hd{flex-wrap:wrap;height:auto;min-height:52px;padding-top:6px;padding-bottom:6px;row-gap:6px}
+.ol-cap{height:36px;border-radius:999px;padding:0 14px;white-space:nowrap;background:var(--surface)}.ol-cap.on{background:var(--orange-soft);border-color:var(--orange);color:var(--orange-ink)}
+.ol-pop{min-width:260px;gap:0}.ol-o{display:flex;align-items:center;gap:8px;min-height:36px;padding:4px 10px;border-radius:8px;cursor:pointer;font-weight:500}.ol-o:hover{background:var(--orange-soft)}.ol-o.lk{cursor:default}.ol-o input{width:16px;height:16px;flex:none}
+.ol-h{font-size:12px;color:var(--muted);padding:6px 10px 2px}
+.ol-fm{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:0 0 8px}
+.ol-chip{height:30px;border-radius:999px;padding:0 12px;white-space:nowrap;background:var(--surface);font-weight:500}.ol-chip.on{background:var(--orange-soft);border-color:var(--orange);color:var(--orange-ink)}
+.ol-chips{display:flex;gap:6px;flex-wrap:wrap}
+.ol-ref{display:block;font-size:14px;line-height:1.5;color:var(--muted)}
+.ol-src{font-size:12px;font-weight:400;padding:0 8px;margin-left:6px;border-radius:999px;background:var(--green-soft);color:var(--green)}
+.ol-set{max-width:560px}.ol-set textarea{width:100%}.ol-two{display:grid;grid-template-columns:minmax(0,1fr);gap:12px}
+.ol-q .rf-n{width:auto;min-width:34px;padding:0 6px;border-radius:999px}
 /* 招募问卷对话（改版）：模型与参考内容、统计回复、变更卡、失败提示 */
 .rf-ctx{flex:none;padding:8px 14px 6px;border-bottom:1px solid var(--line)}
 .rf-ctxh{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:14px}
