@@ -17,3 +17,28 @@
 @media (prefers-reduced-motion:reduce){.ins-dots i{animation:none;opacity:.6}}
 .rf-send.stop{background:var(--ink);border-color:var(--ink)}
 .ins-q small{font-size:12px}
+
+/* 洞察与片段 · 报告（分析卡片 + 右侧明细 / 分析块） */
+.rp-wrap{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:12px;align-items:start}.rp-wrap.one{grid-template-columns:minmax(0,1fr)}
+.rp-main,.rp-side{min-width:0}
+.rp-side{position:sticky;top:0;max-height:calc(100vh - 220px);overflow:auto;padding:12px 14px}
+.rp-card{border:1px solid var(--line2);border-radius:14px;padding:10px 14px;margin:10px 0 4px;background:var(--surface)}
+.rp-card.sel{border:2px solid var(--orange);padding:9px 13px}
+.rp-t{font-size:15px}.rp-d{font-size:13px;color:var(--muted);margin:3px 0 8px;line-height:1.5}
+.rp-row{display:block;min-height:36px;padding:4px 6px;border-radius:8px;cursor:pointer}.rp-row:focus-visible{outline:2px solid var(--orange);outline-offset:2px}
+.rp-row:hover,.rp-row.on{background:var(--wash)}
+.rp-h{display:flex;justify-content:space-between;gap:8px;font-size:14px;margin-bottom:3px}
+.rp-tr{display:block;height:11px;border-radius:4px;background:var(--wash)}.rp-f{display:block;height:11px;border-radius:4px;background:var(--orange)}
+.rp-note{font-size:14px;line-height:1.7;margin:4px 2px 14px}
+.rp-sum{line-height:1.75}
+.rp-app{margin:16px 0}.rp-app summary{cursor:pointer;font-weight:600;min-height:36px;display:flex;align-items:center}
+.rp-pa{border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin:8px 0;font-size:14px;line-height:1.6}
+.rp-ph{display:flex;justify-content:space-between;gap:8px}.rp-ph small{color:var(--muted);font-size:12px}
+.rp-q{margin:4px 0}
+.rp-bk{display:flex;gap:8px;align-items:flex-start;justify-content:space-between;border:1px solid var(--line);border-radius:10px;padding:6px 10px;margin:6px 0;font-size:14px}
+.rp-bk small{display:block;color:var(--muted);font-size:12px;font-weight:400}.rp-bk b{font-weight:500}
+.rp-mv{display:flex;gap:4px;flex:none}.rp-mv .s{min-width:36px}
+.rp-add{display:block;width:100%;margin-top:8px;border:1px dashed var(--line2);background:none;color:var(--orange-ink)}
+@media (max-width:900px){.rp-wrap{grid-template-columns:minmax(0,1fr)}.rp-side{position:static;max-height:none}}
+.rp-wrap small{font-size:12px}
+.rp-app h4.ins-h1{font-size:16px}.rp-app h5.ins-h2{font-size:14px}
