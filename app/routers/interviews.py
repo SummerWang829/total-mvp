@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from .. import formats, insights_overview as insights_overview_mod, interview_facts, ai_room, concept, content_rules, export, groups, invites, jobs, participant_code, pretask, scheduling
+from .. import formats, insights_overview as insights_overview_mod, interview_answers, interview_facts, respondent_table, ai_room, concept, content_rules, export, groups, invites, jobs, participant_code, pretask, scheduling
 from ..audit import audit
 from ..config import settings
 from ..db import get_db
@@ -255,7 +255,42 @@ def insights_overview(pid: str, ctx: Ctx = Depends(current_ctx), db: Session = D
         except HTTPException:
             continue
         rows.append(insights_overview_mod.row(db, itv, "座谈会" if groups.is_group(itv) else codes.get(itv.participant_id, "?"), team, _moderator_name(db, itv) if team else ""))
-    return {"kpi": insights_overview_mod.kpis(rows), "rows": rows}
+    cols, cells = [], {}
+    if team:   # the questionnaire answers and the interview answers are the team's, not the client's
+        itvs = [i for i in db.scalars(select(Interview).where(Interview.project_id == pid, Interview.purged_at.is_(None))).all() if not groups.is_group(i)]
+        person = {i.id: i.participant_id for i in itvs}
+        scols, sby = respondent_table.screening(db, pid, list(set(person.values())))
+        qs = respondent_table.interview_questions(proj)
+        icols, icells = respondent_table.interview_columns(qs, itvs)
+        cols = scols + icols
+        cells = {iid: {**sby.get(pid_, {}), **icells.get(iid, {})} for iid, pid_ in person.items()}
+        for r in rows:
+            r["cells"] = cells.get(r["id"], {})
+    return {"kpi": insights_overview_mod.kpis(rows), "rows": rows, "columns": cols, "can_generate": bool(team and qs) if team else False}
+
+
+@router.post("/interviews/{iid}/answers/generate")
+def generate_answers(iid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    """Work out what this person said to each question of the interview outline (their own words, copied from the transcript). Short theme labels are added only
+    when the model that writes them may be used: a local model, or a cloud model whose vendor is named in .env (the answers are sent there)."""
+    from ..moderator.compliance import moderator_runs_locally
+    from ..moderator.providers import ChatFatalError, get_moderator_chat
+    itv = visible_interview(db, ctx, iid)
+    proj = db.get(Project, itv.project_id)
+    questions = respondent_table.interview_questions(proj)
+    if not questions:
+        raise HTTPException(409, "先到“访谈”页写好访谈大纲，才能按问题整理回答")
+    if itv.status != "ended":
+        raise HTTPException(409, "访谈结束后才能整理回答")
+    cloud_unnamed = settings.moderator_provider != "mock" and not moderator_runs_locally() and not settings.moderator_vendor.strip()
+    chat = None if settings.moderator_provider == "mock" or cloud_unnamed else get_moderator_chat()
+    try:
+        out = interview_answers.generate(db, itv, questions, chat, proj.language if proj.language in ("en", "zh") else "zh")
+    except ChatFatalError as e:
+        raise HTTPException(502, f"AI 模型服务拒绝了请求：{e.reason}") from e
+    audit(db, ctx.org_id, ctx.actor, "interview.answers", itv.id, answered=out["answered"], themes=out["themes"])   # counts only, never the words
+    db.commit()
+    return {**out, "themes_skipped_reason": "云端模型还没有在 .env 里写明服务商，没有发送任何内容，主题标签没有生成" if cloud_unnamed else ""}
 
 
 @router.get("/interviews/{iid}")

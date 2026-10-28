@@ -120,6 +120,7 @@ class Interview(Base):
     language: Mapped[str] = mapped_column(String(10), default="en")
     scheduled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     duration_min: Mapped[int] = mapped_column(Integer, default=45)  # the length the invitation tells the participant to expect
+    answers_json: Mapped[str] = mapped_column(Text, default="")  # what the participant said to each outline question (app/interview_answers.py); empty = not worked out yet
     format: Mapped[str] = mapped_column(String(16), default="")  # how it is done (app/formats.py code); "" = video. Stored and written into the invitation; the room does not change with it yet
     status: Mapped[str] = mapped_column(String(20), default="scheduled")  # scheduled | live | ended
     room_name: Mapped[str] = mapped_column(String(64), unique=True, default=lambda: "r_" + uuid.uuid4().hex)
