@@ -77,7 +77,7 @@ def edit(text: str, op: str, kind: str, ref: int, index: int, value: str) -> str
 
     Args:
         text: the current outline text (must be valid).
-        op: set | delete | add | rename | del_part | add_part | meta ("meta": value is "<depth>|<guidance>", the question's follow-up depth and guidance).
+        op: set | delete | add | rename | del_part | add_part | depth (value: the depth only) | meta ("meta": value is "<depth>|<guidance>", the question's follow-up depth and guidance).
         kind: warmup | topic | stimulus (which list the part is in); ref: its position in that list; index: the question's position in the part.
         value: the new question text (set / add / add_part) or the new title (rename / add_part).
 
@@ -115,6 +115,12 @@ def edit(text: str, op: str, kind: str, ref: int, index: int, value: str) -> str
             if not 0 <= index < len(qs):
                 raise IndexError
             ms[index] = {"depth": depth, "guide": " ".join(note.split())[:guide_text.MAX_NOTE]}
+        elif op == "depth":
+            if value not in guide_text.DEPTHS:
+                raise EditError("追问深度不对")
+            if not 0 <= index < len(qs):
+                raise IndexError
+            ms[index] = {**ms[index], "depth": value}
         elif op == "delete":
             qs.pop(index)
             ms.pop(index)
@@ -170,3 +176,15 @@ def set_headers(text: str, topic: str | None, minutes: int | None) -> str:
     except guide_text.GuideTextError as e:
         raise EditError(str(e)) from e
     return new
+
+
+def part_sizes(text: str) -> dict[tuple[str, int], int] | None:
+    """{(kind, position): number of questions} of every part of a valid outline (None when the text is not valid): what lets a change be carried to another version only where the two still line up."""
+    try:
+        g = guide_text.parse_guide_text(text)
+    except guide_text.GuideTextError:
+        return None
+    out = {("warmup", 0): len(g["warmup_questions"])}
+    out.update({("topic", i): len(x["questions"]) for i, x in enumerate(g["topics"])})
+    out.update({("stimulus", i): len(x["questions"]) for i, x in enumerate(g.get("stimuli", []))})
+    return out

@@ -17,7 +17,7 @@ async function outlineView(p) {
   let S; try { S = await api(`/projects/${p.id}/outline${V ? "?v=" + encodeURIComponent(V) : ""}`); } catch { S = await api(`/projects/${p.id}/outline`); }
   if (stale(my)) return;
   V = S.v;
-  let seg = sessionStorage.getItem("ol_seg") || "outline", sending = false, pending = "", editing = "", viewer = "host", step = 0, pop = "", L = new Set(), F = new Set(), opened = new Set();
+  let seg = sessionStorage.getItem("ol_seg") || "outline", sending = false, pending = "", editing = "", viewer = "host", step = 0, pop = "", L = new Set(), F = new Set(), opened = new Set(), batch = false, picked = new Set(), autoPend = new Set(), autoFail = new Set();
   if (!["outline", "settings", "test"].includes(seg)) seg = "outline";
   let useLib = sessionStorage.getItem("ol_lib") !== "0";
   const notice = () => (S.ai_local ? "AI 运行在我们自己的服务器上，对话内容不会发给其他公司。"
@@ -27,14 +27,34 @@ async function outlineView(p) {
   const cur = () => S.versions.find((x) => x.key === V) || S.versions[0];
   const resetSync = () => { const c = cur(); L = new Set([c.lang]); F = new Set([c.family]); };   // 同步到：一开始只有当前版本
   const syncKeys = () => S.versions.filter((x) => x.key !== V && L.has(x.lang) && F.has(x.family)).map((x) => x.key);
-  const syncNote = (s) => { if (!s) return; if (s.skipped.length) toast(`有 ${s.skipped.length} 个版本和这一版的段落对不上，没有改到；其余已同步`, true); else if (s.synced.length) stat(`已同步到 ${s.synced.length} 个版本`); };
+  const vname = (k) => { const x = S.versions.find((y) => y.key === k); return x ? x.name : k; };
+  const syncNote = (s) => { if (!s) return; if (s.skipped.length) toast(`已改好当前版本；${s.skipped.map((x) => vname(x.key)).join("、")} 的这一段和当前版本对不上，没有改到`, true); else if (s.synced.length) stat(`已同步到 ${s.synced.length} 个版本`); };
   const goto = guard(async (key) => {   // 打开一个版本；还没有的先生成（译文或文字访谈改写）
     const x = S.versions.find((y) => y.key === key); if (!x) return;
-    if (!x.exists) {
-      take(await api(`/projects/${p.id}/outline/versions/${encodeURIComponent(key)}/generate`, { method: "POST" }));
-    } else take(await api(`/projects/${p.id}/outline?v=${encodeURIComponent(key)}`));
-    pop = ""; editing = ""; step = 0; resetSync(); drawRight(); drawChat();
+    if (!x.exists) {   // 版本是自动生成的：还没好的先不能打开，生成失败的点一下重试
+      if (autoFail.has(key)) { autoFail.delete(key); drawRight(); autoGen(); } else toast("这个版本正在生成，生成好就能打开");
+      return;
+    }
+    take(await api(`/projects/${p.id}/outline?v=${encodeURIComponent(key)}`));
+    pop = ""; editing = ""; step = 0; picked.clear(); resetSync(); drawRight(); drawChat();
   });
+  const autoGen = async () => {   // 项目的语言和访谈形式定了，缺的版本自动在后台生成（一个接一个）
+    if (autoGen.busy || !S.versions.some((x) => x.exists)) return;
+    autoGen.busy = true;
+    try {
+      for (;;) {
+        const x = S.versions.find((y) => !y.exists && !autoFail.has(y.key));
+        if (!x) break;
+        autoPend.add(x.key); if (seg === "outline") drawRight();
+        try { await api(`/projects/${p.id}/outline/versions/${encodeURIComponent(x.key)}/generate`, { method: "POST" }); } catch (e) { autoFail.add(x.key); toast(`${x.name} 生成失败：${e.message}`, true); }
+        autoPend.delete(x.key);
+        const r = await api(`/projects/${p.id}/outline?v=${encodeURIComponent(V)}`);
+        S = { ...S, versions: r.versions, families: r.families };
+        resetSyncKeep(); drawRight();
+      }
+    } finally { autoGen.busy = false; }
+  };
+  const resetSyncKeep = () => { const c = cur(); if (!c) return; L = new Set([...L].filter((x) => S.versions.some((v) => v.lang === x))); F = new Set([...F].filter((x) => S.families.includes(x))); L.add(c.lang); F.add(c.family); };
 
   /* ---------- left: the conversation ---------- */
   const QUICK = { "给每个核心问题补追问": "给每个核心问题都补一个追问", "检查有没有引导性问题": "检查有没有引导性或带倾向的问题，有就改掉", "缩短到 30 分钟": "把整个访谈缩短到 30 分钟左右", "帮我起草大纲": "帮我起草大纲" };
@@ -81,21 +101,22 @@ async function outlineView(p) {
     sending = true; pending = text; $("#olmsg").value = ""; $("#olsend").disabled = true; drawChat();
     try { take(await api(`/projects/${p.id}/outline/chat`, { method: "POST", body: { message: text, use_library: useLib, v: V } })); }
     catch (e) { S = { ...S, chat: [...S.chat, { role: "user", text }, { role: "ai", kind: "answer", text: "没有成功：" + e.message, changes: [], suggestions: [] }] }; toast(e.message, true); }
-    sending = false; pending = ""; const b = $("#olsend"); if (b) b.disabled = false; drawChat(); drawRight();
+    sending = false; pending = ""; const b = $("#olsend"); if (b) b.disabled = false; drawChat(); drawRight(); autoGen();
   }
 
   /* ---------- right: outline / text / settings / test ---------- */
   const edit = guard(async (body) => { const r = await api(`/projects/${p.id}/outline/edit`, { method: "POST", body: { ...body, v: V, sync: syncKeys() } }); take(r); editing = ""; drawRight(); drawChat(); syncNote(r.sync); });
-  const putSettings = guard(async (body) => { const r = await api(`/projects/${p.id}/outline/settings`, { method: "PUT", body: { ...body, v: V, sync: syncKeys() } }); take(r); resetSync(); drawRight(); drawChat(); syncNote(r.sync); if (!(r.sync && r.sync.synced.length)) stat("已保存"); });
+  const putSettings = guard(async (body) => { const r = await api(`/projects/${p.id}/outline/settings`, { method: "PUT", body: { ...body, v: V, sync: syncKeys() } }); take(r); resetSync(); drawRight(); drawChat(); syncNote(r.sync); if (!(r.sync && r.sync.synced.length)) stat("已保存"); if (body.languages || body.formats) autoGen(); });
   const notes = () => `${S.problem ? `<div class="rf-warn" role="alert">${esc(S.problem)}<button class="s" type="button" data-fixnote="1">让 AI 帮我修</button></div>` : ""}${S.warning ? `<div class="rf-warn" role="note">${esc(S.warning)}</div>` : ""}`;
   const drawNotes = () => { const n = $("#olnotes"); if (n) { n.innerHTML = notes(); n.querySelectorAll("[data-fixnote]").forEach((b) => (b.onclick = () => send(fixMessage()))); } };
 
   const DEPTH = { none: ["不追问", "只问这一题"], shallow: ["浅度追问", "追问 1 个"], deep: ["深度追问", "追问 2–3 个"], free: ["自由讨论", "追问 1–3 个，不限"] };
-  const refOf = (pi, qi) => { const r = S.ref && S.ref[pi] && S.ref[pi][qi]; return r ? `<span class="ol-ref">${esc(r.text)}</span>` : ""; };   // 其他语言的版本：原文（中文）放在下面对照
+  const refOf = (pi, qi) => { const part = S.summary && S.summary.parts[pi], r = S.ref && S.ref[pi] && part && S.ref[pi].length === part.questions.length && S.ref[pi][qi]; return r ? `<span class="ol-ref">${esc(r.text)}</span>` : ""; };   // 其他语言的版本：原文（中文）放在下面对照
   const questionRow = (part, q, qi, label, pi) => {
     if (q.cover) return S.lang === "zh" ? "" : `<div class="rf-o mut">· ${esc(q.text)}${refOf(pi, qi)}</div>`;   // “要了解”只在非中文版本里留着，中文版不显示
     const key = `${part.kind}:${part.ref}:${qi}`;
     if (editing === key) return `<div class="row" style="margin:4px 0"><input class="olq" data-key="${key}" value="${esc(q.text)}" maxlength="300" aria-label="问题" style="flex:1;min-width:160px"><button class="p" type="button" data-ok="${key}">保存</button><button class="s" type="button" data-no="1">取消</button></div>`;
+    if (batch) return `<label class="ol-q ol-bq"><input type="checkbox" class="ol-pk" data-pk="${key}" ${picked.has(key) ? "checked" : ""} aria-label="选择这个问题"><span class="rf-n">${label}</span><span class="ol-qt">${esc(q.text)}${refOf(pi, qi)}</span><span class="ol-dl">${DEPTH[q.depth || "shallow"][0]}</span></label>`;
     const mk = (S.marks || {})[q.text], on = opened.has(key), depth = q.depth || "shallow";
     const panel = !on ? "" : `<div class="ol-ex" data-ex="${key}"><div class="ol-exr"><label for="d-${key}">追问深度</label><select id="d-${key}" class="ol-dp" data-dp-sel="${key}" aria-label="追问深度">${Object.entries(DEPTH).map(([k, v]) => `<option value="${k}"${k === depth ? " selected" : ""}>${v[0]} · ${v[1]}</option>`).join("")}</select></div><label for="g-${key}" class="ol-gl">访谈指引</label><textarea id="g-${key}" class="ol-gt" data-gt="${key}" maxlength="500" rows="3" aria-label="访谈指引">${esc(q.guide || "")}</textarea><div class="ol-gc"><span data-gc>${(q.guide || "").length}</span> / 500</div></div>`;
     return `<div class="ol-q${mk ? " ol-" + mk : ""}"><button class="ol-cv${on ? " on" : ""}" type="button" data-tg="${key}" aria-expanded="${on}" aria-label="${on ? "收起" : "展开"}这个问题的设置">›</button><span class="rf-n">${label}</span><span class="ol-qt">${esc(q.text)}${mk ? `<em class="ol-mk">${mk === "new" ? "新增" : "已修改"}</em>` : ""}${refOf(pi, qi)}</span><span class="ol-dl">${DEPTH[depth][0]}</span><span class="ol-qa"><button class="s" type="button" data-ed="${key}" aria-label="编辑这个问题">编辑</button><button class="s" type="button" data-rm="${key}" aria-label="删除这个问题">删除</button></span></div>${panel}`;
@@ -113,14 +134,16 @@ async function outlineView(p) {
   const famRow = () => {   // 访谈形式：语音/视频和文字访谈各有一份大纲，点一下切换（还没有的先生成）
     if (S.families.length < 2) return "";
     const c = cur();
-    return `<div class="ol-fm"><span class="sm mut">访谈形式</span>${S.families.map((f) => { const v = S.versions.find((x) => x.lang === c.lang && x.family === f); return `<button type="button" class="ol-chip${f === c.family ? " on" : ""}" data-ver="${v.key}" aria-pressed="${f === c.family}">${esc(S.family_names[f])}${v.exists ? "" : " ＋"}</button>`; }).join("")}</div>`;
+    return `<div class="ol-fm"><span class="sm mut">访谈形式</span>${S.families.map((f) => { const v = S.versions.find((x) => x.lang === c.lang && x.family === f); return `<button type="button" class="ol-chip${f === c.family ? " on" : ""}" data-ver="${v.key}" aria-pressed="${f === c.family}">${esc(S.family_names[f])}${v.exists ? "" : autoFail.has(v.key) ? " ！" : " …"}</button>`; }).join("")}</div>`;
   };
   function outlineHtml() {
     const sum = S.summary, live = cur().family === "live";
     if (!sum) return famRow() + (S.text.trim() ? `<div class="empty"><b>文字还不能当大纲用</b><span>在左边让 AI 帮你修好或重新起草。</span></div>` : `<div class="empty"><b>还没有访谈大纲</b><span>在左边说“帮我起草大纲”。</span></div>`);
     const mins = olMinutes(sum), cols = ["#9FC9B8", "#1F6B54", "#EF9F27", "#6FD3A6", "#E8CF7A", "#B84900"];
     let n0 = 0; const cards = sum.parts.map((x, i) => { const c = partCard(x, mins[i], i, n0); n0 += x.questions.filter((q) => !q.cover).length; return c; });
-    return `${famRow()}<h3 class="rf-h">共 ${sum.parts.length} 段 · ${sum.question_count} 题 · ${live ? `约 ${sum.minutes} 分钟` : "不计时长"}</h3>
+    const real = sum.parts.flatMap((x, i) => x.questions.map((q, qi) => (q.cover ? null : `${x.kind}:${x.ref}:${qi}`))).filter(Boolean), n = syncKeys().length + 1;
+    const bar = batch ? `<div class="ol-bt" role="toolbar" aria-label="批量操作"><label class="ol-ba"><input type="checkbox" data-pkall="1" ${picked.size && picked.size === real.length ? "checked" : ""}>全选</label><span class="sp">已选 ${picked.size} 题${n > 1 ? ` · 将改到 ${n} 个版本` : ""}</span><select data-bdepth aria-label="追问深度" class="ol-bs"><option value="">追问深度 ▾</option>${Object.entries(DEPTH).map(([k, v]) => `<option value="${k}">${v[0]} · ${v[1]}</option>`).join("")}</select><button type="button" class="ol-bd" data-bdel="1">删除</button><button type="button" class="ol-bx" data-bt="1">完成</button></div>` : "";
+    return `${famRow()}<div class="row ol-hr"><h3 class="rf-h">共 ${sum.parts.length} 段 · ${sum.question_count} 题 · ${live ? `约 ${sum.minutes} 分钟` : "不计时长"}</h3><span class="sp"></span>${batch ? "" : `<button class="s" type="button" data-bt="1">批量</button>`}</div>${bar}
       ${live ? `<div class="ol-bar" role="img" aria-label="各段时间分配">${sum.parts.map((x, i) => `<i style="flex:${mins[i]};background:${cols[i % cols.length]}" title="${esc(x.title)} ${mins[i]} 分钟"></i>`).join("")}</div>` : ""}
       ${cards.join("")}
       <div class="row" style="margin-top:8px"><input id="olnewt" maxlength="60" placeholder="新话题的名字" aria-label="新话题的名字" style="flex:1;min-width:120px"><input id="olnewq" maxlength="300" placeholder="第一个问题" aria-label="第一个问题" style="flex:2;min-width:160px"><button class="s" type="button" id="oladdp">＋ 添加话题</button></div>`;
@@ -167,7 +190,7 @@ async function outlineView(p) {
   const verMenu = () => {
     if (S.versions.length < 2) return "";
     const c = cur();
-    const rows = S.versions.map((x) => `<button type="button" class="rf-vi${x.key === V ? " on" : ""}" role="menuitemradio" aria-checked="${x.key === V}" data-ver="${x.key}"><span>${esc(x.name)}${x.base ? "（原文）" : ""}</span>${x.exists ? "" : `<span class="rt-st o">未生成 · 点击生成</span>`}</button>`).join("");
+    const rows = S.versions.map((x) => `<button type="button" class="rf-vi${x.key === V ? " on" : ""}" role="menuitemradio" aria-checked="${x.key === V}" data-ver="${x.key}"><span>${esc(x.name)}${x.base ? "（原文）" : ""}</span>${x.exists ? "" : autoPend.has(x.key) ? `<span class="rt-st o">正在生成…</span>` : autoFail.has(x.key) ? `<span class="rt-st r">生成失败 · 重试</span>` : `<span class="rt-st o">等待生成</span>`}</button>`).join("");
     return `<div class="rf-ver"><button type="button" data-pop="ver" aria-haspopup="true" aria-expanded="${pop === "ver"}">版本：${esc(c.name)} ▾</button>${pop === "ver" ? `<div class="rf-vm" role="menu">${rows}</div>` : ""}</div>`;
   };
   const rightHead = () => `<div class="rf-hd ol-hd"><div class="rf-seg" role="tablist">${[["outline", "大纲"], ["settings", "设置"], ["test", "预览测试"]].map(([k, n]) => `<button type="button" role="tab" data-seg="${k}" class="${seg === k ? "on" : ""}" aria-selected="${seg === k}">${n}</button>`).join("")}</div><span class="sp"></span><span class="sm mut" id="olstat" role="status" aria-live="polite"></span>${capsule()}${verMenu()}</div>`;
@@ -214,6 +237,16 @@ async function outlineView(p) {
     const keyOf = (s) => s.split(":");
     document.querySelectorAll("[data-ed]").forEach((b) => (b.onclick = () => { editing = b.dataset.ed; drawRight(); const i = document.querySelector(".olq"); if (i) { i.focus(); i.select(); } }));
     document.querySelectorAll("[data-rn]").forEach((b) => (b.onclick = () => { editing = b.dataset.rn; drawRight(); const i = document.querySelector(".olt"); if (i) { i.focus(); i.select(); } }));
+    const doBatch = guard(async (action, depth) => {
+      const items = [...picked].map((k) => { const [kind, ref, idx] = keyOf(k); return [kind, +ref, +idx]; });
+      const r = await api(`/projects/${p.id}/outline/batch`, { method: "POST", body: { action, items, depth: depth || "", v: V, sync: syncKeys() } });
+      take(r); picked.clear(); editing = ""; drawRight(); drawChat(); syncNote(r.sync);
+    });
+    document.querySelectorAll("[data-bt]").forEach((b) => (b.onclick = () => { batch = !batch; picked.clear(); drawRight(); }));
+    document.querySelectorAll("[data-pk]").forEach((i) => (i.onchange = () => { if (i.checked) picked.add(i.dataset.pk); else picked.delete(i.dataset.pk); drawRight(); }));
+    document.querySelectorAll("[data-pkall]").forEach((i) => (i.onchange = () => { picked.clear(); if (i.checked) (S.summary ? S.summary.parts : []).forEach((x) => x.questions.forEach((q, qi) => { if (!q.cover) picked.add(`${x.kind}:${x.ref}:${qi}`); })); drawRight(); }));
+    document.querySelectorAll("[data-bdepth]").forEach((s) => (s.onchange = () => { if (!s.value) return; if (!picked.size) { s.value = ""; return toast("先勾选要改的问题", true); } doBatch("depth", s.value); }));
+    document.querySelectorAll("[data-bdel]").forEach((b) => (b.onclick = () => { if (!picked.size) return toast("先勾选要删除的问题", true); doBatch("delete"); }));
     document.querySelectorAll("[data-tg]").forEach((b) => (b.onclick = () => { const k = b.dataset.tg; opened.has(k) ? opened.delete(k) : opened.add(k); drawRight(); }));
     const saveMeta = (key) => { const box = document.querySelector(`[data-ex="${key}"]`), [kind, ref, idx] = keyOf(key); edit({ op: "meta", kind, ref: +ref, index: +idx, value: `${box.querySelector("select").value}|${box.querySelector("textarea").value}` }); };
     document.querySelectorAll("[data-dp-sel]").forEach((s) => (s.onchange = () => saveMeta(s.dataset.dpSel)));
@@ -242,7 +275,7 @@ async function outlineView(p) {
   document.body.classList.add("rfmode", "pgw");
   const ws = $("#olws"), fit = () => { if (ws && ws.offsetParent) ws.style.height = Math.max(380, innerHeight - ws.getBoundingClientRect().top - 18) + "px"; };
   fit(); addEventListener("resize", fit);
-  resetSync(); drawChat(); drawRight();
+  resetSync(); drawChat(); drawRight(); autoGen();
   const m = $("#olmsg");
   $("#olsend").onclick = () => send(m.value);
   m.onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(m.value); } };

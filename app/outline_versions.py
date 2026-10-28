@@ -4,7 +4,7 @@ Two families: voice / video (audio, video, video with screen sharing) share one 
 addressed by a key "<language>|<family>". The main version (the outline written first: its language and the voice / video family) stays in `Project.outline_text`, so everything that
 already reads the outline keeps working; the others live in `Project.outline_versions`. Versions keep the same parts and questions in the same order, which is what lets a change
 made in one version be carried to the others: wording follows the researcher's 同步到 choice (translated for another language), adding or deleting a question or part is
-always carried to every version so that they stay lined up.
+follow the same choice. A version where the part no longer has the same number of questions (it was changed on its own earlier) is left alone and reported, so a change never lands on the wrong question.
 """
 import logging
 
@@ -19,7 +19,7 @@ log = logging.getLogger(__name__)
 
 FAMILIES = {"live": ("audio", "video", "video_screen"), "text": ("text", "text_voice")}
 FAMILY_NAMES = {"live": "语音 / 视频", "text": "文字访谈"}
-STRUCTURAL = ("add", "delete", "add_part", "del_part")  # changes to the shape of the outline: always carried to every version
+STRUCTURAL = ("add", "delete", "add_part", "del_part")  # changes to the shape of the outline: a version that no longer lines up with the open one is skipped
 TOPIC_MAX = 18  # the participant topic (对外标题) is at most 18 characters
 WORDING = ("set", "rename", "add", "add_part", "meta")  # operations that bring new words, which another language needs translated ("meta": the guidance of a question; its depth is not language)
 
@@ -130,10 +130,19 @@ def generate(p: Project, key: str, chat: ModeratorChatProvider | None) -> str:
     return text
 
 
-def targets_for(p: Project, cur: str, sync: list[str], op: str) -> list[str]:
-    """The other versions a change goes to: every existing version for a change of shape, the ones chosen in 同步到 for a change of words. Versions not made yet are never touched."""
+def targets_for(p: Project, cur: str, sync: list[str], op: str = "") -> list[str]:
+    """The other versions a change goes to: the ones chosen in 同步到 (for any kind of change). Versions not made yet are never touched."""
     chosen = set(sync or [])
-    return [k for k in keys_of(p) if k != cur and text_of(p, k).strip() and (op in STRUCTURAL or k in chosen)]
+    return [k for k in keys_of(p) if k != cur and text_of(p, k).strip() and k in chosen]
+
+
+def _lines_up(cur_sizes: dict | None, tgt_sizes: dict | None, kind: str, ref: int, op: str) -> bool:
+    """Whether a change to this part can be made in the other version too: the part has the same number of questions there (a whole-part change: the same number of parts of that kind)."""
+    if cur_sizes is None or tgt_sizes is None:
+        return False
+    if op in ("add_part", "del_part"):
+        return sum(1 for k in cur_sizes if k[0] == "topic") == sum(1 for k in tgt_sizes if k[0] == "topic") and (op == "add_part" or cur_sizes.get((kind, ref)) == tgt_sizes.get((kind, ref)))
+    return (kind, ref) in cur_sizes and cur_sizes.get((kind, ref)) == tgt_sizes.get((kind, ref))
 
 
 def edit(p: Project, cur: str, sync: list[str], op: str, kind: str, ref: int, index: int, value: str, chat: ModeratorChatProvider | None) -> dict:
@@ -146,6 +155,7 @@ def edit(p: Project, cur: str, sync: list[str], op: str, kind: str, ref: int, in
         outline.EditError: the change cannot be made in the current version.
         outline_translate.TranslateError / ChatFatalError: the translation failed (nothing changed).
     """
+    sizes = outline.part_sizes(text_of(p, cur))
     results = {cur: outline.edit(text_of(p, cur), op, kind, ref, index, value)}
     targets = targets_for(p, cur, sync, op)
     cur_lang = split(cur)[0]
@@ -159,6 +169,9 @@ def edit(p: Project, cur: str, sync: list[str], op: str, kind: str, ref: int, in
     for t in targets:
         lang = split(t)[0]
         w = words if lang == cur_lang or op not in WORDING or lang not in made else made[lang]
+        if not _lines_up(sizes, outline.part_sizes(text_of(p, t)), kind, ref, op):
+            skipped.append({"key": t, "reason": "这一版的这一段和当前版本对不上"})
+            continue
         try:
             results[t] = outline.edit(text_of(p, t), op, kind, ref, index, "|".join(w) if op == "add_part" else f"{depth}|{w[0]}" if op == "meta" else (w[0] if w else value))
         except outline.EditError as e:
@@ -188,3 +201,40 @@ def set_header(p: Project, cur: str, sync: list[str], title: str | None, minutes
     for k, txt in results.items():
         put_text(p, k, txt)
     return {"synced": [k for k in results if k != cur], "skipped": skipped}
+
+
+def batch(p: Project, cur: str, sync: list[str], action: str, items: list[tuple[str, int, int]], depth: str = "") -> dict:
+    """Delete several questions or set their follow-up depth in the open version and the versions chosen in 同步到. `items` are (kind, part position, question position).
+
+    Returns:
+        {"synced": [keys], "skipped": [{"key", "reason"}], "done": n}: in another version a part whose number of questions differs from the open version's is left alone (and reported).
+
+    Raises:
+        outline.EditError: the open version cannot take the change (nothing is saved).
+    """
+    order = sorted(set(items), key=lambda x: (x[1], x[2]), reverse=True)  # later parts and questions first, so earlier positions stay valid
+    op = "delete" if action == "delete" else "depth"
+
+    def run(text: str, only: set | None) -> str:
+        for kind, ref, idx in order:
+            if only is None or (kind, ref) in only:
+                text = outline.edit(text, op, kind, ref, idx, depth)
+        return text
+
+    cur_sizes = outline.part_sizes(text_of(p, cur)) or {}
+    results = {cur: run(text_of(p, cur), None)}
+    skipped = []
+    parts = {(k, r) for k, r, _ in order}
+    for t in targets_for(p, cur, sync):
+        sz = outline.part_sizes(text_of(p, t))
+        fit = {(k, r) for k, r in parts if _lines_up(cur_sizes, sz, k, r, op)}
+        if len(fit) < len(parts):
+            skipped.append({"key": t, "reason": "有的段和当前版本对不上，没有改到"})
+        if fit:
+            try:
+                results[t] = run(text_of(p, t), fit)
+            except outline.EditError as e:
+                skipped.append({"key": t, "reason": str(e)})
+    for k, txt in results.items():
+        put_text(p, k, txt)
+    return {"synced": [k for k in results if k != cur], "skipped": skipped, "done": len(order)}

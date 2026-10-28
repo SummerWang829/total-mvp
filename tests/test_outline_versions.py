@@ -83,15 +83,35 @@ def test_a_change_of_words_follows_the_choice_in_sync(org, pid):
     assert questions(get(org, pid, "en|live"))[1] == "[EN] 你最近一次买防晒霜是怎么挑的？" and questions(get(org, pid))[1] == "你最近一次买防晒霜是怎么挑的？"
 
 
-def test_adding_or_deleting_a_question_goes_to_every_version_so_they_stay_lined_up(org, pid):
+def test_adding_or_deleting_a_question_follows_the_choice_in_sync(org, pid):
     make(org, pid, "en|live")
     make(org, pid, "zh|text")
-    r = org.c.post(url(pid, "/edit"), headers=org.h(), json={"op": "add", "kind": "topic", "ref": 0, "value": "用了之后感觉怎么样？"})
-    assert sorted(r.json()["sync"]["synced"]) == ["en|live", "zh|text"] and r.json()["sync"]["skipped"] == []
-    assert len(questions(get(org, pid, "en|live"))) == len(questions(get(org, pid, "zh|text"))) == 4
-    assert questions(get(org, pid, "en|live"))[-1] == "[EN] 用了之后感觉怎么样？"
-    org.c.post(url(pid, "/edit"), headers=org.h(), json={"op": "delete", "kind": "topic", "ref": 0, "index": 2})
-    assert len(questions(get(org, pid, "en|live"))) == len(questions(get(org, pid))) == 3
+    add = {"op": "add", "kind": "topic", "ref": 0, "value": "用了之后感觉怎么样？"}
+    r = org.c.post(url(pid, "/edit"), headers=org.h(), json=add)  # nothing chosen: only this version
+    assert r.json()["sync"]["synced"] == [] and len(questions(get(org, pid))) == 4 and len(questions(get(org, pid, "en|live"))) == 3
+    r = org.c.post(url(pid, "/edit"), headers=org.h(), json={"op": "delete", "kind": "topic", "ref": 0, "index": 2, "sync": ["en|live", "zh|text"]})
+    # the open version had 3 questions in the part, the others 2: they do not line up, so they are skipped and said (the open version still changed)
+    assert r.json()["sync"]["synced"] == [] and sorted(x["key"] for x in r.json()["sync"]["skipped"]) == ["en|live", "zh|text"] and len(questions(get(org, pid))) == 3
+    r = org.c.post(url(pid, "/edit"), headers=org.h(), json={"op": "add", "kind": "topic", "ref": 0, "value": "最后一个？", "sync": ["en|live", "zh|text"]})  # 2 and 2 again: lined up
+    assert sorted(r.json()["sync"]["synced"]) == ["en|live", "zh|text"] and len(questions(get(org, pid, "zh|text"))) == 4
+
+
+def test_batch_delete_and_depth_follow_sync_and_skip_versions_that_do_not_line_up(org, pid):
+    make(org, pid, "en|live")
+    items = [["topic", 0, 0], ["topic", 0, 1]]
+    r = org.c.post(url(pid, "/batch"), headers=org.h(), json={"action": "depth", "items": items, "depth": "deep"})
+    assert r.status_code == 200 and r.json()["sync"]["synced"] == []
+    assert [q["depth"] for q in r.json()["summary"]["parts"][1]["questions"] if not q.get("cover")] == ["deep", "deep"]
+    assert [q["depth"] for q in get(org, pid, "en|live")["summary"]["parts"][1]["questions"] if not q.get("cover")] == ["shallow", "shallow"]
+    r = org.c.post(url(pid, "/batch"), headers=org.h(), json={"action": "depth", "items": items, "depth": "none", "sync": ["en|live"]})
+    assert r.json()["sync"]["synced"] == ["en|live"] and [q["depth"] for q in get(org, pid, "en|live")["summary"]["parts"][1]["questions"] if not q.get("cover")] == ["none", "none"]
+    org.c.post(url(pid, "/edit"), headers=org.h(), json={"op": "delete", "kind": "topic", "ref": 0, "index": 1})  # only here: now the versions differ
+    r = org.c.post(url(pid, "/batch"), headers=org.h(), json={"action": "depth", "items": [["topic", 0, 0]], "depth": "free", "sync": ["en|live"]})
+    assert r.status_code == 200 and r.json()["sync"]["synced"] == [] and r.json()["sync"]["skipped"][0]["key"] == "en|live"
+    assert get(org, pid, "en|live")["summary"]["parts"][1]["questions"][0]["depth"] == "none"  # left alone
+    org.c.post(url(pid, "/edit"), headers=org.h(), json={"op": "add", "kind": "topic", "ref": 0, "value": "再问一个？"})
+    r = org.c.post(url(pid, "/batch"), headers=org.h(), json={"action": "delete", "items": [["warmup", 0, 0]], "sync": ["en|live"]})
+    assert r.status_code == 422  # the only warm-up question: the open version cannot be left without one
 
 
 def test_a_version_that_no_longer_lines_up_is_skipped_and_reported(org, pid):

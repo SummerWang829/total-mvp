@@ -345,6 +345,18 @@ def outline_section(br, D):
     pg.fill(".ol-gt", "新的指引：多问取舍"); pg.locator(".ol-gt").dispatch_event("change")
     ok(wait_until(lambda: "多问取舍" in pg.locator(".ol-gt").input_value() and "深度追问" in pg.locator(".ol-q").nth(2).inner_text(), 5), "[outline] the guidance is saved with the question")
     pg.locator(".ol-cv").nth(2).click(); ok(pg.locator(".ol-ex").count() == 0, "[outline] the arrow closes it again")
+    n1 = pg.locator(".ol-q").count(); good0 = call(f"/projects/{pid}/outline", None, adm)["text"]
+    pg.click("[data-bt]"); pg.wait_for_selector(".ol-bt")
+    ok(pg.locator(".ol-pk").count() == n1 and pg.locator("[data-ed]").count() == 0, "[outline] 批量 puts a tick box before every question")
+    pg.locator(".ol-pk").nth(0).check(); pg.locator(".ol-pk").nth(1).check()
+    ok("已选 2 题" in pg.inner_text(".ol-bt"), "[outline] the bar counts the questions ticked")
+    pg.select_option("[data-bdepth]", "free"); ok(wait_until(lambda: pg.locator(".ol-q").first.inner_text().count("自由讨论") == 1 and pg.locator(".ol-q").nth(1).inner_text().count("自由讨论") == 1, 5), "[outline] one choice sets the depth of every question ticked")
+    audit_page(pg, "outline batch/desktop", errs)
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "outline_batch_1280.png"))
+    pg.locator(".ol-pk").nth(1).check(); pg.locator(".ol-pk").nth(2).check(); pg.click("[data-bdel]")
+    ok(wait_until(lambda: pg.locator(".ol-q").count() == n1 - 2, 5), "[outline] 删除 removes every question ticked at once, with no question asked")
+    pg.click(".ol-bx"); ok(pg.locator(".ol-bt").count() == 0 and pg.locator(".ol-cv").count() == n1 - 2, "[outline] 完成 leaves 批量 and brings the normal rows back")
+    call(f"/projects/{pid}/outline", {"text": good0}, adm, method="PUT"); pg.reload(); pg.wait_for_selector(".ol-q")
     ok(pg.locator("#olchat [data-undo]").count() == 0 and "不能直接撤销" in pg.inner_text("#olchat"), "[outline] after a hand edit the change cannot be undone any more (it would lose the edit) and the card says so")
     audit_page(pg, "outline drafted/desktop", errs)
     pg.screenshot(path=os.path.join(ROOT, "qa_shots", "outline_1280.png"))
@@ -370,7 +382,9 @@ def outline_section(br, D):
     LN = {"en": "English", "zh": "中文"}
 
     def open_ver(code):
-        pg.click("[data-pop=ver]"); pg.click(f".rf-vm [data-ver^='{code}']")
+        pg.click("[data-pop=ver]")
+        wait_until(lambda: "生成" not in pg.locator(f".rf-vm [data-ver^='{code}']").first.inner_text(), 15)  # the other versions are made by themselves
+        pg.click(f".rf-vm [data-ver^='{code}']")
         return wait_until(lambda: LN[code] in pg.inner_text("[data-pop=ver]") and pg.locator(".ol-q").count() > 0, 8)
     ok(pg.locator("[data-pop=sync]").count() == 0 and pg.locator("[data-pop=ver]").count() == 0, "[outline] with one language and one format there is no version button and no 同步到")
     pg.click("[data-seg=settings]"); pg.click(f"[data-sl={other}]")
@@ -383,7 +397,8 @@ def outline_section(br, D):
     pg.click(".ol-pop [data-all]"); ok("全部版本" in pg.inner_text("[data-pop=sync]"), "[outline] ticking 全部版本 selects every version")
     pg.click(".ol-pop [data-all]"); pg.mouse.click(5, 5)
     pg.click("[data-seg=outline]")
-    ok(open_ver(other), "[outline] picking a version that is not made yet makes it (translation) and opens it")
+    pg.click("[data-pop=ver]"); ok("点击生成" not in pg.inner_text(".rf-vm"), "[outline] the version list never asks to click to make a version"); pg.mouse.click(5, 5)
+    ok(open_ver(other), "[outline] the other language was made by itself and opens")
     ok(pg.locator(".ol-ref").count() >= 3 and pg.locator(".ol-q .rf-n").first.inner_text().strip() == "Q1", "[outline] another language shows the original under each question")
     audit_page(pg, "outline english/desktop", errs)
     pg.screenshot(path=os.path.join(ROOT, "qa_shots", "outline_en_1280.png"))

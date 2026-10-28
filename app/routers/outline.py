@@ -36,6 +36,14 @@ class EditBody(BaseModel):
     sync: list[str] = Field(default_factory=list, max_length=20)  # the other versions that get a change of wording too (同步到)
 
 
+class BatchBody(BaseModel):
+    action: Literal["delete", "depth"]
+    items: list[tuple[Literal["warmup", "topic", "stimulus"], int, int]] = Field(min_length=1, max_length=100)  # (kind, part position, question position)
+    depth: str = Field(default="", max_length=10)
+    v: str | None = Field(default=None, max_length=20)
+    sync: list[str] = Field(default_factory=list, max_length=20)
+
+
 class ChatBody(BaseModel):
     message: str = Field(min_length=1, max_length=1000)
     use_library: bool = True
@@ -136,7 +144,7 @@ def edit_outline(pid: str, body: EditBody, ctx: Ctx = Depends(require_roles(*STA
     """Change one question or part from the outline view (the text is rewritten from the guide, so the two always agree)."""
     proj = _project(db, ctx, pid)
     key = _version(proj, body.v)
-    others = outline_versions.targets_for(proj, key, body.sync, body.op)
+    others = outline_versions.targets_for(proj, key, body.sync)
     translating = body.op in outline_versions.WORDING and any(outline_versions.split(k)[0] != outline_versions.split(key)[0] for k in others)
     try:
         sync = outline_versions.edit(proj, key, body.sync, body.op, body.kind, body.ref, body.index, body.value, _translator() if translating else None)
@@ -145,6 +153,20 @@ def edit_outline(pid: str, body: EditBody, ctx: Ctx = Depends(require_roles(*STA
     except (outline_translate.TranslateError, ChatFatalError) as e:
         raise HTTPException(502, f"同步到其他语言时翻译没成功：{getattr(e, 'reason', e)}") from e
     audit(db, ctx.org_id, ctx.actor, "outline.edit", pid, synced=len(sync["synced"]))
+    db.commit()
+    return {**_out(proj, db, key, ctx), "sync": sync}
+
+
+@router.post("/projects/{pid}/outline/batch")
+def batch_outline(pid: str, body: BatchBody, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    """Delete several questions, or set their follow-up depth, in one go (in the open version and the ones chosen in 同步到)."""
+    proj = _project(db, ctx, pid)
+    key = _version(proj, body.v)
+    try:
+        sync = outline_versions.batch(proj, key, body.sync, body.action, body.items, body.depth)
+    except outline.EditError as e:
+        raise HTTPException(422, str(e)) from e
+    audit(db, ctx.org_id, ctx.actor, "outline.batch", pid, what=body.action, n=sync["done"])
     db.commit()
     return {**_out(proj, db, key, ctx), "sync": sync}
 
