@@ -1057,3 +1057,38 @@ button.ed:hover:not(:disabled){color:var(--ink);background:var(--orange-soft);bo
 .rf-chgc,.rf-err{border-radius:10px;padding:9px 12px;line-height:1.7;max-width:560px}.rf-chgc{border:1px solid var(--green);background:var(--green-soft);color:var(--green)}
 .rf-err{border:1px solid var(--risk);background:var(--risk-soft);color:var(--risk-ink);margin:0 0 12px}.rf-err button,.rf-chgc button{margin:8px 8px 0 0}
 .rf-chips button:disabled{cursor:not-allowed}
+
+/* 直播间：时长差距、关键回答、资料卡、浮在表格上的筛选 */
+.dv{font-size:13px;font-weight:600}.dv.short{color:var(--orange-ink)}.dv.long{color:var(--risk-ink)}
+.rmkey{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rmbox td{vertical-align:middle}.rmbox tbody tr.hv{background:var(--orange-soft)}
+.rmcard{position:fixed;z-index:110;width:300px;background:var(--surface);border:1px solid var(--line2);border-radius:12px;padding:10px 12px;box-shadow:0 8px 24px rgba(6,35,25,.18);font-size:14px;line-height:1.6;pointer-events:none}
+.rmcard h5{margin:0 0 6px;font-size:15px;display:flex;gap:8px;align-items:center}
+.rmq{margin:0 0 5px}.rmq small{display:block;color:var(--muted);font-size:12px}
+.rmempty{margin:24px 0}.rmempty b{font-size:16px}
+.rmfa{display:flex;gap:12px;margin:4px 0 6px}
+.rmfl{max-height:240px;overflow:auto}
+.rmfo{display:flex;gap:8px;align-items:center;padding:5px 4px;border-radius:6px;cursor:pointer;min-height:32px}.rmfo:hover{background:var(--orange-soft)}
+.rmfo input{margin:0}
+.rmhb.on{color:var(--orange-ink)}
+.rmscroll .rmbox{overflow-x:auto}
+@media (max-width:900px){.rmcard{display:none}}
+.rmbox .rmkey{max-width:130px}
+.rmbox td .lbox{max-width:150px;flex-wrap:wrap}
+.rmbox .rmlen{white-space:nowrap}
+.rmbox td.acts .btn{white-space:nowrap}
+.rmbox .tbl td,.rmbox .tbl th{padding-left:8px;padding-right:8px}
+.rmbox .tbl td{white-space:normal}
+.rmbox .tbl td .lch{margin:1px 3px 1px 0}
+.rmbox .tbl th{white-space:nowrap}
+.rmbox td .rmkey{white-space:nowrap}
+.rmbox td.acts{width:1%}
+.rmbox td .tag,.rmbox td .rmlen,.rmbox td button.ed{white-space:nowrap}
+/* too many columns for a narrow window: the table scrolls sideways inside its box, the person's name stays on the left and the action buttons stay on the right */
+@media (min-width:901px){
+  .rmbox .tbl th:first-child,.rmbox .tbl td:first-child{position:sticky;left:0;z-index:2;background:var(--surface);box-shadow:2px 0 3px rgba(6,35,25,.06)}
+  .rmbox .tbl thead th:first-child{z-index:6}
+  .rmbox .tbl th:last-child,.rmbox .tbl td.acts{position:sticky;right:0;z-index:2;background:var(--surface);box-shadow:-2px 0 3px rgba(6,35,25,.06)}
+  .rmbox .tbl thead th:last-child{z-index:6}
+  .rmbox tbody tr.hv td:first-child,.rmbox tbody tr.hv td.acts{background:var(--orange-soft)}
+}

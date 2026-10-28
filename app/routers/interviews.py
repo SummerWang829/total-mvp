@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from .. import formats, insights_overview as insights_overview_mod, ai_room, concept, content_rules, export, groups, invites, jobs, participant_code, pretask, scheduling
+from .. import formats, insights_overview as insights_overview_mod, interview_facts, ai_room, concept, content_rules, export, groups, invites, jobs, participant_code, pretask, scheduling
 from ..audit import audit
 from ..config import settings
 from ..db import get_db
@@ -91,6 +91,10 @@ def interview_out(itv: Interview, ctx: Ctx, invite_token: str | None = None, db:
             rows = itv.group_participants
             out["waiting"] = any(in_waiting_room(itv, s) for s in rows)
             out["admitted"] = any(s.admitted_at is not None for s in rows)
+    if db is not None and sees_name:  # how long it really lasted, next to the planned length (for the research team and the moderator, not the client)
+        out["actual_min"] = interview_facts.actual_minutes(db, itv)
+    if db is not None and sees_name and not groups.is_group(itv):
+        out["key_answers"] = interview_facts.key_answers(db, itv.participant_id)
     if db is not None and sees_name and not groups.is_group(itv):  # the participant's progress is for the research team, not the client
         out["invite_state"] = invite_state(db, itv)
         out["waiting"] = in_waiting_room(itv)
