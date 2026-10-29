@@ -57,3 +57,6 @@ body.t-dark .q4 .qp h3,body.t-dark .q4 .qp p,body.t-dark .q4 .qp .sm{color:#D2E2
 .role-video-column>.stim img{max-height:30vh;width:100%;object-fit:contain}
 
 .role-mark-buttons button{white-space:nowrap;flex-wrap:nowrap}
+/* The new narrow host rail must keep long quote triggers readable and actions tappable. */
+body.q4mode .qsug small{font-size:14px;line-height:1.6}
+@media(max-width:600px){body.q4mode .qsug button{min-height:36px}}
