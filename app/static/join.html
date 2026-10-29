@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>参加访谈 · 星桐</title><link rel="stylesheet" href="/app.css"></head>
+<title>参加访谈 · 星桐</title><link rel="stylesheet" href="/app.css"><link rel="stylesheet" href="/editorial.css"><link rel="stylesheet" href="/join-role.css"></head>
 <body class="participant"><div class="pbar" id="logobar"></div><div class="pwrap" id="box"><p class="mut">…</p></div>
 <script src="/app.js"></script>
 <script src="/logo.js"></script>
@@ -108,6 +108,7 @@ function afterConsent() {  // consent done: fill in the pre-task if there is one
 }
 
 function frame(step, inner) {  // step bar: done = green, current = orange
+  document.body.classList.toggle("join-preparation", step === IX.device);
   const N = STEPS.length;
   box.innerHTML = `<div class="psteps" aria-hidden="true">${STEPS.map((_, i) => `<i class="${i < step ? "done" : i === step ? "on" : ""}"></i>`).join("")}</div>
     <p class="pstep">${esc(x.stepOf.replace("{n}", step + 1).replace("{N}", N))} · ${esc(STEPS[step])}</p>${inner}`;
@@ -179,6 +180,20 @@ function deviceStep() {
     <div class="row"><button id="play">${x.play}</button><button id="devretry">${x.retry}</button></div>
     <p class="perr sm" id="micwarn" role="alert" hidden>${esc(x.micWarn)}</p>
     <button class="p pbig" id="devnext" disabled>${x.cont}</button>`);
+  // Recompose the existing tested controls; consent remains a separate required server-checked step.
+  const layout = document.createElement("div"); layout.className = "join-device-layout";
+  const preview = document.createElement("section"); preview.className = "join-device-preview";
+  const screen = document.createElement("div"); screen.className = "join-preview-screen";
+  screen.innerHTML = `<svg class="join-person" viewBox="0 0 80 100" aria-hidden="true"><circle cx="40" cy="26" r="15"/><path d="M12 92v-9c0-38 56-38 56 0v9"/></svg>`;
+  screen.append($("#devv")); preview.append(screen);
+  const panel = document.createElement("aside"); panel.className = "join-device-panel";
+  const heading = box.querySelector("h1"), intro = heading && heading.nextElementSibling;
+  if (heading) panel.append(heading); if (intro) panel.append(intro);
+  if (info.scheduled_at) { const schedule = document.createElement("p"); schedule.className = "mut"; schedule.textContent = new Date(info.scheduled_at + "Z").toLocaleString(); panel.append(schedule); }
+  ["cam", "mic", "spk", "net"].forEach((k) => { preview.append($("#c_" + k)); preview.append($("#e_" + k)); });
+  preview.append($("#play").parentElement);
+  panel.append($("#micwarn")); panel.append($("#devnext"));
+  layout.append(preview, panel); box.append(layout);
   const R = { camera: false, microphone: false, speaker: false };
   const set = (k, ok, fix) => { const el = $("#c_" + k); el.className = "pcheck " + (ok ? "ok" : "bad"); $(".st", el).textContent = ok === "played" ? x.played : ok ? x.ok : x.fail; const e = $("#e_" + k); e.hidden = !!ok; e.textContent = ok ? "" : fix; };
   $("#play").onclick = () => {

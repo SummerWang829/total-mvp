@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>报告页动效原型（方案 A）</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@500;700&display=swap">
+<style>
+/* tokens: six colours, two type roles, three spacing levels (8pt), two radii, no shadows */
+:root{--bg:#fff;--wash:#F4F7F5;--ink:#0B2E25;--mut:#51675D;--acc:#FF6A00;--line:#C9D4CD;--accsoft:#FFF7F0;--accink:#B84900;
+--e:8px;--m:24px;--s:64px;--r1:4px;--r2:12px;--gut:24px;--pad:40px;
+--ff:"Geist","Noto Sans SC","PingFang SC","Microsoft YaHei",system-ui,sans-serif;--fd:"Noto Serif SC","Songti SC","SimSun",serif}
+*{box-sizing:border-box;margin:0}
+body{font:14px/1.8 var(--ff);color:var(--ink);background:var(--bg);font-variant-numeric:tabular-nums}
+.shell{display:grid;grid-template-columns:88px minmax(0,1fr);min-height:100vh}
+.rail{background:#0B382C;color:#BCCFC6;padding:var(--m) 0;display:flex;flex-direction:column;align-items:center;gap:var(--m);font-size:12px;line-height:1.3;position:sticky;top:0;height:100vh}
+.rail b{font-family:var(--fd);color:#fff;font-size:17px}.rail span.on{color:#fff;border-left:3px solid var(--acc);padding-left:var(--e);margin-left:-11px}
+/* shell chrome */
+.bar{display:flex;align-items:center;gap:var(--m);padding:0 var(--pad);height:56px;border-bottom:1px solid var(--line);font-size:14px}
+.bar .id{color:var(--accink);font-weight:600}.bar .st{background:#E3F1EA;color:#1F6B54;border-radius:var(--r1);padding:0 var(--e);font-size:12px}
+.tabs{display:flex;gap:var(--m);padding:0 var(--pad);border-bottom:1px solid var(--line);font-size:14px;color:var(--mut)}
+.tabs span{padding:12px 0}.tabs .on{color:var(--ink);font-weight:600;font-size:17px;border-bottom:2px solid var(--acc)}
+.sub{display:flex;gap:var(--m);padding:0 var(--pad);border-bottom:1px solid var(--line);font-size:14px;color:var(--mut)}
+.sub span{padding:8px 0}.sub .on{color:var(--ink);font-weight:600;border-bottom:2px solid var(--ink)}
+/* grid: 12 / 8 / 4 / 1 columns; each section declares its span per breakpoint */
+.g{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));column-gap:var(--gut);padding:0 var(--pad)}
+.x{grid-column:span var(--w12)}
+@media (max-width:1100px){.g{grid-template-columns:repeat(8,minmax(0,1fr));--pad:var(--m)}.x{grid-column:span var(--w8)}}
+@media (max-width:800px){.g{grid-template-columns:repeat(4,minmax(0,1fr))}.x{grid-column:span var(--w4)}.shell{grid-template-columns:64px minmax(0,1fr)}}
+@media (max-width:480px){.g{grid-template-columns:1fr}.x{grid-column:1}.shell{grid-template-columns:1fr}.rail{display:none}}
+/* section skeletons: band (full-bleed) / split / list+detail / bento — shared eyebrow + title position */
+.band{background:var(--wash);border-bottom:1px solid var(--line)}
+.sec{padding:var(--s) 0 0}
+.eb{font-size:12px;color:var(--mut);letter-spacing:.06em;margin-bottom:var(--e);display:flex;gap:var(--e);align-items:baseline}
+.eb i{font-family:var(--fd);font-style:normal;font-size:17px;color:var(--ink);font-weight:700}
+.h2{font:700 24px/1.4 var(--fd);margin-bottom:var(--m)}
+.h1{font:700 44px/1.25 var(--fd);margin:0 0 var(--e)}
+.meta{color:var(--mut);font-size:12px;margin-bottom:var(--m)}
+.tag{display:inline-block;font-size:12px;border:1px solid var(--line);border-radius:var(--r1);padding:0 var(--e);color:var(--mut);line-height:1.6}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid var(--ink);margin-top:var(--m)}
+.stats div{padding:var(--e) var(--e) var(--e) 0;border-right:1px solid var(--line);padding-left:var(--e)}
+.stats div:first-child{padding-left:0}.stats div:last-child{border-right:0}
+.stats b{display:block;font:700 32px/1.3 var(--fd)}.stats span{font-size:12px;color:var(--mut)}
+.btns{display:flex;gap:var(--e);justify-content:flex-end;margin-bottom:var(--m)}
+.bt{font:600 14px var(--ff);height:36px;padding:0 16px;border:1px solid var(--line);border-radius:var(--r1);background:#fff;color:var(--ink)}
+.bt.p{background:var(--acc);border-color:var(--acc)}
+.panel{border:1px solid var(--line);border-radius:var(--r2);padding:var(--m);background:#fff}
+.panel h4{font:600 14px var(--ff);margin-bottom:var(--e)}
+.bk{display:grid;grid-template-columns:16px 1fr auto;gap:var(--e);align-items:center;padding:var(--e) 0;min-height:40px;line-height:1.5;border-top:1px solid #E2E8E4;font-size:14px}
+.ck{width:16px;height:16px;background:var(--ink);border-radius:2px}.ck.off{background:#fff;border:1px solid var(--line)}
+.bk small{color:var(--mut);font-size:12px}.bk em{font-style:normal;color:var(--mut);font-size:12px}
+.row{display:grid;grid-template-columns:120px minmax(0,1fr) 56px 16px;gap:var(--e);align-items:center;padding:var(--e);border-radius:var(--r1);border-bottom:1px solid #E2E8E4}
+.row.on{background:var(--accsoft)}.row .ch{color:var(--mut)}.row.on .ch{color:var(--accink)}
+.tr{height:6px;background:#E2E8E4;border-radius:var(--r1)}.tr i{display:block;height:6px;background:var(--ink);border-radius:var(--r1)}
+.big{display:flex;align-items:baseline;gap:var(--m);padding:var(--e)}.big b{font:700 64px/1 var(--fd)}
+.det{border-top:2px solid var(--acc);padding-top:var(--e);margin-top:calc(var(--e)*3)}
+.det .hd{display:flex;justify-content:space-between;font-weight:600;margin-bottom:var(--e)}
+.q{border-top:1px solid var(--line);padding:var(--e) 0}.q b{font-family:var(--fd)}.q small{color:var(--mut);font-size:12px}
+.lk{color:var(--accink);text-decoration:underline;text-underline-offset:3px}
+.card{border:1px solid var(--line);border-radius:var(--r2);padding:var(--m)}
+.card.dash{border-style:dashed;background:var(--wash)}
+.card h4{font:700 17px var(--fd);margin-bottom:4px}.card .sm{color:var(--mut);font-size:12px;margin-bottom:var(--m)}
+.cmp{display:grid;grid-template-columns:72px 1fr 40px;gap:var(--e);align-items:center;margin-bottom:var(--e);font-size:12px}
+.note{margin-top:var(--m);font-size:14px;color:var(--mut)}.note b{font-family:var(--fd);color:var(--ink)}
+.cols3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--gut)}
+.cols3 h5{font:700 14px var(--ff);margin-bottom:var(--e);border-top:1px solid var(--ink);padding-top:var(--e)}
+.cols3 p{color:var(--mut);font-size:14px}
+@media (max-width:800px){.cols3{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,1fr)}.h1{font-size:32px}}
+
+/* motion tokens: three jobs only — state change, spatial continuity, guiding attention */
+:root{--d1:120ms;--d2:200ms;--d3:280ms;--ease:cubic-bezier(.2,.8,.2,1)}
+.bt{transition:background-color var(--d1) var(--ease),border-color var(--d1) var(--ease),transform var(--d1) var(--ease);cursor:pointer}
+.bt:hover{background:var(--wash);border-color:var(--ink)}.bt.p:hover{background:#E85F00;border-color:#E85F00}
+.bt:active{transform:scale(.98)}
+:focus-visible{outline:2px solid var(--acc);outline-offset:2px;border-radius:var(--r1)}
+.row{cursor:pointer;transition:background-color var(--d2) var(--ease)}
+.row:hover{background:var(--wash)}.row.on{background:var(--accsoft)}
+.row .ch{transition:transform var(--d2) var(--ease),color var(--d2) var(--ease)}
+.row:hover .ch{transform:translateX(3px);color:var(--ink)}.row.on .ch{transform:translateX(6px);color:var(--accink)}
+.row .tr i,.big+div .tr i{transition:height var(--d2) var(--ease)}
+.row.on .tr{height:8px}.row.on .tr i{height:8px}
+.tr{transition:height var(--d2) var(--ease)}
+.bigrow{display:grid;grid-template-columns:1fr 16px;gap:var(--e);align-items:center;padding:var(--e);border-radius:var(--r1);cursor:pointer;transition:background-color var(--d2) var(--ease)}
+.bigrow:hover{background:var(--wash)}.bigrow.on{background:var(--accsoft)}
+.bigrow .ch{color:var(--mut);transition:transform var(--d2) var(--ease),color var(--d2) var(--ease)}
+.bigrow:hover .ch{transform:translateX(3px);color:var(--ink)}.bigrow.on .ch{transform:translateX(6px);color:var(--accink)}
+.bigtr{padding:0 var(--e) var(--e)}
+.dwrap{transition:opacity 90ms linear,transform var(--d2) var(--ease)}
+.dwrap.out{opacity:0;transform:translateX(8px)}
+.lk{cursor:pointer;background:none;border:0;font:inherit;padding:0}
+.lk:hover{text-decoration-thickness:2px}
+.blk{display:grid;grid-template-rows:1fr;transition:grid-template-rows var(--d3) var(--ease),opacity var(--d2) var(--ease)}
+.blk>.in{overflow:hidden;min-height:0}
+.blk.off{grid-template-rows:0fr;opacity:0;pointer-events:none}
+.bk{transition:background-color var(--d1) var(--ease)}
+.bk .ck{cursor:pointer;transition:background-color var(--d1) var(--ease),border-color var(--d1) var(--ease);display:inline-block}
+.bk em button{border:0;background:none;color:var(--mut);font:inherit;cursor:pointer;padding:0 4px;transition:color var(--d1)}
+.bk em button:hover{color:var(--ink)}.bk em button:disabled{opacity:.3;cursor:default}
+.pop{position:absolute;right:0;top:44px;width:360px;background:#fff;border:1px solid var(--line);border-radius:var(--r2);padding:var(--m);z-index:5;opacity:0;transform:scale(.96);transform-origin:top right;pointer-events:none;transition:opacity var(--d2) var(--ease),transform var(--d2) var(--ease)}
+.pop .bt{white-space:nowrap}
+.pop.open{opacity:1;transform:none;pointer-events:auto}
+.pop textarea{width:100%;height:80px;border:1px solid var(--line);border-radius:var(--r1);padding:var(--e);font:14px var(--ff);margin:var(--e) 0;resize:none}
+.pop textarea:focus{outline:2px solid var(--acc);outline-offset:0}
+.try{background:var(--ink);color:#fff;font-size:12px;padding:var(--e) var(--pad);display:flex;gap:var(--m);flex-wrap:wrap}
+.try b{color:#FFB27A;font-weight:600}
+.perq .card{margin-bottom:var(--e)}
+@media (prefers-reduced-motion:reduce){*{transition-duration:.01ms!important}}
+</style></head><body>
+<div class="try"><span><b>试试：</b>点“主题分布”里的任意一行</span><span>勾选 / 取消右上角的分析块</span><span>点分析块的 ↑ ↓ 换顺序</span><span>点“导入报告模版”和“＋ 自己加一块”</span><span>按 Tab 看键盘焦点</span></div>
+<div class="shell">
+<aside class="rail"><b>星桐</b><span>全部项目</span><span>研究库</span><span>立项向导</span><span>项目总览</span><span class="on">深访</span><span>座谈会</span><span>团队</span></aside>
+<main>
+<div class="bar"><span class="id">2026P001</span><b style="font-weight:600">新加坡护肤品牌进入研究</b><span class="st">进行中</span><span style="flex:1"></span><span class="tag">深访</span><span class="tag">座谈会</span></div>
+<div class="tabs"><span>甄别设定</span><span>访谈</span><span>直播间</span><span class="on">洞察与片段</span><span>异步研究</span></div>
+<div class="sub"><span>受访者数据</span><span class="on">报告</span><span>问题分析</span><span>精彩片段</span><span>对话</span></div>
+
+<section class="band"><div class="g" style="padding-top:var(--m);padding-bottom:var(--m)">
+ <div class="x" style="--w12:8;--w8:5;--w4:4">
+  <div class="eb">研究报告 · 2026P001 · 深访</div>
+  <h1 class="h1">新加坡护肤品牌进入研究</h1>
+  <div class="meta">6 位受访者 · 生成于 2026-10-28 · 数据截至最后一场访谈</div>
+  <div class="eb"><i>01</i>总体结论</div>
+  <p style="max-width:56ch">共 6 位受访者完成访谈，最常被提到的是“价格偏高”（4/6）。样本小，仅作方向参考。 <span class="tag">AI 的判断</span></p>
+  <div class="stats"><div><b>6</b><span>完成访谈</span></div><div><b>5</b><span>个主题</span></div><div><b>4/6</b><span>最高提及 · 价格偏高</span></div><div><b>41′</b><span>平均访谈时长</span></div></div>
+ </div>
+ <div class="x" style="--w12:4;--w8:3;--w4:4;position:relative">
+  <div class="btns"><button class="bt" id="imp">导入报告模版</button><button class="bt p">下载 Word</button></div>
+  <div class="pop" id="pop1" role="dialog" aria-label="导入报告模版"><b style="font-weight:600">导入报告模版</b><div style="color:var(--mut);font-size:12px;margin-top:4px">写这个项目最想看清什么，AI 按它挑图表</div><textarea placeholder="价格敏感度，按家庭月收入比较"></textarea><div style="display:flex;gap:var(--e)"><button class="bt p" data-close>挑出对应的图表</button><button class="bt" data-close>下载默认模版</button></div></div>
+  <div class="panel"><h4>分析块</h4><div id="blocks"></div></div>
+ </div>
+</div></section>
+
+<div id="flow">
+ <div class="blk" data-id="topics"><div class="in"><section class="sec"><div class="g">
+  <div class="x" style="--w12:8;--w8:5;--w4:4"><div class="eb"><i>02</i>主题分布</div><h2 class="h2">价格是最集中的顾虑</h2><div id="list"></div>
+   <p class="note"><b>解读</b>　价格是最集中的顾虑，包装体验次之；样本小，不做百分比。 <span class="tag">AI 的判断</span></p></div>
+  <div class="x" style="--w12:4;--w8:3;--w4:4"><div class="det" id="det"></div></div>
+ </div></section></div></div>
+
+ <div class="blk" data-id="compare"><div class="in"><section class="sec"><div class="g">
+  <div class="x" style="--w12:12;--w8:8;--w4:4"><div class="eb"><i>03</i>分人群比较</div><h2 class="h2">谁更在意价格</h2></div>
+  <div class="x" style="--w12:4;--w8:4;--w4:4"><div class="card"><h4>按年龄</h4><div class="sm">25–34 岁 3 位 · 35 岁以上 3 位</div>
+   <div class="cmp"><span>25–34</span><div class="tr"><i style="width:33%"></i></div><span>1 / 3</span></div>
+   <div class="cmp"><span>35 以上</span><div class="tr"><i style="width:100%"></i></div><span>3 / 3</span></div><div class="note" style="margin-top:var(--e)">提到“价格偏高”</div></div></div>
+  <div class="x" style="--w12:4;--w8:4;--w4:4"><div class="card"><h4>按家庭月收入</h4><div class="sm">低于 S$6,000 3 位 · 以上 3 位</div>
+   <div class="cmp"><span>低于 6k</span><div class="tr"><i style="width:100%"></i></div><span>3 / 3</span></div>
+   <div class="cmp"><span>6k 以上</span><div class="tr"><i style="width:33%"></i></div><span>1 / 3</span></div><div class="note" style="margin-top:var(--e)">提到“价格偏高”</div></div></div>
+  <div class="x" style="--w12:4;--w8:8;--w4:4"><div class="card dash"><h4>按常用渠道</h4><div class="sm">默认关闭</div><p style="color:var(--mut)">某一组不到 3 位，对比没有意义。样本增加后会自动提示。</p></div></div>
+ </div></section></div></div>
+
+ <div class="blk off" data-id="perq"><div class="in perq"><section class="sec"><div class="g">
+  <div class="x" style="--w12:12;--w8:8;--w4:4"><div class="eb"><i>04</i>逐题回答概览</div><h2 class="h2">每道题大家怎么答</h2></div>
+  <div class="x" style="--w12:6;--w8:4;--w4:4"><div class="card"><h4>Q1 您平时多久买一次护肤品？</h4><div class="sm">6 位回答</div><div class="cmp"><span>每月</span><div class="tr"><i style="width:50%"></i></div><span>3 / 6</span></div><div class="cmp"><span>每季度</span><div class="tr"><i style="width:33%"></i></div><span>2 / 6</span></div></div></div>
+  <div class="x" style="--w12:6;--w8:4;--w4:4"><div class="card"><h4>Q2 最看重哪一点？</h4><div class="sm">6 位回答</div><div class="cmp"><span>成分</span><div class="tr"><i style="width:50%"></i></div><span>3 / 6</span></div><div class="cmp"><span>价格</span><div class="tr"><i style="width:33%"></i></div><span>2 / 6</span></div></div></div>
+ </div></section></div></div>
+
+ <div class="blk" data-id="appx"><div class="in"><section class="band" style="margin-top:var(--s);border-top:1px solid var(--line);border-bottom:0"><div class="g" style="padding-top:var(--s);padding-bottom:var(--s)">
+  <div class="x" style="--w12:4;--w8:3;--w4:4"><div class="eb"><i>附</i>附录</div><h2 class="h2">研究背景、方法与样本</h2></div>
+  <div class="x" style="--w12:8;--w8:5;--w4:4"><div class="cols3">
+   <div><h5>研究背景</h5><p>新加坡护肤品牌计划进入本地市场，需了解目标人群对价格、包装和成分的看法。</p></div>
+   <div><h5>方法</h5><p>深访 1:1，约 45 分钟，语音/视频，英文进行；转写和回答由程序整理，原话逐字保留。</p></div>
+   <div><h5>样本</h5><p>6 位受访者，25–34 岁 3 位、35 岁以上 3 位；来源为招募问卷，全部同意录制。</p></div>
+  </div></div>
+ </div></section></div></div>
+</div>
+</main></div>
+
+<script>
+const THEMES=[
+ {n:'价格偏高',k:4,p:[['Q-001','“包装很好看，但是这个价格我会犹豫，每个月续买不太现实。”','会放弃续费'],['Q-003','“同类产品便宜一半，我更愿意先试便宜的。”','价格敏感'],['Q-004','“如果有小样我会买。”',''],['Q-006','“特价的时候才会考虑。”','等促销']]},
+ {n:'包装体验',k:3,p:[['Q-001','“瓶身很好看，放在浴室里很显档次。”',''],['Q-002','“泵头有点难按，用起来不顺手。”','使用不便'],['Q-005','“盒子很环保，我很喜欢。”','环保好感']]},
+ {n:'成分信任',k:2,p:[['Q-002','“我会先去查成分表，看到烟酰胺才放心。”','看成分表'],['Q-005','“宣传的成分我不太信，要看有没有第三方检测。”','要证明']]},
+ {n:'使用感受',k:2,p:[['Q-003','“质地偏厚，新加坡这么热，我觉得会闷。”','太厚重'],['Q-006','“吸收得很快，没有黏腻感。”','']]},
+ {n:'购买渠道',k:1,p:[['Q-004','“我一般在线上平台买，线下专柜很少去。”','线上优先']]}];
+const BLK=[{id:'conc',t:'总体结论',lock:1,on:1},{id:'topics',t:'主题分布',on:1},{id:'compare',t:'分人群比较',on:1},{id:'perq',t:'逐题回答概览',on:0,note:'某题只有 3 人回答'},{id:'appx',t:'附录',on:1}];
+const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
+const RM=matchMedia('(prefers-reduced-motion: reduce)').matches;
+let sel=0;
+function renderList(){
+ const t0=THEMES[0];
+ $('#list').innerHTML=`<div class="bigrow ${sel===0?'on':''}" tabindex="0" role="button" data-i="0"><div class="big" style="padding:0"><b>${t0.k}/6</b><span>提到“${t0.n}”</span></div><span class="ch">›</span></div><div class="bigtr"><div class="tr" style="background:#fff"><i style="width:${Math.round(t0.k*100/6)}%"></i></div></div>`
+ +THEMES.slice(1).map((t,j)=>`<div class="row ${sel===j+1?'on':''}" tabindex="0" role="button" data-i="${j+1}"><span>${t.n}</span><div class="tr"><i style="width:${Math.round(t.k*100/6)}%"></i></div><span style="text-align:right">${t.k} / 6</span><span class="ch">›</span></div>`).join('');
+ $$('#list [data-i]').forEach(r=>{const go=()=>select(+r.dataset.i);r.onclick=go;r.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();go();}};});
+}
+function detHtml(){
+ if(sel===null)return `<div class="hd"><span>点左侧任意一个主题</span></div><div class="q" style="color:var(--mut)">这里会列出对应受访者的原话，只显示编号；原话由服务器从转写里原样复制。</div>`;
+ const t=THEMES[sel];
+ return `<div class="hd"><span>${t.n} · ${t.k} 位的回答</span><button class="lk" id="dclose" style="color:var(--accink);text-decoration:underline;text-underline-offset:3px">关闭</button></div>`
+ +t.p.map(x=>`<div class="q"><b>${x[0]}</b> <small>· <button class="lk" style="color:var(--accink);text-decoration:underline;text-underline-offset:3px;font-size:12px">看原文</button></small><br>${x[1]}${x[2]?`<br><span class="tag">${x[2]}</span>`:''}</div>`).join('')
+ +`<div class="q"><button class="lk" style="color:var(--accink);text-decoration:underline;text-underline-offset:3px">在受访者数据里查看全部</button></div>`;
+}
+function drawDet(animate){
+ const box=$('#det');
+ const put=()=>{box.innerHTML=`<div class="dwrap">${detHtml()}</div>`;const c=$('#dclose');if(c)c.onclick=()=>select(null);};
+ if(!animate||RM){put();return;}
+ const w=$('.dwrap',box); if(!w){put();return;}
+ w.classList.add('out');
+ setTimeout(()=>{put();const n=$('.dwrap',box);n.classList.add('out');n.getBoundingClientRect();n.classList.remove('out');},90);
+}
+function select(i){sel=(i===sel?null:i);renderList();drawDet(true);}
+function renderBlocks(){
+ $('#blocks').innerHTML=BLK.map((b,i)=>`<div class="bk" data-id="${b.id}"><span class="ck ${b.on?'':'off'}" tabindex="${b.lock?-1:0}" role="checkbox" aria-checked="${!!b.on}" aria-label="${b.t}" ${b.lock?'style="opacity:.55;cursor:default"':''}></span><span>${b.t}${b.note&&!b.on?`<br><small>${b.note}</small>`:''}</span><em>${b.lock?'':`<button ${i<=1?'disabled':''} data-up="${b.id}" aria-label="上移">↑</button><button ${i===BLK.length-1?'disabled':''} data-dn="${b.id}" aria-label="下移">↓</button>`}</em></div>`).join('')
+ +`<div class="bk" style="color:var(--accink);cursor:pointer" id="addb"><span></span><span>＋ 自己加一块</span><span></span></div>`;
+ $$('#blocks .ck').forEach(c=>{const id=c.closest('.bk').dataset.id,b=BLK.find(x=>x.id===id);if(b.lock)return;const tg=()=>{b.on=b.on?0:1;$(`.blk[data-id=${id}]`).classList.toggle('off',!b.on);renderBlocks();};c.onclick=tg;c.onkeydown=e=>{if(e.key===' '||e.key==='Enter'){e.preventDefault();tg();}};});
+ $$('[data-up]').forEach(b=>b.onclick=()=>move(b.dataset.up,-1));
+ $$('[data-dn]').forEach(b=>b.onclick=()=>move(b.dataset.dn,1));
+ $('#addb').onclick=()=>{const p=$('#pop1');p.classList.toggle('open');if(p.classList.contains('open'))$('textarea',p).focus();};
+}
+function move(id,d){
+ const i=BLK.findIndex(b=>b.id===id),j=i+d;if(j<1||j>=BLK.length)return;
+ const flow=$('#flow'),secs=BLK.filter(b=>b.id!=='conc').map(b=>$(`.blk[data-id=${b.id}]`));
+ const first=new Map(secs.map(s=>[s,s.getBoundingClientRect().top]));
+ [BLK[i],BLK[j]]=[BLK[j],BLK[i]];
+ BLK.filter(b=>b.id!=='conc').forEach(b=>flow.appendChild($(`.blk[data-id=${b.id}]`)));
+ renderBlocks();
+ if(RM)return;
+ secs.forEach(s=>{const dy=first.get(s)-s.getBoundingClientRect().top;if(!dy)return;s.style.transition='none';s.style.transform=`translateY(${dy}px)`;s.getBoundingClientRect();s.style.transition='transform 280ms cubic-bezier(.2,.8,.2,1)';s.style.transform='';setTimeout(()=>{s.style.transition='';},300);});
+}
+$('#imp').onclick=()=>$('#pop1').classList.toggle('open');
+$$('#pop1 [data-close]').forEach(b=>b.onclick=()=>$('#pop1').classList.remove('open'));
+document.addEventListener('keydown',e=>{if(e.key==='Escape')$('#pop1').classList.remove('open');});
+document.addEventListener('mousedown',e=>{const p=$('#pop1');if(p.classList.contains('open')&&!p.contains(e.target)&&e.target.id!=='imp'&&!e.target.closest('#addb'))p.classList.remove('open');});
+renderList();drawDet(false);renderBlocks();
+</script>
+</body></html>

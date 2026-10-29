@@ -189,7 +189,7 @@ async function insightsHub(p, my) {
     let sel = null;   // { c: card id, i: bar index }
     const noteHtml = (n) => `<div class="rp-note"><b>解读：</b>${esc(n.t)}${n.ai ? ` <span class="tag">AI 的判断</span>` : ""}${n.stale ? ` <span class="tag o">数据已更新</span>` : ""}</div>`;
     const cardHtml = (c) => `<div class="rp-card${sel && sel.c === c.id ? " sel" : ""}" data-c="${esc(c.id)}"><div class="rp-t"><b>${esc(c.title)}</b></div><div class="rp-d">${esc(c.desc)}</div>
-      ${c.bars.map((b, i) => `<div role="button" tabindex="0" class="rp-row${sel && sel.c === c.id && sel.i === i ? " on" : ""}" data-c="${esc(c.id)}" data-i="${i}"><span class="rp-h"><span>${esc(b.label)}</span><span>${b.k} / ${b.n}</span></span><span class="rp-tr"><span class="rp-f" style="width:${b.n ? Math.round(b.k * 100 / b.n) : 0}%"></span></span></div>`).join("")}</div>${noteHtml(c.note)}`;
+      ${c.bars.map((b, i) => `<div role="button" tabindex="0" class="rp-row${sel && sel.c === c.id && sel.i === i ? " on" : ""}" data-c="${esc(c.id)}" data-i="${i}"><span class="rp-h"><span class="rp-label">${esc(b.label)}</span><span class="rp-count">${b.k} / ${b.n}</span></span><span class="rp-tr"><span class="rp-f" style="width:${b.n ? Math.round(b.k * 100 / b.n) : 0}%"></span></span><span class="rp-chevron" aria-hidden="true">›</span></div>`).join("")}</div>${noteHtml(c.note)}`;
     const appendix = () => {
       let html = "", list = false;
       oldBlocks.slice(2).forEach((b) => {
@@ -204,10 +204,9 @@ async function insightsHub(p, my) {
       });
       return list ? html + "</ul>" : html;
     };
-    const docHtml = `<div class="ins-doc"><h2 class="ins-rt">${esc(p.name)}</h2>
-      <h3 class="ins-h1">总体结论</h3><p class="rp-sum">${esc(d.summary.t)}${d.summary.ai ? ` <span class="tag">AI 的判断</span>` : ""}</p>
-      ${d.cards.length ? d.cards.map(cardHtml).join("") : `<div class="card empty"><b>还没有可分析的数据</b><span>访谈结束并整理出回答的主题后，图表会出现在这里。</span></div>`}
-      ${oldBlocks.length ? `<details class="rp-app"><summary>附录：研究背景、方法与样本</summary>${appendix()}</details>` : ""}</div>`;
+    const themeCard = d.cards.find((c) => c.id === "themes"), topTheme = themeCard && themeCard.bars[0];
+    const docHtml = d.cards.length ? d.cards.map((c, i) => `<section class="rp-section"><div class="rp-eyebrow"><i>${String(i + 2).padStart(2, "0")}</i>${c.kind === "themes" ? "主题分布" : "分人群比较"}</div>${cardHtml(c)}</section>`).join("")
+      : `<div class="rp-empty"><b>还没有可分析的数据</b><p>访谈结束并整理出回答的主题后，图表会出现在这里。</p></div>`;
     const detail = () => {
       const c = d.cards.find((x) => x.id === sel.c), b = c.bars[sel.i];
       return `<div class="row"><b>${esc(b.label)} · ${b.k} 位的回答</b><span class="sp"></span><button type="button" class="lnk" id="rpx">关闭</button></div>
@@ -218,8 +217,15 @@ async function insightsHub(p, my) {
     const blocksPanel = () => `<div class="row"><b>这份报告的分析块</b></div>${d.blocks.map((b, i) => `<div class="rp-bk"><label class="chk"><input type="checkbox" data-bk="${esc(b.id)}" ${b.on ? "checked" : ""}><span><b>${esc(b.title)}</b><small>${esc(b.source)}</small></span></label>
         <span class="rp-mv"><button type="button" class="s" data-up="${i}" aria-label="上移" ${i === 0 ? "disabled" : ""}>↑</button><button type="button" class="s" data-dn="${i}" aria-label="下移" ${i === d.blocks.length - 1 ? "disabled" : ""}>↓</button></span></div>`).join("")}
       <button type="button" class="rp-add" id="rpadd">＋ 自己加一块：写一句想看什么</button>`;
-    box.innerHTML = `<div class="row ins-tool"><b>研究报告</b><span class="sp"></span>${team ? `<button type="button" id="rpimp">导入报告模版</button>` : ""}<button type="button" class="p" id="rpdl">下载 Word</button></div>
-      <div class="rp-wrap${team ? "" : " one"}"><div class="rp-main">${docHtml}</div>${team ? `<aside class="rp-side card" id="rpside"></aside>` : ""}</div>`;
+    box.innerHTML = `<article class="rp-editorial" aria-label="研究报告">
+      <header class="rp-hero"><div><div class="rp-eyebrow">研究报告 · ${esc(p.market || "")} · 深访</div><h1 class="ins-rt">${esc(p.name)}</h1>
+        <p class="rp-meta">${d.n} 位受访者 · 数据截至已结束且可分析的访谈</p><div class="rp-eyebrow"><i>01</i>总体结论</div>
+        <p class="rp-summary">${esc(d.summary.t)}${d.summary.ai ? ` <span class="tag">AI 的判断</span>` : ""}</p>
+        <div class="rp-kpis"><div><b>${d.n}</b><span>报告样本</span></div><div><b>${d.cards.length}</b><span>已开启分析图表</span></div><div><b>${topTheme ? `${topTheme.k}/${topTheme.n}` : "—"}</b><span>${topTheme ? `最高提及 · ${esc(topTheme.label)}` : "暂无主题统计"}</span></div></div></div>
+        <div><div class="rp-actions">${team ? `<button type="button" id="rpimp">导入报告模版</button>` : ""}<button type="button" class="p" id="rpdl">下载 Word</button></div>
+        ${team ? `<div class="rp-blocks" id="rpblocks"></div>` : ""}</div></header>
+      <div class="rp-body"><div class="rp-sections">${docHtml}</div>${team ? `<aside class="rp-side" id="rpside" aria-live="polite"></aside>` : ""}</div>
+      ${oldBlocks.length ? `<details class="rp-appendix"><summary>附录：研究背景、方法与样本</summary>${appendix()}</details>` : ""}</article>`;
     const ids = d.blocks.map((b) => b.id), onIds = () => d.blocks.filter((b) => b.on).map((b) => b.id);
     const save = guard(async (order, on, off) => { await api(`/projects/${p.id}/report/template`, { method: "PUT", body: { order, on, off } }); await report(box); });
     const wire = () => {
@@ -231,7 +237,7 @@ async function insightsHub(p, my) {
       box.querySelectorAll("[data-dn]").forEach((b) => (b.onclick = () => move(+b.dataset.dn, +b.dataset.dn + 1)));
       const add = $("#rpadd"); if (add) add.onclick = () => reportAsk(box);
     };
-    const side = () => { const el = $("#rpside"); if (!el) return; el.innerHTML = sel ? detail() : blocksPanel(); wire(); };
+    const side = () => { const el = $("#rpside"); if (!el) return; el.innerHTML = sel ? detail() : `<b>查看原话</b><p class="mut sm">点左侧图表中的主题或人群，这里显示对应受访者的原话。</p>`; const blocks = $("#rpblocks"); if (blocks) blocks.innerHTML = blocksPanel(); wire(); };
     box.querySelectorAll(".rp-row").forEach((r) => { const go = () => { if (!team) return; sel = { c: r.dataset.c, i: +r.dataset.i }; box.querySelectorAll(".rp-card").forEach((e) => e.classList.toggle("sel", e.dataset.c === sel.c)); box.querySelectorAll(".rp-row").forEach((e) => e.classList.toggle("on", e === r)); side(); }; r.onclick = go; r.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } }; });
     side();
     $("#rpdl").onclick = insDownload(p, `/api/projects/${p.id}/report?format=docx`, `${p.name}-研究报告.docx`);

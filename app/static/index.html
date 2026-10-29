@@ -1,6 +1,7 @@
 <!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<html lang="zh-CN" data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>星桐 TOTAL · 深访</title><link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/editorial.css">
 <link rel="stylesheet" href="/chat.css"><link rel="stylesheet" href="/chatsel.css"></head>
 <body>
 <div id="app"></div>
@@ -162,7 +163,7 @@ function loginView() {
   let mode = "login";
   const draw = () => {
     if (mode === "forgot") return drawForgot();
-    app.innerHTML = `<div class="login"><div class="box"><div class="logo">${LOGO_SVG}</div>
+    app.innerHTML = `<div class="login editorial-login"><section class="login-story"><div class="logo">${LOGO_SVG}</div><div><p class="login-kicker">TOTAL 研究平台</p><h1>把每一场访谈，变成可以追溯原话的结论</h1><p>从招募、访谈到报告，引文始终指向转写里的原话。</p></div><small>运营主体在中国 · 星桐是处理者</small></section><div class="box">
       <form class="card" id="f"><h2>${mode === "login" ? "登录" : "创建组织"}</h2><p class="mut sm">真人深访：招募、视频访谈、转写，以及带原文回链的洞察。</p>
       ${mode === "reg" ? `<label class="f"><span>组织名称</span><input name="org_name" required></label><label class="f"><span>你的姓名</span><input name="name" required></label>` : ""}
       <label class="f"><span>邮箱</span><input name="email" type="email" required autocomplete="username"></label>
@@ -179,7 +180,7 @@ function loginView() {
     });
   };
   const drawForgot = () => {  // the answer is always the same, so nobody can find out who has an account
-    app.innerHTML = `<div class="login"><div class="box"><div class="logo">${LOGO_SVG}</div>
+    app.innerHTML = `<div class="login editorial-login"><section class="login-story"><div class="logo">${LOGO_SVG}</div><div><p class="login-kicker">TOTAL 研究平台</p><h1>把每一场访谈，变成可以追溯原话的结论</h1><p>从招募、访谈到报告，引文始终指向转写里的原话。</p></div><small>运营主体在中国 · 星桐是处理者</small></section><div class="box">
       <form class="card" id="f"><h2>忘记密码</h2><p class="mut sm">填写你的登录邮箱。如果它对应一个账号，我们会发一封带重设链接的邮件（1 小时内有效）。</p>
       <label class="f"><span>邮箱</span><input name="email" type="email" required autocomplete="username"></label>
       <p class="sm" id="done" role="status" hidden>如果这个邮箱对应一个账号，邮件已经在路上了。几分钟内没收到，请看垃圾邮件箱，或联系你们公司的管理员。</p>
@@ -260,7 +261,13 @@ async function homeView(p) {
     </div>` : ""}
     <div class="card"><h2>最近动态</h2>${o.activity.length ? `<ul class="feed">${o.activity.map((a) => `<li><time>${when(a.at.replace(/Z$/, ""))}</time><span><b>${esc(a.who)}</b> ${esc(a.what)}${a.session ? ` <span class="mut">· ${esc(a.session)}</span>` : ""}</span></li>`).join("")}</ul>`
       : `<p class="mut" style="margin:0">还没有动态。添加受访者、发出邀请后，这里会按时间列出每一步。</p>`}</div>`, { active: "home", p });
-  if (h) h.wire();
+  if (h) {
+    const main = app.querySelector("main");
+    const band = `<section class="overview-band"><p>${esc(p.market || "")} · ${esc(langNames(p))}</p><h1>${esc(p.name)}</h1><div class="overview-metrics"><div><b>${s.done} / ${s.sessions}</b><span>访谈已完成</span></div><div><b>${s.ended ? Math.round(s.transcribed * 100 / s.ended) : 0}%</b><span>已结束访谈的转写率</span></div><div><b>${s.upcoming}</b><span>待开始场次</span></div><div><b>${s.approved}</b><span>已确认洞察</span></div></div></section>`;
+    const languages = main.querySelector(".hm-langs");
+    if (languages) languages.insertAdjacentHTML("beforebegin", band); else main.insertAdjacentHTML("beforeend", band);
+    h.wire();
+  }
   if (langs) hmLangWire(p, langs);
   $("#rep").onclick = guard(async () => {  // a download needs the login header, so fetch it and hand the browser a file
     const r = await fetch(`/api/projects/${p.id}/report?format=docx`, { headers: { Authorization: "Bearer " + store.get("tt_token") } });

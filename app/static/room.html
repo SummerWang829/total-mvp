@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Interview room</title><link rel="stylesheet" href="/app.css"></head>
+<title>Interview room</title><link rel="stylesheet" href="/app.css"><link rel="stylesheet" href="/editorial.css"><link rel="stylesheet" href="/room-role.css"></head>
 <body class="stage t-light">
 <script>try { if (localStorage.getItem("tt_room_theme") === "dark") document.body.className = "stage t-dark"; } catch (e) {}</script>
 <header class="rhead">
@@ -331,6 +331,12 @@ function addLine(m) {
   }
   const stick = log.scrollTop + log.clientHeight >= log.scrollHeight - 40;
   log.appendChild(d); if (stick) log.scrollTop = log.scrollHeight;
+  if (role === "observer" && Q4.on) {
+    observerWordCounts[seatVoice(c.speaker) ? "participant" : "moderator"] += (c.text || "").replace(/\s/g, "").length;
+    const total = observerWordCounts.moderator + observerWordCounts.participant;
+    const pct = total ? Math.round(observerWordCounts.participant * 100 / total) : null;
+    if (pct !== null) $id("talk").innerHTML = `<p class="sm">按本页已收到字幕字数统计，非发声时长</p>${olBar("受访者", pct, "#C74C0C")}${olBar("主持人", 100 - pct, "#1F6B54")}`;
+  }
 }
 async function pollChat() {
   if (!C.on || ended) return;
@@ -657,6 +663,7 @@ async function markCap(kind, id) {
   toast(kind === "quote" ? "已引用，会出现在访谈页的“引用与追问”里" : "已加入待追问");
   if (kind === "probe") await pollProbes();
 }
+const observerWordCounts = { moderator: 0, participant: 0 };
 function addCap(c) {
   const log = $id("caps"); if (!log || log.querySelector(`[data-id="${c.id}"]`)) return;
   const d = document.createElement("div"); d.className = "cap " + (seatVoice(c.speaker) ? "pt" : "mo"); d.dataset.id = c.id;
@@ -675,6 +682,12 @@ function addCap(c) {
   if (c.hints && c.hints.length) { const h = document.createElement("div"); h.className = "hints"; h.textContent = c.hints.join(" · ") + "（仅供参考）"; d.appendChild(h); }
   const stick = log.scrollTop + log.clientHeight >= log.scrollHeight - 40;
   log.appendChild(d); if (stick) log.scrollTop = log.scrollHeight;
+  if (role === "observer" && Q4.on) {
+    observerWordCounts[seatVoice(c.speaker) ? "participant" : "moderator"] += (c.text || "").replace(/\s/g, "").length;
+    const total = observerWordCounts.moderator + observerWordCounts.participant;
+    const pct = total ? Math.round(observerWordCounts.participant * 100 / total) : null;
+    if (pct !== null) $id("talk").innerHTML = `<p class="sm">按本页已收到字幕字数统计，非发声时长</p>${olBar("受访者", pct, "#C74C0C")}${olBar("主持人", 100 - pct, "#1F6B54")}`;
+  }
 }
 function renderPartial(partial) {
   const box = $id("cappart"); if (!box) return;
@@ -887,11 +900,49 @@ const Q4 = { on: false, asked: new Set(), later: new Set(), timer: null };
 const askedKey = () => "tt_asked_" + iid;
 function loadAsked() { try { Q4.asked = new Set(JSON.parse(localStorage.getItem(askedKey()) || "[]")); } catch { Q4.asked = new Set(); } }
 function saveAsked2() { try { localStorage.setItem(askedKey(), JSON.stringify([...Q4.asked].slice(-60))); } catch {} }
+/** Only timestamps returned by the server are rendered; no optimistic or local-clock marks. */
+async function pollRoomMarks() {
+  const track = $id("marktrack"); if (!track || ended || role !== "observer") return;
+  try {
+    const marks = await api(`/interviews/${iid}/highlights?kind=mark`);
+    const kinds = ["高光", "痛点", "金句", "存疑"];
+    const shown = marks.filter(m => kinds.includes(m.text) && Number.isFinite(m.at_ms));
+    document.querySelectorAll("[data-mark-kind]").forEach(b => { b.querySelector("span").textContent = shown.filter(m => m.text === b.dataset.markKind).length; });
+    track.textContent = "";
+    const end = Math.max(1, PLAN.elapsed || 0, ...shown.map(m => m.at_ms));
+    shown.forEach(m => { const mark = document.createElement("span"); mark.className = "role-mark mk-" + kinds.indexOf(m.text); mark.style.left = Math.min(98, m.at_ms / end * 98) + "%"; mark.title = `${m.text} · ${mmss(m.at_ms)}`; track.appendChild(mark); });
+    $id("markstatus").textContent = `已记录 ${shown.length} 个时间点${shown.length ? " · 最近 " + mmss(shown[shown.length - 1].at_ms) : ""}`;
+  } catch { $id("markstatus").textContent = "打点记录暂时无法加载，请稍后重试。"; }
+}
 function buildQ4() {
   Q4.on = true; document.body.classList.add("q4mode"); loadAsked();
+  const host = $id("q4"), videoRow = host.querySelector(".qrow");
+  const left = document.createElement("section"), right = document.createElement("aside");
+  left.className = "role-video-column"; right.className = "role-tools-column";
+  left.appendChild(videoRow);
+  if (role === "moderator") {
+    left.appendChild($id("c2c"));
+    [$id("c1o"), $id("c3"), $id("c4"), $id("c1s")].forEach(el => right.appendChild(el));
+    host.append(left, right);
+  } else {
+    const marks = document.createElement("div"); marks.className = "qp role-marks";
+    marks.innerHTML = `<h3>一键打点</h3><p class="sm">时间点由服务器记录，访后可据此查找片段。</p><div class="role-mark-buttons">${["高光", "痛点", "金句", "存疑"].map((kind, i) => `<button type="button" data-mark-kind="${kind}" class="mk-${i}">${kind} <span>0</span></button>`).join("")}</div><div class="role-mark-track" id="marktrack" aria-label="已记录的时间点"></div><p id="markstatus" class="sm" role="status">尚未打点</p>`;
+    left.appendChild(marks); left.appendChild($id("c4"));
+    const watermark = document.createElement("div"); watermark.className = "role-watermark"; watermark.textContent = "内部研究 · 请勿外传"; videoRow.appendChild(watermark);
+    marks.querySelectorAll("[data-mark-kind]").forEach(button => button.onclick = guard(async () => {
+      if (!last || last.status !== "live") { toast("访谈进行中才能打点", true); return; }
+      button.disabled = true;
+      try { await api(`/interviews/${iid}/highlights`, { method: "POST", body: { kind: "mark", text: button.dataset.markKind } }); await pollRoomMarks(); toast("时间点已记录"); }
+      finally { button.disabled = false; }
+    }));
+    pollRoomMarks(); setInterval(pollRoomMarks, 4000);
+    const middle = document.createElement("section"); middle.className = "role-caption-column"; middle.appendChild($id("c2c"));
+    [$id("c3"), $id("c1s")].forEach(el => right.appendChild(el));
+    host.append(left, middle, right);
+  }
   const wb = $id("wbox"); if (wb) { wb.hidden = role !== "moderator"; $id("c1o").insertBefore(wb, $id("olbody")); }   // who is in the room, above the outline
   const pb = $id("prebox"), plb = $id("planbox"); [pb, plb].forEach((b) => { if (b) $id("c1o").appendChild(b); });
-  const stim = $id("stim"); if (stim) $id("c1o").insertBefore(stim, $id("olbody"));   // the material on the participant's screen, small, above the outline   // the pre-interview answers and the concept-test script, when there are any
+  const stim = $id("stim"); if (stim) { if (role === "observer") left.insertBefore(stim, left.firstChild); else $id("c1o").insertBefore(stim, $id("olbody")); }   // the material on the participant's screen, small, above the outline   // the pre-interview answers and the concept-test script, when there are any
   $id("psend").textContent = role === "moderator" ? "加入待追问" : "发给主持人"; qqInit();
   $id("pform").onsubmit = guard(async (e) => {
     e.preventDefault(); const ta = $id("pin"), text = ta.value.trim(); if (!text && !QQ.items.length) { toast("先点一句字幕，或写想深挖什么"); return; }
@@ -901,7 +952,7 @@ function buildQ4() {
   pollCaps(); pollProbes(); setInterval(pollCaps, 1000); setInterval(pollProbes, 4000);
   addReactionFeed($id("c3"));
   if (role === "moderator") { pollAssist(); Q4.timer = setInterval(pollAssist, 3000); }
-  else { $id("olbody").innerHTML = `<p>大纲进度只给主持人看。</p>`; $id("talk").innerHTML = `<p>只给主持人看。</p>`; $id("sugg").innerHTML = ""; $id("sugh").hidden = true; }
+  else { $id("olbody").innerHTML = `<p>大纲进度只给主持人看。</p>`; $id("talk").innerHTML = `<p>有足够字幕后显示字数占比。</p>`; $id("chap").innerHTML = `<p>章节要点目前仅主持人可见。</p>`; $id("sugg").innerHTML = ""; $id("sugh").hidden = true; }
 }
 const olBar = (label, pct, color) => `<div class="qbar"><span>${label}</span><div><i style="width:${Math.min(100, pct || 0)}%;background:${color}"></i></div><span>${pct == null ? "—" : pct + "%"}</span></div>`;
 function renderAssist(d) {
@@ -943,6 +994,8 @@ async function start() {
       : await api(`/interviews/${iid}/token`, { method: "POST", body: asRole ? { as: asRole } : {} });
   } catch (e) { msg(`<b>${esc(T.cantEnter)}：</b>${esc(e.message)}`); return; }
   role = S.role;
+  document.body.dataset.roomRole = role;
+  document.body.classList.toggle("role-one-to-one", S.kind !== "group" && S.moderation !== "ai");
   if (role === "participant") { $id("q4").remove(); $id("brpop").remove(); }   // the team's four columns are not even in the participant's page
   if (role === "participant") { T = I18N[S.language] || I18N.en; document.documentElement.lang = S.language || "en"; document.body.classList.add("solo"); themeLabel(); }
   else if (S.moderation !== "ai" && S.kind !== "group") buildQ4();   // the four-column room

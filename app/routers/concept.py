@@ -386,7 +386,7 @@ def get_netstat(iid: str, ctx: Ctx = Depends(current_ctx), db: Session = Depends
 
 # ---------- quotes and follow-up questions ----------
 class HighlightIn(BaseModel):
-    kind: Literal["quote", "probe"]
+    kind: Literal["quote", "probe", "mark"]
     caption_id: str | None = None  # the caption line being quoted / followed up (its text is copied by the server)
     text: str | None = Field(default=None, max_length=300)  # a typed follow-up question when there is no caption line
     caption_ids: list[str] = Field(default_factory=list, max_length=MAX_QUOTES)  # several caption lines the follow-up is about (probe only); the guidance goes in `text`
@@ -411,6 +411,12 @@ def create_highlight(iid: str, body: HighlightIn, ctx: Ctx = Depends(current_ctx
     itv = visible_interview(db, ctx, iid)
     if itv.purged_at:
         raise HTTPException(404, "访谈不存在")
+    if body.kind == "mark":
+        _open(itv)
+        if ctx.user.role == "recruiter":
+            raise HTTPException(403, "项目经理不能查看访谈内容")
+        if body.caption_id or body.caption_ids or body.depth or (body.text or "").strip() not in ("高光", "痛点", "金句", "存疑"):
+            raise HTTPException(422, "请选择有效打点类型，打点不接受字幕或追问内容")
     speaker, text, cap_id, when = "", (body.text or "").strip(), None, at_ms(itv)
     quotes: list[dict] = []
     if body.caption_ids:
@@ -443,7 +449,7 @@ def create_highlight(iid: str, body: HighlightIn, ctx: Ctx = Depends(current_ctx
 def list_highlights(iid: str, kind: str | None = None, ctx: Ctx = Depends(current_ctx), db: Session = Depends(get_db)):
     itv = visible_interview(db, ctx, iid)
     q = select(Highlight).where(Highlight.interview_id == itv.id)
-    if kind in ("quote", "probe"):
+    if kind in ("quote", "probe", "mark"):
         q = q.where(Highlight.kind == kind)
     rows = db.scalars(q.order_by(Highlight.created_at)).all()
     by = _by_labels(db, rows)

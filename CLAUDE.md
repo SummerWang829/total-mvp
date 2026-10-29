@@ -104,3 +104,8 @@ app/moderator/ AI 主持人（providers 模型接口、compliance 能否启用�
 app/recruit_form.py 招募问卷（编写/逻辑/AI 起草/HTML 链接）· app/recruit_review.py 问卷建议与依据 · app/routers/screen_public.py 候选人作答 · app/library_context.py 研究库→AI· app/plan_suggest.py 研究背景建议 · app/plans.py + app/routers/plans.py 立项向导（项目计划：草稿→审查中→审查通过→发布并锁定→解锁修改→重新审查发布；18 项合规由系统按配置判定；配额监控；每个子项目一个研究顺序；留存期可选）· app/static/wizard.js 7 步立项向导页面和执行监控页 · app/static/shell.js 研究员/管理员的项目外壳（按研究阶段分组的左侧导航、顶部项目条、页签）· app/ai_room.py + app/routers/ai_room.py AI 主持接入直播间（文字聊天：启动/接管/交还/悄悄话/告警，结束后聊天变成转写，AI 的话标“AI 主持人”；引擎在内存里，服务重启后自动交给真人并红色告警）· app/routers/ 接口 · app/static/ 前端（index 研究员端：左侧深绿导航 + 受访者招募/直播间/洞察与片段；join 受访者流程：邀请→设备检测→同意→候场室；room 房间：研究员深色三栏、受访者明亮单栏；share 分享、logo.js 凤凰动效）
 app/export.py 洞察导出 Word/CSV · app/guide_text.py 文字提纲→AI 提纲 · app/routers/analysis.py 编码接口（页面已删）· app/outline.py + app/routers/outline.py + app/static/outline.js 访谈页（大纲）· app/insights_overview.py + app/respondent_table.py + app/interview_answers.py + app/static/insights.js + app/static/respondent.js 洞察与片段、编号弹窗 · app/room_assist.py + app/routers/room_assist.py 房间里的大纲进度/追问建议/章节要点 · app/static/rooms.js 直播间辅助 · app/concept.py 概念测试模板（提纲 + 素材清单）· app/routers/concept.py 提纲/素材展示/实时字幕/引用与追问 · app/asr_live.py 腾讯云实时识别的签名地址 · app/loopwatch.py 卡顿诊断（LOOP_WATCH_S）· tests/fake_asr.py 测试用的假识别服务（按官方协议）· deploy/ 线上部署（Docker + Caddy + LiveKit）
 界面和受访者流程以 docs/星桐TOTAL一体化平台v3_设计规范与受访者端交互说明.md 为准（颜色令牌、字号、组件、受访者 9 步旅程）。
+
+## 2026-10-29 用户确认的自动备份与角色房间
+用户明确要求今后每次改进都自动备份到本 GitHub 仓库，不用再次提醒。稳定交付时更新 PROGRESS → 检查敏感文件 → 提交 → 推送 origin/main → 验证远端与本地一致；推送失败必须说明，不能把本地提交称为备份完成。详见 AGENTS.md。
+
+本轮四张角色图保存在 docs/ui-reference/roles/：受访者手机端、主持人、观察员/客户、受访者电脑端。它们取代旧房间四列视觉布局；权限、同意书校验、真实录制状态和服务端引文规则继续有效。整体网页仍按已核实的录屏 v4，报告按方案 A。

@@ -1,0 +1,16 @@
+/* Participant preparation: desktop preview + information rail; stacked on mobile.
+   Device results and consent are still driven by join.html's existing API checks. */
+body.join-preparation{background:#F2F6F4}
+.join-preparation .pbar{background:#fff;border-bottom:1px solid #D9E3DD;padding:14px 32px}
+.join-preparation .pwrap{max-width:1200px;padding:32px;margin:0 auto;width:100%}
+.join-preparation .psteps{max-width:500px}.join-preparation .pstep{margin-bottom:28px}
+.join-device-layout{display:grid;grid-template-columns:minmax(0,7fr) minmax(280px,3fr);gap:32px;align-items:start}
+.join-preview-screen{position:relative;display:grid;place-items:center;background:#293F36;aspect-ratio:16/9;border-radius:16px;overflow:hidden;margin-bottom:16px}
+.join-preview-screen video{position:absolute;inset:0;width:100%!important;height:100%!important;aspect-ratio:auto!important;object-fit:cover;margin:0!important;border-radius:0!important}
+.join-person{width:74px;height:96px;fill:none;stroke:#99B3A7;stroke-width:3}
+.join-device-panel{background:#fff;border:1px solid #D9E3DD;border-radius:16px;padding:28px;display:flex;flex-direction:column;gap:16px}
+.join-device-panel h1{font-family:var(--f);font-size:24px;line-height:1.4}.join-device-panel .pbig{margin-top:16px;min-height:48px;width:100%;border-radius:10px;background:#C8470B;color:white}
+.join-device-preview .pcheck{background:#fff;border-radius:8px;padding:14px 16px;margin:8px 0;border-width:1px}
+.join-device-preview .row{gap:8px;margin-top:12px}
+.join-device-preview .perr{margin:4px 0 12px;line-height:1.6}
+@media(max-width:720px){.join-preparation .pwrap{padding:24px 16px}.join-device-layout{display:flex;flex-direction:column;gap:20px}.join-device-preview,.join-device-panel{width:100%}.join-device-panel{padding:22px}.join-device-preview .pcheck{padding:16px}.join-preview-screen{aspect-ratio:4/3}.join-preparation .pbar{padding:12px 20px}}
