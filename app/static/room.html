@@ -331,12 +331,6 @@ function addLine(m) {
   }
   const stick = log.scrollTop + log.clientHeight >= log.scrollHeight - 40;
   log.appendChild(d); if (stick) log.scrollTop = log.scrollHeight;
-  if (role === "observer" && Q4.on) {
-    observerWordCounts[seatVoice(c.speaker) ? "participant" : "moderator"] += (c.text || "").replace(/\s/g, "").length;
-    const total = observerWordCounts.moderator + observerWordCounts.participant;
-    const pct = total ? Math.round(observerWordCounts.participant * 100 / total) : null;
-    if (pct !== null) $id("talk").innerHTML = `<p class="sm">按本页已收到字幕字数统计，非发声时长</p>${olBar("受访者", pct, "#C74C0C")}${olBar("主持人", 100 - pct, "#1F6B54")}`;
-  }
 }
 async function pollChat() {
   if (!C.on || ended) return;
@@ -663,7 +657,6 @@ async function markCap(kind, id) {
   toast(kind === "quote" ? "已引用，会出现在访谈页的“引用与追问”里" : "已加入待追问");
   if (kind === "probe") await pollProbes();
 }
-const observerWordCounts = { moderator: 0, participant: 0 };
 function addCap(c) {
   const log = $id("caps"); if (!log || log.querySelector(`[data-id="${c.id}"]`)) return;
   const d = document.createElement("div"); d.className = "cap " + (seatVoice(c.speaker) ? "pt" : "mo"); d.dataset.id = c.id;
@@ -682,12 +675,6 @@ function addCap(c) {
   if (c.hints && c.hints.length) { const h = document.createElement("div"); h.className = "hints"; h.textContent = c.hints.join(" · ") + "（仅供参考）"; d.appendChild(h); }
   const stick = log.scrollTop + log.clientHeight >= log.scrollHeight - 40;
   log.appendChild(d); if (stick) log.scrollTop = log.scrollHeight;
-  if (role === "observer" && Q4.on) {
-    observerWordCounts[seatVoice(c.speaker) ? "participant" : "moderator"] += (c.text || "").replace(/\s/g, "").length;
-    const total = observerWordCounts.moderator + observerWordCounts.participant;
-    const pct = total ? Math.round(observerWordCounts.participant * 100 / total) : null;
-    if (pct !== null) $id("talk").innerHTML = `<p class="sm">按本页已收到字幕字数统计，非发声时长</p>${olBar("受访者", pct, "#C74C0C")}${olBar("主持人", 100 - pct, "#1F6B54")}`;
-  }
 }
 function renderPartial(partial) {
   const box = $id("cappart"); if (!box) return;
@@ -952,7 +939,7 @@ function buildQ4() {
   pollCaps(); pollProbes(); setInterval(pollCaps, 1000); setInterval(pollProbes, 4000);
   addReactionFeed($id("c3"));
   if (role === "moderator") { pollAssist(); Q4.timer = setInterval(pollAssist, 3000); }
-  else { $id("olbody").innerHTML = `<p>大纲进度只给主持人看。</p>`; $id("talk").innerHTML = `<p>有足够字幕后显示字数占比。</p>`; $id("chap").innerHTML = `<p>章节要点目前仅主持人可见。</p>`; $id("sugg").innerHTML = ""; $id("sugh").hidden = true; }
+  else { $id("olbody").innerHTML = `<p>大纲进度只给主持人看。</p>`; $id("talk").innerHTML = `<p>说话占比目前仅主持人可见。</p>`; $id("chap").innerHTML = `<p>章节要点目前仅主持人可见。</p>`; $id("sugg").innerHTML = ""; $id("sugh").hidden = true; }
 }
 const olBar = (label, pct, color) => `<div class="qbar"><span>${label}</span><div><i style="width:${Math.min(100, pct || 0)}%;background:${color}"></i></div><span>${pct == null ? "—" : pct + "%"}</span></div>`;
 function renderAssist(d) {

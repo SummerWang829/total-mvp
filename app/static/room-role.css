@@ -51,7 +51,9 @@ body.t-dark .q4 .qp h3,body.t-dark .q4 .qp p,body.t-dark .q4 .qp .sm{color:#D2E2
 .role-mark-buttons .mk-1,.role-mark.mk-1{--mc:#B72C3C}.role-mark-buttons .mk-2,.role-mark.mk-2{--mc:#2459A0}.role-mark-buttons .mk-3,.role-mark.mk-3{--mc:#1F6B54}
 .role-mark-track{position:relative;height:20px;border-radius:4px;background:#E3ECE7;margin:8px 0}
 .role-mark{position:absolute;top:3px;height:14px;width:5px;border-radius:3px;background:var(--mc,#B84900)}
-.role-watermark{position:absolute;inset:45% 0 auto;text-align:center;color:rgba(210,230,220,.23);transform:rotate(-22deg);font-size:22px;pointer-events:none;z-index:4;letter-spacing:.12em}
+.role-watermark{position:absolute;inset:45% 0 auto;text-align:center;color:#D2E6DC;transform:rotate(-22deg);font-size:22px;pointer-events:none;z-index:4;letter-spacing:.12em}
 
 .role-video-column>.stim:not([hidden]){flex:none;max-height:35vh;overflow:auto;border-radius:12px;background:var(--r-pan,#fff)}
 .role-video-column>.stim img{max-height:30vh;width:100%;object-fit:contain}
+
+.role-mark-buttons button{white-space:nowrap;flex-wrap:nowrap}
