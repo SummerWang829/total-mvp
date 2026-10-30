@@ -115,7 +115,7 @@ async function roomsView(p) {
   const card = (i) => `<div class="rmc"><div class="rmc-h"><span class="tag live">进行中</span><span class="sm mut">已进行 ${mins(i)} 分钟</span></div>
     <div class="rmc-r"><span class="sm mut">受访者</span><b>${esc(i.participant.name)}</b></div><div class="rmc-r"><span class="sm mut">主持人</span><span>${esc(mod(i))}</span></div>
     <div class="rmc-r"><span class="sm mut">开始时间</span><span>${startOf(i) ? when(startOf(i)) : "随时可进入"}</span></div><div class="rmc-t">${tagBox(i)}</div><div class="rmc-a">${actions(i)}</div></div>`;
-  shell(its.length ? `<div class="rmws${staff ? " side" : ""}" id="rmws"><div class="rmcol"><div class="rmtabs" id="rmtabs" role="tablist" aria-label="按状态筛选场次"></div><div id="rmban"></div>
+  shell(its.length ? `<div class="rmws${staff ? " side" : ""}" id="rmws"><div class="rmcol"><div class="rmtabs" id="rmtabs" data-subrow role="tablist" aria-label="按状态筛选场次"></div><div id="rmban"></div>
     <div class="rmscroll" id="rmscroll"><div class="card scroll rmbox" id="rmbox" style="padding:6px 10px"><table class="tbl rc" id="rmtable"><thead><tr id="rmh"></tr></thead><tbody id="rmb"></tbody></table><div class="rmwall" id="rmwall" hidden></div></div>
     <div class="card empty rmempty" id="rmempty" hidden></div></div></div>${staff ? `<aside class="rmside" id="rmside" aria-label="提醒和安排"></aside>` : ""}</div>`
     : `<div class="card empty">${staff ? `<b>还没有场次。</b><span>到“甄别设定”的名单里，点受访者那一行的“邀请到场次”新建场次，把邀请链接发给受访者。</span><a class="btn p" href="#/p/${p.id}/people">去甄别设定</a>` : `<b>还没有分配给你的场次。</b><span>研究员把你加入某场访谈后，它会出现在这里。</span>`}</div>`, { active: "rooms", p });
