@@ -11,6 +11,13 @@
 ## 2026-10-30 · 部署到新加坡测试服务器（提交 a440e78，LW：项目页布局和卡片反馈、安全删除项目、受访者生命周期/邀请/房间/原始回答修复）
 SW 执行。本机相关测试 200 项全过（room_bookmarks / outline / outline_versions / insights_overview / report_analysis / insight_chat / respondent_progress / recruit_review / screen_form / project_languages / formats / room_assist / room_list_facts / concept / interview_answers / project_delete / recruit / recruit_tiers / invitations）；服务器无进行中访谈、无录制/合成/后台任务；备份 `total-20261030-082142.db.gz` + COS 异地成功；回滚点：旧镜像 `deploy-app:rollback-before-a440e78`、旧代码包 `/opt/total-mvp-code-before-a440e78.tgz`（不含 .env 和 media）。**注意**：服务器代码目录里的文件是 10-29 部署 33a46de 时以 root 写入的，`ubuntu` 用户直接 `tar -x` 会失败（Cannot open: File exists，首次上传整批失败、未改动任何文件），改用 `sudo tar -x --no-same-owner` 后成功；`deploy/.env` 仍属 ubuntu，未动（邮件 6 行仍在）。只重建 app（`docker compose up -d --build --no-deps app`），LiveKit 和 Caddy 没重启。检查：三容器运行、app healthy；“cannot add” 0、error/traceback 0；/api/health、/api/public/config、/index.html、/editorial.css、/room-role.css、/join-role.css、/insights.js、/rooms.js、/invite.js、/app.css 全 200；doctor 无必须解决项（仅剩告警 webhook 未配）。未做：登录后的界面冒烟待用户（只用测试项目试删除，别用真实项目）。
 
+## 2026-10-30 · 本地共享目录对齐 GitHub；候选人作答页浏览器检查卡住的原因查明（LW）
+- 本地共享目录：已和 origin/main（a440e78）对齐。清掉的 5 个未提交文件是已推送的洞察受访者数据表（e915abe）的旧副本，先存了补丁备份在仓库外（C:\Users\PC\total-mvp-backup-wip）；本地独有的提交 2e71ece 与已推送的 a695de3 改动行完全一致，另存为本地分支 backup-local-main-2e71ece。
+- 卡住原因：`QA_ONLY=recruit_section` 在候选人作答页等不到 `form#sf`（可约时间），不是页面坏了：a4c2596 在可约时间之前加了“访谈语言/访谈形式”一步（`form#pf`），测试没跟着改。已在 tests/qa_site.py 补上这一步（含“不选不能跳过”的检查），这一步现在通过。
+- 同一小节后面还有一处失败，没改：邀请函窗口测试找“发送”按钮（`#sd`），但窗口里的“创建并生成邀请函”和“发送”已被合成一个“生成并发送邀请函”（invite.js，来自 10-29 的提交）。这是行为变化（创建时就发邮件），按 AGENTS.md 需要用户确认，所以没有改测试去迎合。
+- 另有真实问题：左侧导航标签 11px（`a.nv`），低于 12px 的底线；手机宽度的失败按用户要求不处理。
+- 测试：test_project_delete 4 项通过；QA_ONLY=recruit_section 候选人作答部分通过。没测：整套。
+
 ## 2026-10-29 · 已部署 33a46de 到新加坡；原则与远程备份验证完成
 - 已获用户本轮明确部署授权；用户随后单独同意真实打点功能。发布代码提交 33a46de，所有改进已同步 origin/main；修改前恢复点 c052d72 与后续 c47c5bb 均在远端，规则提交 a334aa2。
 - 部署前重查：进行中访谈 0，录制/合成 0。再次备份 total-20261029-103635.db.gz，本机及 COS 异地成功；旧代码和旧镜像保留。只重建 app，LiveKit/Caddy 没有重启，deploy/.env 校验未变，未更改生产模型/账号/业务数据。

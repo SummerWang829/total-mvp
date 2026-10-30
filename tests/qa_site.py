@@ -1127,6 +1127,10 @@ def recruit_section(br, D):
     pg2.wait_for_selector("textarea"); pg2.click("#scrnext")
     ok(pg2.locator("#screrr").is_visible(), "[screen] a required question cannot be skipped")
     pg2.fill("textarea", "价格和成分"); pg2.click("#scrnext")
+    pg2.wait_for_selector("form#pf")  # added by the system before the times: which language(s) and format(s) the candidate wants
+    pg2.click("#pf button.p")
+    ok(pg2.locator("#perr").is_visible(), "[screen] the language and format question cannot be skipped")
+    pg2.locator("#pf input[name=l]").first.check(); pg2.locator("#pf input[name=f]").first.check(); pg2.click("#pf button.p")
     pg2.wait_for_selector("form#sf")  # the last question, added by the system: which interview times suit you
     audit_page(pg2, "screening page times/phone", errs2)
     pg2.click("#sf button.p")
