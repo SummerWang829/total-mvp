@@ -39,7 +39,7 @@ async function inviteModal(p, parts, { preselect = "", itv = null, onDone = () =
   const lgOpts = (cur) => (editing ? "" : `<option value="">同受访者</option>`) + projLangs.map((k) => `<option value="${k}"${k === cur ? " selected" : ""}>${esc(LANGS[k] || k)}</option>`).join("");
   const wantFmt = editing ? itv.format || "" : (who && who.pref_formats && who.pref_formats[0]) || "";
   const wantLg = editing ? itv.language : (who && who.pref_langs && who.pref_langs[0]) || "";
-  const m = modal(`<div class="invdlg"><h2>邀请函</h2><form id="f">
+  const m = modal(`<div class="invdlg"><h2>邀请函</h2><form id="f"><div class="invcols"><div class="invcol">
     ${editing ? "" : `<label class="f"><span>场次类型</span><select name="kind" id="kind"><option value="depth">深访（一对一）</option><option value="group">座谈会（最多 10 人，人工主持）</option></select></label>`}
     <div id="depthpick"><div class="grid2"><label class="f"><span>受访者</span><select name="participant_id"${editing ? " disabled" : ""}>${(editing ? [who].filter(Boolean) : el).map((x) => `<option value="${x.id}"${x.id === (who && who.id) ? " selected" : ""}>${esc(x.code)} · ${esc(x.name)} (${esc(x.country)})</option>`).join("")}</select></label>
       <label class="f"><span>访谈语言</span><select name="language" id="lg">${lgOpts(wantLg)}</select></label></div></div>
@@ -47,10 +47,12 @@ async function inviteModal(p, parts, { preselect = "", itv = null, onDone = () =
     <fieldset id="grouppick" hidden style="border:1px solid var(--line);border-radius:10px;margin:0 0 14px;padding:6px 14px"><legend class="sm mut">座谈会受访者（勾选 1 到 10 位）</legend>${el.map((x) => `<label class="chk"><input type="checkbox" name="pids" value="${x.id}"${x.id === preselect ? " checked" : ""}><span>${esc(x.code)} · ${esc(x.name)}</span></label>`).join("")}</fieldset>
     <div class="tmbox"><label class="f" style="margin:0"><span>时间</span><input name="scheduled_at" id="tm" type="datetime-local" value="${toLocalInput(main)}"></label><div class="tmchips" id="tmc"></div></div>
     <label class="f" id="emailbox"><span>受访者邮箱</span><input name="email" id="em" type="text" maxlength="200" autocomplete="off" value="${esc(who ? who.email || "" : "")}"><div class="emsg" id="emsg" role="status"></div></label>
+    </div><div class="invcol">
     <div class="grid2"><label class="f"><span>谁来主持</span><select name="moderation" id="how"><option value="human"${editing && itv.moderation !== "ai" ? " selected" : ""}>真人主持人</option><option value="ai"${editing && itv.moderation === "ai" ? " selected" : ""}>AI 主持人</option></select></label>
       <label class="f"><span>主持人</span><select name="moderator_id"><option value="">稍后指定</option>${mods.map((u) => `<option value="${u.id}"${editing && itv.moderator_id === u.id ? " selected" : ""}>${esc(u.name)}（${ROLE[u.role]}）</option>`).join("")}</select></label></div>
     <label class="f"><span>预计访谈时长</span><div class="dur"><input name="duration_min" id="du" type="number" min="5" max="240" value="${editing ? itv.duration_min || 45 : 45}" aria-label="预计访谈时长（分钟）"><span>分钟</span><span class="durq" id="dq"></span></div></label>
     ${editing ? "" : `<fieldset style="border:1px solid var(--line);border-radius:10px;margin:0 0 12px;padding:6px 14px"><legend class="sm mut">观察员（隐身旁听）</legend>${obs.length ? obs.map((u) => `<label class="chk"><input type="checkbox" name="obs" value="${u.id}"><span>${esc(u.name)}</span></label>`).join("") : `<span class="sm mut">还没有观察员账号</span>`}</fieldset>`}
+    </div></div>
     ${mailReady ? "" : `<div class="rem" id="nomail">还没有配置发件邮箱：仍会生成邀请函，链接会显示给你复制。</div>`}
     <div class="btns"><button class="p" type="submit" id="mk">${editing ? "保存并发送更新" : "生成并发送邀请函"}</button><span class="sp"></span><button type="button" id="cp"${editing && !(itv.status === "live" || itv.invite_state === "entered") ? "" : " disabled"} title="${!editing ? "创建之后才有链接可以复制" : itv.status === "live" || itv.invite_state === "entered" ? "访谈进行中，不能换链接" : "复制受访者的进入链接"}">复制链接</button><button type="button" id="c">取消</button></div>
     <div class="lkbox" id="lkbox" hidden></div><div class="rem okn" id="savedmsg" role="status" hidden></div></form></div>`);
