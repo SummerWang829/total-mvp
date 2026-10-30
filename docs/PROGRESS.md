@@ -8,6 +8,9 @@
 
 
 
+## 2026-10-30 · 部署到新加坡测试服务器（提交 a440e78，LW：项目页布局和卡片反馈、安全删除项目、受访者生命周期/邀请/房间/原始回答修复）
+SW 执行。本机相关测试 200 项全过（room_bookmarks / outline / outline_versions / insights_overview / report_analysis / insight_chat / respondent_progress / recruit_review / screen_form / project_languages / formats / room_assist / room_list_facts / concept / interview_answers / project_delete / recruit / recruit_tiers / invitations）；服务器无进行中访谈、无录制/合成/后台任务；备份 `total-20261030-082142.db.gz` + COS 异地成功；回滚点：旧镜像 `deploy-app:rollback-before-a440e78`、旧代码包 `/opt/total-mvp-code-before-a440e78.tgz`（不含 .env 和 media）。**注意**：服务器代码目录里的文件是 10-29 部署 33a46de 时以 root 写入的，`ubuntu` 用户直接 `tar -x` 会失败（Cannot open: File exists，首次上传整批失败、未改动任何文件），改用 `sudo tar -x --no-same-owner` 后成功；`deploy/.env` 仍属 ubuntu，未动（邮件 6 行仍在）。只重建 app（`docker compose up -d --build --no-deps app`），LiveKit 和 Caddy 没重启。检查：三容器运行、app healthy；“cannot add” 0、error/traceback 0；/api/health、/api/public/config、/index.html、/editorial.css、/room-role.css、/join-role.css、/insights.js、/rooms.js、/invite.js、/app.css 全 200；doctor 无必须解决项（仅剩告警 webhook 未配）。未做：登录后的界面冒烟待用户（只用测试项目试删除，别用真实项目）。
+
 ## 2026-10-29 · 已部署 33a46de 到新加坡；原则与远程备份验证完成
 - 已获用户本轮明确部署授权；用户随后单独同意真实打点功能。发布代码提交 33a46de，所有改进已同步 origin/main；修改前恢复点 c052d72 与后续 c47c5bb 均在远端，规则提交 a334aa2。
 - 部署前重查：进行中访谈 0，录制/合成 0。再次备份 total-20261029-103635.db.gz，本机及 COS 异地成功；旧代码和旧镜像保留。只重建 app，LiveKit/Caddy 没有重启，deploy/.env 校验未变，未更改生产模型/账号/业务数据。
