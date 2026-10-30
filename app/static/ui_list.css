@@ -1,0 +1,2 @@
+/* 名单页专属样式（UI 外壳之外）：筛选胶囊没选时不显示值，也不占位 */
+.msb.cap .ms-value:empty{display:none}
