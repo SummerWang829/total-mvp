@@ -30,7 +30,7 @@ def test_the_answer_is_the_participants_own_words_up_to_the_next_question():
     items = interview_answers.extract(["How do you usually buy skincare products?", "How important is the packaging to you?", "Would you pay more for an organic label?"], segs)
     assert items[0]["a"] == "I watch reviews first. They feel honest." and items[0]["seg"] == ["s1", "s3"] and items[0]["at_ms"] == 1000   # the follow-up belongs to the answer
     assert items[1]["a"] == "Quite important."
-    assert items[2] == {"q": "Would you pay more for an organic label?", "a": "", "seg": [], "at_ms": None}   # never asked: left empty, nothing invented
+    assert items[2] == {"q": "Would you pay more for an organic label?", "a": "", "main": "", "followups": [], "asked": False, "seg": [], "at_ms": None}   # never asked: left empty, nothing invented
 
 
 def test_theme_labels_are_added_by_the_model_but_never_replace_the_words():
@@ -52,7 +52,7 @@ def test_a_failing_model_leaves_the_answers_without_labels(org):
         from app.models import Interview
         i = db.get(Interview, itv["id"])
         out = interview_answers.generate(db, i, ["Could you tell me how you usually buy skincare products?"], Broken(), "en")
-        assert out == {"answered": 1, "themes": False}
+        assert out == {"answered": 1, "themes": False, "by_model": 0}
 
 
 def test_endpoint_table_columns_and_filter_kinds(org):
@@ -103,3 +103,44 @@ def test_raw_answers_are_saved_automatically_when_an_ended_interview_gets_a_tran
     row = next(x for x in overview["rows"] if x["id"] == itv["id"])
     assert row["cells"]["a0"] == "I compare reviews and ingredients."
     assert row["transcript_state"] == "ready"
+
+
+def test_the_first_answer_and_each_follow_up_with_its_reply_are_kept_apart():
+    segs = [_seg(0, "moderator", "How do you usually buy skincare products?"), _seg(1, "participant", "I watch reviews first."), _seg(2, "moderator", "Which reviews?"),
+            _seg(3, "participant", "TikTok ones."), _seg(4, "participant", "Mostly."), _seg(5, "moderator", "And then?"), _seg(6, "participant", "I compare prices."),
+            _seg(7, "moderator", "How important is the packaging to you?"), _seg(8, "participant", "Quite important.")]
+    it = interview_answers.extract(["How do you usually buy skincare products?", "How important is the packaging to you?"], segs)[0]
+    assert it["main"] == "I watch reviews first." and it["asked"] is True
+    assert it["followups"] == [{"ask": "Which reviews?", "a": "TikTok ones. Mostly.", "at_ms": 3000}, {"ask": "And then?", "a": "I compare prices.", "at_ms": 6000}]
+    assert it["a"] == "I watch reviews first. TikTok ones. Mostly. I compare prices."   # the whole answer is still there for the themes and the report
+
+
+def test_a_question_that_was_asked_but_not_answered_differs_from_one_never_found():
+    segs = [_seg(0, "moderator", "How do you usually buy skincare products?"), _seg(1, "moderator", "Hello? Are you there?")]
+    a, b = interview_answers.extract(["How do you usually buy skincare products?", "Would you pay more for an organic label?"], segs)
+    assert a["asked"] is True and a["a"] == "" and b["asked"] is False
+
+
+def test_a_question_in_another_language_is_found_by_the_model_from_the_moderators_words_only():
+    sent = []
+
+    class Chat:
+        def complete(self, messages, temperature=0.0, seed=None):
+            sent.append(messages[1]["content"])
+            return {"matches": {"1": 1, "2": 99, "x": 3}}   # a turn that does not exist and a bad key are dropped
+    segs = [_seg(0, "moderator", "简单说，您每天早晚会往脸上涂些什么？"), _seg(1, "participant", "秘密的受访者原话"), _seg(2, "moderator", "再说说价格")]
+    qs = ["How do you usually buy skincare products?", "Would you pay more for an organic label?"]
+    asks = interview_answers.rule_match(qs, segs)
+    assert asks == {}   # wording alone finds nothing across languages
+    got = interview_answers.model_match(Chat(), qs, segs, asks)
+    assert got == {0: 0} and "秘密的受访者原话" not in sent[0] and "再说说价格" in sent[0]
+
+
+def test_the_model_matching_failing_leaves_the_wording_result(org):
+    from app.moderator.providers import ChatError
+
+    class Broken:
+        def complete(self, *a, **k):
+            raise ChatError("down")
+    segs = [_seg(0, "moderator", "简单说，您每天早晚会往脸上涂些什么？")]
+    assert interview_answers.model_match(Broken(), ["How do you usually buy skincare products?"], segs, {}) == {}

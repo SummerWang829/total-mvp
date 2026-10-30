@@ -274,6 +274,7 @@ def insights_overview(pid: str, ctx: Ctx = Depends(current_ctx), db: Session = D
             r["cells"] = cells.get(r["id"], {})
             if r["status"] == "ended" and r["id"] in by_id:
                 r["progress"] = respondent_table.progress(qs, by_id[r["id"]])   # answered / asked outline questions; fewer = cut off midway
+                r["qa"] = respondent_table.qa_of(qs, by_id[r["id"]])            # per question: why a cell is empty, and the follow-ups this person got
     return {"kpi": insights_overview_mod.kpis(rows), "rows": rows, "columns": cols, "can_generate": bool(team and qs) if team else False}
 
 
@@ -293,7 +294,7 @@ def generate_answers(iid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Se
     cloud_unnamed = settings.moderator_provider != "mock" and not moderator_runs_locally() and not settings.moderator_vendor.strip()
     chat = None if settings.moderator_provider == "mock" or cloud_unnamed else get_moderator_chat()
     try:
-        out = interview_answers.generate(db, itv, questions, chat, proj.language if proj.language in ("en", "zh") else "zh")
+        out = interview_answers.generate(db, itv, questions, chat, proj.language if proj.language in ("en", "zh") else "zh", respondent_table.match_texts(proj, itv, questions))
     except ChatFatalError as e:
         raise HTTPException(502, f"AI 模型服务拒绝了请求：{e.reason}") from e
     audit(db, ctx.org_id, ctx.actor, "interview.answers", itv.id, answered=out["answered"], themes=out["themes"])   # counts only, never the words
@@ -608,7 +609,7 @@ def end_interview(iid: str, ctx: Ctx = Depends(require_roles("admin", "researche
             project = db.get(Project, itv.project_id)
             questions = respondent_table.interview_questions(project)
             if questions and db.scalar(select(TranscriptSegment.id).where(TranscriptSegment.interview_id == itv.id)):
-                interview_answers.generate(db, itv, questions, None, project.language if project.language in ("en", "zh") else "zh")
+                interview_answers.generate(db, itv, questions, None, project.language if project.language in ("en", "zh") else "zh", respondent_table.match_texts(project, itv, questions))
         audit(db, ctx.org_id, ctx.actor, "interview.end", itv.id)
         db.commit()
         delete_room(itv.room_name)  # everyone is removed from the video room
@@ -747,7 +748,7 @@ def _ingest(db: Session, itv: Interview, segs: list[dict]) -> None:
         project = db.get(Project, itv.project_id)
         questions = respondent_table.interview_questions(project)
         if questions:
-            interview_answers.generate(db, itv, questions, None, project.language if project.language in ("en", "zh") else "zh")
+            interview_answers.generate(db, itv, questions, None, project.language if project.language in ("en", "zh") else "zh", respondent_table.match_texts(project, itv, questions))
 
 
 @router.post("/interviews/{iid}/transcript")

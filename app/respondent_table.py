@@ -3,7 +3,7 @@ question of the interview outline. A choice question (or labels) gets an option 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import interview_answers, outline, recruit_form
+from . import interview_answers, outline, outline_versions, recruit_form
 from .models import Interview, Project, RecruitForm, ScreenerAnswer
 
 MAX_CHOICES = 8      # a questionnaire answer with more different values than this is treated as open text
@@ -49,7 +49,7 @@ def screening(db: Session, project_id: str, person_ids: list[str]) -> tuple[list
             kind, opts, multi = _kind(vals), [], any(SEP in v for v in values[q])
         if kind == "choice" and not opts:
             opts = sorted({v for v in vals if v})
-        cols.append({"id": f"s{i}", "group": "screen", "label": q, "type": kind, "multi": multi, "options": opts if kind == "choice" else []})
+        cols.append({"id": f"s{i}", "group": "screen", "no": f"S{i + 1}", "label": q, "type": kind, "multi": multi, "options": opts if kind == "choice" else []})
     return cols, by_person
 
 
@@ -65,12 +65,12 @@ def interview_columns(questions: list[str], itvs: list[Interview]) -> tuple[list
     cols, cells = [], {i.id: {} for i in itvs}
     for n, q in enumerate(questions):
         themes = sorted({t for d in stored.values() for t in (d.get(q, {}).get("themes") or [])})
-        cols.append({"id": f"a{n}", "group": "answer", "label": q, "type": "text", "options": []})
-        cols.append({"id": f"t{n}", "group": "answer", "label": f"{q} · 主题", "type": "choice", "multi": True, "options": themes})
+        cols.append({"id": f"a{n}", "group": "answer", "no": f"Q{n + 1}", "label": q, "type": "text", "options": []})
+        cols.append({"id": f"t{n}", "group": "answer", "no": f"Q{n + 1}", "label": f"{q} · 主题", "type": "choice", "multi": True, "options": themes})
         for i in itvs:
             it = stored[i.id].get(q)
             if it:
-                cells[i.id][f"a{n}"] = it["a"]
+                cells[i.id][f"a{n}"] = it.get("main") or it["a"]   # the first answer; the follow-ups come with the row (qa_of)
                 cells[i.id][f"t{n}"] = it.get("themes") or []
     return cols, cells
 
@@ -82,3 +82,29 @@ def progress(questions: list[str], itv: Interview) -> dict | None:
         return None
     stored = interview_answers.load(itv)
     return {"answered": sum(1 for q in questions if stored.get(q, {}).get("a")), "asked": len(questions)}
+
+
+def match_texts(proj: Project, itv: Interview, questions: list[str]) -> list[str]:
+    """The outline questions in the wording of this interview's own language and format (the version the participant was asked from), so the moderator's turns can be
+    found; the main version when that version is missing or does not line up question for question."""
+    fam = next((f for f, codes in outline_versions.FAMILIES.items() if (itv.format or "video") in codes), "live")
+    try:
+        key = outline_versions.resolve(proj, outline_versions.key_of(itv.language, fam))
+    except outline_versions.VersionError:
+        return questions
+    s = outline.summary_of(outline_versions.text_of(proj, key) or "")
+    texts = [q["text"] for p in (s["parts"] if s else []) for q in p["questions"] if not q.get("cover")]
+    return texts if len(texts) == len(questions) else questions
+
+
+def qa_of(questions: list[str], itv: Interview) -> dict | None:
+    """Per answer column of a finished interview: {"state": ok | empty (asked, the participant said nothing) | unmatched (no moderator turn was found for it),
+    "followups": [...]}; None when the answers were not worked out yet."""
+    if not itv.answers_json:
+        return None
+    stored = interview_answers.load(itv)
+    out = {}
+    for n, q in enumerate(questions):
+        it = stored.get(q) or {}
+        out[f"a{n}"] = {"state": "ok" if it.get("a") else ("empty" if it.get("asked") else "unmatched"), "followups": it.get("followups") or []}
+    return out
