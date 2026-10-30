@@ -299,3 +299,14 @@ def test_the_slot_grid_skips_what_is_too_soon_and_rolls_over_midnight_in_singapo
     assert late[0]["date"] == "2026-10-27" or late[0]["date"] == "2026-10-28"
     assert slots.parse(["2026-10-27T11:00:00"], now) == [datetime(2026, 10, 27, 11, 0)]  # 19:00 in Singapore, on the grid
     assert slots.parse(["2026-10-27T11:30:00"], now) == []  # not on the grid
+
+
+def test_the_same_email_with_another_name_is_another_person(client, org):
+    pid, tok = published(org)
+    answers = {"age": 28, "use": "daily", "chan": ["on"], "why": "price"}
+    me = {"answers": answers, "name": "Lin", "email": "Lin@Example.com", "country": "SG", "consent": True}
+    for body in (me, {**me, "name": " lin ", "email": "lin@example.com"}, {**me, "name": "Lily"}):  # the 2nd is the same name + e-mail (case / spaces ignored)
+        assert client.post(f"/api/public/screen/{tok}/submit", json=body).status_code == 201
+    people = [p for p in org.c.get(f"/api/projects/{pid}/participants", headers=org.h()).json() if p["email"] == "lin@example.com"]
+    assert sorted(p["name"] for p in people) == ["Lily", "Lin"]
+    assert org.c.get(url(pid), headers=org.h()).json()["stats"]["qualified"] == 2

@@ -127,7 +127,8 @@ def screen_submit(token: str, body: SubmitBody, request: Request, db: Session = 
     country = body.country.upper()
     if not settings.region_open(country):
         raise HTTPException(403, "Sorry, this study is not open in your region yet / 抱歉，这项研究暂时不面向你所在的地区")
-    same = db.scalar(select(Participant.id).where(Participant.project_id == proj.id, Participant.email == email, Participant.anonymized_at.is_(None)))
+    twin = recruit.duplicate_participant(db, proj.id, body.name, email)  # the same person = the same name AND e-mail; one e-mail with another name is another person
+    same = twin.id if twin else None
     if same is None:
         p = Participant(org_id=proj.org_id, project_id=proj.id, name=body.name.strip(), email=email, country=country, language=proj.language,
                         tags=recruit.clean_tags(step.tags), screening="eligible", screen_result="qualified", screen_reason=f"招募问卷（第 {f.version} 版）：符合",
