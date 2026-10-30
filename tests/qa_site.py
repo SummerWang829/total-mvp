@@ -466,6 +466,24 @@ def outline_section(br, D):
     ctx.close()
 
 
+def tabflash_section(br, D):
+    """Switching tabs while the next page is still waiting for its data: the page on screen keeps its layout (no narrow reflow, no scrollbar, no blank right side) until the new page is painted."""
+    adm, pid = D["tok"]["admin"], D["pid"]
+    ctx, pg, errs = new_page(br, 1912, 960, token=adm)
+    pg.goto(B + f"/#/p/{pid}/rooms"); pg.reload(); pg.wait_for_selector("#rmb tr")
+    base = pg.evaluate("({cls: document.body.className, w: Math.round(document.querySelector('main').getBoundingClientRect().width)})")
+    pg.evaluate("""() => { const f = window.fetch; window.fetch = (u, o) => (String(u).includes('/api/projects/') ? new Promise((r) => setTimeout(r, 1200)).then(() => f(u, o)) : f(u, o));
+      window._log = []; const t0 = performance.now(); const tick = () => { const m = document.querySelector('main'); window._log.push([document.body.className, m ? Math.round(m.getBoundingClientRect().width) : null, document.documentElement.scrollHeight > innerHeight, (document.querySelector('.hubtabs.pin a.on') || {}).textContent]); if (performance.now() - t0 < 2600) requestAnimationFrame(tick); }; tick(); }""")
+    pg.locator(".hubtabs.pin a", has_text="甄别设定").first.click()
+    pg.wait_for_timeout(2800)
+    log = pg.evaluate("window._log")
+    old = [r for r in log if r[3] and "直播间" in r[3]]   # frames in which the old page is still the one on screen
+    ok(len(old) >= 20, f"[tabflash] the old page stays on screen while the next one waits for its data (frames: {len(old)})")
+    ok(all(r[0] == base["cls"] and r[1] == base["w"] and not r[2] for r in old), f"[tabflash] in those frames the layout never changes: classes {base['cls']!r}, main {base['w']}px wide, no page scrollbar (saw {sorted(set((r[0], r[1], r[2]) for r in old))})")
+    pg.evaluate("() => { window._log = []; }")
+    ctx.close()
+
+
 def projects_section(br, D):
     """The all-projects page: small cards in a wrapping grid (about seven in a row on a wide screen), numbers stacked with the figure on the right; delete mode keeps its checkbox, selection colour and buttons."""
     adm = D["tok"]["admin"]
@@ -2453,6 +2471,7 @@ def run():
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "review_section": review_section(br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "insights_section": insights_section(br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "projects_section": projects_section(br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "tabflash_section": tabflash_section(br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "languages_section": languages_section(br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "respondent_window_section": respondent_window_section(br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "rooms_section": rooms_section(br, D)

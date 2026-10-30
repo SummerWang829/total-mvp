@@ -59,6 +59,7 @@ function navHtml(active, p) {
 }
 
 function shell(inner, { active, p, title } = {}) {
+  document.body.classList.remove("rfmode", "pgw");  // the new page is about to be painted: only now does the previous page's layout (fixed height, full width) go away; each view adds its own after this call
   const proj = p && STAFF();  // researchers and admins: stage navigation + project bar + tabs
   const st = p ? (p.closed_at ? `<span class="tag">已结项</span>` : `<span class="tag ok keep">进行中</span>`) : "";
   const meta = p ? `<span class="tag">${esc(p.market || "—")}</span><span class="tag">${esc(langNames(p))}</span>${st}` +
@@ -105,7 +106,7 @@ const stale = (my) => my !== renderSeq;
 
 async function render() {
   const seq = ++renderSeq;
-  document.body.classList.remove("rfmode", "pgw");  // the questionnaire workspace fixes the page height only while it is on screen
+  // the layout classes of the page on screen stay until the next page is painted (see shell / loginView): taking them off here made the old page reflow narrow, with a scrollbar and a blank right side, for as long as the next page was waiting for its data
   const r = route();
   if (r.startsWith("/login")) return loginView();
   if (!store.get("tt_token")) { location.hash = "#/login"; return; }
@@ -159,6 +160,7 @@ async function render() {
 
 // ---------------- login ----------------
 function loginView() {
+  document.body.classList.remove("rfmode", "pgw");
   let mode = "login";
   const draw = () => {
     if (mode === "forgot") return drawForgot();
