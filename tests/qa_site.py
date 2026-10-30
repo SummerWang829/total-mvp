@@ -310,7 +310,7 @@ def outline_section(br, D):
     adm, pid = D["tok"]["admin"], D["pid"]
     ctx, pg, errs = new_page(br, 1280, token=adm)
     pg.goto(B + f"/#/p/{pid}/outline"); pg.wait_for_selector("#olws")
-    tabs = [x.strip() for x in pg.locator("main .hubtabs.pin a").all_inner_texts()]
+    tabs = [x.strip() for x in pg.locator(".work>.hubtabs.pin a").all_inner_texts()]
     ok(tabs[:3] == ["甄别设定", "访谈", "直播间"] and "编码与分析" not in tabs, f"[outline] the tabs are 甄别设定, 访谈, 直播间 and there is no 编码与分析 (got {tabs})")
     ok(pg.locator(".hubtabs.pin a.on").inner_text().strip() == "访谈", "[outline] 访谈 is the selected tab")
     ok(pg.locator("#olchat").count() == 1 and pg.locator("#olright").count() == 1 and pg.locator("#olsplit").count() == 1, "[outline] chat on the left, outline on the right, a divider between")
@@ -1205,8 +1205,8 @@ def recruit_section(br, D):
     wide = pg.evaluate("(() => { const t = document.querySelector('.ptbl'); return [t.scrollWidth <= t.parentElement.clientWidth + 1, document.querySelector('main').getBoundingClientRect().width >= innerWidth - 300]; })()")
     ok(wide[0] and wide[1], f"[recruit] the list fits without sideways scrolling on the widened page (got {wide})")
     pg.evaluate("window.scrollTo(0, 700)"); pg.wait_for_timeout(200)
-    pin = pg.evaluate("(() => { const a = document.querySelector('.ctx'), b = document.querySelector('main>.hubtabs.pin'); const cs = getComputedStyle(b); return [getComputedStyle(a).position, cs.position, Math.round(b.getBoundingClientRect().top - a.getBoundingClientRect().bottom)]; })()")
-    ok(pin[0] == "sticky" and pin[1] == "sticky" and abs(pin[2]) <= 8, f"[recruit] the project bar and the tab row are pinned at the top (got {pin})")
+    pin = pg.evaluate("(() => { const a = document.querySelector('.ctx'), b = document.querySelector('.work>.hubtabs.pin'), m = document.querySelector('.work>main'); const t0 = b.getBoundingClientRect().top; m.scrollTop = 300; return [Math.round(a.getBoundingClientRect().top), Math.round(b.getBoundingClientRect().top - a.getBoundingClientRect().bottom), Math.round(b.getBoundingClientRect().top - t0)]; })()")
+    ok(pin[0] == 0 and abs(pin[1]) <= 8 and pin[2] == 0, f"[recruit] the project bar and the tab row stay put at the top while the content scrolls (got {pin})")
     pg.locator("tr", has_text="QA候选人").locator("[data-scr]").click(); pg.wait_for_selector(".sa-it")
     sa = pg.evaluate("(() => { const it = document.querySelector('.sa-it'); const q = it.querySelector('.sa-q'); return [it.querySelector('.sa-n').innerText, getComputedStyle(q).fontWeight, !!q.querySelector('.sa-ty'), document.querySelectorAll('.sa-it').length, document.querySelector('.sa-cd') !== null]; })()")
     ok(sa[0] == "1" and int(sa[1]) >= 600 and sa[2] and sa[3] >= 5 and sa[4], f"[recruit] the answers dialog shows numbered bold questions with a type tag and option codes (got {sa})")
@@ -1223,8 +1223,8 @@ def recruit_section(br, D):
     pg.click("#ptab-list-t"); pg.wait_for_selector("#quotas")
     ok(pg.locator("#rules").count() == 0 and pg.locator("#quotas").count() == 1, "[recruit] eligibility rules are gone from the page (the questionnaire replaces them); quotas stay")
     ok(pg.locator(".rd-top #rdquotas").count() == 1 and pg.locator(".rd-top > .card").count() == 3, "[recruit] the quota progress sits in the top row beside the questionnaire link and the key numbers")
-    top_h = pg.evaluate("(() => { const c = document.querySelector('.ctx').getBoundingClientRect().height, t = document.querySelector('main>.hubtabs.pin').getBoundingClientRect().height, s = document.querySelector('.hubtabs.sub').getBoundingClientRect().height; return [c, t, s]; })()")
-    ok(top_h[0] <= 60 and top_h[1] <= 46 and top_h[2] <= 40, f"[recruit] the project bar and the two tab rows are compact (bar, tabs, sub tabs = {top_h})")
+    top_h = pg.evaluate("(() => { const c = document.querySelector('.ctx').getBoundingClientRect().height, t = document.querySelector('.work>.hubtabs.pin').getBoundingClientRect().height, s = document.querySelector('.hubtabs.sub').getBoundingClientRect().height; return [c, t, s]; })()")
+    ok(top_h[0] <= 60 and top_h[1] == 62 and top_h[2] == 40, f"[recruit] the project bar, the tab row and the second row have their fixed heights (bar, tabs, second row = {top_h})")
     ok(pg.evaluate("document.querySelector('.app').classList.contains('rail')") and pg.evaluate("document.querySelector('nav.side').getBoundingClientRect().width") <= 92, "[recruit] inside a project the left menu is the narrow icon rail")
     call(f"/projects/{pid}/recruiting/rules", {"rules": [{"field": "country", "op": "in", "value": "SG", "effect": "require"}]}, rs, method="PUT")  # a project that already had a rule keeps it
     pg.reload(); pg.wait_for_selector("#rules")
@@ -2099,6 +2099,40 @@ def marks_section(br, D):
     ctx.close()
 
 
+def tabs_section(br, D):
+    """项目内页签不跳动：项目条、一级页签、二级行的位置在所有页签完全相同（误差 0），页面宽度不变，顶栏/页签栏节点不被重建；每个页签截顶部 200px 放进 qa_shots/tabs_top/。
+    浏览器用 ignore_default_args 去掉 --hide-scrollbars，这样滚动条会真实占宽。"""
+    adm, pid = D["tok"]["admin"], D["pid"]
+    out = pathlib.Path(ROOT) / "qa_shots" / "tabs_top"; out.mkdir(parents=True, exist_ok=True)
+    real = br.browser_type.launch(ignore_default_args=["--hide-scrollbars"])
+    JS = """(() => { const r = (s) => { const e = document.querySelector(s); return e ? Math.round(e.getBoundingClientRect().top * 100) / 100 : null; };
+      const m = document.querySelector('.work>main'); const row = document.querySelector('.work>.subrow');
+      return { tabs: r('.work>.hubtabs.pin'), sub: row ? r('.work>.subrow') : null, content: Math.round((m.getBoundingClientRect().top + parseFloat(getComputedStyle(m).paddingTop)) * 100) / 100,
+               cw: document.documentElement.clientWidth, over: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+               ctx_same: document.querySelector('.ctx') === window.__ctx, tabs_same: document.querySelector('.work>.hubtabs.pin') === window.__tabs, reloaded: !window.__mark }; })()"""
+    steps = [("甄别设定", None), ("甄别设定", "配额与受访者名单"), ("甄别设定", "招募问卷"), ("访谈", None), ("直播间", None), ("洞察与片段", None)] + [("洞察与片段", n) for n in ["报告", "问题分析", "精彩片段", "对话", "受访者数据"]] + [("甄别设定", None)]
+    for w in (1366, 1920, 390):
+        ctx, pg, errs = new_page(real, w, 860, token=adm)
+        pg.goto(B + f"/#/p/{pid}/people"); pg.wait_for_selector(".work>.hubtabs.pin"); pg.wait_for_timeout(600)
+        pg.evaluate("window.__ctx = document.querySelector('.ctx'); window.__tabs = document.querySelector('.work>.hubtabs.pin'); window.__mark = 1")
+        rows = []
+        for i, (tab, sub) in enumerate(steps):
+            pg.locator(".work>.hubtabs.pin a", has_text=tab).first.click(); pg.wait_for_timeout(900)
+            if sub: pg.locator(".hubtabs.sub a", has_text=sub).first.click(); pg.wait_for_timeout(700)
+            pg.wait_for_timeout(300); m = pg.evaluate(JS); rows.append((tab, sub, m))
+            pg.screenshot(path=str(out / f"{w}_{i:02d}_{tab}{('_' + sub) if sub else ''}.png"), clip={"x": 0, "y": 0, "width": w, "height": 200})
+        ok(all(not r[2]["over"] for r in rows), f"[tabs {w}] no horizontal scroll on any tab")
+        if w >= 821:   # the phone layout (not part of this work) scrolls the whole page, so its scrollbar may come and go
+            ok(len({r[2]["cw"] for r in rows}) == 1, f"[tabs {w}] the page width never changes when switching tabs ({sorted({r[2]['cw'] for r in rows})})")
+            ok(len({r[2]["tabs"] for r in rows}) == 1 and len({r[2]["sub"] for r in rows}) == 1 and len({r[2]["content"] for r in rows}) == 1,
+               f"[tabs {w}] the tab row, the second row and the content start are at exactly the same place on every tab: tabs {sorted({r[2]['tabs'] for r in rows})}, second row {sorted({str(r[2]['sub']) for r in rows})}, content {sorted({r[2]['content'] for r in rows})}")
+            ok(all(r[2]["ctx_same"] and r[2]["tabs_same"] and not r[2]["reloaded"] for r in rows), f"[tabs {w}] the project bar and the tab row are the same DOM nodes after every switch (not rebuilt, no page reload)")
+        errs[:] = [e for e in errs if "Failed to load resource" not in e]
+        ok(not errs, f"[tabs {w}] no console errors while switching tabs: {errs[:2]}")
+        ctx.close()
+    real.close()
+
+
 def run():
     os.makedirs(os.path.join(ROOT, "qa_shots"), exist_ok=True)
     D = seed()
@@ -2123,6 +2157,10 @@ def run():
     with sync_playwright() as p:
         browser_path = os.environ.get("QA_BROWSER", "").strip()
         br = p.chromium.launch(executable_path=browser_path or None)
+        if os.environ.get("QA_EARLY"):   # QA_EARLY=<section>: run just that section right after seeding (skips the long general sweep)
+            globals()[os.environ["QA_EARLY"]](br, D); br.close(); print(f"{os.environ['QA_EARLY']}: {PASSES} passed, {len(FAILS)} failed"); sys.exit(1 if FAILS else 0)
+        if os.environ.get("QA_ONLY") == "tabs_section":   # this section only needs the seeded project: run it before the long general sweep
+            tabs_section(br, D); br.close(); print(f"tabs_section: {PASSES} passed, {len(FAILS)} failed"); sys.exit(1 if FAILS else 0)
         # ---------- A. every role x page x viewport ----------
         for w, vp in ((1280, "desktop"), (390, "phone")):
             for role, routes in role_routes.items():
@@ -2398,6 +2436,7 @@ def run():
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "marks_section": marks_section(br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "group_section": group_section(br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "outline_section": outline_section(br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "tabs_section": tabs_section(br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "review_section": review_section(br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "insights_section": insights_section(br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "projects_section": projects_section(br, D)

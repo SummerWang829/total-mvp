@@ -86,7 +86,7 @@ function shTabs(p, active) {
   if (!hub) return "";
   const ts = hub.tabs.filter((t) => shPageOk(t[0], p));
   if (ts.length < 2) return "";
-  return `<div class="hubtabs pin" role="tablist" aria-label="${hub.n}">${ts.map(([k, n]) => `<a role="tab" class="${active === k ? "on" : ""}" href="#/p/${p.id}/${k}" aria-selected="${active === k}" ${active === k ? 'aria-current="page"' : ""}>${n}</a>`).join("")}</div>`;
+  return `<div class="hubtabs pin" role="tablist" aria-label="${hub.n}">${ts.map(([k, n]) => `<a role="tab" class="${active === k ? "on" : ""}" href="#/p/${p.id}/${k}" data-t="${n}" aria-selected="${active === k}" ${active === k ? 'aria-current="page"' : ""}>${n}</a>`).join("")}</div>`;
 }
 
 function shWire(p) {
@@ -95,4 +95,30 @@ function shWire(p) {
   const sel = document.getElementById("subsel");
   if (sel) sel.onchange = () => { sessionStorage.setItem("sub_" + p.id, sel.value); render(); };
   document.querySelectorAll("[data-qmode]").forEach((el) => (el.onclick = () => { sessionStorage.setItem("qmode", el.dataset.qmode); if (location.hash === el.getAttribute("href")) render(); }));
+}
+
+
+/** 固定外壳（桌面）：项目条、一级页签、二级行是三个固定位置的节点，切换页签时不重建，只替换内容区；二级行里放页面自己的“同一级小页签/控件”。
+ *  页面想放进二级行的东西：直接子元素 `.hubtabs.sub`，或任意位置带 data-subrow 属性的元素，shell 会把它们搬到二级行（节点不变，事件照常）。 */
+const shHtml = (h) => { const t = document.createElement("template"); t.innerHTML = h.trim(); return t.content.firstElementChild; };
+function shMount({ proj, p, active, nav, top, tabs, notice, inner }) {
+  const key = proj ? `${p.id}|${shHubOf(active)}` : "";
+  const cur = app.firstElementChild, hub = proj ? shHubOf(active) : "", isQl = hub === "ql" && !!tabs;
+  const cls = `enter${proj && tabs ? " hubpage" : ""}`;
+  if (proj && cur && cur.classList.contains("shfix") && cur.dataset.key === key) {   // same project and same group of tabs: keep the frame, swap the content
+    const navEl = cur.querySelector("nav.side"), ctx = cur.querySelector(".work>.ctx"), main = cur.querySelector(".work>main"), tb = cur.querySelector(".work>.hubtabs.pin");
+    if (cur._nav !== nav) { navEl.innerHTML = nav; cur._nav = nav; }
+    if (cur._top !== top) { ctx.innerHTML = shHtml(top).innerHTML; cur._top = top; }
+    if (tb) { const want = shHtml(tabs); tb.querySelectorAll("a").forEach((a, i) => { const b = want.children[i]; if (!b) return; a.className = b.className; ["aria-selected", "aria-current"].forEach((n) => (b.hasAttribute(n) ? a.setAttribute(n, b.getAttribute(n)) : a.removeAttribute(n))); }); }
+    main.className = cls; main.innerHTML = notice + inner; main.scrollTop = 0;
+    shMoveSub(cur);
+    return;
+  }
+  if (!proj) { app.innerHTML = `<div class="app"><nav class="side" aria-label="主导航">${nav}</nav><div class="work">${top}<main class="${cls}">${notice}${inner}</main></div></div>`; return; }
+  app.innerHTML = `<div class="app rail shfix" data-key="${esc(key)}"><nav class="side" aria-label="主导航">${nav}</nav><div class="work">${top}${tabs}${isQl ? `<div class="subrow" id="subrow"></div>` : ""}<main class="${cls}">${notice}${inner}</main></div></div>`;
+  const a = app.firstElementChild; a._nav = nav; a._top = top; shMoveSub(a);
+}
+function shMoveSub(a) {   // the page's own second-level controls go into the fixed second row
+  const row = a.querySelector(".work>.subrow"), main = a.querySelector(".work>main"); if (!row || !main) return;
+  row.replaceChildren(); main.querySelectorAll(":scope > .hubtabs.sub, [data-subrow]").forEach((e) => row.appendChild(e));   // a direct .hubtabs.sub, or any element marked data-subrow (at any depth)
 }

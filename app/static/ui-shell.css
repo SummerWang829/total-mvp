@@ -28,3 +28,20 @@ nav.side a.nv[href$="/people"] .ic{--ico:url("data:image/svg+xml,%3Csvg xmlns='h
 .pcard,.rmcard,.ins-clip{transition:border-color var(--d2) var(--ease),transform var(--d1) var(--ease),background-color var(--d2) var(--ease)}
 .pcard:active,.ins-clip:active{transform:scale(.985)}
 @media(prefers-reduced-motion:reduce){.pcard:active,.ins-clip:active{transform:none}}
+
+/* ---------- fixed frame inside a project (desktop): project bar, tabs and second row never move; only the content scrolls ----------
+   top: bar 0-57, tabs 61-123, second row 123-163, content starts at 177. Written with .app.shfix so it beats the older page rules. */
+@media (min-width:821px){
+  .app.shfix{height:100vh;min-height:0;overflow:hidden}
+  .app.shfix .work{height:100vh;min-height:0;overflow:hidden}
+  .app.shfix .work>.ctx{position:static;flex:none;box-sizing:border-box;height:57px;min-height:57px;padding-top:6px;padding-bottom:6px}
+  .app.shfix .work>.hubtabs.pin{position:static;flex:none;box-sizing:border-box;height:62px;margin:4px 0 0;padding:0 var(--gx);align-items:flex-end;flex-wrap:nowrap;background:var(--bg);border-bottom:1px solid var(--line2)}
+  .app.shfix .hubtabs.pin a{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;height:44px;margin-bottom:-1px;border-bottom:2px solid transparent}
+  .app.shfix .hubtabs.pin a::after{content:attr(data-t);display:block;height:0;overflow:hidden;visibility:hidden;font-size:17px;font-weight:600;pointer-events:none}
+  .app.shfix .hubtabs.pin a.on{border-bottom:2px solid var(--orange)}
+  .app.shfix .work>.subrow{flex:none;box-sizing:border-box;height:40px;padding:0 var(--gx);display:flex;align-items:center;gap:24px;border-bottom:1px solid var(--line2);background:var(--bg);overflow:hidden}
+  .app.shfix .work>.subrow>.hubtabs.sub{margin:0;border:0;height:40px;flex-wrap:nowrap;align-items:flex-end;gap:24px}
+  .app.shfix .work>.subrow>.hubtabs.sub a{height:40px;margin-bottom:0}
+  .app.shfix .work>main{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;scrollbar-gutter:stable;padding-top:14px}
+  .app.shfix .work>main>.hubtabs.sub{display:none}
+}

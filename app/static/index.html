@@ -66,8 +66,7 @@ function shell(inner, { active, p, title } = {}) {
   const notice = p && p.closed_at ? `<div class="note"><b>项目已结项。</b>受访者的录像、转写原文、引文和分享链接将在 ${esc(new Date(p.purge_at + "Z").toLocaleDateString())} 自动删除（结项后 ${p.retention_days} 天），洞察结论会保留。</div>` : "";
   const top = proj ? shCtx(p, active) : `<div class="top">${p ? `<span class="crumb"><a href="#/projects">项目总览</a> /</span><span class="pname">${esc(p.name)}</span>` : `<span class="pname">${esc(title || "")}</span>`}<div class="meta">${meta}</div></div>`;
   const navP = p || (STAFF() && CUR_PROJ && ["team", "retention", "audit", "demo"].includes(active) ? (PROJECTS || []).find((x) => x.id === CUR_PROJ) : null);
-  app.innerHTML = `<div class="app${proj ? " rail" : ""}"><nav class="side" aria-label="主导航">${navHtml(active, navP)}</nav><div class="work">${top}
-    <main class="enter${proj && shTabs(p, active) ? " hubpage" : ""}">${proj ? shTabs(p, active) : ""}${notice}${inner}</main></div></div>`;
+  shMount({ proj, p, active, nav: navHtml(active, navP), top, tabs: proj ? shTabs(p, active) : "", notice, inner });
   labelTables();
   const hd = app.querySelector("main.hubpage > .head"), h1 = hd && hd.querySelector("h1"), tabOn = app.querySelector(".hubtabs a.on");
   if (h1 && tabOn) { const a = h1.textContent.trim(), b = tabOn.textContent.trim(); if (a === b || a === "项目" + b) hd.classList.add("dup"); }  // a title that only repeats the tab's name is dropped; a page with its own title keeps it
