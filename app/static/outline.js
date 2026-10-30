@@ -209,9 +209,11 @@ async function outlineView(p) {
     const rows = S.versions.map((x) => `<button type="button" class="rf-vi${x.key === V ? " on" : ""}" role="menuitemradio" aria-checked="${x.key === V}" data-ver="${x.key}"><span>${esc(x.name)}${x.base ? "（原文）" : ""}</span>${x.exists ? "" : autoPend.has(x.key) ? `<span class="rt-st o">正在生成…</span>` : autoFail.has(x.key) ? `<span class="rt-st r">生成失败 · 重试</span>` : `<span class="rt-st o">等待生成</span>`}</button>`).join("");
     return `<div class="rf-ver"><button type="button" data-pop="ver" aria-haspopup="true" aria-expanded="${pop === "ver"}">版本：${esc(c.name)} ▾</button>${pop === "ver" ? `<div class="rf-vm" role="menu">${rows}</div>` : ""}</div>`;
   };
-  const rightHead = () => `<div class="rf-hd ol-hd"><div class="rf-seg" role="tablist">${[["outline", "大纲"], ["settings", "设置"], ["test", "预览测试"]].map(([k, n]) => `<button type="button" role="tab" data-seg="${k}" class="${seg === k ? "on" : ""}" aria-selected="${seg === k}">${n}</button>`).join("")}</div><span class="sp"></span><span class="sm mut" id="olstat" role="status" aria-live="polite"></span>${capsule()}${verMenu()}</div>`;
+  const segHtml = () => [["outline", "大纲"], ["settings", "设置"], ["test", "预览测试"]].map(([k, n]) => `<button type="button" role="tab" data-seg="${k}" class="${seg === k ? "on" : ""}" aria-selected="${seg === k}">${n}</button>`).join("");   // 大纲/设置/预览测试：放在外壳固定的二级行里（#olseg 带 data-subrow），这里只更新里面的按钮
+  const rightHead = () => `<div class="rf-hd ol-hd"><span class="sp"></span><span class="sm mut" id="olstat" role="status" aria-live="polite"></span>${capsule()}${verMenu()}</div>`;
   function drawRight() {
     const r = $("#olright"); if (!r) return;
+    const sg = $("#olseg"); if (sg) sg.innerHTML = segHtml();
     const keep = $("#olout") ? $("#olout").scrollTop : 0;
     const body = seg === "outline" ? outlineHtml() : seg === "settings" ? settingsHtml() : testHtml();
     r.innerHTML = rightHead() + `<div class="rf-sc" id="olout"><div class="rf-col"><div id="olnotes">${notes()}</div>${body}</div></div>`;
@@ -284,7 +286,7 @@ async function outlineView(p) {
   document.addEventListener("click", window._olOff);
 
   /* ---------- the whole page ---------- */
-  shell(`<div class="rf" style="padding:0"><div class="rf-ws" id="olws"><div class="rf-pane"><div class="rf-hd"><b>和 AI 一起写大纲</b>${S.model ? `<span class="ol-mdl" title="回答问题的模型">${esc(S.model)}</span>` : ""}<span class="sp"></span><label class="chk"><input type="checkbox" id="ollib" ${useLib ? "checked" : ""}>参考研究库</label></div>
+  shell(`<div class="rf-seg" id="olseg" role="tablist" aria-label="大纲视图" data-subrow></div><div class="rf" style="padding:0"><div class="rf-ws" id="olws"><div class="rf-pane"><div class="rf-hd"><b>和 AI 一起写大纲</b>${S.model ? `<span class="ol-mdl" title="回答问题的模型">${esc(S.model)}</span>` : ""}<span class="sp"></span><label class="chk"><input type="checkbox" id="ollib" ${useLib ? "checked" : ""}>参考研究库</label></div>
       <div class="ol-ctx" id="olctx"></div><div class="rf-sc" id="olchat"></div>
       <div id="olsel" hidden></div><div class="rf-inp"><div class="sm mut" style="margin-bottom:6px">${esc(notice())}</div><div class="rf-box"><textarea id="olmsg" rows="2" maxlength="1000" placeholder="说说你想怎么改，或者直接问我问题……" aria-label="对话输入"></textarea><button class="p rf-send" type="button" id="olsend" aria-label="发送">↑</button></div></div></div>
       <div class="rf-split" id="olsplit" role="separator" aria-orientation="vertical" aria-label="拖动调整对话和大纲的宽度（双击恢复）" tabindex="0"><i></i></div><div class="rf-pane" id="olright"></div></div></div>`, { active: "outline", p });
