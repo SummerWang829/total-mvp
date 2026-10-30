@@ -39,8 +39,32 @@ def test_a_dry_run_changes_nothing_and_repeating_the_import_skips_people_already
     assert d["dry_run"] is True and d["created"] == 4 and people(org, pid) == []
     imp(org, pid)
     again = imp(org, pid).json()
-    assert again["created"] == 0 and len(again["skipped"]) == 4 and all("已经在" in s["why"] for s in again["skipped"])
-    assert len(people(org, pid)) == 4
+    assert again["created"] == 1 and len(again["skipped"]) == 3 and all("已经在" in s["why"] for s in again["skipped"])
+    assert len(people(org, pid)) == 5  # blank e-mail is not a duplicate identity
+
+
+def test_duplicate_identity_is_name_plus_email_with_deleted_rows_ignored(org):
+    pid = org.project()
+    base = {"country": "SG", "language": "en"}
+    def add(name, email):
+        return org.c.post(f"/api/projects/{pid}/participants", headers=org.h(), json={**base, "name": name, "email": email})
+    first = add("Alex", "One@Example.com")
+    assert first.status_code == 201
+    assert add("Alex", "two@example.com").status_code == 201
+    assert add("Different", "one@example.com").status_code == 201
+    assert add(" Alex ", "one@example.com").status_code == 409
+    blank1, blank2 = add("No mail", ""), add("No mail", "")
+    assert blank1.status_code == 201 and blank2.status_code == 201
+    assert org.c.delete(f"/api/participants/{first.json()['id']}/data", headers=org.h()).status_code == 200
+    assert add("Alex", "ONE@example.com").status_code == 201
+
+
+def test_import_uses_the_same_name_plus_email_rule(org):
+    pid = org.project()
+    text = "name,email,country\nAlex,one@example.com,SG\nAlex,two@example.com,SG\nDifferent,one@example.com,SG\n"
+    assert imp(org, pid, text).json()["created"] == 3
+    again = imp(org, pid, "name,email,country\n alex ,ONE@example.com,SG\n").json()
+    assert again["created"] == 0 and len(again["skipped"]) == 1
 
 
 def test_bad_rows_are_reported_with_their_line_and_the_rest_still_go_in(org):

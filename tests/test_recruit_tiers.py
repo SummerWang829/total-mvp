@@ -93,11 +93,14 @@ def test_erasing_several_people_at_once_is_logged_and_for_staff_only(client, org
         add(org, pid, name)
     got = people(org, pid)
     ids = [got["甲"]["id"], got["乙"]["id"]]
+    session = org.c.post(f"/api/projects/{pid}/interviews", headers=org.h(), json={"participant_id": ids[0]}).json()
     assert org.c.post(f"/api/projects/{pid}/participants/delete", headers=org.h("observer"), json={"ids": ids}).status_code == 403
     r = org.c.post(f"/api/projects/{pid}/participants/delete", headers=org.h(), json={"ids": ids})
     assert r.status_code == 200 and r.json()["erased"] == 2
     left = {x["id"]: x for x in org.c.get(f"/api/projects/{pid}/participants", headers=org.h()).json()}
-    assert left[ids[0]]["anonymized"] and left[ids[1]]["anonymized"] and not left[got["丙"]["id"]]["anonymized"]
+    assert set(left) == {got["丙"]["id"]}
+    assert session["id"] not in {x["id"] for x in org.c.get(f"/api/projects/{pid}/interviews", headers=org.h()).json()}
+    assert session["id"] not in {x["id"] for x in org.c.get(f"/api/projects/{pid}/insights/overview", headers=org.h()).json()["rows"]}
     assert org.c.post(f"/api/projects/{pid}/participants/delete", headers=org.h(), json={"ids": ids}).status_code == 404  # already gone
     with SessionLocal() as db:
         logged = db.scalars(select(AuditLog).where(AuditLog.action == "participant.bulk_erase")).all()

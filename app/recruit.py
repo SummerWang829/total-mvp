@@ -107,22 +107,20 @@ def parse_csv(text: str) -> tuple[list[ImportRow], list[dict]]:
 
 
 def import_rows(db: Session, org_id: str, project_id: str, rows: list[ImportRow], default_language: str, dry_run: bool, source: str = "", source_name: str = "", invite: bool = False) -> dict:
-    """Create the participants (skipping ones already in the project with the same email, or the same name and country). The caller commits.
+    """Create participants, skipping only the same normalized name + e-mail pair in this project. The caller commits.
 
     Returns {"created": n, "skipped": [{"line", "why"}]}.
     """
-    existing = db.scalars(select(Participant).where(Participant.project_id == project_id)).all()
-    seen_email = {p.email.lower() for p in existing if p.email}
-    seen_name = {(p.name.strip().lower(), p.country) for p in existing}
+    existing = db.scalars(select(Participant).where(Participant.project_id == project_id, Participant.anonymized_at.is_(None))).all()
+    seen = {identity_key(p.name, p.email) for p in existing if identity_key(p.name, p.email) is not None}
     created, skipped = 0, []
     for r in rows:
-        key = (r.name.strip().lower(), r.country)
-        if (r.email and r.email.lower() in seen_email) or (not r.email and key in seen_name):
+        key = identity_key(r.name, r.email)
+        if key is not None and key in seen:
             skipped.append({"line": r.line, "why": "已经在这个项目里"})
             continue
-        if r.email:
-            seen_email.add(r.email.lower())
-        seen_name.add(key)
+        if key is not None:
+            seen.add(key)
         created += 1
         if dry_run:
             continue
@@ -133,6 +131,21 @@ def import_rows(db: Session, org_id: str, project_id: str, rows: list[ImportRow]
         db.flush()
         screener.save(db, org_id, p.id, r.answers)
     return {"created": created, "skipped": skipped}
+
+
+def identity_key(name: str, email: str) -> tuple[str, str] | None:
+    """Normalized duplicate identity. Empty e-mail never makes two people duplicates."""
+    clean_name, clean_email = (name or "").strip().casefold(), (email or "").strip().casefold()
+    return (clean_name, clean_email) if clean_name and clean_email else None
+
+
+def duplicate_participant(db: Session, project_id: str, name: str, email: str, exclude_id: str = "") -> Participant | None:
+    """Return the active participant with the same name + e-mail pair in one project, if any."""
+    key = identity_key(name, email)
+    if key is None:
+        return None
+    rows = db.scalars(select(Participant).where(Participant.project_id == project_id, Participant.anonymized_at.is_(None))).all()
+    return next((p for p in rows if p.id != exclude_id and identity_key(p.name, p.email) == key), None)
 
 
 # ---------- rules ----------

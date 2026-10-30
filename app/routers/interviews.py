@@ -162,7 +162,7 @@ class NewInterview(BaseModel):
 def _eligible_participant(db: Session, ctx: Ctx, proj: Project, participant_id: str) -> Participant:
     """A participant that belongs to this project and may be interviewed (region open)."""
     part = db.get(Participant, participant_id)
-    if not part or part.org_id != ctx.org_id or part.project_id != proj.id:
+    if not part or part.org_id != ctx.org_id or part.project_id != proj.id or part.anonymized_at is not None:
         raise HTTPException(422, "受访者不在这个项目里")
     if part.screening != "eligible":
         raise HTTPException(422, "该受访者所在地区不在首批开放范围内，不能安排访谈")
@@ -226,7 +226,9 @@ def list_interviews(pid: str, ctx: Ctx = Depends(current_ctx), db: Session = Dep
         raise HTTPException(404, "项目不存在")
     if ctx.user.role in STAFF:
         ensure_project(db, ctx, proj.id)
-    rows = db.scalars(select(Interview).where(Interview.project_id == pid).order_by(Interview.scheduled_at.desc().nullslast(), Interview.created_at.desc())).all()
+    rows = db.scalars(select(Interview).join(Participant, Participant.id == Interview.participant_id).where(
+        Interview.project_id == pid, Participant.anonymized_at.is_(None)
+    ).order_by(Interview.scheduled_at.desc().nullslast(), Interview.created_at.desc())).all()
     out = []
     for itv in rows:
         try:
@@ -248,7 +250,9 @@ def insights_overview(pid: str, ctx: Ctx = Depends(current_ctx), db: Session = D
     team = ctx.user.role != "observer"
     codes = participant_code.code_map(db, pid)
     rows = []
-    for itv in db.scalars(select(Interview).where(Interview.project_id == pid, Interview.purged_at.is_(None)).order_by(Interview.started_at.desc().nullslast(), Interview.scheduled_at.desc().nullslast(), Interview.created_at.desc())).all():
+    for itv in db.scalars(select(Interview).join(Participant, Participant.id == Interview.participant_id).where(
+        Interview.project_id == pid, Interview.purged_at.is_(None), Participant.anonymized_at.is_(None)
+    ).order_by(Interview.started_at.desc().nullslast(), Interview.scheduled_at.desc().nullslast(), Interview.created_at.desc())).all():
         try:
             visible_interview(db, ctx, itv.id)
         except HTTPException:
@@ -256,7 +260,9 @@ def insights_overview(pid: str, ctx: Ctx = Depends(current_ctx), db: Session = D
         rows.append(insights_overview_mod.row(db, itv, "座谈会" if groups.is_group(itv) else codes.get(itv.participant_id, "?"), team, _moderator_name(db, itv) if team else ""))
     cols, cells = [], {}
     if team:   # the questionnaire answers and the interview answers are the team's, not the client's
-        itvs = [i for i in db.scalars(select(Interview).where(Interview.project_id == pid, Interview.purged_at.is_(None))).all() if not groups.is_group(i)]
+        itvs = [i for i in db.scalars(select(Interview).join(Participant, Participant.id == Interview.participant_id).where(
+            Interview.project_id == pid, Interview.purged_at.is_(None), Participant.anonymized_at.is_(None)
+        )).all() if not groups.is_group(i)]
         person = {i.id: i.participant_id for i in itvs}
         scols, sby = respondent_table.screening(db, pid, list(set(person.values())))
         qs = respondent_table.interview_questions(proj)
@@ -597,6 +603,12 @@ def end_interview(iid: str, ctx: Ctx = Depends(require_roles("admin", "researche
             _stop_recording(db, rec)
         itv.status, itv.ended_at = "ended", utcnow()
         ai_room.finalize(db, itv)  # an AI-moderated chat becomes the transcript
+        db.flush()
+        if not groups.is_group(itv):
+            project = db.get(Project, itv.project_id)
+            questions = respondent_table.interview_questions(project)
+            if questions and db.scalar(select(TranscriptSegment.id).where(TranscriptSegment.interview_id == itv.id)):
+                interview_answers.generate(db, itv, questions, None, project.language if project.language in ("en", "zh") else "zh")
         audit(db, ctx.org_id, ctx.actor, "interview.end", itv.id)
         db.commit()
         delete_room(itv.room_name)  # everyone is removed from the video room
@@ -730,6 +742,12 @@ def _ingest(db: Session, itv: Interview, segs: list[dict]) -> None:
             if s.get(key):
                 s[key] = content_rules.check(s[key], itv.language).text
         db.add(TranscriptSegment(org_id=itv.org_id, interview_id=itv.id, **s))
+    db.flush()
+    if itv.status == "ended" and not groups.is_group(itv):
+        project = db.get(Project, itv.project_id)
+        questions = respondent_table.interview_questions(project)
+        if questions:
+            interview_answers.generate(db, itv, questions, None, project.language if project.language in ("en", "zh") else "zh")
 
 
 @router.post("/interviews/{iid}/transcript")

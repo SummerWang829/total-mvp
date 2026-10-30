@@ -820,9 +820,9 @@ button.lch{height:auto;min-height:26px;cursor:pointer;border:0}button.lch::befor
 .plf{gap:10px}
 .msel{position:relative}
 .msb.cap{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:6px;min-width:96px;height:36px;padding:0 28px 0 14px;border-radius:999px;font-size:14px;font-weight:600;background:var(--surface);border:1px solid var(--line2);color:var(--ink)}
-.msb.cap::before{content:attr(data-k);color:var(--muted);font-weight:600}
+.msb.cap::before{content:none}.msb.cap .ms-label{color:var(--muted);font-weight:600}.msb.cap .ms-value{max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .msb.cap::after{content:"▾";position:absolute;right:11px;top:50%;margin:0;transform:translateY(-50%);color:var(--muted);font-size:12px}
-.msb.cap.on{border-color:var(--orange);background:var(--orange-soft)}.msb.cap.on::before{color:var(--orange-ink)}
+.msb.cap.on{border-color:var(--orange);background:var(--orange-soft)}.msb.cap.on .ms-label{color:var(--orange-ink)}
 .msb.cap.on{color:var(--orange-ink)}
 .mode2{display:inline-flex;border:1px solid var(--line2);border-radius:7px;overflow:hidden;margin:2px 4px 8px}
 .mode2 button{all:unset;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;height:28px;padding:0 12px;font-size:12px;line-height:1;cursor:pointer;color:var(--muted);white-space:nowrap}

@@ -652,6 +652,8 @@ def put_email(part_id: str, body: EmailBody, ctx: Ctx = Depends(require_roles(*R
     email = body.email.strip().lower()
     if email and not invites.EMAIL_RE.match(email):
         raise HTTPException(422, "邮箱格式不对：" + (invites.check_email(email) or "请检查"))
+    if recruit.duplicate_participant(db, p.project_id, p.name, email, exclude_id=p.id):
+        raise HTTPException(409, "同一项目中已存在姓名和邮箱都相同的受访者")
     p.email = email
     audit(db, ctx.org_id, ctx.actor, "participant.email", p.id)
     db.commit()

@@ -64,6 +64,7 @@ def row(db: Session, itv: Interview, code: str, team: bool, moderator_name: str)
            "summary": [i.statement[:SUMMARY_CHARS] for i in ins[:MAX_SUMMARY]],
            "card": {"loc": f"{p.country or '—'} · {p.language or itv.language}", "words": words, "talk": share, "steps": steps, "step_names": STEP_NAMES,
                     "quotes": _quotes(db, ins), "scheduled_at": itv.scheduled_at.isoformat() if itv.scheduled_at else None}}
+    out["transcript_state"] = "ready" if segs else ("waiting" if itv.status == "ended" and itv.entered_at else "none")
     if team:
         out["tags"] = p.tags or []
         out["card"].update({"source": p.source_name or p.source or "", "moderation": itv.moderation, "moderator": moderator_name,

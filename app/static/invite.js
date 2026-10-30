@@ -17,7 +17,7 @@ function notice(html, kind = "ok", ms = 10000) {
 /** Say how sending the email went. */
 function mailNote(name, mail) {
   if (!mail) return;
-  if (mail.status === "queued") notice(`邀请函已发送到 ${esc(name)} 的邮箱。`, "ok");
+  if (mail.status === "queued") notice(`邮件服务已接受发送给 ${esc(name)} 的邀请函。`, "ok");
   else notice(`<b>邀请函已创建，但邮件没有发出去</b><br>${esc(mail.reason)}。其他操作不受影响。`, "bad");
 }
 
@@ -51,10 +51,10 @@ async function inviteModal(p, parts, { preselect = "", itv = null, onDone = () =
       <label class="f"><span>主持人</span><select name="moderator_id"><option value="">稍后指定</option>${mods.map((u) => `<option value="${u.id}"${editing && itv.moderator_id === u.id ? " selected" : ""}>${esc(u.name)}（${ROLE[u.role]}）</option>`).join("")}</select></label></div>
     <label class="f"><span>预计访谈时长</span><div class="dur"><input name="duration_min" id="du" type="number" min="5" max="240" value="${editing ? itv.duration_min || 45 : 45}" aria-label="预计访谈时长（分钟）"><span>分钟</span><span class="durq" id="dq"></span></div></label>
     ${editing ? "" : `<fieldset style="border:1px solid var(--line);border-radius:10px;margin:0 0 12px;padding:6px 14px"><legend class="sm mut">观察员（隐身旁听）</legend>${obs.length ? obs.map((u) => `<label class="chk"><input type="checkbox" name="obs" value="${u.id}"><span>${esc(u.name)}</span></label>`).join("") : `<span class="sm mut">还没有观察员账号</span>`}</fieldset>`}
-    ${mailReady ? "" : `<div class="rem" id="nomail">还没有配置发件邮箱：点“发送”只会创建邀请函，链接会显示给你复制。</div>`}
-    <div class="btns"><button class="p" type="submit" id="mk">${editing ? "保存" : "创建并生成邀请函"}</button><button class="p" type="button" id="sd">${editing ? "发送更新" : "发送"}</button><span class="sp"></span><button type="button" id="cp"${editing && !(itv.status === "live" || itv.invite_state === "entered") ? "" : " disabled"} title="${!editing ? "创建之后才有链接可以复制" : itv.status === "live" || itv.invite_state === "entered" ? "访谈进行中，不能换链接" : "复制受访者的进入链接"}">复制链接</button><button type="button" id="c">取消</button></div>
+    ${mailReady ? "" : `<div class="rem" id="nomail">还没有配置发件邮箱：仍会生成邀请函，链接会显示给你复制。</div>`}
+    <div class="btns"><button class="p" type="submit" id="mk">${editing ? "保存并发送更新" : "生成并发送邀请函"}</button><span class="sp"></span><button type="button" id="cp"${editing && !(itv.status === "live" || itv.invite_state === "entered") ? "" : " disabled"} title="${!editing ? "创建之后才有链接可以复制" : itv.status === "live" || itv.invite_state === "entered" ? "访谈进行中，不能换链接" : "复制受访者的进入链接"}">复制链接</button><button type="button" id="c">取消</button></div>
     <div class="lkbox" id="lkbox" hidden></div><div class="rem okn" id="savedmsg" role="status" hidden></div></form></div>`);
-  const f = $("#f", m), tm = $("#tm", m), tmc = $("#tmc", m), em = $("#em", m), msg = $("#emsg", m), sd = $("#sd", m), du = $("#du", m), dq = $("#dq", m);
+  const f = $("#f", m), tm = $("#tm", m), tmc = $("#tmc", m), em = $("#em", m), msg = $("#emsg", m), mk = $("#mk", m), du = $("#du", m), dq = $("#dq", m);
   const cp = $("#cp", m), lkbox = $("#lkbox", m), savedmsg = $("#savedmsg", m);
   let linkUrl = "", dirty = false;   // the entry link once there is one in this window; dirty: something was saved, so the list behind needs a refresh when the window closes
   $("#c", m).onclick = () => { m.remove(); if (dirty) onDone(); };
@@ -89,13 +89,13 @@ async function inviteModal(p, parts, { preselect = "", itv = null, onDone = () =
   du.oninput = syncDur; syncDur();
   const grouped = () => !editing && $("#kind", m).value === "group";
   const checkEmail = () => {
-    if (grouped()) { sd.disabled = true; return true; }
+    if (grouped()) { mk.disabled = false; return true; }
     const v = em.value.trim();
-    if (!v) { em.className = ""; msg.className = "emsg bad"; msg.textContent = "没有邮箱"; sd.disabled = true; return false; }
+    if (!v) { em.className = ""; msg.className = "emsg bad"; msg.textContent = "没有邮箱"; mk.disabled = true; return false; }
     const ok = EMAIL_OK.test(v);
     em.className = ok ? "" : "bad"; msg.className = "emsg " + (ok ? "good" : "bad");
     msg.textContent = ok ? "格式正确" : v.indexOf("@") < 0 ? "缺少 @，邮箱应该像 name@example.com" : "@ 后面的域名不完整，比如缺少 .com";
-    sd.disabled = !ok; return ok;
+    mk.disabled = !ok; return ok;
   };
   em.oninput = checkEmail; checkEmail();
   if (!editing) $("#kind", m).onchange = () => {
@@ -124,12 +124,11 @@ async function inviteModal(p, parts, { preselect = "", itv = null, onDone = () =
     if (kind === "group") { m.remove(); showGroupInvites(r); onDone(r); return; }
     if (send) mailNote(who ? who.name : "", r.mail);
     linkUrl = location.origin + r.invite_path;   // known only now: the window stays open so it can be copied (or sent by other means when the mail did not go)
-    cp.disabled = false; cp.title = "复制受访者的进入链接"; $("#mk", m).disabled = true; sd.disabled = true;
-    saidSaved(send && r.mail && r.mail.status === "queued" ? "邀请函已创建并发送。链接也可以复制，用别的方式再发一次。" : "邀请函已创建。点“复制链接”，把进入链接发给受访者。");
+    cp.disabled = false; cp.title = "复制受访者的进入链接"; mk.disabled = true;
+    saidSaved(send && r.mail && r.mail.status === "queued" ? "邀请函已生成，邮件服务已接受发送请求。链接也可以复制。" : "邀请函已生成，但邮件没有进入发送队列；可以复制链接或稍后重试发送。");
     $("#c", m).onclick = () => { m.remove(); onDone(r); };   // closing hands the new session to the page behind
   });
-  f.onsubmit = (e) => { e.preventDefault(); go(false); };
-  sd.onclick = () => go(true);
+  f.onsubmit = (e) => { e.preventDefault(); if (checkEmail()) go(true); };
 }
 
 /** Invite several people at once: the time and the email come from what each person gave, the way is a human moderator, one moderator for the batch (or none yet). */

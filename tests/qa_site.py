@@ -217,7 +217,7 @@ def rooms_section(br, D):
     ctx, pg, errs = new_page(br, 1280, token=adm)
     pg.goto(B + f"/#/p/{pid}/rooms"); pg.wait_for_selector("#rmb tr")
     labels = [x.strip() for x in pg.locator(".rmt").all_inner_texts()]
-    ok(labels == ["全部", "待开始", "进行中", "已结束"], f"[rooms] the status buttons are in the order 全部, 待开始, 进行中, 已结束 (got {labels})")
+    ok(labels == ["全部", "待开始", "进行中", "已结束", "未到场"], f"[rooms] the status buttons include 未到场 after 已结束 (got {labels})")
     heads = pg.locator("#rmh th").all_inner_texts()
     ok("受访者" in heads[0] and "主持人" in heads[1] and "开始时间" in heads[2] and "标签" in heads[3] and "状态" in " ".join(heads), f"[rooms] the columns are 受访者, 主持人, 开始时间, 标签, 状态 under 全部 (got {heads})")
     ok("场次" not in " ".join(heads), "[rooms] the old 场次 column is gone")
@@ -2078,7 +2078,8 @@ def run():
         "reel": D["reel_share"]["path"], "reel-invalid": "/reel.html?t=nope",
     }
     with sync_playwright() as p:
-        br = p.chromium.launch()
+        browser_path = os.environ.get("QA_BROWSER", "").strip()
+        br = p.chromium.launch(executable_path=browser_path or None)
         # ---------- A. every role x page x viewport ----------
         for w, vp in ((1280, "desktop"), (390, "phone")):
             for role, routes in role_routes.items():

@@ -72,7 +72,7 @@ async function insightsHub(p, my) {
       if (c.id === "tags") return (r.tags || []).map((t) => `<span class="lch ${lcolor(t)}">${esc(t)}</span>`).join("") || `<span class="mut">—</span>`;
       if (c.id === "ins") return `${r.insights || "—"} / ${r.clips || "—"}${r.review ? ` <span class="tag bad">${r.review} 待复核</span>` : ""}`;
       const v = valueOf(r, c);
-      if (c.group === "answer" && c.type === "text") return v ? `<div class="ins-cl" tabindex="0" role="button" data-ttl="${esc(r.code + " · " + c.label)}" data-tip="${esc(v)}">${esc(v)}</div>` : `<span class="mut">还没整理</span>`;
+      if (c.group === "answer" && c.type === "text") return v ? `<div class="ins-cl" tabindex="0" role="button" data-ttl="${esc(r.code + " · " + c.label)}" data-tip="${esc(v)}">${esc(v)}</div>` : `<span class="mut">${r.transcript_state === "waiting" ? "待转写" : r.transcript_state === "ready" ? "未回答" : "—"}</span>`;
       if (c.type === "choice") return asList(v, c).map((x) => `<span class="tag">${esc(x)}</span>`).join("") || `<span class="mut">—</span>`;
       return v ? `<div class="ins-cl" tabindex="0" role="button" data-ttl="${esc(r.code + " · " + c.label)}" data-tip="${esc(String(v))}">${esc(String(v))}</div>` : `<span class="mut">—</span>`;
     };

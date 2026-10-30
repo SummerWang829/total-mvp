@@ -87,3 +87,19 @@ def test_not_ended_and_client_observer_and_other_companies(org):
     assert d["columns"] == [] and "cells" not in d["rows"][0] and d["can_generate"] is False
     other = Org(org.c, "Other", "boss@other.test")
     assert org.c.post(f"/api/interviews/{itv['id']}/answers/generate", headers=other.h()).status_code == 404
+
+
+def test_raw_answers_are_saved_automatically_when_an_ended_interview_gets_a_transcript(org):
+    itv = org.interview()
+    pid = itv["project_id"]
+    org.c.put(f"/api/projects/{pid}/outline", headers=org.h(), json={"text": OUTLINE})
+    org.c.post(f"/api/interviews/{itv['id']}/end", headers=org.h())
+    body = {"segments": [
+        {"idx": 0, "speaker": "moderator", "start_ms": 0, "end_ms": 900, "text_orig": "How do you usually buy skincare products?", "lang": "en"},
+        {"idx": 1, "speaker": "participant", "start_ms": 1000, "end_ms": 2200, "text_orig": "I compare reviews and ingredients.", "lang": "en"},
+    ]}
+    assert org.c.post(f"/api/interviews/{itv['id']}/transcript", headers=org.h(), json=body).status_code == 200
+    overview = org.c.get(f"/api/projects/{pid}/insights/overview", headers=org.h()).json()
+    row = next(x for x in overview["rows"] if x["id"] == itv["id"])
+    assert row["cells"]["a0"] == "I compare reviews and ingredients."
+    assert row["transcript_state"] == "ready"

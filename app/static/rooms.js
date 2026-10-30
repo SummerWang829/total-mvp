@@ -77,19 +77,19 @@ function rmPickTime(anchor, i, save) {
 }
 
 /* ---------- 直播间页本身 ---------- */
-const RM_TABS = [["all", "全部"], ["scheduled", "待开始"], ["live", "进行中"], ["ended", "已结束"]];
+const RM_TABS = [["all", "全部"], ["scheduled", "待开始"], ["live", "进行中"], ["ended", "已结束"], ["absent", "未到场"]];
 const rmEmptySel = () => ({ who: [], moderator: [], time: [], tag: [] });
 // every tab keeps its own filters (the "全部" page's choices do not follow you to the other pages)
-const RM = { tab: "all", wall: false, sel: { all: rmEmptySel(), scheduled: rmEmptySel(), live: rmEmptySel(), ended: rmEmptySel() } };
+const RM = { tab: "all", wall: false, sel: { all: rmEmptySel(), scheduled: rmEmptySel(), live: rmEmptySel(), ended: rmEmptySel(), absent: rmEmptySel() } };
+const rmCategory = (i) => i.status === "ended" && i.invite_state === "ended_absent" ? "absent" : i.status;
 
 /** The length column of one row: what the tab is about (planned / running / really lasted), with the gap to the plan marked. */
 function rmLength(i, tab) {
   const plan = i.duration_min || 45, real = i.actual_min;
-  const gap = real == null || real === plan ? "" : `<span class="dv ${real < plan ? "short" : "long"}">${real < plan ? "短" : "长"} ${Math.abs(plan - real)} 分</span>`;
   if (tab === "scheduled") return `${plan} 分`;
   if (tab === "live") { const run = i.started_at ? Math.max(0, Math.round((Date.now() - new Date(i.started_at + "Z").getTime()) / 60000)) : 0; return `${run} / ${plan} 分`; }
-  if (tab === "ended") return real == null ? "—" : `${real} 分 ${gap}`;
-  return i.status === "ended" && real != null ? `${plan} / ${real} 分 ${gap}` : `${plan} / —`;
+  if (tab === "ended" || tab === "absent") return real == null ? "—" : `${real} 分`;
+  return i.status === "ended" && real != null ? `${plan} / ${real} 分` : `${plan} / —`;
 }
 const rmLengthHead = (tab) => ({ scheduled: "预计时长", live: "已进行 / 预计", ended: "访谈时长" })[tab] || "预计 / 访谈时长";
 const rmKeyLine = (i) => (i.key_answers && i.key_answers.length ? i.key_answers.slice(0, 3).map((a) => a.a).join("；") : "");
@@ -105,7 +105,7 @@ async function roomsView(p) {
   const tagsOf = (i) => i.participant.tags || [];
   const FIELDS = [["who", "受访者", (i) => [i.participant.name]], ["moderator", "主持人", (i) => [mod(i)]], ["time", "开始时间", (i) => [timeBucket(i)]], ["tag", "标签", tagsOf]];
   const sel = () => RM.sel[RM.tab];
-  const inTab = (i) => RM.tab === "all" || i.status === RM.tab;
+  const inTab = (i) => RM.tab === "all" || rmCategory(i) === RM.tab;
   const passes = (i) => inTab(i) && FIELDS.every(([k, , get]) => !sel()[k].length || get(i).some((v) => sel()[k].includes(v)));
   const filtered = () => FIELDS.some(([k]) => sel()[k].length);
   const options = (k, get) => { const seen = new Set(); its.filter(inTab).forEach((i) => get(i).forEach((v) => seen.add(v))); return k === "time" ? TIME_ORDER.filter((v) => seen.has(v)) : [...seen].sort(); };
@@ -128,7 +128,7 @@ async function roomsView(p) {
       const sched = its.filter((i) => i.status === "scheduled"), next = sched.sort((a, b) => startOf(a).localeCompare(startOf(b)))[0];
       return `<b>现在没有进行中的访谈</b>${next ? `<span>有 ${sched.length} 场待开始，下一场：${startOf(next) ? when(startOf(next)) : "随时可进入"} · ${esc(next.participant.name)} · 主持 ${esc(mod(next))}</span><div class="row" style="justify-content:center"><button type="button" class="p" data-goto="scheduled">看待开始</button><button type="button" data-goto="all">回到全部</button></div>` : `<button type="button" data-goto="all">回到全部</button>`}`;
     }
-    return `<b>${RM.tab === "scheduled" ? "没有待开始的场次" : "还没有结束的场次"}</b><button type="button" data-goto="all">回到全部</button>`;
+    return `<b>${RM.tab === "scheduled" ? "没有待开始的场次" : RM.tab === "absent" ? "没有未到场的场次" : "还没有结束的场次"}</b><button type="button" data-goto="all">回到全部</button>`;
   };
   const drawBody = () => {
     const rows = its.filter(passes).sort((a, b) => startOf(b).localeCompare(startOf(a)));
@@ -195,7 +195,7 @@ async function roomsView(p) {
     markHeads();
   };
   const drawTabs = () => {
-    $("#rmtabs").innerHTML = RM_TABS.map(([k, label]) => `<button type="button" role="tab" class="rmt${RM.tab === k ? " on" : ""}" data-t="${k}" aria-selected="${RM.tab === k}" data-n="${its.filter((i) => k === "all" || i.status === k).length}">${label}</button>`).join("")
+    $("#rmtabs").innerHTML = RM_TABS.map(([k, label]) => `<button type="button" role="tab" class="rmt${RM.tab === k ? " on" : ""}" data-t="${k}" aria-selected="${RM.tab === k}" data-n="${its.filter((i) => k === "all" || rmCategory(i) === k).length}">${label}</button>`).join("")
       + `<span class="sp"></span>${filtered() ? `<button type="button" class="lnk" id="rmclr">清除这一页的筛选</button>` : ""}` + (RM.tab === "live" ? `<button type="button" id="rmwallbtn">${RM.wall ? "返回列表" : "全部预览"}</button>` : "");
     app.querySelectorAll("#rmtabs .rmt").forEach((b) => (b.onclick = () => { RM.tab = b.dataset.t; if (RM.tab !== "live") RM.wall = false; drawAll(); }));
     const w = $("#rmwallbtn"); if (w) w.onclick = () => { RM.wall = !RM.wall; drawTabs(); drawBody(); };

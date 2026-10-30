@@ -183,9 +183,12 @@ def add_participant(pid: str, body: NewParticipant, ctx: Ctx = Depends(require_r
         answers = screener.parse_text(body.screener_text)
     except screener.ScreenerError as e:
         raise HTTPException(422, str(e))
+    name, email = body.name.strip(), body.email.strip()
+    if recruit.duplicate_participant(db, proj.id, name, email):
+        raise HTTPException(409, "同一项目中已存在姓名和邮箱都相同的受访者")
     country = body.country.upper()
     screening = "eligible" if (not country or settings.region_open(country)) else "blocked_region"  # empty: declared at consent
-    p = Participant(org_id=ctx.org_id, project_id=proj.id, name=body.name, email=body.email, country=country,
+    p = Participant(org_id=ctx.org_id, project_id=proj.id, name=name, email=email, country=country,
                     language=body.language, screening=screening, source="manual", source_name="手动添加")
     db.add(p)
     db.flush()  # assigns the id, so the audit row points at this participant
@@ -199,7 +202,7 @@ def add_participant(pid: str, body: NewParticipant, ctx: Ctx = Depends(require_r
 def list_participants(pid: str, tag: str = "", country: str = "", language: str = "", screen: str = "", ctx: Ctx = Depends(require_roles(*RECRUITERS)), db: Session = Depends(get_db)):
     """The project's people; optionally only those with a tag, a country, a language, or a screening result (qualified / disqualified / review)."""
     proj = get_project(db, ctx, pid)
-    people = db.scalars(select(Participant).where(Participant.project_id == proj.id).order_by(Participant.created_at)).all()
+    people = db.scalars(select(Participant).where(Participant.project_id == proj.id, Participant.anonymized_at.is_(None)).order_by(Participant.created_at)).all()
     people = [p for p in people if (not tag or tag in (p.tags or [])) and (not country or p.country == country.upper()) and (not language or p.language == language)
               and (not screen or p.screen_result == screen)]
     counted = screener.counts(db, [p.id for p in people])
