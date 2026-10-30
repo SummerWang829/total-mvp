@@ -1,0 +1,11 @@
+/* 招募问卷 / 名单 / 邀请函窗口的专属样式（UI 改版，只改展示） */
+/* 邀请函窗口：同一页、左右两栏平均隔开、不滚动（左：对象与时间；右：主持与观察员） */
+.modal>div:has(>.invdlg){max-width:880px;overflow:visible}
+.invdlg .invcols{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:24px;align-items:start}
+.invdlg .invcol{min-width:0}
+.invdlg h2{margin-bottom:12px}
+.invdlg label.f{margin-bottom:10px}
+.invdlg .rem{margin-top:4px}
+/* 配额与受访者名单：卡片标题用衬线体，名单表头下方一条深色线（对照 ui_v5） */
+.rd-row .card>h3,#plist h3{font-family:var(--fd);font-size:18px;font-weight:600}
+#plist .tbl th{border-bottom:1px solid var(--ink)}

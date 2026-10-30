@@ -261,6 +261,8 @@ def rooms_section(br, D):
     ok("状态" not in " ".join(pg.locator("#rmh th").all_inner_texts()), "[rooms] the 状态 column is only under 全部")
     pg.locator(".rmt", has_text="已结束").click()
     ok("访谈时长" in " ".join(pg.locator("#rmh th").all_inner_texts()) and "预计 / 访谈时长" not in " ".join(pg.locator("#rmh th").all_inner_texts()), "[rooms] under 已结束 the column is just 访谈时长")
+    pg.locator(".rmt", has_text="未到场").click()
+    ok("时长" not in " ".join(pg.locator("#rmh th").all_inner_texts()) and pg.locator("#rmb td.rmlen, #rmb .rmlen").count() == 0, "[rooms] under 未到场 there is no length column")
     pg.locator(".rmt", has_text="全部").first.click()
     pg.evaluate("document.querySelector('#rmtabs').dataset.mark = 'same-page'")
     n_all = pg.locator("#rmb tr").count()
@@ -462,6 +464,36 @@ def outline_section(br, D):
     ctx.close()
 
 
+def projects_section(br, D):
+    """The all-projects page: small cards in a wrapping grid (about seven in a row on a wide screen), numbers stacked with the figure on the right; delete mode keeps its checkbox, selection colour and buttons."""
+    adm = D["tok"]["admin"]
+    for i in range(8):
+        call("/projects", {"name": f"QA 网格项目 {i}", "market": "SG", "language": "en"}, adm)
+    ctx, pg, errs = new_page(br, 1912, token=adm)
+    pg.goto(B + "/#/projects"); pg.wait_for_selector("#pgrid .pcard")
+    pg.click("[data-pf=all]")
+    info = pg.evaluate("""(() => { const g = document.getElementById('pgrid'), cs = [...g.querySelectorAll('.pcard')].filter((c) => c.offsetParent), t = cs[0].offsetTop;
+      const perRow = cs.filter((c) => c.offsetTop === t).length, w = g.getBoundingClientRect().width, h3 = cs[0].querySelector('h3');
+      const row = cs.find((c) => c.querySelector('.nums')), b = row && row.querySelector('.nums b'), sp = row && row.querySelector('.nums span');
+      return { perRow, expect: Math.floor((w + 12) / 218), n: cs.length, h3: getComputedStyle(h3).fontSize, pad: getComputedStyle(cs[0]).paddingLeft,
+               stacked: row ? b.getBoundingClientRect().left > sp.getBoundingClientRect().left && Math.abs(b.getBoundingClientRect().top - sp.getBoundingClientRect().top) < 12 : null }; })()""")
+    ok(info["n"] >= 8 and info["perRow"] == min(info["expect"], info["n"]) and info["perRow"] >= 7, f"[projects] small cards wrap into a grid, about seven in a row at 1912 wide (got {info})")
+    ok(info["h3"] == "15px" and info["pad"] == "14px", f"[projects] the card title is 15px and the card padding 12x14 (got {info['h3']}, {info['pad']})")
+    ok(info["stacked"] in (None, True), "[projects] the three numbers are stacked with the figure on the right")
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "projects_grid_1912.png"))
+    audit_page(pg, "projects/desktop", errs)
+    pg.click("#pdel"); pg.wait_for_selector("main.delete-selecting")
+    box = pg.evaluate("""(() => { const c = document.querySelector('#pgrid .pcard'), s = c.querySelector('.project-select').getBoundingClientRect(), r = c.getBoundingClientRect();
+      return [getComputedStyle(c.querySelector('.project-select')).display, Math.round(s.left - r.left), getComputedStyle(c.querySelector(':scope > .row')).paddingLeft]; })()""")
+    ok(box[0] == "flex" and box[1] <= 12 and box[2] == "28px" and pg.locator("#pdc").is_visible() and "取消选择" in pg.inner_text("#pdc"), f"[projects] delete mode shows the checkbox in the card corner, the shifted title and the 取消选择 button (got {box})")
+    pg.locator("#pgrid .pcard").first.click()
+    pg.wait_for_timeout(400)   # the colour fades in
+    sel = pg.evaluate("(() => { const c = document.querySelector('#pgrid .pcard.is-selected'); return c ? [getComputedStyle(c).backgroundColor, c.getAttribute('aria-selected')] : null; })()")
+    ok(sel and sel[0] == "rgb(255, 248, 244)" and "删除所选" in pg.inner_text("#pdel"), f"[projects] a selected card is light orange and the button says 删除所选 (got {sel})")
+    pg.click("#pdc"); ok(pg.locator("main.delete-selecting").count() == 0, "[projects] 取消选择 leaves delete mode")
+    ctx.close()
+
+
 def insights_section(br, D):
     """The insights page's five tabs: respondent data (numbers, table, hover card, search), report, question analysis, highlight wall, chat; a client observer only gets the table."""
     adm, pid = D["tok"]["admin"], D["pid"]
@@ -499,6 +531,13 @@ def insights_section(br, D):
     ok("查看详情" in card and "邀请" in card and "转写" in card and "洞察" in card, "[insights] hovering a code shows the card with the progress line and a link to the session")
     audit_page(pg, "insights r/hover/desktop", errs)
     pg.mouse.move(5, 5); ok(pg.locator("#ipop").is_hidden(), "[insights] the card goes away when the mouse leaves the table")
+    qnos = [x.strip() for x in pg.locator(".ins-tbl2 thead .qno").all_inner_texts()]
+    ok(not qnos or (qnos[0] in ("S1", "Q1") and all(q[0] in "SQ" and q[1:].isdigit() for q in qnos)), f"[insights] the question columns carry their number in the header (got {qnos[:4]})")
+    ok(not any("未回答" in x for x in pg.locator(".ins-tbl2 tbody td").all_inner_texts()), "[insights] an empty cell says '没匹配到这一题' or '受访者没有回答', not a bare 未回答")
+    if pg.locator(".ins-thr").count():   # a person's own follow-ups under a question
+        pg.locator(".ins-thr").first.click(); pg.wait_for_selector(".ins-tip:not([hidden])")
+        ok("追问" in pg.inner_text(".ins-tip") and pg.locator(".ins-tip a").count() == 1, "[insights] the follow-up chip opens this person's questions and answers with a link to the original")
+        pg.mouse.click(5, 300)
     n = pg.locator(".ins-tbl2 tbody tr").count()
     ok(f"共 {n} 人" in pg.inner_text("#icount"), "[insights] under the table: 共 N 人 · 当前显示 M 人")
     pg.fill("#isearch", "zzzz-nothing"); ok(pg.locator(".ins-tbl2 tbody tr").count() == 0 and "当前显示 0 人" in pg.inner_text("#icount"), "[insights] search narrows the rows and the count says so")
@@ -2202,7 +2241,7 @@ def run():
         # rooms are grouped: in progress / upcoming / ended
         pg.goto(B + f"/#/p/{pid}/rooms"); pg.wait_for_selector(".rmt")
         counts = {b.inner_text().strip(): int(b.get_attribute("data-n")) for b in pg.locator(".rmt").all()}
-        ok(counts["全部"] == counts["待开始"] + counts["进行中"] + counts["已结束"] and counts["待开始"] >= 1 and counts["已结束"] >= 1, f"room list has a button per status with its count, got {counts}")
+        ok(counts["全部"] == counts["待开始"] + counts["进行中"] + counts["已结束"] + counts.get("未到场", 0) and counts["待开始"] >= 1 and counts["已结束"] + counts.get("未到场", 0) >= 1, f"room list has a button per status with its count, got {counts}")
         # team page: observer role label
         pg.goto(B + "/#/team"); pg.wait_for_selector("text=客户张"); ok("观察员" in pg.inner_text("main"), "team page should show role names")
         ok(pg.locator("nav.side a:has-text('演示数据')").count() == 0, "a real company has no 'clear demo data' entry")
@@ -2361,6 +2400,7 @@ def run():
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "outline_section": outline_section(br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "review_section": review_section(br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "insights_section": insights_section(br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "projects_section": projects_section(br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "languages_section": languages_section(br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "respondent_window_section": respondent_window_section(br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "rooms_section": rooms_section(br, D)

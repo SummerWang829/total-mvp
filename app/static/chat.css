@@ -55,3 +55,9 @@
 .ins-tbl2 .ins-cl{-webkit-line-clamp:2;cursor:default}
 .ins-tip{position:absolute;z-index:20;max-width:min(440px,92%);background:var(--surface);border:1px solid var(--line2);border-radius:10px;padding:8px 12px;box-shadow:0 8px 24px rgba(6,35,25,.18);font-size:14px;line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere}
 .ins-tip[hidden]{display:none}.ins-tip small{display:block;color:var(--muted);font-size:12px}
+
+/* 受访者数据表：题号、追问小标签和追问卡片 */
+.ins-tbl2 .qno{color:var(--orange-ink);font-weight:600;flex:none;margin-right:4px}
+.ins-tbl2 .ins-thr{display:inline-block;height:auto;min-height:22px;margin-top:4px;padding:0 8px;border:0;border-radius:11px;background:var(--wash);color:var(--ink2);font-size:12px;font-weight:500}
+.ins-tbl2 .ins-thr:hover{background:var(--orange-mid)}
+.ins-tip .th-ask{margin:8px 0 2px;color:var(--ink2);font-weight:500}.ins-tip .th-a{margin:0 0 0 12px}.ins-tip a{display:inline-block;margin-top:6px}
