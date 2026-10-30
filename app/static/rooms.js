@@ -121,6 +121,7 @@ async function roomsView(p) {
     : `<div class="card empty">${staff ? `<b>还没有场次。</b><span>到“甄别设定”的名单里，点受访者那一行的“邀请到场次”新建场次，把邀请链接发给受访者。</span><a class="btn p" href="#/p/${p.id}/people">去甄别设定</a>` : `<b>还没有分配给你的场次。</b><span>研究员把你加入某场访谈后，它会出现在这里。</span>`}</div>`, { active: "rooms", p });
   if (!its.length) return;
   const showStatus = () => RM.tab === "all";
+  const showLen = () => staff && RM.tab !== "absent";   // 未到场 page: no length column (nobody was in the room)
   const showKey = !obs;   // the questionnaire answers are for the team, not the client
   const emptyHtml = () => {
     if (filtered()) return `<b>没有符合筛选条件的场次</b><span>这一页的筛选条件太严了。</span><button type="button" class="p" id="rmclr2">清除筛选</button>`;
@@ -135,14 +136,14 @@ async function roomsView(p) {
     const wall = RM.wall && RM.tab === "live" && rows.length > 0;
     $("#rmbox").hidden = rows.length === 0; $("#rmtable").hidden = wall; $("#rmwall").hidden = !wall;
     $("#rmwall").innerHTML = wall ? rows.map(card).join("") : "";
-    const names = ["受访者", "主持人", "开始时间", "标签", ...(showKey ? ["关键回答"] : []), ...(staff ? ["邀请进度", rmLengthHead(RM.tab)] : []), ...(showStatus() ? ["状态"] : [])];
+    const names = ["受访者", "主持人", "开始时间", "标签", ...(showKey ? ["关键回答"] : []), ...(staff ? ["邀请进度"] : []), ...(showLen() ? [rmLengthHead(RM.tab)] : []), ...(showStatus() ? ["状态"] : [])];
     $("#rmb").innerHTML = rows.map((i, ri) => { const [t, c] = roomState(i);
       const [pt, pc] = rmProgress(i), ed = canEdit(i);
       const modCell = ed ? `<button type="button" class="ed${i.moderator_name ? "" : " none"}" data-edm="${i.id}" aria-label="修改主持人，现在是${esc(mod(i))}">${esc(mod(i))}</button>` : `<span class="${i.moderator_name || obs ? "" : "mut"}">${esc(mod(i))}</span>`;
       const timeCell = ed ? `<button type="button" class="ed" data-edt="${i.id}" aria-label="修改开始时间">${startOf(i) ? when(startOf(i)) : "随时可进入"}</button>` : `<span class="mut">${startOf(i) ? when(startOf(i)) : "随时可进入"}</span>`;
       const cells = [`<b>${esc(i.participant.name)}</b>`, modCell, timeCell, `<div class="lbox" style="border:0;background:none;padding:0">${tagBox(i)}</div>`,
         ...(showKey ? [`<span class="rmkey" title="${esc(rmKeyLine(i))}">${esc(rmKeyLine(i)) || `<span class="mut">—</span>`}</span>`] : []),
-        ...(staff ? [`<span class="tag ${pc}">${pt}</span>`, `<span class="rmlen">${rmLength(i, RM.tab)}</span>`] : []), ...(showStatus() ? [`<span class="tag ${c}">${t}</span>`] : [])];
+        ...(staff ? [`<span class="tag ${pc}">${pt}</span>`] : []), ...(showLen() ? [`<span class="rmlen">${rmLength(i, RM.tab)}</span>`] : []), ...(showStatus() ? [`<span class="tag ${c}">${t}</span>`] : [])];
       return `<tr data-ri="${ri}" tabindex="0">${cells.map((h, n) => `<td data-l="${names[n]}">${h}</td>`).join("")}<td class="acts">${actions(i)}</td></tr>`; }).join("");
     const em = $("#rmempty"); em.hidden = rows.length > 0; em.innerHTML = rows.length ? "" : emptyHtml();
     const clr = $("#rmclr2"); if (clr) clr.onclick = () => { RM.sel[RM.tab] = rmEmptySel(); drawHead(); drawBody(); drawTabs(); };
@@ -190,7 +191,7 @@ async function roomsView(p) {
   }
   const markHeads = () => app.querySelectorAll("#rmh .rmhb").forEach((b) => b.classList.toggle("on", sel()[b.dataset.k].length > 0));
   const drawHead = () => {
-    $("#rmh").innerHTML = FIELDS.map(([k, label]) => `<th><button type="button" class="msb hb rmhb" data-k="${k}" aria-haspopup="true" aria-label="筛选${esc(label)}">${label}</button></th>`).join("") + (showKey ? `<th>关键回答</th>` : "") + (staff ? `<th>邀请进度</th><th>${rmLengthHead(RM.tab)}</th>` : "") + (showStatus() ? `<th>状态</th>` : "") + `<th></th>`;
+    $("#rmh").innerHTML = FIELDS.map(([k, label]) => `<th><button type="button" class="msb hb rmhb" data-k="${k}" aria-haspopup="true" aria-label="筛选${esc(label)}">${label}</button></th>`).join("") + (showKey ? `<th>关键回答</th>` : "") + (staff ? `<th>邀请进度</th>` : "") + (showLen() ? `<th>${rmLengthHead(RM.tab)}</th>` : "") + (showStatus() ? `<th>状态</th>` : "") + `<th></th>`;
     FIELDS.forEach(([k, label, get]) => { const b = $(`#rmh .rmhb[data-k=${k}]`); b.onclick = (e) => { e.stopPropagation(); openFilter(b, k, label, get); }; });
     markHeads();
   };

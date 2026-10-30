@@ -261,6 +261,8 @@ def rooms_section(br, D):
     ok("状态" not in " ".join(pg.locator("#rmh th").all_inner_texts()), "[rooms] the 状态 column is only under 全部")
     pg.locator(".rmt", has_text="已结束").click()
     ok("访谈时长" in " ".join(pg.locator("#rmh th").all_inner_texts()) and "预计 / 访谈时长" not in " ".join(pg.locator("#rmh th").all_inner_texts()), "[rooms] under 已结束 the column is just 访谈时长")
+    pg.locator(".rmt", has_text="未到场").click()
+    ok("时长" not in " ".join(pg.locator("#rmh th").all_inner_texts()) and pg.locator("#rmb td.rmlen, #rmb .rmlen").count() == 0, "[rooms] under 未到场 there is no length column")
     pg.locator(".rmt", has_text="全部").first.click()
     pg.evaluate("document.querySelector('#rmtabs').dataset.mark = 'same-page'")
     n_all = pg.locator("#rmb tr").count()
@@ -2202,7 +2204,7 @@ def run():
         # rooms are grouped: in progress / upcoming / ended
         pg.goto(B + f"/#/p/{pid}/rooms"); pg.wait_for_selector(".rmt")
         counts = {b.inner_text().strip(): int(b.get_attribute("data-n")) for b in pg.locator(".rmt").all()}
-        ok(counts["全部"] == counts["待开始"] + counts["进行中"] + counts["已结束"] and counts["待开始"] >= 1 and counts["已结束"] >= 1, f"room list has a button per status with its count, got {counts}")
+        ok(counts["全部"] == counts["待开始"] + counts["进行中"] + counts["已结束"] + counts.get("未到场", 0) and counts["待开始"] >= 1 and counts["已结束"] + counts.get("未到场", 0) >= 1, f"room list has a button per status with its count, got {counts}")
         # team page: observer role label
         pg.goto(B + "/#/team"); pg.wait_for_selector("text=客户张"); ok("观察员" in pg.inner_text("main"), "team page should show role names")
         ok(pg.locator("nav.side a:has-text('演示数据')").count() == 0, "a real company has no 'clear demo data' entry")

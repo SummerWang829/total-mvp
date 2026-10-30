@@ -1,0 +1,11 @@
+/* 直播间（只改展示，对照 ui_v5 的直播间效果图）：状态按钮是胶囊，选中深绿底；表格行里两个按钮并排，行更矮 */
+.rmtabs{gap:8px;align-items:center}
+.rmt{height:32px;padding:0 14px;gap:6px;border:1px solid var(--line2);border-radius:999px;background:var(--surface);color:var(--ink);font-size:14px;font-weight:500}
+.rmt::after{min-width:0;height:auto;padding:0;border:0;background:transparent;color:var(--muted);font-size:13px}
+.rmt.on{background:#0B382C;border-color:#0B382C;color:#fff}
+.rmt.on::after{color:rgba(255,255,255,.78)}
+@media (hover:hover) and (pointer:fine){.rmt:not(.on):hover{border-color:var(--ink2)}}
+.rmbox td.acts{white-space:nowrap}
+.rmbox td.acts .btn{display:inline-flex;align-items:center;justify-content:center;height:30px;min-height:30px;margin:0 0 0 6px;padding:0 10px}
+.rmbox td.acts .btn:first-child{margin-left:0}
+.rmbox .tbl td{padding-top:8px;padding-bottom:8px}
