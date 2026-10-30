@@ -1,0 +1,15 @@
+/* 全局页专属样式（UI 外壳之外，只改展示）：全部项目 —— 卡片缩小成自动换行网格，1912 宽一行约 7 张 */
+.projects-page #pgrid{grid-template-columns:repeat(auto-fill,minmax(206px,1fr));gap:12px}
+.projects-page .pcard{padding:12px 14px;gap:8px}
+.projects-page .pcard>.row{min-height:0;gap:8px}
+.projects-page .pcard h3{font-size:15px;line-height:1.4}
+.projects-page .pcard>.sm.mut{display:block;height:auto;line-height:1.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.projects-page .pcard .nums{grid-template-columns:minmax(0,1fr);gap:2px;margin-top:0;padding-top:8px;border-top:1px solid var(--line)}
+.projects-page .pcard .nums>div{display:flex;flex-direction:row-reverse;justify-content:space-between;align-items:baseline;gap:8px;padding:0;background:none;border-radius:0}
+.projects-page .pcard .nums b{display:inline;font-size:15px;line-height:22px;font-weight:650}
+.projects-page .pcard .nums span{display:inline;font-size:13px}
+.projects-page .pcard>.sm:last-child:not(.mut){min-height:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* 删除模式：勾选框和左内边距跟着紧凑的卡片按比例缩小，形式不变 */
+.projects-page .project-select{left:10px;top:10px;width:22px;height:22px}
+.projects-page .project-select>span{width:16px;height:16px}
+.projects-page.delete-selecting .pcard>.row{padding-left:28px}

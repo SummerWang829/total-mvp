@@ -464,6 +464,36 @@ def outline_section(br, D):
     ctx.close()
 
 
+def projects_section(br, D):
+    """The all-projects page: small cards in a wrapping grid (about seven in a row on a wide screen), numbers stacked with the figure on the right; delete mode keeps its checkbox, selection colour and buttons."""
+    adm = D["tok"]["admin"]
+    for i in range(8):
+        call("/projects", {"name": f"QA 网格项目 {i}", "market": "SG", "language": "en"}, adm)
+    ctx, pg, errs = new_page(br, 1912, token=adm)
+    pg.goto(B + "/#/projects"); pg.wait_for_selector("#pgrid .pcard")
+    pg.click("[data-pf=all]")
+    info = pg.evaluate("""(() => { const g = document.getElementById('pgrid'), cs = [...g.querySelectorAll('.pcard')].filter((c) => c.offsetParent), t = cs[0].offsetTop;
+      const perRow = cs.filter((c) => c.offsetTop === t).length, w = g.getBoundingClientRect().width, h3 = cs[0].querySelector('h3');
+      const row = cs.find((c) => c.querySelector('.nums')), b = row && row.querySelector('.nums b'), sp = row && row.querySelector('.nums span');
+      return { perRow, expect: Math.floor((w + 12) / 218), n: cs.length, h3: getComputedStyle(h3).fontSize, pad: getComputedStyle(cs[0]).paddingLeft,
+               stacked: row ? b.getBoundingClientRect().left > sp.getBoundingClientRect().left && Math.abs(b.getBoundingClientRect().top - sp.getBoundingClientRect().top) < 12 : null }; })()""")
+    ok(info["n"] >= 8 and info["perRow"] == min(info["expect"], info["n"]) and info["perRow"] >= 7, f"[projects] small cards wrap into a grid, about seven in a row at 1912 wide (got {info})")
+    ok(info["h3"] == "15px" and info["pad"] == "14px", f"[projects] the card title is 15px and the card padding 12x14 (got {info['h3']}, {info['pad']})")
+    ok(info["stacked"] in (None, True), "[projects] the three numbers are stacked with the figure on the right")
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "projects_grid_1912.png"))
+    audit_page(pg, "projects/desktop", errs)
+    pg.click("#pdel"); pg.wait_for_selector("main.delete-selecting")
+    box = pg.evaluate("""(() => { const c = document.querySelector('#pgrid .pcard'), s = c.querySelector('.project-select').getBoundingClientRect(), r = c.getBoundingClientRect();
+      return [getComputedStyle(c.querySelector('.project-select')).display, Math.round(s.left - r.left), getComputedStyle(c.querySelector(':scope > .row')).paddingLeft]; })()""")
+    ok(box[0] == "flex" and box[1] <= 12 and box[2] == "28px" and pg.locator("#pdc").is_visible() and "取消选择" in pg.inner_text("#pdc"), f"[projects] delete mode shows the checkbox in the card corner, the shifted title and the 取消选择 button (got {box})")
+    pg.locator("#pgrid .pcard").first.click()
+    pg.wait_for_timeout(400)   # the colour fades in
+    sel = pg.evaluate("(() => { const c = document.querySelector('#pgrid .pcard.is-selected'); return c ? [getComputedStyle(c).backgroundColor, c.getAttribute('aria-selected')] : null; })()")
+    ok(sel and sel[0] == "rgb(255, 248, 244)" and "删除所选" in pg.inner_text("#pdel"), f"[projects] a selected card is light orange and the button says 删除所选 (got {sel})")
+    pg.click("#pdc"); ok(pg.locator("main.delete-selecting").count() == 0, "[projects] 取消选择 leaves delete mode")
+    ctx.close()
+
+
 def insights_section(br, D):
     """The insights page's five tabs: respondent data (numbers, table, hover card, search), report, question analysis, highlight wall, chat; a client observer only gets the table."""
     adm, pid = D["tok"]["admin"], D["pid"]
@@ -2370,6 +2400,7 @@ def run():
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "outline_section": outline_section(br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "review_section": review_section(br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "insights_section": insights_section(br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "projects_section": projects_section(br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "languages_section": languages_section(br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "respondent_window_section": respondent_window_section(br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "rooms_section": rooms_section(br, D)
