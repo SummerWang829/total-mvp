@@ -202,8 +202,8 @@ function projectCard(p) {
   const setup = p.plan_status && p.plan_status !== "published";
   const stt = setup ? `<span class="tag o">${{ draft: "草稿", review: "审查中", approved: "待发布" }[p.plan_status] || "立项中"}</span>` : st;
   return `<a class="card pcard" href="#/p/${p.id}${setup ? "/wiz" : ""}" data-name="${esc(p.name.toLowerCase())}" data-st="${p.closed_at ? "closed" : "open"}">
-    <div class="row"><h3>${esc(p.name)}</h3><span class="sp"></span>${stt}</div>
-    <div class="sm mut">${esc(p.market || "—")} · ${esc(langNames(p))}${p.brief ? " · " + esc(p.brief).slice(0, 40) : ""}</div>
+    <div class="row"><h3 title="${esc(p.name)}">${esc(p.name)}</h3><span class="sp"></span>${stt}</div>
+    <div class="sm mut" title="${esc([p.market || "—", langNames(p), p.brief || ""].filter(Boolean).join(" · "))}">${esc(p.market || "—")} · ${esc(langNames(p))}${p.brief ? " · " + esc(p.brief).slice(0, 40) : ""}</div>
     ${s ? `<div class="nums"><div><b>${s.participants}</b><span>受访者</span></div><div><b>${s.done}/${s.sessions}</b><span>场次完成</span></div><div><b>${s.approved}</b><span>洞察已通过</span></div></div>
       <div class="sm">${s.next_at ? `下一场：<b>${when(s.next_at)}</b>` : `<span class="mut">没有待开始的场次</span>`}</div>` : ""}</a>`;
 }
@@ -216,6 +216,7 @@ async function projectsView() {
       <div class="stats" role="group" aria-label="按状态筛选" style="margin:0">${[["open", "进行中"], ["closed", "已结项"], ["all", "全部"]].map(([k, n]) => `<button data-pf="${k}" aria-pressed="${f === k}">${n} <b>${k === "all" ? ps.length : ps.filter((p) => (k === "closed") === !!p.closed_at).length}</b></button>`).join("")}</div></div>
       <div class="grid" id="pgrid">${ps.map(projectCard).join("")}</div><div class="card empty" id="pnone" hidden>没有符合条件的项目。换个关键词，或点“全部”。</div>`
       : `<div class="card empty">${canMake ? `<b>还没有项目。</b><span>新建一个项目，然后在里面添加受访者、新建场次。</span>` : `<b>还没有分配给你的项目。</b><span>研究员把你加到某场访谈后，项目会出现在这里。</span>`}</div>`}`, { active: "projects", title: "全部项目" });
+  app.querySelector("main").classList.add("projects-page");
   const apply = () => {
     const qq = ($("#pq") || {}).value?.trim().toLowerCase() || "", ff = sessionStorage.getItem("pf") || "open";
     let n = 0;
