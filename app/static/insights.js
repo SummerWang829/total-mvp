@@ -72,7 +72,13 @@ async function insightsHub(p, my) {
       if (c.id === "tags") return (r.tags || []).map((t) => `<span class="lch ${lcolor(t)}">${esc(t)}</span>`).join("") || `<span class="mut">—</span>`;
       if (c.id === "ins") return `${r.insights || "—"} / ${r.clips || "—"}${r.review ? ` <span class="tag bad">${r.review} 待复核</span>` : ""}`;
       const v = valueOf(r, c);
-      if (c.group === "answer" && c.type === "text") return v ? `<div class="ins-cl" tabindex="0" role="button" data-ttl="${esc(r.code + " · " + c.label)}" data-tip="${esc(v)}">${esc(v)}</div>` : `<span class="mut">${r.transcript_state === "waiting" ? "待转写" : r.transcript_state === "ready" ? "未回答" : "—"}</span>`;
+      if (c.group === "answer" && c.type === "text") {
+        const q = r.qa && r.qa[c.id];
+        if (v) return `<div class="ins-cl" tabindex="0" role="button" data-ttl="${esc(r.code + " · " + (c.no || "") + " · " + c.label)}" data-tip="${esc(v)}">${esc(v)}</div>${q && q.followups.length ? `<button type="button" class="ins-thr" data-thr="${c.id}">+${q.followups.length} 条追问</button>` : ""}`;
+        if (r.transcript_state === "waiting") return `<span class="mut">待转写</span>`;
+        if (!r.qa) return `<span class="mut">${r.transcript_state === "ready" ? "还没整理" : "—"}</span>`;
+        return q && q.state === "empty" ? `<span class="mut">受访者没有回答</span>` : `<span class="tag o" title="有转写，但没认出主持人哪句话问的是这一题（主持人换了说法，或语言和大纲不一样）">没匹配到这一题</span>`;
+      }
       if (c.type === "choice") return asList(v, c).map((x) => `<span class="tag">${esc(x)}</span>`).join("") || `<span class="mut">—</span>`;
       return v ? `<div class="ins-cl" tabindex="0" role="button" data-ttl="${esc(r.code + " · " + c.label)}" data-tip="${esc(String(v))}">${esc(String(v))}</div>` : `<span class="mut">—</span>`;
     };
@@ -89,7 +95,7 @@ async function insightsHub(p, my) {
         <div class="rd-k"><span>平均时长</span><b>${k.avg_minutes != null ? k.avg_minutes + " 分钟" : "—"}</b></div><div class="rd-k ok"><span>洞察通过率</span><b>${k.approval_rate != null ? k.approval_rate + "%" : "—"}</b><small class="mut">已通过 ${k.approved} / 共 ${k.insights} 条</small></div></div>
       <div class="row ins-tool"><input id="isearch" type="search" placeholder="搜索（所有列）" aria-label="搜索受访者" style="max-width:260px"><span class="sp"></span><span class="sm mut" id="igen-st" role="status" aria-live="polite"></span>
         ${d.can_generate ? `<button type="button" id="igen">整理访谈回答</button>` : ""}<button type="button" id="iview">视图与筛选</button>${ME.role === "observer" ? "" : `<button type="button" id="xw">导出 Word</button><button type="button" id="xc">导出 CSV</button>`}</div>
-      ${d.can_generate ? insAiNotice().replace("你的提问和相关的访谈转写会发送给", "整理时，每位受访者的回答会发送给") : ""}
+      ${d.can_generate ? insAiNotice().replace("你的提问和相关的访谈转写会发送给", "整理时，主持人的提问和每位受访者的回答会发送给") : ""}
       ${rows.length ? `<div class="ins-wrap" id="iwrap"><div class="ins-sc"><div class="ins-sx" id="isx"><table class="ins-tbl2" id="itbl"></table></div></div><div class="ins-pop" id="ipop" hidden></div></div><div class="ins-ft"><span id="icount"></span></div>`
         : `<div class="card empty"><b>还没有已结束的访谈。</b><span>访谈结束后，每位受访者的数据会列在这里。</span></div>`}`;
     if (ME.role !== "observer" && $("#xw")) { $("#xw").onclick = insDownload(p, `/api/projects/${p.id}/insights/export?format=docx`, `${p.name}-洞察.docx`); $("#xc").onclick = insDownload(p, `/api/projects/${p.id}/insights/export?format=csv`, `${p.name}-洞察.csv`); }
@@ -126,7 +132,7 @@ async function insightsHub(p, my) {
     const header = () => {
       const vs = visible();
       const fi = (c) => (filterable(c) || c.id === "status" || c.id === "tags" ? `<button type="button" class="fi${F[c.id] && ((F[c.id].sel && F[c.id].sel.size) || F[c.id].q) ? " on" : ""}" data-f="${c.id}" aria-label="筛选：${esc(c.label)}">☰</button>` : "");
-      return `<thead><tr class="c"><th class="pin">编号</th>${vs.map((c) => `<th class="${widthOf(c)}" style="${pxStyle(c)}"><div class="thc"><span class="tt" data-ttl="" data-tip="${esc(c.label)}">${esc(c.label)}</span>${fi(c)}</div></th>`).join("")}</tr></thead>`;
+      return `<thead><tr class="c"><th class="pin">编号</th>${vs.map((c) => `<th class="${widthOf(c)}" style="${pxStyle(c)}"><div class="thc"><span class="tt" data-ttl="" data-tip="${esc((c.no ? c.no + " · " : "") + c.label)}">${c.no ? `<b class="qno">${esc(c.no)}</b> ` : ""}${esc(c.label)}</span>${fi(c)}</div></th>`).join("")}</tr></thead>`;
     };
     const draw = () => {
       const vs = visible(); shown = rows.filter(matches); closeCard(); rspSetList(shown.map((r) => r.id));
@@ -134,6 +140,7 @@ async function insightsHub(p, my) {
       tbl.style.width = 92 + vs.reduce((a, c) => a + colPx(c), 0) + "px";
       $("#icount").textContent = `共 ${rows.length} 人 · 当前显示 ${shown.length} 人${activeFilters() ? ` · ${activeFilters()} 个筛选` : ""}`;
       tbl.querySelectorAll("td.pin").forEach((td) => { const i = +td.parentElement.dataset.i; td.onmouseenter = () => { if (matchMedia("(hover:hover)").matches) openCard(i, td); }; td.onclick = (e) => { if (e.target.closest("a") || matchMedia("(hover:hover)").matches) return; open === i ? closeCard() : openCard(i, td); }; });
+      tbl.querySelectorAll(".ins-thr").forEach((b) => (b.onclick = (e) => { e.stopPropagation(); const r = shown[+b.closest("tr").dataset.i], c = cols.find((x) => x.id === b.dataset.thr); if (r && c) showThread(b, r, c); }));
       tbl.querySelectorAll(".ins-cl,.thc .tt").forEach((c) => {
         const cut = () => c.scrollHeight > c.clientHeight + 1 || c.scrollWidth > c.clientWidth + 1;
         c.onmouseenter = () => { if (matchMedia("(hover:hover)").matches && cut()) showTip(c); };
@@ -146,12 +153,21 @@ async function insightsHub(p, my) {
     };
     const tip = document.createElement("div"); tip.className = "ins-tip"; tip.hidden = true; tip.setAttribute("role", "tooltip"); wrap.appendChild(tip);
     const hideTip = () => { tip.hidden = true; };
+    const showThread = (btn, r, c) => {   // this person's own follow-ups under one question
+      const q = r.qa[c.id], first = (r.cells || {})[c.id] || "";
+      tip.innerHTML = `<small>${esc(r.code)} · ${esc(c.no || "")} · ${esc(c.label)}</small><div class="th-a">${esc(first)}</div>${q.followups.map((f) => `<div class="th-ask">追问${f.at_ms != null ? " · " + insClock(f.at_ms) : ""}　${esc(f.ask)}</div><div class="th-a">${esc(f.a)}</div>`).join("")}<a href="#/i/${r.id}">看原文</a>`;
+      tip.hidden = false;
+      const wr = wrap.getBoundingClientRect(), a = btn.getBoundingClientRect();
+      tip.style.left = Math.max(4, Math.min(wr.width - tip.offsetWidth - 4, a.left - wr.left)) + "px";
+      tip.style.top = (a.bottom - wr.top + 4 + tip.offsetHeight > wrap.offsetHeight ? Math.max(0, a.top - wr.top - tip.offsetHeight - 4) : a.bottom - wr.top + 4) + "px";
+    };
     const showTip = (el) => {   // the whole text of a cut-off cell or column title, beside it
       tip.innerHTML = `${el.dataset.ttl ? `<small>${esc(el.dataset.ttl)}</small>` : ""}${esc(el.dataset.tip || "")}`; tip.hidden = false;
       const wr = wrap.getBoundingClientRect(), a = el.getBoundingClientRect();
       tip.style.left = Math.max(4, Math.min(wr.width - tip.offsetWidth - 4, a.left - wr.left)) + "px";
       tip.style.top = (a.bottom - wr.top + 4 + tip.offsetHeight > wrap.offsetHeight ? Math.max(0, a.top - wr.top - tip.offsetHeight - 4) : a.bottom - wr.top + 4) + "px";
     };
+    wrap.addEventListener("click", (e) => { if (!e.target.closest(".ins-thr,.ins-tip")) hideTip(); });
     wrap.onmouseleave = () => { if (matchMedia("(hover:hover)").matches) { closeCard(); hideTip(); } };
     sx.onscroll = () => { closeCard(); hideTip(); };
     /* a column's filter: choices (and labels) get a tick list with counts, 全选 / 清除; an open question only gets a search box */

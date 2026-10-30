@@ -501,6 +501,13 @@ def insights_section(br, D):
     ok("查看详情" in card and "邀请" in card and "转写" in card and "洞察" in card, "[insights] hovering a code shows the card with the progress line and a link to the session")
     audit_page(pg, "insights r/hover/desktop", errs)
     pg.mouse.move(5, 5); ok(pg.locator("#ipop").is_hidden(), "[insights] the card goes away when the mouse leaves the table")
+    qnos = [x.strip() for x in pg.locator(".ins-tbl2 thead .qno").all_inner_texts()]
+    ok(not qnos or (qnos[0] in ("S1", "Q1") and all(q[0] in "SQ" and q[1:].isdigit() for q in qnos)), f"[insights] the question columns carry their number in the header (got {qnos[:4]})")
+    ok(not any("未回答" in x for x in pg.locator(".ins-tbl2 tbody td").all_inner_texts()), "[insights] an empty cell says '没匹配到这一题' or '受访者没有回答', not a bare 未回答")
+    if pg.locator(".ins-thr").count():   # a person's own follow-ups under a question
+        pg.locator(".ins-thr").first.click(); pg.wait_for_selector(".ins-tip:not([hidden])")
+        ok("追问" in pg.inner_text(".ins-tip") and pg.locator(".ins-tip a").count() == 1, "[insights] the follow-up chip opens this person's questions and answers with a link to the original")
+        pg.mouse.click(5, 300)
     n = pg.locator(".ins-tbl2 tbody tr").count()
     ok(f"共 {n} 人" in pg.inner_text("#icount"), "[insights] under the table: 共 N 人 · 当前显示 M 人")
     pg.fill("#isearch", "zzzz-nothing"); ok(pg.locator(".ins-tbl2 tbody tr").count() == 0 and "当前显示 0 人" in pg.inner_text("#icount"), "[insights] search narrows the rows and the count says so")
