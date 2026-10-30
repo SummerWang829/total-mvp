@@ -91,6 +91,9 @@
 - 备份：分支 backup/before-dup-rule-20261030-1647 已推送。
 - 测试：tests/test_screen_form.py 新增 1 项；test_screen_form + test_recruit_review + test_recruit 共 57 项通过。未测：浏览器页面、整套 qa.sh。部署由主项目统一做。
 
+## 2026-10-30 · 部署到新加坡测试服务器（提交 c5ae800，LW：项目内页签不跳动、切页签留白修复、直播间/访谈页二级行、主持人/观察员四列房间与聊天框、恢复“放行”、名单页内容区滚动）
+SW 执行。本机按请求列出的 7 个测试文件跑（journey / concept / groups / pipeline / week1 / room_assist / room_list_facts）134 项全过（LW 报的 203 项范围更大，我没跑到）；服务器无进行中访谈、无录制/合成/后台任务；备份 `total-20261030-105616.db.gz` + COS 异地成功；回滚点：旧镜像 `deploy-app:rollback-before-c5ae800`、旧代码包 `/opt/total-mvp-code-before-c5ae800.tgz`（不含 .env、media、secrets）。`sudo tar -x --no-same-owner` 解包，`deploy/.env` 未动（邮件 6 行仍在）；只重建 app（`--no-deps app`），LiveKit 和 Caddy 没重启。检查：三容器运行、app healthy；“cannot add” 0、error/traceback 0；/api/health、/api/public/config、/index.html、/room.html、/join.html、/shell.js、/ui-shell.css、/ui_rooms.css、/ui_room.css、/ui_outline.css、/ui_list.css、/editorial.css、/app.css 全 200；doctor 无必须解决项（仅剩告警 webhook 未配）。**行为变化**：恢复“放行”（只对人工主持的一对一），已被邀请但还没进过房的受访者现在要等主持人放行，已进过房的不受影响。未做：登录后的界面冒烟待用户；真实摄像头下的房间效果待用户线上试。
+
 ## 2026-10-30 · 部署到新加坡测试服务器（提交 2e5575d，LW：问卷作答判重、名单筛选胶囊、邀请函窗口两栏、访谈页/立项向导/项目总览样式、直播间表格样式、受访者数据表对题和追问、全部项目紧凑卡片、侧栏图标）
 SW 执行。本机相关测试 93 项全过（answer_matching / interview_answers / screen_form / respondent_progress / insights_overview / report_analysis / recruit_review / outline / outline_versions / room_list_facts）；服务器无进行中访谈、无录制/合成/后台任务；备份 `total-20261030-093341.db.gz` + COS 异地成功；回滚点：旧镜像 `deploy-app:rollback-before-2e5575d`、旧代码包 `/opt/total-mvp-code-before-2e5575d.tgz`（不含 .env、media、secrets）。解包用 `sudo tar -x --no-same-owner`（服务器代码目录属 root，见上一条）；`deploy/.env` 未动（邮件 6 行仍在）；服务器上本来就没有 `secrets/` 目录。只重建 app（`--no-deps app`），LiveKit 和 Caddy 没重启。检查：三容器运行、app healthy；“cannot add” 0、error/traceback 0；/api/health、/api/public/config、/index.html 及要求的 14 个样式/脚本文件全 200；doctor 无必须解决项（仅剩告警 webhook 未配）。未做：登录后的界面冒烟待用户（删除项目只用测试项目试）；真实 DeepSeek 的语义匹配效果待用户线上试；房间页/加入页统一视觉、直播间右侧四张卡片 LW 尚未做。
 
