@@ -3,7 +3,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import member_scopes, plans, project_langs, recruit, recruit_form, recruit_insights, screener
+from .. import member_scopes, plans, project_delete, project_langs, recruit, recruit_form, recruit_insights, screener
 from .. import methods as methods_mod
 from ..audit import audit
 from ..config import settings
@@ -34,6 +34,11 @@ class NewProject(BaseModel):
 
 class MethodsBody(BaseModel):
     methods: list[str]
+
+
+class DeleteProjectsBody(BaseModel):
+    ids: list[str] = Field(min_length=1, max_length=50)
+    confirm: str
 
 
 class NewParticipant(BaseModel):
@@ -118,6 +123,27 @@ def list_projects(ctx: Ctx = Depends(current_ctx), db: Session = Depends(get_db)
         q = q.where(Project.id.in_(select(ProjectMember.project_id).where(ProjectMember.user_id == ctx.user.id)))
     from .overview import project_summary  # staff project cards: participants, sessions, next session
     return [{**project_out(p, status.get(p.id, ""), setups.get(p.id), edits.get(p.id, "")), "summary": project_summary(db, p)} for p in db.scalars(q)]
+
+
+@router.post("/projects/delete")
+def delete_selected_projects(body: DeleteProjectsBody, ctx: Ctx = Depends(require_roles("admin")), db: Session = Depends(get_db)):
+    """Permanently delete one or more projects; validate the whole batch first."""
+    ids = tuple(dict.fromkeys(body.ids))
+    if len(ids) != len(body.ids):
+        raise HTTPException(422, "项目不能重复选择")
+    if body.confirm != "永久删除":
+        raise HTTPException(422, "请输入“永久删除”确认")
+    rows = list(db.scalars(select(Project).where(Project.id.in_(ids), Project.org_id == ctx.org_id)))
+    if len(rows) != len(ids):
+        raise HTTPException(404, "有项目不存在，未删除任何项目")
+    if db.scalar(select(Interview.id).where(Interview.project_id.in_(ids), Interview.status == "live")):
+        raise HTTPException(409, "所选项目中还有进行中的访谈，请先结束")
+    for project in rows:
+        audit(db, ctx.org_id, ctx.actor, "project.delete", project.id, name=project.name, batch=len(rows))
+    result, recordings = project_delete.delete_projects(db, rows)
+    db.commit()
+    project_delete.cleanup_media(recordings)
+    return result
 
 
 @router.get("/projects/{pid}")

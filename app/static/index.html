@@ -201,7 +201,8 @@ function projectCard(p) {
   const st = p.closed_at ? `<span class="tag">已结项</span>` : s && s.live ? `<span class="tag live">${s.live} 场进行中</span>` : `<span class="tag ok">进行中</span>`;
   const setup = p.plan_status && p.plan_status !== "published";
   const stt = setup ? `<span class="tag o">${{ draft: "草稿", review: "审查中", approved: "待发布" }[p.plan_status] || "立项中"}</span>` : st;
-  return `<a class="card pcard" href="#/p/${p.id}${setup ? "/wiz" : ""}" data-name="${esc(p.name.toLowerCase())}" data-st="${p.closed_at ? "closed" : "open"}">
+  return `<a class="card pcard" href="#/p/${p.id}${setup ? "/wiz" : ""}" data-project-id="${p.id}" data-name="${esc(p.name.toLowerCase())}" data-st="${p.closed_at ? "closed" : "open"}" aria-selected="false">
+    ${ME.role === "admin" ? `<span class="project-select" aria-hidden="true"><span></span></span>` : ""}
     <div class="row"><h3 title="${esc(p.name)}">${esc(p.name)}</h3><span class="sp"></span>${stt}</div>
     <div class="sm mut" title="${esc([p.market || "—", langNames(p), p.brief || ""].filter(Boolean).join(" · "))}">${esc(p.market || "—")} · ${esc(langNames(p))}${p.brief ? " · " + esc(p.brief).slice(0, 40) : ""}</div>
     ${s ? `<div class="nums"><div><b>${s.participants}</b><span>受访者</span></div><div><b>${s.done}/${s.sessions}</b><span>场次完成</span></div><div><b>${s.approved}</b><span>洞察已通过</span></div></div>
@@ -211,7 +212,8 @@ async function projectsView() {
   const ps = await projects(true);
   const canMake = STAFF();
   const q = sessionStorage.getItem("pq") || "", f = sessionStorage.getItem("pf") || "open";
-  shell(`${head("全部项目", canMake ? "每个项目按“受访者招募 → 场次与邀请 → 直播间 → 洞察与片段”推进。点卡片进入项目。" : "分配给你的项目。点卡片进入直播间或查看洞察。", canMake ? `<button class="p" id="np">新建项目</button>` : "")}
+  const actions = canMake ? `<div class="project-actions"><button class="p" id="np">新建项目</button>${ME.role === "admin" ? `<button id="pdc" hidden>取消选择</button><button class="warn" id="pdel" aria-pressed="false">删除项目</button>` : ""}</div>` : "";
+  shell(`${head("全部项目", canMake ? "每个项目按“受访者招募 → 场次与邀请 → 直播间 → 洞察与片段”推进。点卡片进入项目。" : "分配给你的项目。点卡片进入直播间或查看洞察。", actions)}
     ${ps.length ? `<div class="filters"><input type="search" id="pq" placeholder="搜索项目名称" aria-label="搜索项目名称" value="${esc(q)}">
       <div class="stats" role="group" aria-label="按状态筛选" style="margin:0">${[["open", "进行中"], ["closed", "已结项"], ["all", "全部"]].map(([k, n]) => `<button data-pf="${k}" aria-pressed="${f === k}">${n} <b>${k === "all" ? ps.length : ps.filter((p) => (k === "closed") === !!p.closed_at).length}</b></button>`).join("")}</div></div>
       <div class="grid" id="pgrid">${ps.map(projectCard).join("")}</div><div class="card empty" id="pnone" hidden>没有符合条件的项目。换个关键词，或点“全部”。</div>`
@@ -225,6 +227,24 @@ async function projectsView() {
   };
   if ($("#pq")) { $("#pq").oninput = () => { sessionStorage.setItem("pq", $("#pq").value); apply(); }; apply(); }
   app.querySelectorAll("[data-pf]").forEach((b) => b.onclick = () => { sessionStorage.setItem("pf", b.dataset.pf); app.querySelectorAll("[data-pf]").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); apply(); });
+  const del = $("#pdel"), cancel = $("#pdc"), selected = new Set();
+  const drawDelete = () => {
+    const choosing = app.querySelector("main").classList.contains("delete-selecting");
+    app.querySelectorAll(".pcard").forEach((c) => { const on = selected.has(c.dataset.projectId); c.classList.toggle("is-selected", on); c.setAttribute("aria-selected", String(on)); });
+    if (del) { del.textContent = choosing && selected.size ? `删除所选（${selected.size}）` : "删除项目"; del.setAttribute("aria-pressed", String(choosing)); }
+    if (cancel) cancel.hidden = !choosing;
+  };
+  if (del) del.onclick = guard(async () => {
+    const main = app.querySelector("main");
+    if (!main.classList.contains("delete-selecting")) { main.classList.add("delete-selecting"); drawDelete(); return; }
+    if (!selected.size) { toast("请先选择要删除的项目"); return; }
+    const chosen = ps.filter((p) => selected.has(p.id));
+    const m = modal(`<form><h2>永久删除 ${chosen.length} 个项目？</h2><p>项目及其受访者、访谈、录制、转写、洞察和其他关联数据都会永久删除，无法恢复。</p><div class="delete-project-names">${chosen.map((p) => `<div>${esc(p.name)}</div>`).join("")}</div><label class="f"><span>请输入“永久删除”确认</span><input name="confirm" autocomplete="off" required></label><div class="row"><button type="button" data-cancel>取消</button><span class="sp"></span><button class="warn" type="submit">永久删除</button></div></form>`);
+    $("[data-cancel]", m).onclick = () => m.remove();
+    $("form", m).onsubmit = guard(async (e) => { e.preventDefault(); const submit = e.submitter; submit.disabled = true; try { const r = await api("/projects/delete", { method: "POST", body: { ids: [...selected], confirm: e.target.confirm.value } }); m.remove(); PROJECTS = null; toast(`已永久删除 ${r.projects} 个项目`); await render(); } finally { submit.disabled = false; } });
+  });
+  if (cancel) cancel.onclick = () => { selected.clear(); app.querySelector("main").classList.remove("delete-selecting"); drawDelete(); };
+  if (del) app.querySelectorAll(".pcard").forEach((card) => card.onclick = (e) => { if (!app.querySelector("main").classList.contains("delete-selecting")) return; e.preventDefault(); const id = card.dataset.projectId; if (selected.has(id)) selected.delete(id); else selected.add(id); drawDelete(); });
   if (canMake) $("#np").onclick = () => newProjectPrompt();
 }
 
