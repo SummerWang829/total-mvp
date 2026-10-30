@@ -1,0 +1,21 @@
+/* 访谈页（#olws）：按 ui_v5 效果图补齐的外观差异。只写展示，所有选择器限定在访谈页里，不影响招募问卷页。 */
+#olws .rf-me{width:fit-content}
+#olws .ol-chg{border:1px solid #BFD9CC;background:var(--green-soft);color:var(--ink);border-radius:12px;padding:10px 14px}
+#olws .ol-chg b{color:var(--brand)}
+#olws .ol-chg li::marker{color:var(--ink2)}
+#olws .ol-chg.off{border-color:var(--line2);background:var(--wash);color:var(--muted)}
+#olws .ol-sg{border-radius:12px}
+#olws .rf-q{border-radius:12px;gap:4px}
+#olws [data-dp]{color:var(--risk-ink);border-color:#E7B3BF;font-weight:600}
+#olws [data-dp]:hover:not(:disabled){background:var(--risk-soft);border-color:var(--risk-ink);color:var(--risk-ink)}
+#olws .ol-q .ol-qt{font-size:15px}
+#olws .ol-dl{align-self:center;padding:2px 10px;border-radius:4px;font-size:13px;font-weight:500;line-height:1.5;background:#D5EBE0;color:#1F5C47}
+#olws .ol-dl[data-d="none"]{background:#EEF1EF;color:#3F5148}
+#olws .ol-dl[data-d="deep"]{background:#B7DCC9;color:#0F4535}
+#olws .ol-dl[data-d="free"]{background:#E4EEFA;color:#1F4F8A}
+#olws .ol-card{border:1px solid var(--line);border-radius:12px;padding:20px 24px 24px;margin:4px 0 16px;background:var(--surface)}
+#olws .ol-card .rf-h{font-size:18px;margin:0 0 12px}
+#olws .ol-card .ol-set{max-width:none;gap:16px}
+#olws .ol-card .ol-set input:not([type=checkbox]){max-width:100%}
+#olws .ol-two{grid-template-columns:minmax(0,200px) minmax(0,1fr);gap:24px;align-items:start}
+@media (max-width:900px){#olws .ol-two{grid-template-columns:minmax(0,1fr)}}

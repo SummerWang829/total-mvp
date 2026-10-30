@@ -1,0 +1,14 @@
+/* 立项向导（7 步）：按 ui_v5 效果图补齐的外观差异。只写展示；步骤不打勾、点步骤先保存再跳转的行为不变。 */
+.chain:not(.hm-chain){display:flex;flex-wrap:wrap;gap:8px}
+.chain:not(.hm-chain) .step{flex:none;flex-direction:row;align-items:center;justify-content:center;height:36px;padding:0 14px;border:1px solid var(--line2);border-radius:999px;font-size:14px;font-weight:500}
+.chain:not(.hm-chain) .step.on{border:1px solid var(--brand);background:var(--brand);color:#fff}
+.chain:not(.hm-chain) .step.on:hover:not(:disabled){color:#fff;border-color:var(--brand)}
+.chain:not(.hm-chain) .step:not(.on):hover:not(:disabled){background:var(--wash);border-color:var(--line2)}
+main:has(.chain:not(.hm-chain)) .head h1{font-size:40px;line-height:1.2}
+.wzbody .field{color:var(--ink);font-weight:600}
+.wzbody .field input,.wzbody .field select,.wzbody .field textarea,.wzbody .field .mut{font-weight:400}
+.wzbody .field input:not([type=checkbox]):not([type=radio]),.wzbody .field select,.wzbody .field textarea,.wzbody select,.wzbody textarea,.wzbody input:not([type=checkbox]):not([type=radio]){border-radius:4px}
+.wzbody .chk{color:var(--ink);font-weight:600}
+.wzbody .note{border-radius:12px}
+.wzbody .card{border-radius:12px}
+#wzprev:not(:disabled){border-style:solid}

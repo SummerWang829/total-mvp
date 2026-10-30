@@ -132,10 +132,10 @@ async function outlineView(p) {
     if (q.cover) return S.lang === "zh" ? "" : `<div class="rf-o mut">· ${esc(q.text)}${refOf(pi, qi)}</div>`;   // “要了解”只在非中文版本里留着，中文版不显示
     const key = `${part.kind}:${part.ref}:${qi}`;
     if (editing === key) return `<div class="row" style="margin:4px 0"><input class="olq" data-key="${key}" value="${esc(q.text)}" maxlength="300" aria-label="问题" style="flex:1;min-width:160px"><button class="p" type="button" data-ok="${key}">保存</button><button class="s" type="button" data-no="1">取消</button></div>`;
-    if (batch) return `<label class="ol-q ol-bq"><input type="checkbox" class="ol-pk" data-pk="${key}" ${picked.has(key) ? "checked" : ""} aria-label="选择这个问题"><span class="rf-n">${label}</span><span class="ol-qt">${esc(q.text)}${refOf(pi, qi)}</span><span class="ol-dl">${DEPTH[q.depth || "shallow"][0]}</span></label>`;
+    if (batch) return `<label class="ol-q ol-bq"><input type="checkbox" class="ol-pk" data-pk="${key}" ${picked.has(key) ? "checked" : ""} aria-label="选择这个问题"><span class="rf-n">${label}</span><span class="ol-qt">${esc(q.text)}${refOf(pi, qi)}</span><span class="ol-dl" data-d="${q.depth || "shallow"}">${DEPTH[q.depth || "shallow"][0]}</span></label>`;
     const mk = (S.marks || {})[q.text], on = opened.has(key), depth = q.depth || "shallow";
     const panel = !on ? "" : `<div class="ol-ex" data-ex="${key}"><div class="ol-exr"><label for="d-${key}">追问深度</label><select id="d-${key}" class="ol-dp" data-dp-sel="${key}" aria-label="追问深度">${Object.entries(DEPTH).map(([k, v]) => `<option value="${k}"${k === depth ? " selected" : ""}>${v[0]} · ${v[1]}</option>`).join("")}</select></div><label for="g-${key}" class="ol-gl">访谈指引</label><textarea id="g-${key}" class="ol-gt" data-gt="${key}" maxlength="500" rows="3" aria-label="访谈指引">${esc(q.guide || "")}</textarea><div class="ol-gc"><span data-gc>${(q.guide || "").length}</span> / 500</div></div>`;
-    return `<div class="ol-q${mk ? " ol-" + mk : ""}"><button class="ol-cv${on ? " on" : ""}" type="button" data-tg="${key}" aria-expanded="${on}" aria-label="${on ? "收起" : "展开"}这个问题的设置">›</button><span class="rf-n">${label}</span><span class="ol-qt" data-selk="q:${key}">${esc(q.text)}${mk ? `<em class="ol-mk">${mk === "new" ? "新增" : "已修改"}</em>` : ""}${refOf(pi, qi)}</span><span class="ol-dl">${DEPTH[depth][0]}</span><span class="ol-qa"><button class="s" type="button" data-ed="${key}" aria-label="编辑这个问题">编辑</button><button class="s" type="button" data-rm="${key}" aria-label="删除这个问题">删除</button></span></div>${panel}`;
+    return `<div class="ol-q${mk ? " ol-" + mk : ""}"><button class="ol-cv${on ? " on" : ""}" type="button" data-tg="${key}" aria-expanded="${on}" aria-label="${on ? "收起" : "展开"}这个问题的设置">›</button><span class="rf-n">${label}</span><span class="ol-qt" data-selk="q:${key}">${esc(q.text)}${mk ? `<em class="ol-mk">${mk === "new" ? "新增" : "已修改"}</em>` : ""}${refOf(pi, qi)}</span><span class="ol-dl" data-d="${depth}">${DEPTH[depth][0]}</span><span class="ol-qa"><button class="s" type="button" data-ed="${key}" aria-label="编辑这个问题">编辑</button><button class="s" type="button" data-rm="${key}" aria-label="删除这个问题">删除</button></span></div>${panel}`;
   };
   const partCard = (part, mins, pi, n0) => {
     let k = n0; const live = cur().family === "live";
@@ -168,13 +168,13 @@ async function outlineView(p) {
     const s = S.settings, ed = s.can_edit_langs, ok = !!S.summary;
     const src = (x) => `<span class="ol-src">${x}</span>`;
     const chip = (on, attr, label, off) => `<button type="button" class="ol-chip${on ? " on" : ""}" ${attr} aria-pressed="${on}" ${off ? "disabled" : ""}>${esc(label)}</button>`;
-    return `<h3 class="rf-h">常规设置</h3><div class="ol-set">
+    return `<div class="ol-card"><h3 class="rf-h">常规设置</h3><div class="ol-set">
       <label class="f"><span>对外标题 ${src("跟随“同步到”")}</span><input id="olset-topic" maxlength="18" value="${esc(s.title)}" ${ok ? "" : "disabled"}><small class="sm mut">18 字以内，不写品牌</small></label>
       <label class="f"><span>研究背景 ${src("与立项互通")}</span><textarea id="olset-brief" rows="4" maxlength="5000">${esc(s.brief)}</textarea></label>
       <label class="f"><span>研究目标 ${src("与招募问卷互通")}</span><textarea id="olset-goals" rows="4" placeholder="每行一条">${esc(s.goals.join("\n"))}</textarea></label>
       <div class="f"><span>访谈语言 ${src("与项目总览互通")}</span><div class="ol-chips">${s.languages.map((x) => chip(x.on, `data-sl="${x.code}"`, x.name, !ed || (x.on && x.in_use))).join("")}</div></div>
       <div class="ol-two"><label class="f"><span>预计时长（分钟）</span><input id="olset-min" type="number" min="10" max="180" step="5" value="${s.minutes}" ${ok ? "" : "disabled"}></label>
-        <div class="f"><span>回答格式 ${src("与项目总览互通")}</span><div class="ol-chips">${Object.entries(s.format_names).map(([c, n]) => chip(s.formats.includes(c), `data-sf="${c}"`, n, !ed)).join("")}</div></div></div></div>
+        <div class="f"><span>回答格式 ${src("与项目总览互通")}</span><div class="ol-chips">${Object.entries(s.format_names).map(([c, n]) => chip(s.formats.includes(c), `data-sf="${c}"`, n, !ed)).join("")}</div></div></div></div></div>
       ${ok ? "" : `<p class="sm mut">先有一份大纲，对外标题和时长才会生效。</p>`}`;
   };
   function testHtml() {

@@ -1,0 +1,3 @@
+/* 项目总览四个页签（总览 / 执行监控 / 洞察池 / 项目成员）：按 ui_v5 效果图补齐的外观差异。只写展示。 */
+.overview-metrics>div+div{border-left:1px solid #426257;padding-left:24px}
+.overview-metrics>div:first-child{padding-right:24px}
