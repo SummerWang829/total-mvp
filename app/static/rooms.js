@@ -91,7 +91,7 @@ function rmLength(i, tab) {
   if (tab === "ended" || tab === "absent") return real == null ? "—" : `${real} 分`;
   return i.status === "ended" && real != null ? `${plan} / ${real} 分` : `${plan} / —`;
 }
-const rmLengthHead = (tab) => ({ scheduled: "预计时长", live: "已进行 / 预计", ended: "访谈时长" })[tab] || "预计 / 访谈时长";
+const rmLengthHead = (tab) => ({ scheduled: "预计时长", live: "已进行 / 预计", ended: "访谈时长", absent: "访谈时长" })[tab] || "预计 / 访谈时长";
 const rmKeyLine = (i) => (i.key_answers && i.key_answers.length ? i.key_answers.slice(0, 3).map((a) => a.a).join("；") : "");
 
 async function roomsView(p) {
