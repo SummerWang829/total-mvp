@@ -207,17 +207,22 @@ def run(tmp):
         ok("Singapore" in pp.inner_text("form.card") and "China" in pp.inner_text("form.card"), "consent page says data is stored in Singapore and accessed from China")
         pp.screenshot(path=f"{SHOTS}/e2e_consent.png")
         pp.click("form button")
-        pp.wait_for_url("**/room.html*", timeout=20000)
-        ok(wait_for(lambda: st() == "entered", 10), "staff sees the participant in the room right after consent (nobody had to let them in)")
-        ok(wait_for(lambda: "moderator" in pp.inner_text("#msg").lower(), 15), "inside the room the participant is told the moderator will start soon")
+        pp.wait_for_selector("#pw", timeout=20000)
+        ok(wait_for(lambda: st() == "consented", 10) and "room.html" not in pp.url, "after consent the participant waits at the door: not in the room until the moderator lets them in")
         # ---- moderator + observer ----
         cm, pm = ctx("moderator", tok["moderator"])
         pm.goto(f"{B}/room.html?i={iid}")
         co, po = ctx("observer", tok["observer"])
         po.goto(f"{B}/room.html?i={iid}&as=observer")
         ok(wait_for(lambda: pm.is_visible("#b-start") and pm.is_disabled("#b-rec"), 15), "record button disabled before the interview starts")
-        ok(wait_for(lambda: "已在房间" in pm.inner_text("#wst"), 10), "moderator sees the participant already in the room")
-        ok(pm.locator("#b-admit, #b-hold").count() == 0, "the moderator has nothing to let in or hold")
+        ok(wait_for(lambda: pm.is_visible("#admitbar") and "已到" in pm.inner_text("#admitwho"), 15), "moderator sees the participant at the door with a release button")
+        ok(not po.is_visible("#admitbar"), "the observer has no release bar")
+        pm.screenshot(path=f"{SHOTS}/e2e_room_admit.png")
+        pm.click("#b-admit")
+        pp.wait_for_url("**/room.html*", timeout=30000)
+        ok(wait_for(lambda: st() == "entered", 10), "staff sees the participant in the room once the moderator has let them in")
+        ok(wait_for(lambda: "moderator" in pp.inner_text("#msg").lower(), 15), "inside the room the participant is told the moderator will start soon")
+        ok(wait_for(lambda: "已在房间" in pm.inner_text("#wst"), 10) and pm.is_hidden("#admitbar"), "moderator sees the participant in the room and the release bar is gone")
         ok(not po.is_visible("#wbox"), "the observer does not see who is in the room")
         ok("t-light" in pm.evaluate("document.body.className") and "t-light" in po.evaluate("document.body.className"), "rooms open in the white light theme by default")
         pp.screenshot(path=f"{SHOTS}/e2e_before_start.png")
@@ -542,8 +547,9 @@ def concept_phase(pw, tok, ids, pid, errs):
     ok(wait_for(lambda: "字幕已开启" in pm.inner_text("#capst"), 10), "concept test: the caption panel says captions are on")
 
     # ---- the participant arrives the way a person does: invitation page -> waiting room -> "enter" (a real click) ----
+    call(f"/interviews/{iid}/admit", {}, tok["moderator"])   # the moderator lets them in, once
     pp.goto(f"{B}/join.html?t={T}")
-    pp.wait_for_url("**/room.html*", timeout=20000)   # consented and device-tested earlier: the invitation page sends them straight in
+    pp.wait_for_url("**/room.html*", timeout=20000)   # consented, device-tested and let in: the invitation page sends them straight in
     ok(wait_for(lambda: in_room(pp), 30), "concept test: the participant is in the real video room")
     two = wait_for(lambda: len(FAKE.phase) >= 2, 45)
     ok(two, f"concept test: the participant's browser opened its own speech-recognition session (no autoplay override) {timeline()} participant caption state: {pp.evaluate(CAPSTATE)} slowest calls: {slow(pp)}")

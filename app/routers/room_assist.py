@@ -28,7 +28,8 @@ def assist(iid: str, asked: str = Query("", max_length=1200), ctx: Ctx = Depends
     out["probes"] = room_assist.probe_suggestions(lines, set(list(seen)[:MAX_ASKED]))[:room_assist.probe_limit(summary, cov)]
     if summary:
         mins = room_assist.part_minutes(summary["parts"], planned)
-        out["outline"] = {"parts": [{"title": p["title"], "minutes": mins[i], "questions": [{"text": q["text"], "covered": next((x["covered"] for x in cov["questions"] if x["part"] == i and x["q"] == q["text"]), False)} for q in p["questions"] if not q.get("cover")]} for i, p in enumerate(summary["parts"])],
+        out["outline"] = {"parts": [{"title": p["title"], "minutes": mins[i], "questions": [{"text": q["text"], "covered": next((x["covered"] for x in cov["questions"] if x["part"] == i and x["q"] == q["text"]), False),
+                          "depth": q.get("depth", "shallow"), "guide": q.get("guide", "")} for q in p["questions"] if not q.get("cover")]} for i, p in enumerate(summary["parts"])],
                           "covered": cov["covered"], "total": cov["total"], "current": cov["current"]}
         out["pacing"] = room_assist.pacing(cov, concept.at_ms(itv) if itv.status == "live" else None, planned)
         out["chapters"] = room_assist.chapter_summaries(summary, lines, cov)

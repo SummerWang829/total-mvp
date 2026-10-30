@@ -1,6 +1,6 @@
 """Participant journey as the research team sees it: sent -> opened -> device_ok -> consented -> entered -> done."""
 from conftest import H
-from test_week1 import give_consent, go_live, let_in
+from test_week1 import give_consent, go_live, let_in, release
 
 
 def state(org, itv, role="researcher"):
@@ -22,6 +22,10 @@ def test_invite_state_follows_the_participant(org):
     assert org.c.get(f"/api/public/join/{t}").json()["device_ok"] is True
     give_consent(org, itv)
     assert state(org, itv) == "consented"
+    assert org.c.post(f"/api/public/join/{t}/enter").status_code == 409  # not let in yet
+    assert org.c.get(f"/api/public/join/{t}").json()["can_enter_now"] is False
+    release(org, itv)
+    assert org.c.get(f"/api/public/join/{t}").json()["can_enter_now"] is True
     assert org.c.post(f"/api/public/join/{t}/enter").status_code == 200
     assert state(org, itv) == "entered"
     org.c.post(f"/api/interviews/{itv['id']}/end", headers=org.h("moderator"))
@@ -67,24 +71,28 @@ def test_cannot_enter_without_a_passed_device_test(org):
     r = org.c.post(f"/api/public/join/{t}/enter")
     assert r.status_code == 403 and "device" in r.json()["detail"]
     org.c.post(f"/api/public/join/{t}/device", json={"camera": False, "microphone": True, "speaker": False})  # camera may stay off
+    release(org, itv)
     assert org.c.post(f"/api/public/join/{t}/enter").status_code == 200
 
 
-def test_entry_needs_consent_and_a_device_test_but_not_the_moderator(org):
+def test_entry_needs_consent_a_device_test_and_one_release_by_the_moderator(org):
     itv = org.interview()
     t, iid = itv["invite_token"], itv["id"]
     assert org.c.post(f"/api/public/join/{t}/enter").status_code == 403   # no consent yet
     give_consent(org, itv)
     assert org.c.post(f"/api/public/join/{t}/enter").status_code == 403   # no device test yet
     org.c.post(f"/api/public/join/{t}/device", json={"camera": True, "microphone": True, "speaker": True})
-    assert org.c.post(f"/api/public/join/{t}/enter").status_code == 200   # the interview has not even started: still in, nobody had to say yes
-    assert org.c.post(f"/api/public/join/{t}/admit", json={"admit": True}).status_code in (404, 405)
-    assert org.c.post(f"/api/interviews/{iid}/admit", headers=org.h("moderator"), json={"admit": True}).status_code in (404, 405)   # the admit call is gone
+    assert org.c.post(f"/api/public/join/{t}/enter").status_code == 409   # not let in yet
+    assert org.c.post(f"/api/public/join/{t}/admit").status_code in (404, 405)   # the participant cannot let themselves in
+    assert org.c.post(f"/api/interviews/{iid}/admit", headers=org.h("observer")).status_code == 403   # nor can an observer
+    assert org.c.post(f"/api/interviews/{iid}/admit", headers=org.h("moderator")).status_code == 200
+    assert org.c.post(f"/api/interviews/{iid}/admit", headers=org.h("moderator")).status_code == 200   # once is enough; asking again changes nothing
+    assert org.c.post(f"/api/public/join/{t}/enter").status_code == 200   # the interview has not even started: still in
     org.c.post(f"/api/interviews/{iid}/end", headers=org.h("moderator"))
     assert org.c.post(f"/api/public/join/{t}/enter").status_code == 409   # an ended interview is closed
 
 
-def test_leaving_and_coming_back_needs_nobody_and_the_team_sees_who_is_there(org):
+def test_leaving_and_coming_back_needs_no_second_release_and_the_team_sees_who_is_there(org):
     itv = org.interview()
     t, iid = itv["invite_token"], itv["id"]
     give_consent(org, itv)
@@ -95,13 +103,15 @@ def test_leaving_and_coming_back_needs_nobody_and_the_team_sees_who_is_there(org
     org.c.get(f"/api/public/join/{t}/live?waiting=1")   # the participant's page polls with waiting=1 while it is open
     assert staff()["participant"]["waiting"] is True and org.c.get(f"/api/interviews/{iid}", headers=org.h()).json()["waiting"] is True
     assert "participant" not in staff("observer")   # the client does not see who is there
-    assert live()["admitted"] is True and "held" not in live()
+    assert live()["admitted"] is False and staff()["participant"]["needs_admit"] is True and staff()["participant"]["admitted"] is False
+    release(org, itv)
+    assert live()["admitted"] is True and staff()["participant"]["admitted"] is True and "held" not in live()
     assert org.c.post(f"/api/public/join/{t}/enter").status_code == 200
     assert staff()["participant"]["entered"] is True
     assert org.c.post(f"/api/public/join/{t}/enter").status_code == 200   # a page reload re-enters
     assert org.c.post(f"/api/public/join/{t}/leave").status_code == 204
     assert staff()["participant"]["waiting"] is False   # gone from the room
-    assert org.c.post(f"/api/public/join/{t}/enter").status_code == 200   # and back in, with nobody's permission
+    assert org.c.post(f"/api/public/join/{t}/enter").status_code == 200   # and back in, with no second release
 
 
 # ---- project home: progress, next step, recent activity ----

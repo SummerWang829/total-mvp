@@ -276,18 +276,21 @@ function preStep() {
   });
 }
 
-// ---------- 3. into the room: nobody has to let the participant in; before the time window they wait here and go in by themselves ----------
+// ---------- 3. into the room: outside the time window they wait here; inside it a human-moderated interview waits for the moderator to let them in (once), then they go in by themselves ----------
 let waitTimer = null;
 function waitStep() {
   const url = `/room.html?t=${encodeURIComponent(t)}`;
-  if (info.can_enter_now) { location.replace(url); return; }   // the room is open: straight in (inside the room they wait for the moderator to start)
-  frame(IX.wait, `<h1>${x.wait}</h1><div class="pwait" id="pw" role="status"><span class="dot" aria-hidden="true"></span><span id="pwt">${x.notTime}</span></div><p class="mut">${esc(x.tips)}</p>`);
+  if (info.can_enter_now) { location.replace(url); return; }   // the room is open to this person: straight in (inside the room they wait for the moderator to start)
+  const msg = () => (info.window_ok === false ? x.notTime : x.waiting);
+  frame(IX.wait, `<h1>${x.wait}</h1><div class="pwait" id="pw" role="status"><span class="dot" aria-hidden="true"></span><span id="pwt">${msg()}</span></div><p class="mut">${esc(x.tips)}</p>`);
   const poll = async () => {
     try { info = await pub(""); } catch { return; }
     if (info.status === "ended") { clearInterval(waitTimer); $("#pw").className = "pwait go"; $("#pwt").textContent = x.ended; return; }
-    if (info.can_enter_now) { clearInterval(waitTimer); location.replace(url); }
+    if (info.can_enter_now) { clearInterval(waitTimer); location.replace(url); return; }
+    $("#pwt").textContent = msg();
+    pub("/live?waiting=1").catch(() => {});   // so the moderator sees who is at the door
   };
-  clearInterval(waitTimer); waitTimer = setInterval(poll, 5000);
+  clearInterval(waitTimer); waitTimer = setInterval(poll, 3000); poll();
 }
 
 (async () => {

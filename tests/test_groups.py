@@ -208,7 +208,7 @@ def test_each_seat_has_its_own_journey(org):
     assert org.c.get(f"/api/public/join/{t2}").json()["consented"] is False  # the other person has not agreed
     assert org.c.get(f"/api/public/join/{t2}").json()["device_ok"] is False
     org.c.post(f"/api/interviews/{iid}/start", headers=org.h("moderator"))
-    assert org.c.post(f"/api/interviews/{iid}/admit", headers=org.h("moderator"), json={"admit": True, "participant_id": pids[0]}).status_code in (404, 405)  # the admit call is gone
+    assert org.c.post(f"/api/interviews/{iid}/admit", headers=org.h("moderator"), json={"admit": True, "participant_id": pids[0]}).status_code in (404, 405, 409)  # a focus group has nobody to release seats
     assert org.c.post(f"/api/public/join/{t1}/enter").status_code == 200
     assert org.c.post(f"/api/public/join/{t2}/enter").status_code == 403  # not consented
     _ready(org, t2)

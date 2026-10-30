@@ -1,0 +1,61 @@
+/* 访谈房间（主持人 / 观察员）：四列，画面可平分或大屏，追问框和后台聊天是聊天框，等候区放行。只管排版和外观。 */
+body.q4mode .q4{gap:12px;padding:0 16px}
+body[data-room-role=moderator].q4mode .q4,body[data-room-role=observer].q4mode .q4{grid-template-columns:minmax(0,1.15fr) minmax(0,1.5fr) minmax(0,.85fr) minmax(0,.6fr)}
+body.q4mode .q4>.qc{display:flex}
+
+/* 画面：默认平分（主持人左、受访者右）；大屏 = 一个大画面加一个小窗，点画面换大小，点小窗互换 */
+.q4 .qrow{position:relative;flex:none;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;height:auto;min-height:0}
+.q4 .qrow .qt{position:relative;height:auto;min-height:0;aspect-ratio:16/10;border-radius:12px;overflow:hidden;background:#192E26;cursor:pointer}
+.q4 .qrow .qt .tile{height:100%;width:100%;margin:0;border-radius:inherit}
+.q4 .qrow.big{display:block;height:clamp(240px,38vh,420px);border-radius:14px;overflow:hidden;background:#192E26}
+.q4 .qrow.big .qt{position:absolute;aspect-ratio:auto}
+.q4 .qrow.big #c2t{inset:0;width:100%;height:100%;cursor:default}
+.q4 .qrow.big #c1t{right:12px;bottom:12px;left:auto;top:auto;width:26%;height:32%;min-height:84px;z-index:3;border:2px solid #7E978C;border-radius:10px;background:#30483D}
+.q4 .qrow.big.swap #c1t{inset:0;width:100%;height:100%;border:0;border-radius:0;z-index:1;cursor:default}
+.q4 .qrow.big.swap #c2t{inset:auto 12px 12px auto;width:26%;height:32%;min-height:84px;z-index:3;border:2px solid #7E978C;border-radius:10px;background:#30483D;cursor:pointer}
+.q4 .qrow.big .qt:empty{display:none}
+.qvm{position:absolute;left:8px;bottom:8px;z-index:6;display:flex;gap:4px}
+.qvm button{height:26px;min-height:26px;padding:0 10px;font-size:12px;border-radius:999px;background:rgba(11,29,22,.72);color:#fff;border:1px solid rgba(255,255,255,.35)}
+.qvm button::before{display:none}
+.qvm button[aria-pressed=true]{background:var(--orange);border-color:var(--orange);color:var(--on-orange)}
+.q4 .qrow:not(.big) .qvm{bottom:auto;top:8px}
+
+/* 等候区 */
+.admitbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 16px 8px;padding:8px 14px;border:1px solid #E9B38A;background:#FFF7F0;color:#173B2F;border-radius:12px;font-size:14px}
+.admitbar[hidden]{display:none}.admitbar .sp{flex:1}.admitbar .sm{color:#566E62}
+body.t-dark .admitbar{background:#2A2218;border-color:#6B4A28;color:#F2E8DA}body.t-dark .admitbar .sm{color:#CDBBA3}
+
+/* 顶栏：已用 / 计划 · 当前章节 */
+.qtime{font-size:13px;padding:2px 10px;border:1px solid rgba(255,255,255,.35);border-radius:999px;color:#fff;white-space:nowrap}
+.qtime[hidden]{display:none}.qtime.over{background:#8A2A1E;border-color:#8A2A1E}
+
+/* 聊天框：圆角、随文字长高、右下角圆形发送键，空的时候发送键置灰，回车发送 */
+.qbox{border:1px solid var(--r-line,#DCE5DF);border-radius:16px;background:var(--r-pan,#fff);padding:6px 8px}
+.qin{display:flex;align-items:flex-end;gap:6px}
+.qbox .qin textarea{flex:1;min-width:0;border:0;outline:0;box-shadow:none;background:transparent;resize:none;padding:5px 2px;font:inherit;font-size:14px;line-height:1.5;max-height:120px;color:inherit}
+.qbox .qin textarea:focus-visible{outline:0;box-shadow:none}
+.qbox:focus-within{border-color:var(--orange);box-shadow:0 0 0 2px rgba(255,106,0,.18)}
+.qbox .qsend{flex:none;width:30px;min-width:30px;height:30px;min-height:30px;padding:0;border-radius:50%;background:var(--orange);color:var(--on-orange);border:0;font-size:16px;line-height:1}
+.qbox .qsend::before{display:none}.qbox .qsend:disabled{background:var(--r-tile,#E3ECE7);color:var(--r-mut,#7A8F84);opacity:1;cursor:default}
+#pform{order:99;margin-top:auto;display:flex;flex-direction:column;gap:6px;padding-top:6px}
+#pform .qqchips{margin-bottom:4px}
+#pform .qdepth{margin:0}
+#brform{margin-top:8px}
+#brpop .chat{display:flex;flex-direction:column}
+#brpop .log{display:flex;flex-direction:column;gap:6px;max-height:36vh;overflow:auto}
+
+/* 大纲：每题右边的 › 点一下看追问点和深度 */
+.q4 .qo{flex-wrap:wrap}
+.q4 .qo>span{flex:1;min-width:0}
+.q4 .qx{flex:none;width:28px;min-width:28px;height:28px;min-height:28px;padding:0;border:0;background:transparent;color:var(--r-mut);font-size:18px;line-height:1;transition:transform .16s cubic-bezier(.23,1,.32,1)}
+.q4 .qx::before{display:none}.q4 .qx[aria-expanded=true]{transform:rotate(90deg)}
+.q4 .qd{flex-basis:100%;padding:4px 0 2px 21px;font-size:14px;line-height:1.55;overflow-wrap:anywhere}
+.q4 .qd small{display:block;color:var(--r-mut);font-size:12px}
+
+/* 底栏：结束访谈单独放最右，离开挨着它 */
+body.q4mode #bar #b-leave{order:98;margin-left:auto}
+body.q4mode #bar #b-end{order:99;margin-left:12px}
+body.q4mode #bar button[aria-pressed=true]{color:var(--r-bad,#B72C3C)}
+@media (hover:hover) and (pointer:fine){.qvm button:hover,.q4 .qx:hover{filter:brightness(1.15)}}
+@media (max-width:1050px){.q4 .qrow.big{height:55vh}}
+body.q4mode.has-admit .q4{height:calc(100vh - 232px)}

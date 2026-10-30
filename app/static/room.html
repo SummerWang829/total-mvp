@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Interview room</title><link rel="stylesheet" href="/app.css"><link rel="stylesheet" href="/editorial.css"><link rel="stylesheet" href="/room-role.css"></head>
+<title>Interview room</title><link rel="stylesheet" href="/app.css"><link rel="stylesheet" href="/editorial.css"><link rel="stylesheet" href="/room-role.css"><link rel="stylesheet" href="/ui_room.css"></head>
 <body class="stage t-light">
 <script>try { if (localStorage.getItem("tt_room_theme") === "dark") document.body.className = "stage t-dark"; } catch (e) {}</script>
 <header class="rhead">
@@ -8,6 +8,7 @@
   <span id="who" class="rwho"></span>
   <span id="state" class="tag"></span>
   <span id="recdot" class="recdot" hidden></span>
+  <span id="qtime" class="qtime" hidden></span>
   <span id="warn" class="rwarn" hidden></span>
   <span id="netq" class="rnet" hidden></span>
   <button id="theme" class="thm" type="button"></button>
@@ -23,14 +24,16 @@
   <section><div class="stim" id="stim" hidden></div><div class="vgrid" id="grid"></div></section>
   <aside class="rpan side" id="rpan" hidden><h3>实时字幕</h3><p>录制结束后的逐字转写在访谈页。</p></aside>
 </div>
+<div class="admitbar" id="admitbar" hidden><b>等候区</b><span id="admitwho"></span><span class="sp"></span><span class="sm" id="admithint">放行一次即可，之后离开再回来不用再放行</span><button type="button" class="p" id="b-admit">放行</button></div>
 <div class="q4" id="q4" aria-label="访谈房间">
-  <div class="qc qc1"><div class="qrow"><div class="qt" id="c1t"></div><div class="qt" id="c2t"></div></div><div class="qp fill" id="c1o"><h3>访谈大纲 <span id="olcount"></span></h3><div id="olbody"><p>加载中…</p></div></div><div class="qp qs" id="c1s"><h3>说话占比 · 节奏</h3><div id="talk"><p>访谈开始后显示</p></div></div></div>
+  <div class="qc qc1"><div class="qrow" id="qrow"><div class="qt" id="c1t"></div><div class="qt" id="c2t"></div><div class="qvm" id="qvm" role="group" aria-label="画面大小"><button type="button" data-vm="big">大屏</button><button type="button" data-vm="split">平分</button></div></div><div class="qp fill" id="c1o"><h3>访谈大纲 <span id="olcount"></span></h3><div id="olbody"><p>加载中…</p></div></div><div class="qp qs" id="c1s"><h3>说话占比 · 节奏</h3><div id="talk"><p>访谈开始后显示</p></div></div></div>
   <div class="qc qc2"><div class="qp cp fill" id="c2c"><h3>实时字幕 <span id="capst" role="status">等访谈开始后，字幕会自动开启</span></h3><div class="caps" id="caps" role="log" aria-live="polite" tabindex="0"></div><div class="cap live" id="cappart" hidden style="white-space:pre-wrap"></div></div></div>
   <div class="qc qc3"><div class="qp fill" id="c3"><h3>追问</h3>
-    <form id="pform"><div class="qqh sm" id="qqh">点左边字幕里的话，会引用到这里</div><div class="qqchips" id="qq"></div><label for="pin" class="sm">想深挖什么</label><textarea id="pin" rows="2" maxlength="200"></textarea>
-      <div class="qdepth" id="qdepth" role="group" aria-label="追问深度"><button type="button" data-d="shallow">轻问 1 个</button><button type="button" data-d="deep">深挖 2–3 个</button></div><button id="psend" type="submit" class="p">发给主持人</button></form>
     <h3 style="margin-top:6px">待追问</h3><div class="probes" id="probes"></div>
-    <h3 style="margin-top:6px" id="sugh">系统建议 <span id="sugnote"></span></h3><div id="sugg"></div></div></div>
+    <h3 style="margin-top:6px" id="sugh">系统建议 <span id="sugnote"></span></h3><div id="sugg"></div>
+    <form id="pform"><div class="qdepth" id="qdepth" role="group" aria-label="追问深度"><button type="button" data-d="shallow">轻问 1 个</button><button type="button" data-d="deep">深挖 2–3 个</button></div>
+      <div class="qbox"><div class="qqchips" id="qq"></div><div class="qin"><textarea id="pin" rows="1" maxlength="200" placeholder="想深挖什么…" aria-label="想深挖什么"></textarea><button id="psend" type="submit" class="qsend" aria-label="发送" disabled>↑</button></div></div>
+      <div class="qqh sm" id="qqh">点左边字幕里的话，会引用到输入框上方</div></form></div></div>
   <div class="qc qc4"><div class="qp fill" id="c4"><h3>章节总结 <span id="chapnote"></span></h3><div id="chap"><p>每章问完后，这里出本章要点和没展开的地方。</p></div></div></div>
 </div>
 <div class="brpop" id="brpop" hidden></div>
@@ -286,8 +289,11 @@ async function poll() {
     else {
       const P = st.participant || {};
       $id("gwait").hidden = true;
-      $id("wst").textContent = P.waiting ? "受访者已在房间" : P.entered ? "受访者进过房间，现在不在" : "受访者还没来（链接随时可以进入）";
-      msg(`你是<b>主持人</b>。${P.waiting && st.status === "scheduled" ? "受访者已在房间等你。" : ""}${st.status === "scheduled" ? "点“开始访谈”开始计时；受访者随时可以进入，不需要你放行。" : st.consented ? (st.recording ? "正在录制，你和受访者的画面声音都在被记录。" : "受访者已同意，可以点“开始录制”。") : "受访者还没有同意录制，同意后才能录制。"}`);
+      const door = P.needs_admit && !P.admitted && st.status !== "ended";
+      document.body.classList.toggle("has-admit", !!door);
+      const bar = $id("admitbar"); if (bar) { bar.hidden = !door; $id("admitwho").textContent = `受访者${P.waiting ? "已到" : "还没到"} · 设备${P.device_ok ? "已通过" : "还没检测通过"}`; }
+      $id("wst").textContent = P.waiting ? (door ? "受访者在等候区" : "受访者已在房间") : P.entered ? "受访者进过房间，现在不在" : door ? "受访者还没来" : "受访者还没来（已放行，链接随时可以进入）";
+      msg(`你是<b>主持人</b>。${P.waiting && st.status === "scheduled" ? "受访者已在等你。" : ""}${door ? "受访者要等你放行才能进房。" : ""}${st.status === "scheduled" ? "点“开始访谈”开始计时。" : st.consented ? (st.recording ? "正在录制，你和受访者的画面声音都在被记录。" : "受访者已同意，可以点“开始录制”。") : "受访者还没有同意录制，同意后才能录制。"}`);
     }
     set("b-start", st.status === "scheduled"); set("b-rec", st.status === "live" && st.consented && !st.recording); set("b-stop", !!st.recording); set("b-end", true);
     if (C.on) pollChat();
@@ -301,7 +307,14 @@ function renderGroupWaiting(st) {
   $id("gwait").innerHTML = st.participants.map((p) => `<div class="row" style="margin-top:8px"><b>${esc(p.label)}</b><span class="sm">${esc(state(p))}</span></div>`).join("");
   msg(`你是<b>主持人</b>。${st.status === "scheduled" ? "点“开始访谈”开始计时；大家随时可以进入，不需要你放行。" : st.consented ? (st.recording ? "正在录制。" : "已有人同意录制，可以开始录制。") : "还没有人同意录制。"}`);
 }
-function tick() { updatePlanTimer(); if (recStart) { const s = Math.floor((performance.now() - recStart.at) / 1000); $id("recdot").textContent = `${T.rec} ${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`; } }
+function qTime() {   // used / planned time and the chapter being asked, from the outline's own minute budgets
+  const el = $id("qtime"); if (!el) return;
+  const P = Q4.plan; if (!Q4.on || !P || PLAN.elapsed == null) { el.hidden = true; return; }
+  const ms = PLAN.elapsed + (performance.now() - PLAN.at), left = P.endMs - ms, f = (v) => mmss(Math.abs(v));
+  el.hidden = false; el.classList.toggle("over", left < 0);
+  el.textContent = `已用 ${f(ms)} / ${String(P.planned).padStart(2, "0")}:00 · ${P.name} ${left < 0 ? "超时 " : "剩 "}${f(left)}`;
+}
+function tick() { updatePlanTimer(); qTime(); if (recStart) { const s = Math.floor((performance.now() - recStart.at) / 1000); $id("recdot").textContent = `${T.rec} ${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`; } }
 function finish() {
   ended = true; stopRecorder(); capStop(); localTracks.forEach((t) => { try { t.stop(); } catch {} }); if (room) room.disconnect();
   $id("recdot").hidden = true; bar.querySelectorAll("button").forEach((b) => (b.disabled = true));
@@ -606,18 +619,25 @@ async function brPoll() {
 function buildBackroom(host) {
   const box = document.createElement("div"); box.id = "brbox"; box.className = "chat";
   box.innerHTML = `<h3 style="margin-top:6px">后台聊天（受访者看不到）</h3><div class="log" id="brlog" role="log" aria-live="polite" tabindex="0"></div>
-    <form id="brform"><label for="brin">写给团队</label><textarea id="brin" rows="2" maxlength="500"></textarea><button class="p" id="brsend" type="submit">发送</button></form>`;
+    <form id="brform"><div class="qbox"><div class="qin"><textarea id="brin" rows="1" maxlength="500" placeholder="写给团队…" aria-label="写给团队"></textarea><button class="qsend" id="brsend" type="submit" aria-label="发送">↑</button></div></div></form>`;
   host.appendChild(box);
   $id("brform").onsubmit = guard(async (e) => {
     e.preventDefault(); const ta = $id("brin"), text = ta.value.trim(); if (!text) return;
     await api(`/interviews/${iid}/backroom`, { method: "POST", body: { text } }); ta.value = ""; await brPoll();
   });
-  $id("brin").onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); $id("brform").requestSubmit(); } };
+  chatBox($id("brin"), $id("brform"), $id("brsend"));
   brPoll(); BR.timer = setInterval(brPoll, 2000);
 }
 
 // ---- the team's caption panel: both speakers, quote and follow-up on any sentence ----
 const CP = { after: 0 };
+function chatBox(ta, form, send, extra) {
+  const sync = () => { ta.style.height = "auto"; ta.style.height = Math.min(ta.scrollHeight, 120) + "px"; if (send) send.disabled = !(ta.value.trim() || (extra && extra())); };
+  ta.addEventListener("input", sync);
+  ta.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); if (!send || !send.disabled) form.requestSubmit(); } });
+  form.addEventListener("submit", () => setTimeout(sync, 0));
+  sync(); return sync;
+}
 // ---- follow-up composer: click a line to quote it, then write what to dig into; the same state serves the caption panel and the AI room's conversation ----
 const QQ = { items: [], depth: "shallow" }, QQ_MAX = 6;
 function qqToggle(item) {
@@ -644,6 +664,7 @@ function qqDraw() {
     c.append(s, b); box.appendChild(c);
   });
   const h = $id("qqh"); if (h) h.hidden = QQ.items.length > 0;
+  const s = $id("psend"), ta = $id("pin"); if (s && ta) s.disabled = !(ta.value.trim() || QQ.items.length);
 }
 function qqInit() {
   document.querySelectorAll("#qdepth button").forEach((b) => (b.onclick = () => { QQ.depth = b.dataset.d; qqDraw(); }));
@@ -883,7 +904,7 @@ async function loadPretask() {  // the participant's pre-interview answers, for 
 }
 
 // ---------------- the four-column moderator room: outline and pace, captions, follow-ups, chapter summaries (rules in app/room_assist.py) ----------------
-const Q4 = { on: false, asked: new Set(), later: new Set(), timer: null };
+const Q4 = { on: false, asked: new Set(), later: new Set(), timer: null, open: new Set(), lastAssist: null, plan: null };
 const askedKey = () => "tt_asked_" + iid;
 function loadAsked() { try { Q4.asked = new Set(JSON.parse(localStorage.getItem(askedKey()) || "[]")); } catch { Q4.asked = new Set(); } }
 function saveAsked2() { try { localStorage.setItem(askedKey(), JSON.stringify([...Q4.asked].slice(-60))); } catch {} }
@@ -903,18 +924,11 @@ async function pollRoomMarks() {
 }
 function buildQ4() {
   Q4.on = true; document.body.classList.add("q4mode"); loadAsked();
-  const host = $id("q4"), videoRow = host.querySelector(".qrow");
-  const left = document.createElement("section"), right = document.createElement("aside");
-  left.className = "role-video-column"; right.className = "role-tools-column";
-  left.appendChild(videoRow);
-  if (role === "moderator") {
-    left.appendChild($id("c2c"));
-    [$id("c1o"), $id("c3"), $id("c4"), $id("c1s")].forEach(el => right.appendChild(el));
-    host.append(left, right);
-  } else {
+  const host = $id("q4"), videoRow = host.querySelector(".qrow"), qc1 = host.querySelector(".qc1");
+  if (role !== "moderator") {
     const marks = document.createElement("div"); marks.className = "qp role-marks";
     marks.innerHTML = `<h3>一键打点</h3><p class="sm">时间点由服务器记录，访后可据此查找片段。</p><div class="role-mark-buttons">${["高光", "痛点", "金句", "存疑"].map((kind, i) => `<button type="button" data-mark-kind="${kind}" class="mk-${i}">${kind} <span>0</span></button>`).join("")}</div><div class="role-mark-track" id="marktrack" aria-label="已记录的时间点"></div><p id="markstatus" class="sm" role="status">尚未打点</p>`;
-    left.appendChild(marks); left.appendChild($id("c4"));
+    qc1.insertBefore(marks, $id("c1o"));
     const watermark = document.createElement("div"); watermark.className = "role-watermark"; watermark.textContent = "内部研究 · 请勿外传"; videoRow.appendChild(watermark);
     marks.querySelectorAll("[data-mark-kind]").forEach(button => button.onclick = guard(async () => {
       if (!last || last.status !== "live") { toast("访谈进行中才能打点", true); return; }
@@ -923,14 +937,16 @@ function buildQ4() {
       finally { button.disabled = false; }
     }));
     pollRoomMarks(); setInterval(pollRoomMarks, 4000);
-    const middle = document.createElement("section"); middle.className = "role-caption-column"; middle.appendChild($id("c2c"));
-    [$id("c3"), $id("c1s")].forEach(el => right.appendChild(el));
-    host.append(left, middle, right);
   }
+  videoMode();
   const wb = $id("wbox"); if (wb) { wb.hidden = role !== "moderator"; $id("c1o").insertBefore(wb, $id("olbody")); }   // who is in the room, above the outline
   const pb = $id("prebox"), plb = $id("planbox"); [pb, plb].forEach((b) => { if (b) $id("c1o").appendChild(b); });
-  const stim = $id("stim"); if (stim) { if (role === "observer") left.insertBefore(stim, left.firstChild); else $id("c1o").insertBefore(stim, $id("olbody")); }   // the material on the participant's screen, small, above the outline   // the pre-interview answers and the concept-test script, when there are any
-  $id("psend").textContent = role === "moderator" ? "加入待追问" : "发给主持人"; qqInit();
+  const stim = $id("stim"); if (stim) { if (role === "observer") qc1.insertBefore(stim, $id("c1o")); else $id("c1o").insertBefore(stim, $id("olbody")); }   // the material on the participant's screen, small, above the outline   // the pre-interview answers and the concept-test script, when there are any
+  $id("psend").title = role === "moderator" ? "加入待追问" : "发给主持人"; qqInit(); chatBox($id("pin"), $id("pform"), $id("psend"), () => QQ.items.length);
+  $id("olbody").addEventListener("click", (e) => { const x = e.target.closest(".qx"); if (!x) return; const k = x.dataset.qi; Q4.open.has(k) ? Q4.open.delete(k) : Q4.open.add(k); renderAssist(Q4.lastAssist); });
+  if (role === "moderator") {   // the waiting area: let the participant in, once
+    $id("b-admit").onclick = guard(async () => { await api(`/interviews/${iid}/admit`, { method: "POST" }); toast("已放行"); poll(); });
+  }
   $id("pform").onsubmit = guard(async (e) => {
     e.preventDefault(); const ta = $id("pin"), text = ta.value.trim(); if (!text && !QQ.items.length) { toast("先点一句字幕，或写想深挖什么"); return; }
     const body = QQ.items.length ? { kind: "probe", caption_ids: QQ.items.map((x) => x.id), text, depth: QQ.depth } : { kind: "probe", text, depth: QQ.depth };
@@ -941,13 +957,30 @@ function buildQ4() {
   if (role === "moderator") { pollAssist(); Q4.timer = setInterval(pollAssist, 3000); }
   else { $id("olbody").innerHTML = `<p>大纲进度只给主持人看。</p>`; $id("talk").innerHTML = `<p>说话占比目前仅主持人可见。</p>`; $id("chap").innerHTML = `<p>章节要点目前仅主持人可见。</p>`; $id("sugg").innerHTML = ""; $id("sugh").hidden = true; }
 }
+function videoMode() {   // two pictures side by side, or one big with the other as a small window; click a picture to make it the big one, click the small window to swap
+  const row = $id("qrow"); if (!row) return;
+  let m = { mode: "split", swap: false }; try { Object.assign(m, JSON.parse(localStorage.getItem("room_vm") || "{}")); } catch {}
+  const apply = () => { row.classList.toggle("big", m.mode === "big"); row.classList.toggle("swap", m.swap); row.querySelectorAll("#qvm button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.vm === m.mode))); try { localStorage.setItem("room_vm", JSON.stringify(m)); } catch {} };
+  row.querySelectorAll("#qvm button").forEach((b) => (b.onclick = (e) => { e.stopPropagation(); m.mode = b.dataset.vm; apply(); }));
+  row.addEventListener("click", (e) => {
+    const tile = e.target.closest("#c1t, #c2t"); if (!tile || e.target.closest("#qvm")) return;
+    const host = tile.id === "c1t";
+    if (m.mode === "split") { m = { mode: "big", swap: host }; } else if (host !== m.swap) { m.swap = host; } else return;
+    apply();
+  });
+  apply();
+}
+const QD = { none: "不追问", shallow: "轻问 1 个", deep: "深挖 2–3 个", free: "不限（1–3 个）" };
 const olBar = (label, pct, color) => `<div class="qbar"><span>${label}</span><div><i style="width:${Math.min(100, pct || 0)}%;background:${color}"></i></div><span>${pct == null ? "—" : pct + "%"}</span></div>`;
 function renderAssist(d) {
+  Q4.lastAssist = d;
   if (!d.has_outline) { $id("olbody").innerHTML = `<p>项目还没有访谈大纲。到“访谈”页写好大纲，这里会显示进度。</p>`; $id("olcount").textContent = ""; }
   else {
     const o = d.outline; $id("olcount").textContent = `已覆盖 ${o.covered} / ${o.total}`;
-    let n = -1;
-    $id("olbody").innerHTML = o.parts.map((p) => p.questions.map((q, qi) => { n++; const cur = n === o.current; return `<div class="qo ${q.covered ? "dn" : ""}${cur ? " now" : ""}"><i></i><span>${esc(q.text)}${qi === 0 ? `<small>${esc(p.title)} · 预算 ${p.minutes} 分钟</small>` : ""}</span></div>`; }).join("")).join("")
+    let n = -1, upto = 0; Q4.plan = null;
+    $id("olbody").innerHTML = o.parts.map((p) => { upto += p.minutes; return p.questions.map((q, qi) => { n++; const cur = n === o.current; if (cur) Q4.plan = { planned: d.planned_min, name: p.title, endMs: upto * 60000 };
+      const open = Q4.open.has(String(n)), guide = (q.guide || "").trim();
+      return `<div class="qo ${q.covered ? "dn" : ""}${cur ? " now" : ""}"><i></i><span>${esc(q.text)}${qi === 0 ? `<small>${esc(p.title)} · 预算 ${p.minutes} 分钟</small>` : ""}</span><button type="button" class="qx" data-qi="${n}" aria-expanded="${open}" aria-label="${open ? "收起" : "展开"}这题的追问点">›</button>${open ? `<div class="qd"><small>追问点 · ${QD[q.depth] || QD.shallow}</small>${guide ? esc(guide) : `<span class="mut">没有写访谈指引</span>`}</div>` : ""}</div>`; }).join(""); }).join("")
       + (d.pacing && d.pacing.used_pct != null ? olBar("进度", d.pacing.covered_pct, "#1F6B54") + olBar("时间", d.pacing.used_pct, "#EF9F27") : "");
   }
   const t = d.talk, p = d.pacing;

@@ -38,6 +38,12 @@ def is_group(itv: Interview) -> bool:
     return itv.kind == KIND_GROUP
 
 
+def needs_admit(itv: Interview) -> bool:
+    """A depth interview run by a human moderator: the moderator lets the participant in, once. An AI-run session, a focus group or an
+    asynchronous study has nobody to do it, so those are never held at the door."""
+    return itv.kind == "depth" and itv.moderation != "ai"
+
+
 def seats(db: Session, interview_id: str) -> list[InterviewParticipant]:
     """The group's seats, lowest seat number first."""
     return list(db.scalars(select(InterviewParticipant).where(

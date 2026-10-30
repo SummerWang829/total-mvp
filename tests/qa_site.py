@@ -2166,7 +2166,7 @@ def run():
                         ok(not pg.is_visible("#wbox"), f"[room {role}/{vp}] observer must not see the waiting room controls")
                     else:
                         ok(claims["canPublish"] is True and claims["hidden"] is False, f"[room {role}/{vp}] moderator grants wrong")
-                        ok(pg.is_visible("#wbox") and pg.locator("#b-admit, #b-hold").count() == 0, f"[room {role}/{vp}] moderator sees who is in the room and has no admit / hold")
+                        ok(pg.is_visible("#wbox") and pg.locator("#b-admit").count() == 1 and pg.locator("#b-hold").count() == 0, f"[room {role}/{vp}] moderator sees who is in the room and has the release button (no hold)")
                     audit_page(pg, f"room-{role}/{theme or 'light'}/{vp}", errs)
                     ctx.close()
             # theme switch: one click, takes effect at once, remembered in this browser

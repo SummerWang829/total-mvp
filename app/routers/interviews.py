@@ -656,6 +656,21 @@ def recordings(iid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session 
              "playable": r.status == "ready" and os.path.isfile(rec_file(r))} for r in rows]
 
 
+@router.post("/interviews/{iid}/admit")
+def admit(iid: str, ctx: Ctx = Depends(require_roles("admin", "researcher", "support", "moderator")), db: Session = Depends(get_db)):
+    """The moderator lets the participant into the room. Once is enough: leaving and coming back needs no second release."""
+    itv = visible_interview(db, ctx, iid)
+    if itv.status == "ended" or itv.purged_at:
+        raise HTTPException(409, "访谈已结束")
+    if not groups.needs_admit(itv):
+        raise HTTPException(409, "这场访谈不需要放行")
+    if itv.admitted_at is None:
+        itv.admitted_at = utcnow()
+        audit(db, ctx.org_id, ctx.actor, "participant.admit", itv.id, ip=ctx.ip)
+        db.commit()
+    return {"admitted": True}
+
+
 @router.get("/interviews/{iid}/live")
 def live_state(iid: str, ctx: Ctx = Depends(current_ctx), db: Session = Depends(get_db)):
     """Polled by the room page every 2 s: interview status, whether the participant consented, and the recording in progress."""
@@ -671,7 +686,8 @@ def live_state(iid: str, ctx: Ctx = Depends(current_ctx), db: Session = Depends(
                                     "device_ok": s.device_ok_at is not None, "entered": s.entered_at is not None}
                                    for s in groups.seats(db, itv.id)]
         else:
-            out["participant"] = {"waiting": in_waiting_room(itv), "entered": itv.entered_at is not None, "device_ok": itv.device_ok_at is not None}
+            out["participant"] = {"waiting": in_waiting_room(itv), "entered": itv.entered_at is not None, "device_ok": itv.device_ok_at is not None,
+                                  "admitted": itv.admitted_at is not None, "needs_admit": groups.needs_admit(itv), "consented": consented}
     return out
 
 

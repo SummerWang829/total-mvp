@@ -180,7 +180,7 @@ def test_live_state_for_room_pages(org):
     h = org.h("moderator")
     s = org.c.get(f"/api/interviews/{itv['id']}/live", headers=h).json()
     assert {k: s[k] for k in ("status", "consented", "recording")} == {"status": "scheduled", "consented": False, "recording": None}
-    assert s["participant"] == {"waiting": False, "entered": False, "device_ok": False}
+    assert s["participant"] == {"waiting": False, "entered": False, "device_ok": False, "admitted": False, "needs_admit": True, "consented": False}
     rid = start_recording(org, itv)
     s = org.c.get(f"/api/interviews/{itv['id']}/live", headers=h).json()
     assert s["status"] == "live" and s["consented"] and s["recording"]["id"] == rid

@@ -69,7 +69,7 @@ def join_info(token: str, db: Session = Depends(get_db)):
     org = db.get(Org, itv.org_id)
     consent = db.scalar(select(Consent).where(Consent.interview_id == itv.id, Consent.participant_id == j.participant.id))
     return {"org": org.name, "scheduled_at": itv.scheduled_at.isoformat() if itv.scheduled_at else None,
-            "status": itv.status, "can_enter_now": _window_ok(itv), "consented": consent is not None,
+            "status": itv.status, "can_enter_now": _window_ok(itv) and (not groups.needs_admit(itv) or seat.admitted_at is not None), "window_ok": _window_ok(itv), "admitted": seat.admitted_at is not None or not groups.needs_admit(itv), "consented": consent is not None,
             "device_ok": seat.device_ok_at is not None, "async": itv.kind == "async",
             "consent": consent_for(itv.language, org.name, ai=itv.moderation == ModerationMode.AI.value, text_only=itv.kind == "async", retention_days=_days(db, itv)),
             "pretask": pretask.participant_view(db, itv.id, j.participant.id), "timeslots": scheduling.public_view(db, itv, j.participant.id)}
@@ -203,13 +203,15 @@ def enter(token: str, request: Request, db: Session = Depends(get_db)):
         raise HTTPException(409, "Not time yet, or the interview has ended / 还没到访谈时间，或访谈已结束")
     if not seat.device_ok_at:
         raise HTTPException(403, "Please test your device first / 请先完成设备检测")
+    if groups.needs_admit(itv) and not seat.admitted_at:
+        raise HTTPException(409, "The moderator has not let you in yet / 主持人还没有放行")
     # real name never goes into the video room; a group seat is "P-01" and the browser translates it
     shown_name = f"P-{seat.seat:02d}" if groups.is_group(itv) else "Participant"
     jwt_ = build_room_token(identity=f"participant:{part.id}", name=shown_name, room=itv.room_name, role="participant",
                             seat=seat.seat if groups.is_group(itv) else None)
     if not seat.entered_at:
         seat.entered_at = utcnow()
-    seat.admitted_at = seat.admitted_at or seat.entered_at  # kept for what still reads it: "has been in the room"; nobody lets anyone in any more
+    seat.admitted_at = seat.admitted_at or seat.entered_at  # a session without a human to admit: "admitted" just means "has been in the room"
     audit(db, itv.org_id, f"participant:{part.id}", "room.token", itv.id, ip=client_ip(request), role="participant")
     db.commit()
     return {"token": jwt_, "url": url_for_client(request.headers.get("host")), "room": itv.room_name, "role": "participant", "dev_mode": not settings.livekit_url,
@@ -233,7 +235,7 @@ def live(token: str, waiting: int = 0, db: Session = Depends(get_db)):
         db.commit()
     rec = db.scalar(select(Recording).where(Recording.interview_id == itv.id, Recording.status == "recording")) if _consented(db, itv, j.participant.id) else None
     shown = concept.current_stimulus(db, itv.id, staff=False) if itv.status == "live" and seat.entered_at is not None else None  # only someone who is in the room sees the material
-    return {"status": itv.status, "admitted": True,
+    return {"status": itv.status, "admitted": seat.admitted_at is not None or not groups.needs_admit(itv),
             "recording": {"id": rec.id, "elapsed_ms": elapsed_ms(rec)} if rec else None, "stimulus": shown}
 
 
