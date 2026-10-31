@@ -50,3 +50,9 @@ body.solo #grid>.tile{border-radius:0}
 /* 一页一个橙色主操作：页头右上角的操作（导入、新建、添加成员等）改成深绿细框；页面内容里的主按钮保持橙色 */
 main .head .btn.p,main .head button.p{background:transparent;color:var(--brand);border:1px solid var(--brand);box-shadow:none;font-weight:600}
 main .head .btn.p:hover,main .head button.p:hover{background:var(--brand);color:#fff}
+/* 访谈室默认白色（2026-11-01 用户确认的设计规范）：一对一房间的画面区和“我”的小窗跟随浅色；右上角切换深绿时仍用深色（t-dark 不受影响） */
+body.stage.t-light.solo.role-one-to-one .rbody>section{background:#EEF3F0}
+body.stage.t-light.solo.role-one-to-one #grid>.tile.me{background:#DCE5E0;border-color:#B9C8C0}
+/* 访谈室默认白色：底部控制栏也跟随浅色（离开按钮仍是红色） */
+body.stage.t-light.solo #bar{background:#FFFFFF;border-top:1px solid #DDE5E0}
+body.stage.t-light.solo #bar button:not(:last-child){background:#FFFFFF;color:#0B382C;border:1px solid #C9D4CD}
