@@ -20,7 +20,7 @@ function rmAsideHtml(its, mods) {
   const now = Date.now(), person = (i) => esc(i.participant.name);
   const nextCard = open.slice(0, 5).map((i) => { const [t, c] = rmProgress(i);
     return `<div class="rma-n"><div class="rma-tm">${i.scheduled_at ? when(i.scheduled_at) : "随时"}</div><div class="rma-b"><b>${person(i)}</b> · ${i.moderator_name ? "主持 " + esc(i.moderator_name) : `<span class="mut">没有主持人</span>`}<br><span class="tag ${c}">${t}</span></div>
-      ${i.moderator_id ? `<a class="btn s" href="/room.html?i=${i.id}&as=moderator" target="_blank" rel="noopener">进入</a>` : `<button type="button" class="s" data-asg="${i.id}">指派</button>`}</div>`; }).join("") || `<div class="mut sm">没有待开始的场次。</div>`;
+      ${i.moderator_id ? `<a class="btn p s" href="/room.html?i=${i.id}&as=moderator" target="_blank" rel="noopener">进入</a>` : `<button type="button" class="s" data-asg="${i.id}">指派</button>`}</div>`; }).join("") || `<div class="mut sm">没有待开始的场次。</div>`;
   const todos = [];
   open.forEach((i) => {
     if (!i.moderator_id) todos.push(["没主持人", `${person(i)} · ${i.scheduled_at ? when(i.scheduled_at) : "未定时间"}`, `<button type="button" class="s" data-asg="${i.id}">指派</button>`]);
@@ -35,7 +35,7 @@ function rmAsideHtml(its, mods) {
     return `<div class="rma-d"><b>${WEEK[day.getDay()]}<small>${day.getMonth() + 1}/${day.getDate()}</small></b>${here.map((i) => `<i class="${i.moderator_id ? "" : "w"}" title="${person(i)}">${rmHm(i.scheduled_at)} ${person(i)}</i>`).join("")}</div>`; }).join("");
   const week = Date.now() + 7 * 86400000, load = (id) => open.filter((i) => (i.moderator_id || "") === id && (rmAt(i) === null || rmAt(i) < week)).length;
   const rows = [...mods.map((m) => [m.name, load(m.id)]), ["未指定", load("")]], max = Math.max(1, ...rows.map((r) => r[1]));
-  const loadCard = rows.map(([name, n]) => `<div class="rma-m"><div class="rma-l"><span>${esc(name)}</span><span>${n ? n + " 场" : name === "未指定" ? "0 场" : "空闲"}</span></div><div class="rma-bar"><i class="${name === "未指定" ? "w" : ""}" style="width:${(n / max) * 100}%"></i></div></div>`).join("");
+  const loadCard = rows.map(([name, n]) => `<div class="rma-m"><div class="rma-l"><span>${esc(name)}</span><span>${n ? n + " 场" : name === "未指定" ? "0 场" : `<span style="color:var(--green);font-weight:600">空闲</span>`}</span></div><div class="rma-bar"><i class="${name === "未指定" ? "w" : ""}" style="width:${(n / max) * 100}%"></i></div></div>`).join("");
   return `<div class="card"><h4>接下来的场次</h4>${nextCard}</div><div class="card"><h4>待办提醒 <span class="sm mut">${todos.length} 件</span></h4>${todoCard}</div>
     <div class="card"><h4>本周日历 <span class="sm mut">今天起 5 天</span></h4><div class="rma-cal">${cal}</div></div><div class="card"><h4>主持人安排 <span class="sm mut">7 天内</span></h4>${loadCard}</div>`;
 }
