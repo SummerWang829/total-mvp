@@ -10,6 +10,14 @@
 
 
 
+## 2026-10-31 · 视觉改版两页（项目总览、受访者邀请页）：只改展示，未部署
+- 备份：`backup/ui-before-impeccable-20261031`（2a19589，已推送远端，远端确认）。
+- 改动：`app/static/index.html`（项目总览：研究阶段进前、语言与受访形式挪到下面、深绿总览块挂在页头下；页面加 `ovx` 类）；`app/static/join.html`（引入样式）；新增 `app/static/ui_v6.css`（只作用于 `.ovx` 与 `body.participant`，衬线标题，受访者页顶部深绿块，卡片圆角）。
+- 没改：任何功能、接口、权限、同意书校验、数据流程；其他页面的样式文件未改。
+- 测试：`pytest tests/test_journey.py tests/test_static_cache.py` 19 通过；`QA_ONLY=tabs_section python tests/qa_site.py` 12 通过。浏览器里看过桌面宽度的邀请页（截图确认深绿块与可读性）。
+- 没测：项目总览的“深绿总览块”只在已立项并发布的项目里出现（演示项目未发布立项，所以截图里看不到）；手机宽度；深色模式；真实字体文件（Source Serif 4 / Source Sans 3 未打包，当前是系统回退字体）。
+- 还差：确认后再部署；字体打包方案待定。
+
 ## 2026-10-31 · 房间页和加入页统一视觉（用户确认：两页都改，主按钮橙色）（SW，未部署）
 - 备份：origin/backup/room-join-visual-before-20261031-2101（改前）。
 - 改动（只改外观）：app/static/join-role.css 加入页“开始/下一步”大按钮从硬编码的 #C8470B 改成站内橙色 token（--orange，文字 --on-orange）；app/static/join.html 设备错误提示的硬编码红改成 --risk-ink。

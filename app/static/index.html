@@ -2,7 +2,7 @@
 <html lang="zh-CN" data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>星桐 TOTAL · 深访</title><link rel="stylesheet" href="/app.css">
 <link rel="stylesheet" href="/editorial.css"><link rel="stylesheet" href="/ui_rooms.css">
-<link rel="stylesheet" href="/chat.css"><link rel="stylesheet" href="/chatsel.css"><link rel="stylesheet" href="/ui_list.css"><link rel="stylesheet" href="/ui_screening.css"><link rel="stylesheet" href="/ui_outline.css"><link rel="stylesheet" href="/ui_wizard.css"><link rel="stylesheet" href="/ui_overview.css"><link rel="stylesheet" href="/ui_global.css"></head>
+<link rel="stylesheet" href="/chat.css"><link rel="stylesheet" href="/chatsel.css"><link rel="stylesheet" href="/ui_list.css"><link rel="stylesheet" href="/ui_screening.css"><link rel="stylesheet" href="/ui_outline.css"><link rel="stylesheet" href="/ui_wizard.css"><link rel="stylesheet" href="/ui_overview.css"><link rel="stylesheet" href="/ui_v6.css"><link rel="stylesheet" href="/ui_global.css"></head>
 <body>
 <div id="app"></div>
 <script src="/app.js"></script>
@@ -274,7 +274,7 @@ async function homeView(p) {
   const pct = (a, b) => (b ? Math.round((a / b) * 100) : 0);
   const meter = (label, a, b, cls = "") => `<div class="meter"><dt>${label}</dt><dd class="pbar6 ${cls}" role="img" aria-label="${label} ${a} / ${b}"><i style="width:${pct(a, b)}%"></i></dd><dd>${a} / ${b}</dd></div>`;
   shell(`${head("项目总览", "这个项目用了哪些研究方法、各做到哪一步、下一步做什么。", `<button class="s" id="rep">下载研究报告（Word）</button>${h ? ` <button class="s" id="hmcopy" type="button">复制项目</button>` : ""}`)}
-    ${langs ? hmLangCard(langs) : ""}${h ? h.html : starmapHtml(p, o.starmap)}
+    ${h ? h.html : starmapHtml(p, o.starmap)}${langs ? hmLangCard(langs) : ""}
     ${!h && (o.methods.includes("depth") || o.methods.includes("group")) ? `<div class="hero">
       <div class="card"><div class="hero-k">已完成的深访</div><div class="hero-n"><b>${s.done}</b><span>/ ${s.sessions} 场</span></div>
         <dl class="meters">${meter("受访者到场", s.done, s.sessions)}${meter("已转写", s.transcribed, s.ended)}${meter("洞察已通过", s.approved, s.insights, "o")}</dl>
@@ -283,11 +283,12 @@ async function homeView(p) {
     </div>` : ""}
     <div class="card"><h2>最近动态</h2>${o.activity.length ? `<ul class="feed">${o.activity.map((a) => `<li><time>${when(a.at.replace(/Z$/, ""))}</time><span><b>${esc(a.who)}</b> ${esc(a.what)}${a.session ? ` <span class="mut">· ${esc(a.session)}</span>` : ""}</span></li>`).join("")}</ul>`
       : `<p class="mut" style="margin:0">还没有动态。添加受访者、发出邀请后，这里会按时间列出每一步。</p>`}</div>`, { active: "home", p });
+  app.querySelector("main").classList.add("ovx");  // visual v6 (ui_v6.css): scoped to this page only
   if (h) {
     const main = app.querySelector("main");
     const band = `<section class="overview-band"><p>${esc(p.market || "")} · ${esc(langNames(p))}</p><h1>${esc(p.name)}</h1><div class="overview-metrics"><div><b>${s.done} / ${s.sessions}</b><span>访谈已完成</span></div><div><b>${s.ended ? Math.round(s.transcribed * 100 / s.ended) : 0}%</b><span>已结束访谈的转写率</span></div><div><b>${s.upcoming}</b><span>待开始场次</span></div><div><b>${s.approved}</b><span>已确认洞察</span></div></div></section>`;
-    const languages = main.querySelector(".hm-langs");
-    if (languages) languages.insertAdjacentHTML("beforebegin", band); else main.insertAdjacentHTML("beforeend", band);
+    const head = main.querySelector(".head");
+    if (head) head.insertAdjacentHTML("afterend", band); else main.insertAdjacentHTML("afterbegin", band);
     h.wire();
   }
   if (langs) hmLangWire(p, langs);
