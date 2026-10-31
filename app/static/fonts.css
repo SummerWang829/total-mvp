@@ -1,4 +1,4 @@
-/* Packaged fonts (Fontsource, SIL OFL). Latin and Simplified Chinese subsets, woff2 only. */
+/* Packaged fonts (Fontsource, SIL OFL): Latin subsets only. Chinese text uses the system font (see ui_v7.css). */
 @font-face {
   font-family: 'Source Serif 4';
   font-style: normal;
@@ -33,60 +33,4 @@
   font-display: swap;
   font-weight: 600;
   src: url(/fonts/source-sans-3-latin-600-normal.woff2) format('woff2');
-}
-@font-face {
-  font-family: 'Noto Serif SC';
-  font-style: normal;
-  font-display: swap;
-  font-weight: 500;
-  src: url(/fonts/noto-serif-sc-chinese-simplified-500-normal.woff2) format('woff2');
-}
-@font-face {
-  font-family: 'Noto Serif SC';
-  font-style: normal;
-  font-display: swap;
-  font-weight: 500;
-  src: url(/fonts/noto-serif-sc-latin-500-normal.woff2) format('woff2');
-}
-@font-face {
-  font-family: 'Noto Serif SC';
-  font-style: normal;
-  font-display: swap;
-  font-weight: 600;
-  src: url(/fonts/noto-serif-sc-chinese-simplified-600-normal.woff2) format('woff2');
-}
-@font-face {
-  font-family: 'Noto Serif SC';
-  font-style: normal;
-  font-display: swap;
-  font-weight: 600;
-  src: url(/fonts/noto-serif-sc-latin-600-normal.woff2) format('woff2');
-}
-@font-face {
-  font-family: 'Noto Sans SC';
-  font-style: normal;
-  font-display: swap;
-  font-weight: 400;
-  src: url(/fonts/noto-sans-sc-chinese-simplified-400-normal.woff2) format('woff2');
-}
-@font-face {
-  font-family: 'Noto Sans SC';
-  font-style: normal;
-  font-display: swap;
-  font-weight: 400;
-  src: url(/fonts/noto-sans-sc-latin-400-normal.woff2) format('woff2');
-}
-@font-face {
-  font-family: 'Noto Sans SC';
-  font-style: normal;
-  font-display: swap;
-  font-weight: 600;
-  src: url(/fonts/noto-sans-sc-chinese-simplified-600-normal.woff2) format('woff2');
-}
-@font-face {
-  font-family: 'Noto Sans SC';
-  font-style: normal;
-  font-display: swap;
-  font-weight: 600;
-  src: url(/fonts/noto-sans-sc-latin-600-normal.woff2) format('woff2');
 }
