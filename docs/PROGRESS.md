@@ -10,6 +10,12 @@
 
 
 
+## 2026-11-01 · 部署到新加坡测试服务器（提交 4f8383e）：字体减重 + 第二版视觉 + 三个主题 + 访谈室跟随主题
+SW 执行。部署前：无进行中访谈、无录制/合成/后台任务；数据库备份 `total-20261031-152910.db.gz` + COS 异地成功；回滚点：旧镜像 `deploy-app:rollback-before-4f8383e`、旧代码包 `/opt/total-mvp-code-before-4f8383e.tgz`。解包 `sudo tar`，`deploy/.env` 未动。只重建 app。检查：app healthy；cannot add 0、error/traceback 0；doctor 无必须解决项；/api/health、/api/public/config、/index.html、fonts（Latin）、fonts.css、ui_v8.css、theme.js、room.html、rooms.js 全 200；未登录 /api/projects 401。
+**字体减重**：Chinese 网页字体（约 5.3 MB）去掉，只保留 Latin（约 104 KB）；中文用系统字体。
+**测试**：本机 pytest（journey、static_cache、outline、insights_overview、room_assist）35 通过；页面 Latin 字体加载正常，无失败请求。
+**还没做**：视频（TURN）和页面切换的慢：需要在腾讯云防火墙开放 TCP 5349、UDP 3478（需要你在控制台操作），之后再配置 TURN；页面切换的逐接口优化待测量。未做：手机宽度的橙色主题。
+
 ## 2026-11-01 · 主题按钮改成一个小按钮（左下角，循环切换），橙色加深，访谈室跟随橙色（未部署）
 - 默认：浅色（深绿强调）。左下角一个小按钮“主题：xx”，每点一下切换：浅色 → 橙色 → 深色 → 浅色。
 - 橙色加深：左侧导航是深一点的橙（白字），主按钮是亮一点的橙（深棕字），标题和强调是烧橙。
