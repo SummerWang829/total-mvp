@@ -34,3 +34,6 @@ main table .pill{white-space:nowrap}
 /* 直播间列表：主操作“进入”用深绿细框，不整排橙色（橙色只留给页面唯一的主操作） */
 main a.btn.p,main a.btn.p.s{background:transparent;color:var(--brand);border:1px solid var(--brand);box-shadow:none;font-weight:600}
 main a.btn.p:hover{background:var(--brand);color:#fff}
+/* 代码和说明文字：等宽字体，不用衬线回退（避免中英混排时字形杂乱） */
+code,pre,kbd,samp{font-family:ui-monospace,"Cascadia Mono",Consolas,monospace}
+main code{font-size:12.5px;background:var(--wash);padding:1px 5px;border-radius:4px;color:var(--ink2)}
