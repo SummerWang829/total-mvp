@@ -121,7 +121,7 @@ function voteStep() {  // a focus group: tick every time that suits you; the tea
   frame(IX.invite, `<h1>${x.pickTime}</h1><p class="mut">${esc(x.by.replace("{o}", info.org))}</p>
     <form class="card" id="tf">${T.slots.map((s) => `<label class="chk"><input type="checkbox" name="slot" value="${s.id}"${s.mine ? " checked" : ""}><span>${esc(new Date(s.start_at + "Z").toLocaleString())}<br><span class="sm mut">${esc(x.voteN.replace("{n}", s.votes))}</span></span></label>`).join("")}
     <p class="mut sm" style="margin:6px 0 0">${esc(x.voteIntro)}</p>${voted ? `<p class="sm" role="status" style="margin:10px 0 0"><b>${esc(x.voteDone)}</b></p>` : ""}
-    <p class="sm" id="verr" role="alert" hidden style="color:#A8203E;margin:8px 0 0"></p><button class="p pbig" style="margin-top:14px">${x.voteGo}</button></form>`);
+    <p class="sm" id="verr" role="alert" hidden style="color:var(--risk-ink);margin:8px 0 0"></p><button class="p pbig" style="margin-top:14px">${x.voteGo}</button></form>`);
   const f = $("#tf");
   f.onsubmit = guard(async (e) => {
     e.preventDefault();
