@@ -26,3 +26,11 @@ main .head h1{font-size:30px;color:var(--brand)}
 /* 甄别设定（招募问卷）：右侧大纲的分段标题用小字大写的灰色，细线分隔；左侧对话区保持不变 */
 .rf-h{font-family:var(--f);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--mut);font-weight:500;margin:18px 0 6px;padding-bottom:6px;border-bottom:1px solid var(--line)}
 .rf-blk{border-left:0 !important;padding-left:0 !important}
+/* 列表里的主操作：不再整排橙色，改成深绿细框文字，橙色只留给页面唯一的主操作（第二版风格） */
+main table button.p{background:transparent;color:var(--brand);border:1px solid var(--brand);box-shadow:none;font-weight:600}
+main table button.p:hover{background:var(--brand);color:#fff}
+/* 状态小标签不换行、不被裁切 */
+main table .pill{white-space:nowrap}
+/* 直播间列表：主操作“进入”用深绿细框，不整排橙色（橙色只留给页面唯一的主操作） */
+main a.btn.p,main a.btn.p.s{background:transparent;color:var(--brand);border:1px solid var(--brand);box-shadow:none;font-weight:600}
+main a.btn.p:hover{background:var(--brand);color:#fff}
