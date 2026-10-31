@@ -23,3 +23,6 @@ main .head h1{font-size:30px;color:var(--brand)}
 .tbl th,main table th{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--mut);font-weight:500;border-bottom:1px solid var(--ink);background:none}
 .tbl td,main table td{border-bottom:1px solid var(--line)}
 .ovx .card.hm-langs{border-radius:0;border-left:0;border-right:0;border-bottom:0}
+/* 甄别设定（招募问卷）：右侧大纲的分段标题用小字大写的灰色，细线分隔；左侧对话区保持不变 */
+.rf-h{font-family:var(--f);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--mut);font-weight:500;margin:18px 0 6px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+.rf-blk{border-left:0 !important;padding-left:0 !important}
