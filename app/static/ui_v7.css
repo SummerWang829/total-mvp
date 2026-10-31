@@ -11,3 +11,15 @@ h1,h2,h3{font-family:var(--fd);font-weight:600;letter-spacing:-.005em}
 .hm-langs .tag.o{color:var(--orange-ink)}
 .hm-langs button.p{background:none;border:0;padding:0;color:var(--orange-ink);font-weight:600;text-decoration:underline;text-underline-offset:3px;box-shadow:none}
 .hm-langs button.p:hover{color:var(--ink)}
+/* 研究员页面（桌面）：页头用细线分隔；项目总览的阶段改成编号式细线行，去掉卡片外框 */
+main .head{border-bottom:1px solid var(--line);padding-bottom:14px}
+main .head h1{font-size:30px;color:var(--brand)}
+.ovx .hm-stage{border:0;border-bottom:1px solid var(--line);border-radius:0;background:none;padding:18px 0;margin:0}
+.ovx .hm-stage:last-child{border-bottom:1px solid var(--line)}
+.ovx .hm-l .hm-name{font-size:21px}
+.ovx .hm-stage .sic{border:0;background:none;color:var(--mut);font-family:var(--fd);font-size:15px;font-weight:400;width:auto;height:auto}
+.ovx .hm-langs{border:0;border-top:1px solid var(--ink);border-radius:0;padding:18px 0 0;background:none}
+/* 表格：表头小字大写、细线分隔，像报告的数据表 */
+.tbl th,main table th{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--mut);font-weight:500;border-bottom:1px solid var(--ink);background:none}
+.tbl td,main table td{border-bottom:1px solid var(--line)}
+.ovx .card.hm-langs{border-radius:0;border-left:0;border-right:0;border-bottom:0}
