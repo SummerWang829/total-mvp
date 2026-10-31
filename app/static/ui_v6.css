@@ -9,12 +9,11 @@
 .ovx .hm-langs h3{font-family:var(--fd);font-size:19px;font-weight:600;color:var(--brand)}
 .ovx .hm-sub b{font-family:var(--fd);font-size:17px}
 .ovx .hm-stage .pill,.ovx .hm-langs .tag{box-shadow:none}
-/* 受访者页：顶部一块深绿（固定在页面顶部，不随滚动变化），标题白字；卡片和按钮保持白底、橙色主按钮 */
+/* 受访者页：顶部深绿 logo 栏（随页面滚动，不遮挡正文）；标题用深绿字，正文在白底上 */
 body.participant{background:#fff}
-body.participant::before{content:"";position:fixed;left:0;right:0;top:0;height:250px;background:var(--brand);z-index:0;pointer-events:none}
-body.participant .pbar,body.participant .pwrap{position:relative;z-index:1}
-body.participant .pwrap>h1{font-family:var(--fd);color:#fff;font-size:clamp(28px,4.6vw,36px);font-weight:600;letter-spacing:-.01em;line-height:1.2;margin:18px 0 6px}
-body.participant .pwrap>:is(p,div):not(.card):has(~ .card){color:#CFE3DA}
+body.participant .pbar{background:var(--brand);border-bottom:0;padding:14px 20px}
+body.participant .pwrap>h1{font-family:var(--fd);color:var(--brand);font-size:clamp(28px,4.6vw,36px);font-weight:600;letter-spacing:-.01em;line-height:1.2;margin:18px 0 6px}
+body.participant .pwrap>:is(p,div):not(.card):has(~ .card){color:var(--mut)}
 body.participant .card{border-radius:16px;box-shadow:none;border-color:var(--line)}
-/* 受访者页的 logo 栏：logo 放在白色小底上，保留原来的颜色 */
+/* logo 放在白色小底上，保留原来的颜色 */
 body.participant .pbar svg{background:#fff;border-radius:10px;padding:6px}

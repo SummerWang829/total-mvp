@@ -44,3 +44,6 @@ body.participant .rf-opts label,body.participant label.chk{display:flex;align-it
 body.participant .rf-opts label:last-child{border-bottom:1px solid var(--line)}
 body.participant button.p{border-radius:0;font-weight:600;min-height:48px}
 body.participant button.p{width:100%}
+/* 受访者访谈室（body.solo，手机和电脑都一样）：控制按钮方正、点击区不小于 48px；画面和文字不改颜色、不改位置 */
+body.solo #bar button{border-radius:0;min-height:48px;min-width:72px;font-weight:600;letter-spacing:.01em}
+body.solo #grid>.tile{border-radius:0}
