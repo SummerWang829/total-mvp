@@ -1,0 +1,13 @@
+/* 第二版视觉（2026-10-31，只改展示）：字体打包（fonts.css）+ 纸白底、细线卡片、去掉阴影。不改任何功能、布局结构或数据。 */
+:root{
+  --f:"Source Sans 3","Noto Sans SC","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  --fd:"Source Serif 4","Noto Serif SC","Songti SC",Georgia,serif;
+}
+:root:not([data-theme="dark"]){--bg:#FAFAF7}
+h1,h2,h3{font-family:var(--fd);font-weight:600;letter-spacing:-.005em}
+.card{box-shadow:none;border-radius:12px;border-color:var(--line)}
+/* 语言表：状态用文字，不用彩色徽章；“添加”用文字链接，橙色只留给页面唯一的主操作 */
+.hm-langs .tag{background:none;border:0;padding:0;font-weight:600;color:var(--ink2)}
+.hm-langs .tag.o{color:var(--orange-ink)}
+.hm-langs button.p{background:none;border:0;padding:0;color:var(--orange-ink);font-weight:600;text-decoration:underline;text-underline-offset:3px;box-shadow:none}
+.hm-langs button.p:hover{color:var(--ink)}

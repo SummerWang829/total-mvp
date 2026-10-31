@@ -10,6 +10,14 @@
 
 
 
+## 2026-11-01 · 第二版视觉：字体打包 + 全站基础样式（只改展示，未部署）
+- 备份：`backup/ui-v7-before-20261031`（a3216c6，已推送远端，远端确认）。
+- 字体：Source Serif 4、Source Sans 3（标题/正文）、Noto Serif SC / Noto Sans SC（中文，只打包简体中文子集），共 13 个 woff2，约 5.3 MB，放在 `app/static/fonts/`，样式表 `app/static/fonts.css`。SIL OFL 许可。生成脚本在会话草稿区，未入库。
+- 样式：新增 `app/static/ui_v7.css`（字体令牌、纸白底、卡片去阴影、语言表状态改为文字、添加改为文字链接）。已在含 editorial.css 的页面引入：index、join、screen、share、room、reel、study、invite、async。
+- 没改：任何功能、接口、权限、数据流程、页面结构。
+- 还没做：第二版的完整版式（页头、编号行、细线表格等）逐页套用；被访者访谈室的手机版。
+- 测试：只看了项目总览与受访者邀请页（桌面和手机）截图；字体确认已加载。没有跑 pytest（只改样式与静态文件）。
+
 ## 2026-10-31 · 视觉改版两页（项目总览、受访者邀请页）：只改展示，未部署
 - 备份：`backup/ui-before-impeccable-20261031`（2a19589，已推送远端，远端确认）。
 - 改动：`app/static/index.html`（项目总览：研究阶段进前、语言与受访形式挪到下面、深绿总览块挂在页头下；页面加 `ovx` 类）；`app/static/join.html`（引入样式）；新增 `app/static/ui_v6.css`（只作用于 `.ovx` 与 `body.participant`，衬线标题，受访者页顶部深绿块，卡片圆角）。
