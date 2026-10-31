@@ -47,3 +47,6 @@ body.participant button.p{width:100%}
 /* 受访者访谈室（body.solo，手机和电脑都一样）：控制按钮方正、点击区不小于 48px；画面和文字不改颜色、不改位置 */
 body.solo #bar button{border-radius:0;min-height:48px;min-width:72px;font-weight:600;letter-spacing:.01em}
 body.solo #grid>.tile{border-radius:0}
+/* 一页一个橙色主操作：页头右上角的操作（导入、新建、添加成员等）改成深绿细框；页面内容里的主按钮保持橙色 */
+main .head .btn.p,main .head button.p{background:transparent;color:var(--brand);border:1px solid var(--brand);box-shadow:none;font-weight:600}
+main .head .btn.p:hover,main .head button.p:hover{background:var(--brand);color:#fff}
