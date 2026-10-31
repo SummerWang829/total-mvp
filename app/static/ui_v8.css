@@ -1,46 +1,48 @@
-/* 第三个主题：橙色为主的浅色模式（2026-11-01，用户确认：左侧导航也是橙色，橙色要浓一些）。
-   只在 html[data-theme="orange"] 下生效；浅色和深色的设定不变。 */
+/* 第三个主题：橙色为主的浅色（2026-11-01，用户确认：左侧导航也是橙色，颜色比第一版预览深一点）。
+   只在 html[data-theme="orange"] 下生效；浅色（默认）和深色不变。访谈室也跟随。 */
 :root[data-theme="orange"]{
-  --bg:#FFF4EA; --surface:#FFFFFF; --wash:#FFE6CF;
-  --ink:#2B1305; --ink2:#5A2A0E; --muted:#7A4424; --line:#F1C9A3; --line2:#E3A775;
-  --nav:#F26A12; --nav-on:#B83E00; --nav-ink:#2B1305;
-  --brand:#B83E00; --orange:#FF6A00; --on-orange:#2B1305; --orange-ink:#A83500;
-  --orange-soft:#FFE3CA; --orange-mid:#FFC597;
-  --green:#7A3B12; --green-soft:#FFE6D1; --r-bg:#FFFFFF; --r-pan:#FFF4EA; --r-line:#F1C9A3;
+  --bg:#FBF1E8; --surface:#FFFFFF; --wash:#F6E0CC;
+  --ink:#2A1407; --ink2:#55280F; --muted:#734127; --line:#EDC7A4; --line2:#DDA676;
+  --nav:#BF4F0A; --nav-on:#8A3300; --nav-ink:#FFF4EA;
+  --brand:#9A3C00; --orange:#E3701F; --on-orange:#2A1407; --orange-ink:#9A3C00;
+  --orange-soft:#FBE6D3; --orange-mid:#F5C9A2;
+  --green:#7A3B12; --green-soft:#FBE6D3;
   color-scheme:light;
 }
 html[data-theme="orange"] body{background:var(--bg);color:var(--ink)}
 html[data-theme="orange"] h1,html[data-theme="orange"] h2,html[data-theme="orange"] h3{color:var(--brand)}
-/* 左侧导航：橙色底，深棕字；当前页用深橙色块、白字 */
+/* 左侧导航：深一点的橙色底，白字；当前页用更深的橙色块 */
 html[data-theme="orange"] nav.side{background:var(--nav);color:var(--nav-ink)}
-html[data-theme="orange"] nav.side .sec{color:#7A2E00}
-html[data-theme="orange"] nav.side .sec b{color:#2B1305}
-html[data-theme="orange"] nav.side a.nv{color:#2B1305}
-html[data-theme="orange"] nav.side a.nv:hover{background:rgba(43,19,5,.08)}
-html[data-theme="orange"] nav.side a.nv[aria-current=page]{background:#B83E00;color:#FFFFFF}
-html[data-theme="orange"] nav.side .me span{color:#2B1305}
-html[data-theme="orange"] nav.side .me button{color:#2B1305;border-color:rgba(43,19,5,.35);background:transparent}
-html[data-theme="orange"] nav.side .stghead{color:#2B1305}
-/* 按钮：主按钮亮橙、字深棕；页头按钮细框 */
+html[data-theme="orange"] nav.side .sec{color:#FFD9BC}
+html[data-theme="orange"] nav.side .sec b{color:#FFFFFF}
+html[data-theme="orange"] nav.side a.nv{color:#FFF4EA}
+html[data-theme="orange"] nav.side a.nv:hover{background:rgba(255,255,255,.12)}
+html[data-theme="orange"] nav.side a.nv[aria-current=page]{background:var(--nav-on);color:#FFFFFF}
+html[data-theme="orange"] nav.side .me span{color:#FFF4EA}
+html[data-theme="orange"] nav.side .me button{color:#FFF4EA;border-color:rgba(255,244,234,.55);background:transparent}
+html[data-theme="orange"] nav.side .stghead{color:#FFF4EA}
+/* 按钮：主按钮亮一点的橙、字深棕；页头按钮细框 */
 html[data-theme="orange"] .btn.p,html[data-theme="orange"] button.p{background:var(--orange);color:var(--on-orange);border-color:var(--orange)}
 html[data-theme="orange"] main .head .btn.p,html[data-theme="orange"] main .head button.p{background:transparent;color:var(--brand);border:1px solid var(--brand)}
+html[data-theme="orange"] .hm-langs button.p{background:none;color:var(--orange-ink);border:0;text-decoration:underline;text-underline-offset:3px}
 /* 卡片和表格：白底，细线用浅橙棕 */
 html[data-theme="orange"] .card{background:var(--surface);border-color:var(--line)}
 html[data-theme="orange"] table th{color:var(--muted);border-bottom-color:var(--brand)}
 html[data-theme="orange"] table td{border-bottom-color:var(--line)}
-html[data-theme="orange"] .tabs span.on,html[data-theme="orange"] .hubtabs a.on{color:var(--ink);box-shadow:inset 0 -2px 0 var(--orange)}
-/* 项目总览的深绿大块在这个主题里改成烧橙 */
+html[data-theme="orange"] .tabs span.on,html[data-theme="orange"] .hubtabs a.on{color:var(--ink);box-shadow:inset 0 -2px 0 var(--brand)}
 html[data-theme="orange"] .overview-band{background:var(--brand)}
-/* 受访者页：顶部 logo 栏用烧橙 */
+/* 受访者页：顶部 logo 栏用深橙 */
 html[data-theme="orange"] body.participant .pbar{background:var(--brand)}
 html[data-theme="orange"] body.participant .pwrap>h1{color:var(--brand)}
+/* 访谈室（受访者和主持人）跟随橙色：画面区用暖白，顶栏用深橙，控制按钮白底 */
+html[data-theme="orange"] .rhead{background:var(--brand)}
+html[data-theme="orange"] body.stage.t-light.solo.role-one-to-one .rbody>section{background:#FBEBDD}
+html[data-theme="orange"] body.stage.t-light.solo.role-one-to-one #grid>.tile.me{background:#F5D9C0;border-color:#DDA676}
+html[data-theme="orange"] body.stage.t-light.solo #bar{background:#FFF7EF;border-top:1px solid #EDC7A4}
+html[data-theme="orange"] body.stage.t-light.solo #bar button:not(:last-child){background:#FFFFFF;color:#2A1407;border:1px solid #DDA676}
 
-/* 三个主题的切换按钮（左侧导航底部） */
-.themesw{display:flex;gap:4px;padding:6px;margin:8px 0 6px;border-radius:12px;background:rgba(255,255,255,.07)}
-.themesw button{flex:1;height:30px;border:0;border-radius:8px;background:transparent;color:inherit;font-size:12px;cursor:pointer;opacity:.85}
-.themesw button.on{background:#FFFFFF;color:#0B382C;font-weight:600;opacity:1}
-html[data-theme="orange"] .themesw{background:rgba(43,19,5,.12)}
-html[data-theme="orange"] .themesw button{color:#2B1305}
-html[data-theme="orange"] .themesw button.on{background:#2B1305;color:#FFF4EA}
-/* 语言表的“添加”是文字链接，不做成橙色块 */
-html[data-theme="orange"] .hm-langs button.p{background:none;color:var(--orange-ink);border:0;text-decoration:underline;text-underline-offset:3px}
+/* 左下角的主题按钮：一个小按钮，每点一下切换到下一个主题 */
+.themebtn{display:block;width:100%;margin:auto 0 6px;height:32px;padding:0 10px;border:1px solid rgba(255,255,255,.22);border-radius:8px;background:rgba(255,255,255,.06);color:inherit;font-size:12px;text-align:left;cursor:pointer}
+.themebtn:hover{background:rgba(255,255,255,.14)}
+html[data-theme="orange"] .themebtn{border-color:rgba(255,244,234,.5);background:rgba(255,255,255,.1);color:#FFF4EA}
+html[data-theme="orange"] body.stage.t-light{background:#FBF1E8}
