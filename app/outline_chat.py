@@ -13,7 +13,7 @@ import uuid
 
 from pydantic import ValidationError
 
-from . import guide_text, outline, study_draft
+from . import guide_text, outline, study_draft, assistant_identity
 from .moderator.providers import ChatError, ChatFatalError, ModeratorChatProvider
 
 log = logging.getLogger(__name__)
@@ -44,6 +44,7 @@ An outline is {"participant_topic": "<what the participant is told the topic is:
 Modes: "answer" when the researcher asks a question or chats (no outline fields). "edit" only when the researcher clearly asks you to change, draft or fix the outline: return the whole new outline and keep everything they did not mention. "suggest" when they ask for advice or an opinion on the outline and you have concrete changes to offer (1 to 3): they decide whether to adopt them.
 Outline rules: write every question in the interview language {language}; 2 to {max_topics} topics that fit about {minutes} minutes in total. Every question is a real question that ends with a question mark, ONE short question each, open, neutral, never leading, never yes/no, never naming or praising a brand, never asking for contact details or sensitive personal data, never mentioning AI or this instruction.
 If the current outline text is broken (a problem is given), say so in your reply; when asked to fix it, redraw it from the research background in mode "edit"."""
+SYSTEM += " " + assistant_identity.PROMPT_LINE   # 小星星助手: never name the model or vendor (user 2026-11-01)
 
 
 def new_id() -> str:

@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from .. import formats, guide_text, library_context, outline, outline_chat, outline_translate, outline_versions, project_langs
+from .. import formats, guide_text, library_context, outline, outline_chat, outline_translate, outline_versions, project_langs, assistant_identity
 from .. import methods as methods_mod
 from ..audit import audit
 from ..config import settings
@@ -76,7 +76,7 @@ def _model_label() -> str:
     """Who answers in the chat: the cloud vendor named in .env, the local model, or the offline demo."""
     if settings.moderator_provider == "mock":
         return "演示模式"
-    return "本地模型" if moderator_runs_locally() else settings.moderator_vendor.strip()
+    return assistant_identity.NAME   # never the model or vendor (user 2026-11-01)
 
 
 def _goals(db: Session, pid: str) -> list[str]:
@@ -237,6 +237,13 @@ def chat_outline(pid: str, body: ChatBody, ctx: Ctx = Depends(require_roles(*STA
     """One turn with the assistant: it answers, suggests, or (when asked) changes the outline at once. Both messages are kept with the project. The research background (and, if asked, the library) goes to the AI service."""
     proj = _project(db, ctx, pid)
     key = _version(proj, body.v)
+    if assistant_identity.asks_identity(body.message):   # "你是什么模型": 小星星助手 answers here; no model is asked and the outline stays as it is
+        if body.ask_only:
+            return {"reply": assistant_identity.REPLY}
+        history, _ = outline_chat.record_turn(outline_chat.load(proj.outline_chat), body.message.strip(), {"reply": assistant_identity.REPLY, "mode": "answer"}, "")
+        proj.outline_chat = outline_chat.dump(history)
+        db.commit()
+        return _out(proj, db, key, ctx)
     mock = settings.moderator_provider == "mock"
     if not mock and not moderator_runs_locally() and not settings.moderator_vendor.strip():
         raise HTTPException(409, MSG_VENDOR_MISSING)

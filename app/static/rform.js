@@ -15,8 +15,6 @@ function rfAutosize(t) {
   };
   t.addEventListener("input", fit); fit();
 }
-const rfAiNotice = () => (CONFIG && CONFIG.ai_local ? "AI 运行在我们自己的服务器上，对话内容不会发给其他公司。"
-  : `将你的话、研究背景、研究库资料和作答人数（不含答案）发送给 AI 服务商${CONFIG && CONFIG.ai_vendor ? `“${CONFIG.ai_vendor}”` : ""}来改问卷、回答问题。请勿写入个人信息。`);
 
 /** 整个“招募问卷”卡片，返回 { html, wire, fit }。 */
 function rfCard(p, form) {
@@ -47,7 +45,7 @@ function rfCard(p, form) {
   const ctxHtml = () => {
     const a = f.ai || { ok: true, name: "" }, docs = f.library_docs || 0, started = (f.stats && f.stats.started) || 0;
     const cx = [f.brief && f.brief.trim() ? "✓ 研究背景" : "· 研究背景（未填写）", `${useLib && docs ? "✓" : "·"} 研究库 ${docs} 份`, ...(Q.length ? [`✓ 当前问卷（${Q.length} 题）`] : []), ...(started ? [`✓ 作答统计（${started} 人）`] : [])];
-    return `<div class="rf-ctxh"><b>与 AI 共同编写问卷</b>${a.name ? `<span class="rf-model${a.ok ? "" : " bad"}">${esc(a.name)}${a.ok ? "" : " 不可用"}</span>` : ""}<span class="sp"></span><label class="chk"><input type="checkbox" id="rflib" ${useLib ? "checked" : ""}>参考研究库</label></div>
+    return `<div class="rf-ctxh"><b>与 AI 共同编写问卷</b>${a.ok ? "" : `<span class="rf-model bad">不可用</span>`}<span class="sp"></span><label class="chk"><input type="checkbox" id="rflib" ${useLib ? "checked" : ""}>参考研究库</label></div>
       ${a.ok ? "" : `<div class="rf-bad" role="alert">${esc(a.reason)}</div>`}<div class="rf-cx">${cx.map((x) => `<span>${esc(x)}</span>`).join("")}</div>`;
   };
   const sugCard = (s) => `<div class="rf-sg"><span class="rf-sgk">${esc(s.label)}${s.qno ? ` · 第 ${s.qno} 题` : ""}</span><div>${esc(s.text)}</div>${chipsOf(s.sources)}
@@ -308,7 +306,7 @@ ${text}
       <div class="note">问卷在别的系统里制作和托管，这里只保存链接，点下面的按钮在新窗口里测试；不会嵌进本页面。</div><div class="row"><button class="p" id="rfsave" type="button">保存链接</button>${f.html_url ? `<button class="s" id="rftest" type="button">打开测试窗口</button>` : ""}</div>${f.html_url ? `<code class="rfurl">${esc(f.html_url)}</code>` : ""}</div>`;
     return `<div class="rf-ws${rightOpen ? "" : " rf-collapsed"}" id="rfws"><div class="rf-pane"><div class="rf-hd">${modeSwitch()}<span class="sp"></span><button class="s" type="button" id="rfundo" disabled>撤销</button><button class="s" type="button" id="rfredo" disabled>重做</button><button class="s" type="button" id="rfexp">展开大纲</button></div>
       <div class="rf-ctx" id="rfctx"></div><div class="rf-sc" id="rfchat"></div>
-      <div id="rfsel" hidden></div><div class="rf-inp"><div class="sm mut" style="margin-bottom:6px">${esc(rfAiNotice())}</div><div class="rf-box"><textarea id="rfmsg" rows="2" maxlength="2000" placeholder="请输入修改要求或问题，例如“帮我起草问卷”" aria-label="对话输入"></textarea><button class="p rf-send" type="button" id="rfsend" aria-label="发送">↑</button></div></div></div>
+      <div id="rfsel" hidden></div><div class="rf-inp"><div class="rf-box"><textarea id="rfmsg" rows="2" maxlength="2000" placeholder="请输入修改要求或问题，例如“帮我起草问卷”" aria-label="对话输入"></textarea><button class="p rf-send" type="button" id="rfsend" aria-label="发送">↑</button></div></div></div>
       <div class="rf-split" id="rfsplit" role="separator" aria-orientation="vertical" aria-label="拖动调整对话和大纲的宽度（双击恢复）" tabindex="0"><i></i></div><div class="rf-pane" id="rfright"></div></div>`;
   }
   const modeSwitch = () => `<div class="rf-seg" role="radiogroup" aria-label="问卷来源"><button type="button" role="radio" data-mode="ai" class="${mode === "ai" ? "on" : ""}" aria-checked="${mode === "ai"}">对话编写</button><button type="button" role="radio" data-mode="html" class="${mode === "html" ? "on" : ""}" aria-checked="${mode === "html"}">导入问卷链接</button></div>`;

@@ -57,7 +57,7 @@ def test_a_question_gets_an_answer_and_the_outline_stays(org, cloud):
     r = say(org, pid, "追问是什么意思？")
     assert r.status_code == 200 and r.json()["text"] == ""
     ai = r.json()["chat"][-1]
-    assert ai["text"].startswith("追问就是") and ai["kind"] == "answer" and not ai["can_undo"] and r.json()["model"] == "TestVendor"
+    assert ai["text"].startswith("追问就是") and ai["kind"] == "answer" and not ai["can_undo"] and r.json()["model"] == "小星星助手"  # never the vendor (user 2026-11-01)
     system = fake.calls[0][0]["content"]
     assert "Simplified Chinese" in system and "ALWAYS" in system  # the assistant talks Chinese whatever the interview language is
 

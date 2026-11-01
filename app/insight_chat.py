@@ -14,7 +14,7 @@ import re
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import participant_code
+from . import participant_code, assistant_identity
 from .chat_models import ChatThread
 from .deps import Ctx
 from .models import Insight, Interview, Project, RepoDocument, TranscriptSegment
@@ -47,6 +47,7 @@ SYSTEM = """你是市场研究团队的研究助手，帮团队理解“这一�
 3. 建议可以超出资料，但要放在 suggestions 里，是建议不是事实；建议要具体，能直接用于访谈大纲、招募或下一轮研究。
 4. 受访者只用编号称呼（如 M-002），不要猜测或询问姓名、电话、邮箱等个人信息。
 5. 回答要简洁，先结论后细节。"""
+SYSTEM += " " + assistant_identity.PROMPT_LINE   # 小星星助手: never name the model or vendor (user 2026-11-01)
 
 
 class ChatUnavailable(Exception):

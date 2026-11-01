@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import ratelimit
+from .. import ratelimit, assistant_identity
 from ..audit import audit
 from ..db import get_db
 from ..deps import STAFF, Ctx, require_roles
@@ -51,6 +51,8 @@ def do_search(q: str = Query("", max_length=ask_mod.MAX_QUESTION_CHARS), project
 def do_ask(body: AskBody, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
     """Answer from the library: claims, each with the verbatim passages it rests on; "not enough evidence" when that is the truth."""
     _project_filter(db, ctx, body.project_id)
+    if assistant_identity.asks_identity(body.question):   # "你是什么模型": 小星星助手 answers here; nothing is searched or sent
+        return {"answer": [], "insufficient": True, "message": assistant_identity.REPLY, "searched": 0}
     if wait := ratelimit.ask_allowed(ctx.user.id):
         raise HTTPException(429, ratelimit.MESSAGE, headers={"Retry-After": str(wait)})
     try:

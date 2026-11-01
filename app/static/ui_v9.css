@@ -92,3 +92,15 @@ a{text-underline-offset:3px}
 /* 手机宽度：所有小按钮（包括右侧面板、弹层里的）点击区不小于 36px */
 @media (max-width:600px){button.s,.btn.s{height:36px;min-height:36px}}
 @media (max-width:600px){.rd-sh .rd-arr{width:36px;height:36px;min-height:36px}}
+
+/* 二级菜单统一成“甄别设定”的样式（2026-11-01 用户要求）：文字页签，当前项加粗、下面一条深色线；访谈页的“大纲 / 设置 / 预览测试”、直播间的状态筛选都一样 */
+.subrow>.rf-seg{display:flex;align-items:flex-end;gap:24px;height:40px;padding:0;border:0;border-radius:0;background:none}
+.subrow>.rf-seg button{height:40px;min-height:0;padding:0;border:0;border-bottom:2px solid transparent;border-radius:0;background:none;color:var(--muted);font-size:14px;font-weight:400;box-shadow:none}
+.subrow>.rf-seg button::before{display:none}
+.subrow>.rf-seg button:hover:not(:disabled){color:var(--ink);background:none;border-color:transparent}
+.subrow>.rf-seg button.on,.subrow>.rf-seg button.on:hover{color:var(--ink);font-weight:600;border-bottom-color:var(--ink);background:none}
+.subrow .rmtabs{gap:24px;align-items:flex-end}
+.subrow .rmtabs .rmt{height:40px;padding:0;border:0;border-bottom:2px solid transparent;border-radius:0;background:none;color:var(--muted);font-size:14px;font-weight:400}
+.subrow .rmtabs .rmt:hover:not(.on){color:var(--ink);border-color:transparent}
+.subrow .rmtabs .rmt.on{background:none;color:var(--ink);font-weight:600;border-bottom-color:var(--ink)}
+.subrow .rmtabs .rmt.on::after{color:var(--muted)}

@@ -49,7 +49,7 @@ async function rdBuild(p, rec) {
     ${rdSection("quota", "人群画像", traitSum(),
       `<div class="rd-row rd-two"><div class="card"><h3>合格的人有什么共同点</h3><div>${traits(d.traits.qualified, "g", "有 3 个以上的人答完后才能看出共同点。")}</div>
         <div class="sm" style="margin-top:8px">被筛掉的人的共同点：</div><div>${traits(d.traits.out, "r", "暂时看不出。")}</div>
-        <div style="margin-top:8px"><button class="p" type="button" id="rdsum">让 AI 总结人群画像</button> <span class="sm mut">只发统计数字，不含个人信息${CONFIG && !CONFIG.ai_local ? `；会发送给 AI 服务商${CONFIG.ai_vendor ? `“${esc(CONFIG.ai_vendor)}”` : ""}` : ""}</span></div><div class="note" id="rdsumout" role="status" aria-live="polite" hidden></div></div></div>`, opened.has("quota"))}
+        <div style="margin-top:8px"><button class="p" type="button" id="rdsum">让 AI 总结人群画像</button></div><div class="note" id="rdsumout" role="status" aria-live="polite" hidden></div></div></div>`, opened.has("quota"))}
     ${rdSection("compare", "合格 vs 被筛掉：每题的答案分布对比", d.compare.length ? `共 ${d.compare.length} 项，差异最大 ${Math.max(...d.compare.map((r) => r.gap))} 点` : "暂无数据", `<div class="card">${cmp}</div>`, opened.has("compare"))}</div>`;
   const wire = () => {
     const go = $("#rdgo"); if (go) go.onclick = () => { sessionStorage.setItem("ptab", "form"); render(); };

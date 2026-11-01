@@ -92,10 +92,6 @@ function wzDesignView() {
     </tbody></table></div></div>`;
 }
 
-function wzNotice() {  // where the research background goes: the AI service (and the project's research library comes along)
-  return CONFIG && CONFIG.ai_local ? "AI 运行在我们自己的服务器上，这段文字不会发给其他公司。"
-    : `将这段文字发送给 AI 服务商${CONFIG && CONFIG.ai_vendor ? `“${CONFIG.ai_vendor}”` : ""}来生成内容，并附上研究库资料。请勿写入个人信息。`;
-}
 
 /** Leaving step 1 with a research background: it goes into the project's research library and the AI writes its suggestions in the background (shown on step 2). */
 function wzAutoSuggest() {
@@ -310,9 +306,9 @@ function wzBody() {
   switch (WZ.step) {
     case 0: return `<div class="grid"><label class="field">主项目名称${wzInp('data-meta="name" aria-label="主项目名称"', WZ.name_edit ?? WZ.plan.name)}</label>
       <label class="field">数据留存期限${wzSel('data-w="retention" aria-label="数据留存期限"', c.retention, WZ_RETENTION.map((d) => [d, `${d} 天${d === 180 ? "（平台上限）" : ""}`]))}<span class="mut" style="font-weight:400">同意书里写明的就是这个期限：项目结项后 ${c.retention} 天自动删除个人数据，洞察结论保留。${WZ.plan.live ? "已发布过的项目只能缩短，不能延长。" : ""}</span></label></div>
-      <label class="field">研究背景（选填，只给团队看）<textarea class="autosize" data-meta="brief" rows="3"placeholder="写清这个项目要解决什么问题、做给谁看。">${esc(WZ.brief_edit ?? WZ.plan.brief ?? "")}</textarea><span class="mut" style="font-weight:400">保存后存入研究库，AI 在后台生成建议（发给 AI 服务商）。</span></label>
+      <label class="field">研究背景（选填，只给团队看）<textarea class="autosize" data-meta="brief" rows="3"placeholder="写清这个项目要解决什么问题、做给谁看。">${esc(WZ.brief_edit ?? WZ.plan.brief ?? "")}</textarea></label>
       ${WZ.live ? "" : wzLangFmt()}
-      <div class="note">${esc(wzNotice())}</div>${wzSubs()}`;
+      ${wzSubs()}`;
     case 1: return `${wzSuggest()}${wzDesignView()}<label class="field" style="max-width:360px">研究类型（带出模板）${wzSel('data-w="type"', c.type, Object.keys(WZ_TYPES).map((x) => [x, x]))}</label>
       <div class="note">选“${esc(c.type)}”会预置：${WZ_TYPES[c.type]}。</div>`;
     case 2: return wzRoles();

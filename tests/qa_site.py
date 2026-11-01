@@ -322,7 +322,7 @@ def outline_section(br, D):
     ok(pg.locator("#ollib").is_checked() and "AI 运行在我们自己的服务器上" in pg.inner_text(".rf-inp"), "[outline] the research-library box is ticked and the AI notice is next to the input")
     audit_page(pg, "outline empty/desktop", errs)
     ctxbar = pg.inner_text("#olctx")
-    ok("研究背景" in ctxbar and "还没有大纲" in ctxbar and pg.locator(".ol-mdl").count() == 1, f"[outline] the chat says which model answers and what it has read (got {ctxbar!r})")
+    ok("研究背景" in ctxbar and "还没有大纲" in ctxbar and pg.locator(".ol-mdl").count() == 0, f"[outline] the chat names no model (小星星助手) and says what it has read (got {ctxbar!r})")
     pg.click("[data-chip]"); pg.wait_for_selector(".ol-q")
     card = pg.locator("#olchat .ol-chg")
     ok(card.count() == 1 and "已更新大纲" in card.inner_text() and card.locator("[data-undo]").count() == 1, "[outline] a change made by the AI comes with a change card and an undo button")
@@ -684,7 +684,7 @@ def review_section(br, D):
     pg.goto(B + f"/#/p/{pid}/people"); pg.wait_for_selector("#rfchat .rf-chips")
     chips = [x.strip() for x in pg.locator("#rfchat .rf-chips button").all_inner_texts()]
     ok(chips == ["检查问卷", "对照研究目标", "优化措辞的中立性", "测试这份问卷"], f"[review] with nobody answering yet the quick buttons are these four, no 预估通过率 (got {chips})")
-    ok("与 AI 共同编写问卷" in pg.inner_text("#rfctx") and pg.locator("#rfctx .rf-model").count() == 1 and pg.locator("#rfctx .rf-cx span", has_text="当前问卷（2 题）").count() == 1 and pg.locator("#rflib").is_checked(), "[review] the header names the model and shows what the AI reads")
+    ok("与 AI 共同编写问卷" in pg.inner_text("#rfctx") and pg.locator("#rfctx .rf-model").count() == 0 and pg.locator("#rfctx .rf-cx span", has_text="当前问卷（2 题）").count() == 1 and pg.locator("#rflib").is_checked(), "[review] the header names the model and shows what the AI reads")
     # a passing failure: the reason in plain words, the question kept, 重新尝试 asks again; a refusal greys out the buttons that need the model
     fails = {"n": 0}
     def flaky(route):
@@ -1107,7 +1107,7 @@ def recruit_section(br, D):
     ok(pg.evaluate("getComputedStyle(document.querySelector('#rfchat')).overflowY") == "auto" and pg.evaluate("getComputedStyle(document.querySelector('#rfout')).overflowY") == "auto" and pg.evaluate("document.documentElement.scrollHeight <= innerHeight + 2"), "[recruit] the two frames scroll on their own and the page does not scroll")
     lw, rw = pg.evaluate("document.querySelector('.rf-pane').getBoundingClientRect().width"), pg.evaluate("document.querySelector('#rfright').getBoundingClientRect().width")
     ok(rw > lw * 1.3, "[recruit] the outline gets more width than the conversation")
-    ok("不会发给其他公司" in pg.inner_text(".rf-inp") or "发送给" in pg.inner_text(".rf-inp"), "[recruit] the conversation says where what is typed goes")
+    ok("发送给" not in pg.inner_text(".rf-inp") and "DeepSeek" not in pg.inner_text(".rf-inp"), "[recruit] no notice about the AI service and no model name (user and legal, 2026-11-01)")
     ok(pg.locator("#rfimport").count() == 0 and pg.locator("#rfidea").count() == 0, "[recruit] the old idea box and import button are gone (the 参考研究库 tick is back in the conversation header, like the 访谈 page)")
     audit_page(pg, "recruiting workspace empty/desktop", errs)
     # draft by talking: the questions, goals and need appear in the outline
@@ -1429,7 +1429,7 @@ def wizard_section(br, D):
     # step 1: name, retention (30/60/120/180), sub-projects with their own research order, listening and async ticks
     ok(pg.locator("select[data-w=retention] option").count() == 4 and pg.input_value("select[data-w=retention]") == "180" and pg.locator(".wzlangs").count() == 1, "[wizard] retention is chosen from 30/60/120/180 (180 by default) and there is one sub-project")
     pg.select_option("select[data-w=retention]", "60"); pg.wait_for_timeout(1200)  # it saves and redraws
-    ok("不会发给其他公司" in pg.inner_text("main") or "发送给" in pg.inner_text("main"), "[wizard] the research background says where the text goes (AI service)")
+    ok("AI 服务商" not in pg.inner_text("main"), "[wizard] no notice about the AI service (user and legal, 2026-11-01)")
     pg.fill("[data-meta=brief]", "新品防晒霜进入新加坡市场，想了解年轻人的购买决策。")
     h0 = pg.evaluate("document.querySelector('[data-meta=brief]').offsetHeight")
     pg.fill("[data-meta=brief]", chr(10).join(f"第 {i} 行" for i in range(1, 8)))

@@ -4,7 +4,7 @@
    依赖 index.html 里的 api / esc / toast / guard / $ / STAFF / ME / STATUS / CONFIG / reelsSection / shell。 */
 const INS_TABS = [["r", "受访者数据"], ["p", "报告"], ["q", "问题分析"], ["v", "精彩片段"], ["c", "对话"]];
 const insClock = (ms) => { const s = Math.max(0, Math.round((ms || 0) / 1000)); return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`; };
-const insAiNotice = () => (CONFIG && CONFIG.ai_local ? "" : `<div class="sm mut ins-note">将提问和相关转写发送给 AI 服务商${CONFIG && CONFIG.ai_vendor ? `“${esc(CONFIG.ai_vendor)}”` : ""}。请勿输入个人信息。</div>`);
+const insAiNotice = () => "";   // the notice about where questions go was removed (user and legal, 2026-11-01)
 const insDownload = (p, url, name) => guard(async () => {  // a download needs the login header, so fetch it and hand the browser a file
   const r = await fetch(url, { headers: { Authorization: "Bearer " + store.get("tt_token") } });
   if (!r.ok) throw new Error("导出失败，请稍后再试");
@@ -341,7 +341,7 @@ async function insightsHub(p, my) {
     const st = await api(`/projects/${p.id}/chat/status`); if (stale(my)) return;
     let threads = await api(`/projects/${p.id}/chats`).catch(() => []), cur = null, busy = null;   // cur: the open conversation { id, title, messages }
     let scope = SCOPES.map((s) => s[0]); try { const saved = JSON.parse(sessionStorage.getItem("ichat_scope") || "null"); if (Array.isArray(saved) && saved.length) scope = saved; } catch { /* the default */ }
-    const key = `ichat_${p.id}`, status = st.mock ? ["演示模式", "w"] : st.ready ? [`${st.vendor || "本地模型"} · 已连接`, ""] : ["未连接", "w"];
+    const key = `ichat_${p.id}`, status = st.mock ? ["演示模式", "w"] : st.ready ? ["已连接", ""] : ["未连接", "w"];
     const answerHtml = (m) => esc(m.answer).replace(/\[(\d+)\]/g, (_, n) => `<sup class="ins-ref">[${n}]</sup>`).replace(/\n/g, "<br>");
     const aiHtml = (m, i) => `<div class="ins-msg ai"><h5>回答</h5><div data-selk="m:${i}">${answerHtml(m)}</div>
       ${m.quotes.length ? `<h5>引用原话（程序从转写里原样复制，不是 AI 写的）</h5>${m.quotes.map((q) => `<div class="ins-q"><b>[${q.n}]</b> “${esc(q.text)}”<small> ${esc(q.who || "")} ${q.at_ms ? insClock(q.at_ms) : ""}${q.interview_id ? ` · <a href="#/i/${q.interview_id}">看原文</a>` : ""}</small></div>`).join("")}` : ""}
@@ -397,7 +397,7 @@ async function insightsHub(p, my) {
       <div id="cthread" class="ins-thread"></div>
       <div id="cbar" hidden></div>
       <div class="ins-inp"><div class="rf-box"><textarea id="cmsg" rows="2" maxlength="1000" placeholder="${st.ready ? "问问研究助手，比如“受访者为什么觉得价格太贵？”" : "连接模型后才能提问"}" aria-label="提问" ${st.ready ? "" : "disabled"}></textarea><button class="p rf-send" type="button" id="csend" aria-label="发送" ${st.ready ? "" : "disabled"}>↑</button></div>
-        ${st.local ? "" : `<div class="sm mut ins-note">将提问、相关转写和洞察发送给 AI 服务商${st.vendor ? `“${esc(st.vendor)}”` : ""}。请勿输入个人信息。</div>`}</div></div>`;
+        </div></div>`;
     $("#csend").onclick = () => (busy ? (drawAbort && drawAbort.abort()) : send($("#cmsg").value));
     $("#cmsg").onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send($("#cmsg").value); } };
     $("#cnew").onclick = () => { cur = null; sessionStorage.removeItem(key); draw(); $("#cmsg").focus(); };

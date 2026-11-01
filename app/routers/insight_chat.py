@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import insight_chat, ratelimit
+from .. import insight_chat, ratelimit, assistant_identity
 from ..audit import audit
 from ..chat_models import ChatThread
 from ..config import settings
@@ -101,12 +101,15 @@ def ask(cid: str, body: AskBody, ctx: Ctx = Depends(require_roles(*STAFF)), db: 
     if wait := ratelimit.ask_allowed(ctx.user.id):
         raise HTTPException(429, f"提问太频繁，请 {wait} 秒后再试")
     chat = None if st["mock"] else get_moderator_chat()
-    try:
-        ai = insight_chat.reply(db, ctx, proj, t, body.message.strip(), body.scope, chat, proj.outline_text)
-    except ChatFatalError as e:
-        raise HTTPException(502, f"AI 模型服务拒绝了请求：{e.reason}") from e
-    except insight_chat.ChatUnavailable as e:
-        raise HTTPException(502, e.message) from e
+    if assistant_identity.asks_identity(body.message):   # "你是什么模型": 小星星助手 answers here; no model is asked
+        ai = {"role": "ai", "answer": assistant_identity.REPLY, "suggestions": [], "followups": [], "refs": []}
+    else:
+        try:
+            ai = insight_chat.reply(db, ctx, proj, t, body.message.strip(), body.scope, chat, proj.outline_text)
+        except ChatFatalError as e:
+            raise HTTPException(502, f"AI 模型服务拒绝了请求：{e.reason}") from e
+        except insight_chat.ChatUnavailable as e:
+            raise HTTPException(502, e.message) from e
     if body.ask_only:   # a side question about one passage: the conversation stays as it was
         audit(db, ctx.org_id, ctx.actor, "chat.ask", t.id, model="mock" if chat is None else chat.name, ask_only=True)
         db.commit()

@@ -21,6 +21,7 @@ from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
+from . import assistant_identity
 from .moderator.providers import ChatError, ChatFatalError, ModeratorChatProvider
 
 log = logging.getLogger(__name__)
@@ -442,6 +443,7 @@ Write the questions in the language {language}. Questions are neutral, one at a 
 If asked to draft the questionnaire, use the research background and the reference material: 6 to 10 questions, eligibility first (age 18 or over, country or city, how often they use or buy), then what tells the target groups apart; also fill "goals" (3 to 4) and "need".
 If the researcher asks a QUESTION about the questionnaire (why it is built this way, who gets screened out, how strict a question is, what a question is for), ANSWER it from the research background, the library, the quotas and the anonymous counts you are given: kind "answer", questions null, and list in "sources" what you relied on. Never invent numbers; if the counts do not say, say so. When you propose an improvement without making it, use kind "suggest" and change nothing. kind "change" only when you changed the questionnaire, goals or need.
 If the request is unclear, ask one short question in "reply" and change nothing."""
+CHAT_SYSTEM += " " + assistant_identity.PROMPT_LINE   # 小星星助手: never name the model or vendor (user 2026-11-01)
 
 
 @dataclass

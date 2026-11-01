@@ -18,7 +18,7 @@ function rtMenuHtml(d, cur) {
 function rtBuild(p, questions, lang, d) {
   const v = d.languages.find((x) => x.code === lang) || { name: RT_NAMES[lang] || lang, stale: 0, missing: 0, ready: false, team_only: false };
   const items = d.items[lang] || {};
-  const notice = d.ai_local ? "" : `<div class="sm mut" style="margin:6px 0">将问卷文字发送给 AI 服务商${d.ai_vendor ? `“${esc(d.ai_vendor)}”` : ""}。请勿写入个人信息。</div>`;
+  const notice = "";
   const need = v.stale + v.missing;
   const bar = `${v.team_only ? `<div class="rf-warn" role="note" style="background:var(--wash);color:var(--ink2)">这是“仅团队”的版本，只给你们自己看和试答，受访者永远收不到。</div>` : ""}
     ${need ? `<div class="rf-warn" role="status">${v.stale ? `原文改过，${v.stale} 题译文待更新` : ""}${v.stale && v.missing ? "；" : ""}${v.missing ? `${v.missing} 题还没有译文` : ""}。${v.team_only ? "" : "更新之前，受访者暂时看不到这个语言。"}<span class="sp"></span><button type="button" class="p" id="rtupd">更新译文</button></div>` : ""}${notice}`;

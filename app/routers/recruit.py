@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import library_context, participant_code, recruit, recruit_form, recruit_insights, recruit_review, recruit_translate
+from .. import library_context, participant_code, recruit, recruit_form, recruit_insights, recruit_review, recruit_translate, assistant_identity
 from ..audit import audit
 from ..db import get_db
 from ..deps import RECRUITERS, STAFF, Ctx, require_roles
@@ -62,9 +62,8 @@ class IdeaBody(BaseModel):
 
 
 def _model_name() -> str:
-    """Who the questionnaire text goes to, for the messages (the vendor, or a neutral name for a model on our own server)."""
-    from ..config import settings
-    return settings.moderator_vendor.strip() or "AI 服务"
+    """The assistant's name in messages: always 小星星助手, never the model or vendor (user 2026-11-01)."""
+    return assistant_identity.NAME
 
 
 def _ai_status() -> dict:
@@ -371,6 +370,14 @@ def chat_form(pid: str, body: ChatBody, ctx: Ctx = Depends(require_roles(*RECRUI
     research library, and answers with a reply and the changes (which are saved). The conversation is kept with the form. The text is sent to the AI service (the page says
     so) and is not written to the log. Takes several seconds."""
     proj = get_project(db, ctx, pid)
+    if assistant_identity.asks_identity(body.message):   # "你是什么模型": 小星星助手 answers here; no model is asked and the questionnaire stays as it is
+        f = db.get(RecruitForm, proj.id)
+        if body.ask_only or f is None:
+            return {"reply": assistant_identity.REPLY, "kind": "answer", "changed": False}
+        f.chat = [*(f.chat or []), {"role": "user", "text": body.message.strip()}, {"role": "ai", "text": assistant_identity.REPLY, "kind": "answer", "sources": []}][-MAX_CHAT:]
+        db.commit()
+        return {**_full(db, proj, f), "reply": assistant_identity.REPLY, "kind": "answer", "changed": False,
+                "used": {"brief": bool((proj.brief or "").strip()), "library": len(library_context.project_documents(db, proj.id))}}
     chat = _ai_chat()
     try:
         current = recruit_form.normalize({"source": "ai", "questions": body.questions, "goals": body.goals, "need": body.need})
