@@ -19,6 +19,12 @@
 - 没测：整套 qa.sh；真人房间的录制路径（没改）；语音在真实 ASR（腾讯云/OpenAI）上的识别效果（测试用的是 mock ASR）；接管语音和聊天的重复文字（研究员同时打字和说话时会出现两条）；录像里屏幕共享的合成画面（只验证了录制就绪，没有人工看成片）。
 - 还要注意：结束访谈（`/end`）时会用聊天重写转写，会清掉之前转写里的语音段；语音段需要在录制就绪后再点一次“转写”。
 
+## 2026-11-01 · EdgeOne 证书进行中（待签发）
+- 当前：deepresearch.morningstarsystem.tech 已在腾讯云申请免费证书（自动 DNS 验证，已自动在 DNSPod 添加 `_dnsauth.deepresearch` TXT 记录）。证书 ID c2DpEJf2，等待签发。
+- 之前 EdgeOne 自动签证书失败（原因：域名未 CNAME 到 EdgeOne）。
+- DNS 仍为 A 记录指向源站 43.160.208.195，网站正常。
+- 下一步：证书签发后，在 EdgeOne 域名的 HTTPS 配置里绑定为自有证书；从服务器用 --resolve 指向 EdgeOne 节点检查 HTTPS；通过后再把 DNSPod `deepresearch` 切到 CNAME（deepresearch.morningstarsystem.tech.eo.dnse0.com）。不通过则不切。
+
 ## 2026-11-01 · 部署 da37b41→（本次部署）AI 接管录制；EdgeOne 切换回滚（重要更正）
 - 部署：备份 total-20261101-135648.db.gz（已异地上传）；线上无进行中访谈；`git archive` 上传；`docker compose up -d --build --no-deps app`；doctor 无必须解决的问题；源站 /api/health 200，room.html 含新代码；告警配置仍在（.env 38 行未改）。没有新增数据库列。
 - 更正：之前“deepresearch 已切到 EdgeOne、HTTPS 正常”的结论是错的。我当时用的本机代理测试没有真正走 EdgeOne 线路。部署后从服务器上测，EdgeOne 节点 43.159.98.75 返回的是腾讯云默认证书（*.cdn.myqcloud.com），说明 deepresearch 在 EdgeOne 上没有绑定证书，HTTPS 会失败。
