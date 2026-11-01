@@ -329,7 +329,8 @@ function wzDraw() {
     : P.live ? `<div class="note"><b>修改中。</b>项目在这期间仍按已发布的版本（v${P.version}）运行；改完提交审查、通过后发布，配额和监控才会按新内容更新。</div>` : "";
   shell(`${head("立项向导", "一次选好角色、样本、人群和合规", `<span class="pill ${stCls}">${stLabel}</span><span class="sm mut" id="wzstat" role="status">${locked ? "已锁定，只读" : "改动会自动保存"}</span>`)}
     ${lockNote}<div class="chain" role="list">${WZ_STEPS.map((x, i) => `<button class="step ${s === i ? "on" : ""}" data-step="${i}" type="button" ${s === i ? 'aria-current="step"' : ""}>${i + 1} ${x}</button>`).join("")}</div>
-    ${s === 0 && WZ.live ? `<div class="card wzlive">${wzLangFmt()}</div>` : ""}<fieldset class="card wzbody" ${locked ? "disabled" : ""}>${wzBody()}</fieldset>
+    ${s === 0 && WZ.live ? `<div class="card wzlive">${wzLangFmt()}</div>` : ""}<div class="wzgrid"><fieldset class="card wzbody" ${locked ? "disabled" : ""}>${wzBody()}</fieldset>
+    <nav class="wztoc" aria-label="立项步骤">${WZ_STEPS.map((x, i) => `<button class="${s === i ? "on" : i < s ? "done" : ""}" data-step="${i}" type="button" ${s === i ? 'aria-current="step"' : ""}><span>${i < s ? "✓" : i + 1}</span>${x}</button>`).join("")}</nav></div>
     <div class="row" style="justify-content:space-between"><button id="wzprev" type="button" ${s ? "" : "disabled"}>上一步</button>${s < 6 ? `<button class="p" id="wznext" type="button">下一步</button>` : `<a class="btn p" id="wzhome" href="#/p/${WZ.p.id}/home" ${P.status === "published" || P.live ? "" : 'aria-disabled="true" hidden'}>去项目总览</a>`}</div>`,
     { active: "wiz", p: WZ.p });
   wzWire();

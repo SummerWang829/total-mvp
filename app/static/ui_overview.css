@@ -1,3 +1,9 @@
 /* 项目总览四个页签（总览 / 执行监控 / 洞察池 / 项目成员）：按 ui_v5 效果图补齐的外观差异。只写展示。 */
 .overview-metrics>div+div{border-left:1px solid #426257;padding-left:24px}
 .overview-metrics>div:first-child{padding-right:24px}
+
+/* 效果图改版（2026-11-01，只改展示）：项目总览顶部条的“进入直播间”按钮；项目卡片标签放在名称上面。 */
+.ovx .overview-band h1{font-size:44px;line-height:1.1}
+.ovx .band-go{display:inline-block;margin-top:20px;padding:10px 18px;border-radius:8px;background:#fff;color:var(--brand);font-weight:600;font-size:15px;text-decoration:none}
+.ovx .band-go:hover{background:var(--wash)}
+.pcard .pc-top{display:flex;gap:6px;flex-wrap:wrap}

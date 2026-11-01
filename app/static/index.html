@@ -204,7 +204,7 @@ function projectCard(p) {
   const stt = setup ? `<span class="tag o">${{ draft: "草稿", review: "审查中", approved: "待发布" }[p.plan_status] || "立项中"}</span>` : st;
   return `<a class="card pcard" href="#/p/${p.id}${setup ? "/wiz" : ""}" data-project-id="${p.id}" data-name="${esc(p.name.toLowerCase())}" data-st="${p.closed_at ? "closed" : "open"}" aria-selected="false">
     ${ME.role === "admin" ? `<span class="project-select" aria-hidden="true"><span></span></span>` : ""}
-    <div class="row"><h3 title="${esc(p.name)}">${esc(p.name)}</h3><span class="sp"></span>${stt}</div>
+    <div class="pc-top">${stt}</div><h3 title="${esc(p.name)}">${esc(p.name)}</h3>
     <div class="sm mut" title="${esc([p.market || "—", langNames(p), p.brief || ""].filter(Boolean).join(" · "))}">${esc(p.market || "—")} · ${esc(langNames(p))}${p.brief ? " · " + esc(p.brief).slice(0, 40) : ""}</div>
     ${s ? `<div class="nums"><div><b>${s.participants}</b><span>受访者</span></div><div><b>${s.done}/${s.sessions}</b><span>场次完成</span></div><div><b>${s.approved}</b><span>洞察已通过</span></div></div>
       <div class="sm">${s.next_at ? `下一场：<b>${when(s.next_at)}</b>` : `<span class="mut">没有待开始的场次</span>`}</div>` : ""}</a>`;
@@ -286,7 +286,7 @@ async function homeView(p) {
   app.querySelector("main").classList.add("ovx");  // visual v6 (ui_v6.css): scoped to this page only
   if (h) {
     const main = app.querySelector("main");
-    const band = `<section class="overview-band"><p>${esc(p.market || "")} · ${esc(langNames(p))}</p><h1>${esc(p.name)}</h1><div class="overview-metrics"><div><b>${s.done} / ${s.sessions}</b><span>访谈已完成</span></div><div><b>${s.ended ? Math.round(s.transcribed * 100 / s.ended) : 0}%</b><span>已结束访谈的转写率</span></div><div><b>${s.upcoming}</b><span>待开始场次</span></div><div><b>${s.approved}</b><span>已确认洞察</span></div></div></section>`;
+    const band = `<section class="overview-band"><p>${esc(p.market || "")} · ${esc(langNames(p))}</p><h1>${esc(p.name)}</h1><div class="overview-metrics"><div><b>${s.done} / ${s.sessions}</b><span>访谈已完成</span></div><div><b>${s.ended ? Math.round(s.transcribed * 100 / s.ended) : 0}%</b><span>已结束访谈的转写率</span></div><div><b>${s.upcoming}</b><span>待开始场次</span></div><div><b>${s.approved}</b><span>已确认洞察</span></div></div><a class="band-go" href="#/p/${p.id}/rooms">进入直播间</a></section>`;
     const head = main.querySelector(".head");
     if (head) head.insertAdjacentHTML("afterend", band); else main.insertAdjacentHTML("afterbegin", band);
     h.wire();
