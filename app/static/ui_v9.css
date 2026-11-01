@@ -104,3 +104,4 @@ a{text-underline-offset:3px}
 .subrow .rmtabs .rmt:hover:not(.on){color:var(--ink);border-color:transparent}
 .subrow .rmtabs .rmt.on{background:none;color:var(--ink);font-weight:600;border-bottom-color:var(--ink)}
 .subrow .rmtabs .rmt.on::after{color:var(--muted)}
+@media (max-width:600px){.subrow>.rf-seg button,.subrow .rmtabs .rmt{min-width:36px;justify-content:center}}
