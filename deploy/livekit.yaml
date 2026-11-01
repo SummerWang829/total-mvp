@@ -10,6 +10,15 @@ rtc:
   # (the guess logged "could not validate external IP"). CHANGE THIS if the server or its public IP changes.
   use_external_ip: false
   node_ip: 43.160.208.195
+# TURN (2026-11-01): lets phones and networks that block UDP still reach the room. Port 443 belongs to Caddy, so TLS-TURN uses 5349 (open in the Lighthouse firewall).
+# The certificate is Caddy's own certificate for the LiveKit domain, copied to /opt/livekit-turn on the server (see docs/PROGRESS.md). Renew = copy again + restart livekit.
+turn:
+  enabled: true
+  domain: lk-deepresearch.morningstarsystem.tech
+  tls_port: 5349
+  udp_port: 3478
+  cert_file: /etc/livekit-turn/fullchain.crt
+  key_file: /etc/livekit-turn/private.key
 webhook:
   api_key: totalkey    # must equal LIVEKIT_API_KEY in deploy/.env (LiveKit does not expand variables in this file)
   urls:

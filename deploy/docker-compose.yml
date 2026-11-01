@@ -27,6 +27,7 @@ services:
       LIVEKIT_KEYS: "${LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET}"
     volumes:
       - ./livekit.yaml:/etc/livekit.yaml:ro
+      - /opt/livekit-turn:/etc/livekit-turn:ro   # TURN certificate (copy of Caddy's cert for the LiveKit domain)
 
   caddy:
     image: caddy:2
