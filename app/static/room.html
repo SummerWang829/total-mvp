@@ -141,8 +141,7 @@ function pickMime(hasVideo) {
   const c = hasVideo ? ["video/webm;codecs=vp8,opus", "video/webm;codecs=vp9,opus", "video/webm", "video/mp4"] : ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"];
   return c.find((m) => window.MediaRecorder && MediaRecorder.isTypeSupported(m)) || "";
 }
-async function post(rid, seq, offset, blob, last, mime) {
-  const part = R.part;
+async function post(rid, seq, offset, blob, last, mime, part) {
   for (let a = 0; a < 6; a++) {
     try {
       const r = await fetch(`${chunkUrl(rid)}?seq=${seq}&offset_ms=${offset}&last=${last ? 1 : 0}&part=${part}`, { method: "POST", headers: { ...authHdr(), "Content-Type": mime.split(";")[0] }, body: blob, keepalive: blob.size < 60000 });
@@ -152,7 +151,7 @@ async function post(rid, seq, offset, blob, last, mime) {
     R.bad++; showWarn(true); await sleep(800 * 2 ** a);
   }
 }
-function enqueue(rid, seq, offset, blob, last, mime) { R.q = R.q.then(() => post(rid, seq, offset, blob, last, mime)).then(() => { if (!R.bad) showWarn(false); }); }
+function enqueue(rid, seq, offset, blob, last, mime, part) { R.q = R.q.then(() => post(rid, seq, offset, blob, last, mime, part)).then(() => { if (!R.bad) showWarn(false); }); }
 function showWarn(on) { const w = $id("warn"); w.hidden = !on; w.textContent = on ? T.upload : ""; }
 
 function startRecorder(rec, tPoll) {
@@ -163,13 +162,38 @@ function startRecorder(rec, tPoll) {
   let mr;
   try { mr = new MediaRecorder(new MediaStream(tracks), R.mime ? { mimeType: R.mime, videoBitsPerSecond: 900000, audioBitsPerSecond: 64000 } : undefined); }
   catch (e) { showWarn(true); return; }
-  const rid = rec.id, mime = R.mime || "video/webm", offset = Math.round(rec.elapsed_ms + (performance.now() - tPoll));
-  R.id = rid; R.seq = 0; R.mr = mr;
-  mr.ondataavailable = (e) => { if (e.data && e.data.size) enqueue(rid, R.seq++, offset, e.data, false, mime); };
-  mr.onstop = () => { enqueue(rid, R.seq++, offset, new Blob([]), true, mime); R.mr = null; };
+  const rid = rec.id, mime = R.mime || "video/webm", offset = Math.round(rec.elapsed_ms + (performance.now() - tPoll)), part = R.part;
+  R.id = rid; R.mr = mr;
+  let seq = 0;
+  mr.ondataavailable = (e) => { if (e.data && e.data.size) enqueue(rid, seq++, offset, e.data, false, mime, part); };
+  mr.onstop = () => { enqueue(rid, seq++, offset, new Blob([]), true, mime, part); R.mr = null; };
   mr.start(4000);
 }
 function stopRecorder() { if (R.mr && R.mr.state !== "inactive") { try { R.mr.requestData(); } catch {} R.mr.stop(); } }
+
+// During an AI interview the researcher's own voice, camera and screen are recorded only while they are in control.
+// Each takeover is its own recording part (a new file on the timeline); handing back stops it.
+let AISEG = false;
+function startAiSegment() {
+  const tracks = [...room.localParticipant.trackPublications.values()].map((p) => p.track && p.track.mediaStreamTrack).filter((t) => t && t.readyState === "live");
+  if (!tracks.length || !recStart) return;
+  const part = Math.random().toString(36).slice(2, 10);
+  R.mime = pickMime(tracks.some((t) => t.kind === "video"));
+  let mr;
+  try { mr = new MediaRecorder(new MediaStream(tracks), R.mime ? { mimeType: R.mime, videoBitsPerSecond: 900000, audioBitsPerSecond: 64000 } : undefined); }
+  catch (e) { showWarn(true); return; }
+  const rid = recStart.rid, mime = R.mime || "video/webm", offset = Math.round(performance.now() - recStart.at);
+  R.id = rid; R.mr = mr; AISEG = true;
+  let seq = 0;
+  mr.ondataavailable = (e) => { if (e.data && e.data.size) enqueue(rid, seq++, offset, e.data, false, mime, part); };
+  mr.onstop = () => { enqueue(rid, seq++, offset, new Blob([]), true, mime, part); R.mr = null; };
+  mr.start(4000);
+}
+function aiRecSync() {
+  const want = !!recStart && LIVE.on && !ended && S && S.can_takeover;
+  if (want && !R.mr) startAiSegment();
+  if (!want && AISEG) { AISEG = false; stopRecorder(); }
+}
 
 // ---------------- connection diagnostics ----------------
 // Every 5 s each browser reads how it is connected (UDP / TCP / through a relay), the round-trip time and the packet loss from the standard WebRTC statistics
@@ -232,6 +256,7 @@ async function poll() {
     $id("recdot").hidden = false;
     startRecorder(st.recording, t0);
   } else { recStart = null; $id("recdot").hidden = true; stopRecorder(); }
+  if (S && S.can_takeover) aiRecSync();
   if (st.status === "ended") { finish(); return; }
   if (role === "participant") msg(st.status === "live" ? T.live : T.waiting);
   if (C.on && role !== "moderator") pollChat();
@@ -487,8 +512,8 @@ async function humanMedia(on) {   // called with every poll: idempotent
   if (!room || LIVE.busy || on === LIVE.on || Date.now() < LIVE.retryAt) return;
   LIVE.busy = true;
   try {
-    if (on) { await swapToken(); LIVE.on = true; humanButtons(); }
-    else { dropHuman(); LIVE.on = false; await swapToken(); }
+    if (on) { await swapToken(); LIVE.on = true; humanButtons(); aiRecSync(); }
+    else { if (AISEG) { AISEG = false; stopRecorder(); } LIVE.on = false; dropHuman(); await swapToken(); }
   } catch { LIVE.retryAt = Date.now() + 15000; toast("视频连接没有切换成功，稍后会再试", true); } finally { LIVE.busy = false; }
 }
 

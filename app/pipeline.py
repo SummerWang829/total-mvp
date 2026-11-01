@@ -19,6 +19,47 @@ def _fit_to_duration(segs: list[dict], duration_ms: int) -> None:
             s["start_ms"], s["end_ms"] = int(s["start_ms"] * k), max(int(s["end_ms"] * k), int(s["start_ms"] * k) + 200)
 
 
+def _transcribe_part(asr, part: dict, language: str) -> list[dict]:
+    """One speaker's track through the ASR service; provider errors become HTTP errors that never carry a secret."""
+    try:
+        return asr.transcribe_audio(part["path"], language, part["role"])
+    except ASRUnsupported as e:
+        raise HTTPException(422, str(e))
+    except ASRError as e:  # the message names the service's error code, never a secret
+        raise HTTPException(502, str(e))
+    except Exception as e:  # provider failure must not look like "nothing was said"
+        raise HTTPException(502, f"转写服务调用失败：{type(e).__name__}")
+
+
+def voice_segments(db: Session, itv: Interview, rec: Recording) -> list[dict]:
+    """An AI interview's own speech: what the researcher said while in control (their recorded track), placed on the
+    interview's timeline. The recording starts at its own moment, so its offsets are shifted by that gap.
+
+    Returns:
+        Transcript lines with speaker ``moderator``; empty when nobody took over with a microphone.
+    """
+    parts = [p for p in audio_parts(db, rec) if p["role"] == "moderator"]
+    if not parts:
+        return []
+    try:
+        asr = get_asr()
+    except NotImplementedError as e:
+        raise HTTPException(501, str(e))
+    base = int(((rec.started_at - (itv.started_at or rec.started_at)).total_seconds()) * 1000)
+    out = []
+    for part in parts:
+        for s in _transcribe_part(asr, part, itv.language):
+            start = max(0, s["start_ms"] + part["offset_ms"] + base)
+            out.append(dict(speaker="moderator", start_ms=start, end_ms=max(start, s["end_ms"] + part["offset_ms"] + base), text_orig=s["text"],
+                            text_zh=s.get("text_zh", ""), lang=s.get("lang", "")))
+    if itv.language != "zh":
+        todo = [s for s in out if not s["text_zh"]]
+        if todo:
+            for s, zh in zip(todo, get_llm().translate([s["text_orig"] for s in todo])):
+                s["text_zh"] = zh
+    return out
+
+
 def build_segments(db: Session, itv: Interview, rec: Recording) -> list[dict]:
     try:
         asr = get_asr()
@@ -30,15 +71,7 @@ def build_segments(db: Session, itv: Interview, rec: Recording) -> list[dict]:
         if settings.asr_provider == "mock":  # the mock "hears" a fixed script per speaker: use it once per speaker, not once per page reload
             parts = [p for i, p in enumerate(parts) if p["role"] not in {q["role"] for q in parts[:i]}]
         for part in parts:
-            try:
-                got = asr.transcribe_audio(part["path"], itv.language, part["role"])
-            except ASRUnsupported as e:
-                raise HTTPException(422, str(e))
-            except ASRError as e:  # the message names the service's error code, never a secret
-                raise HTTPException(502, str(e))
-            except Exception as e:  # provider failure must not look like "nothing was said"
-                raise HTTPException(502, f"转写服务调用失败：{type(e).__name__}")
-            for s in got:
+            for s in _transcribe_part(asr, part, itv.language):
                 segs.append(dict(speaker=part["role"], start_ms=s["start_ms"] + part["offset_ms"], end_ms=s["end_ms"] + part["offset_ms"], text_orig=s["text"], text_zh=s.get("text_zh", ""), lang=s.get("lang", "")))
     elif hasattr(asr, "transcribe"):  # dev: no recording file exists, use the whole-conversation sample
         segs = [{k: v for k, v in s.items() if k != "idx"} for s in asr.transcribe(rec.storage_key, itv.language)]

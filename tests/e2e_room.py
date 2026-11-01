@@ -716,6 +716,8 @@ def run_ai(tmp):
         pr.click("#b-hmic"); pr.click("#b-hcam")
         ok(wait_for(lambda: pr.get_attribute("#b-hmic", "aria-pressed") == "true" and pr.get_attribute("#b-hcam", "aria-pressed") == "true", 20), "[ai takeover] voice and video switch on")
         ok(wait_for(lambda: any(r[0] == "staff" and r[1] >= 2 for r in (remote(pp) or [])), 30), "[ai takeover] the participant receives the researcher's voice and video")
+        pr.click("#b-rec")  # the team starts the recording while in control: the researcher's own voice and video are recorded
+        pr.wait_for_timeout(9000)  # two 4-second chunks at least
         pr.click("#b-hscr")
         shared = wait_for(lambda: pr.get_attribute("#b-hscr", "aria-pressed") == "true", 15)
         ok(shared and wait_for(lambda: any(r[0] == "staff" and r[1] >= 3 for r in (remote(pp) or [])), 30), "[ai takeover] screen sharing reaches the participant")
@@ -723,6 +725,13 @@ def run_ai(tmp):
         pr.click("#a-back")
         ok(wait_for(lambda: pr.locator("#b-hmic").count() == 0 and pubs(pr) is False, 40), "[ai takeover] handing back removes the buttons and the right to publish")
         ok(wait_for(lambda: not any(r[0] == "staff" and r[1] > 0 for r in (remote(pp) or [])), 30), "[ai takeover] the participant no longer receives anything from the team")
+        pr.click("#b-stop")
+        recs = wait_for(lambda: (lambda r: r if r and r[0]["status"] == "ready" else None)(call(f"/interviews/{iid}/recordings", token=tok["researcher"])), 120)
+        ok(bool(recs), "[ai takeover] the recording made during the takeover becomes ready")
+        call(f"/interviews/{iid}/transcribe", {}, tok["researcher"])
+        segs = call(f"/interviews/{iid}/transcript", token=tok["researcher"])
+        speech = [x for x in segs if x["speaker"] == "moderator"]
+        ok(bool(speech), f"[ai takeover] what the researcher said in control is transcribed onto the timeline ({len(speech)} lines)")
         ok(not errs, f"[ai takeover] no console errors: {errs[:3]}")
         br.close()
 

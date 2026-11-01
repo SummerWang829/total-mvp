@@ -20,7 +20,7 @@ from ..evidence import check_evidence, quote_matches
 from ..livekit import build_room_token, delete_room, url_for_client
 from ..models import (AuditLog, Clip, SegmentCode, InsightCode, Consent, Evidence, Insight, Interview, InterviewObserver, Participant, Project,
                       Recording, ShareLink, TranscriptSegment, User, uid, utcnow)
-from ..pipeline import build_segments
+from ..pipeline import build_segments, voice_segments
 from ..providers import get_llm
 from ..recording import elapsed_ms, rec_file, save_chunk
 from ..retention import run_retention
@@ -781,6 +781,19 @@ def transcript_ingest(iid: str, body: TranscriptIn, ctx: Ctx = Depends(require_r
     return {"segments": len(body.segments)}
 
 
+def _transcribe_ai(db: Session, itv: Interview, rec: Recording | None, actor: str) -> dict:
+    """An AI interview's transcript: the chat (AI, participant, typed team lines) plus whatever the researcher said while in
+    control, placed on the same timeline. Re-running it gives the same result."""
+    if db.scalar(select(Insight.id).where(Insight.interview_id == itv.id)):
+        raise HTTPException(409, "已有洞察引用旧转写，不能整体替换；请逐段校对")
+    lines = ai_room.chat_lines(db, itv) + (voice_segments(db, itv, rec) if rec else [])
+    if not lines:
+        raise HTTPException(409, "录音里没有识别到说话内容")
+    n = ai_room.write_transcript(db, itv, lines)
+    audit(db, itv.org_id, actor, "transcript.transcribe", itv.id, n=n, provider=settings.asr_provider)
+    return {"segments": n}
+
+
 def do_transcribe(db: Session, itv: Interview, actor: str) -> dict:
     """Transcribe the interview's recording and store the lines (the caller commits). Used by the request and by the background job.
 
@@ -788,10 +801,12 @@ def do_transcribe(db: Session, itv: Interview, actor: str) -> dict:
         HTTPException: nothing to transcribe yet, or the transcription service failed (502 may pass on a retry).
     """
     rec = db.scalar(select(Recording).where(Recording.interview_id == itv.id, Recording.status.in_(("ready", "processing"))).order_by(Recording.started_at.desc()))
+    if rec and rec.status == "processing":
+        raise HTTPException(409, "录像还在合成中，请稍等几十秒再试")
+    if itv.moderation == "ai":
+        return _transcribe_ai(db, itv, rec, actor)
     if not rec:
         raise HTTPException(409, "没有可转写的录制")
-    if rec.status == "processing":
-        raise HTTPException(409, "录像还在合成中，请稍等几十秒再试")
     segs = build_segments(db, itv, rec)
     _ingest(db, itv, segs)
     audit(db, itv.org_id, actor, "transcript.transcribe", itv.id, n=len(segs), provider=settings.asr_provider)

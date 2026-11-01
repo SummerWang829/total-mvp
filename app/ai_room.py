@@ -436,16 +436,34 @@ def finalize(db: Session, itv: Interview) -> int:
     _ENGINES.pop(itv.id, None)
     if not _session(db, itv.id):
         return 0
+    return write_transcript(db, itv, chat_lines(db, itv))
+
+
+def chat_lines(db: Session, itv: Interview) -> list[dict]:
+    """The conversation as transcript lines, in chat order (whispers and the team's notes are not included)."""
     rows = db.scalars(select(ChatMessage).where(ChatMessage.interview_id == itv.id, ChatMessage.sender.in_(tuple(SPEAKER_OF)))
                       .order_by(ChatMessage.seq)).all()
-    db.execute(delete(SegmentCode).where(SegmentCode.interview_id == itv.id))
-    db.execute(delete(TranscriptSegment).where(TranscriptSegment.interview_id == itv.id))
+    out = []
     for i, r in enumerate(rows):
         start = _at_ms(itv, r)
         end = max(start, _at_ms(itv, rows[i + 1]) if i + 1 < len(rows) else start + LAST_LINE_MS)
-        db.add(TranscriptSegment(org_id=itv.org_id, interview_id=itv.id, idx=i, speaker=SPEAKER_OF[r.sender], start_ms=start, end_ms=end,
-                                 text_orig=r.text, lang=itv.language))
-    return len(rows)
+        out.append(dict(speaker=SPEAKER_OF[r.sender], start_ms=start, end_ms=end, text_orig=r.text, text_zh="", lang=itv.language))
+    return out
+
+
+def write_transcript(db: Session, itv: Interview, lines: list[dict]) -> int:
+    """Replace the transcript with these lines, ordered by start time (chat order breaks ties). Tags on the old lines go too.
+
+    Returns:
+        The number of segments written.
+    """
+    db.execute(delete(SegmentCode).where(SegmentCode.interview_id == itv.id))
+    db.execute(delete(TranscriptSegment).where(TranscriptSegment.interview_id == itv.id))
+    lines = sorted(lines, key=lambda x: x["start_ms"])
+    for i, ln in enumerate(lines):
+        db.add(TranscriptSegment(org_id=itv.org_id, interview_id=itv.id, idx=i, speaker=ln["speaker"], start_ms=ln["start_ms"], end_ms=ln["end_ms"],
+                                 text_orig=ln["text_orig"], text_zh=ln.get("text_zh", ""), lang=ln.get("lang") or itv.language))
+    return len(lines)
 
 
 def purge(db: Session, interview_id: str) -> None:

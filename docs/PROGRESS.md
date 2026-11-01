@@ -12,6 +12,13 @@
 
 
 
+## 2026-11-01 · AI 访谈：接管期间的语音/视频/屏幕录制与转写（已完成，待部署）
+- 做了：接管期间，研究员的麦克风、摄像头、屏幕共享在录制开着时被录制（`room.html` 的 `aiRecSync/startAiSegment`，每次接管一个新 part，交还即停止）；转写时 AI 访谈的转写 = 聊天记录（AI、受访者、团队打字）+ 接管语音（`pipeline.voice_segments`，按录制起点与访谈起点的时间差对齐），整体重写（`ai_room.write_transcript`），重复转写结果一致；有洞察引用旧转写时拒绝（409，同真人访谈）。
+- 没有新增数据库列。
+- 测试：`tests/test_ai_voice.py` 2 通过（接管语音进转写、不接管时只有聊天）；`pytest tests/test_ai_voice.py tests/test_ai_room.py tests/test_pipeline.py tests/test_groups.py` 62 通过；`E2E_ONLY=ai` 真实视频 13 项通过（新增：接管时开录制 → 录制就绪 → 转写里有 moderator 语音段）；`QA_EARLY=ai_room_section` 151 通过。
+- 没测：整套 qa.sh；真人房间的录制路径（没改）；语音在真实 ASR（腾讯云/OpenAI）上的识别效果（测试用的是 mock ASR）；接管语音和聊天的重复文字（研究员同时打字和说话时会出现两条）；录像里屏幕共享的合成画面（只验证了录制就绪，没有人工看成片）。
+- 还要注意：结束访谈（`/end`）时会用聊天重写转写，会清掉之前转写里的语音段；语音段需要在录制就绪后再点一次“转写”。
+
 ## 2026-11-01 · deepresearch 切到 EdgeOne（已完成）
 - DNSPod：`deepresearch` 由 A 记录改为 CNAME → `deepresearch.morningstarsystem.tech.eo.dnse0.com`（用户扫码验证后保存，“修改成功”）。`lk-deepresearch` 仍是 A 记录（LiveKit 不走 EdgeOne）。
 - 切换前检查：EdgeOne 节点 43.159.98.75 的 HTTPS 证书有效，首页、/api/health、theme.js、ui_v10.css、ai_idle.webp 都 200。切换后 8.8.8.8 解析到 EdgeOne 节点，https://deepresearch.morningstarsystem.tech/ 200。
