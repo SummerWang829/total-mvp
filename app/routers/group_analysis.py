@@ -24,7 +24,7 @@ def analyze(iid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = D
         raise HTTPException(e.status, e.message) from e
     except (httpx.HTTPError, ValueError, KeyError, TypeError) as e:   # a model failure must not become a stack trace for the researcher
         db.rollback()
-        raise HTTPException(502, "AI 暂时无法分析，请稍后再试") from e
+        raise HTTPException(502, "小星星助手暂时无法分析，请稍后再试") from e
     audit(db, ctx.org_id, ctx.actor, "disagreement.analyze", itv.id, **out)
     db.commit()
     return out | group_analysis.view(db, itv)
@@ -37,7 +37,7 @@ def _job(db: Session, itv, job) -> dict:
     except group_analysis.AnalysisError as e:
         raise HTTPException(e.status, e.message) from e
     except (httpx.HTTPError, ValueError, KeyError, TypeError) as e:
-        raise HTTPException(502, "AI 暂时无法分析，请稍后再试") from e
+        raise HTTPException(502, "小星星助手暂时无法分析，请稍后再试") from e
     audit(db, itv.org_id, f"job:{job.id}", "disagreement.analyze", itv.id, **out)
     return out
 
@@ -106,7 +106,7 @@ def export(iid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = De
     blocks += [("bullet", f"少数派：{d['topic']}：{d['who']}一人{d['stance_zh']}：{q(d['claim'])}") for d in v["dissent"]]
     if not v["consensus"] and not v["dissent"]:
         blocks.append(("p", "没有明显的共识或少数派。"))
-    blocks.append(("note", "立场由 AI 从逐字稿中抽取，引文逐字来自转写；标“建议”的内容需要研究员确认后才算数。"))
+    blocks.append(("note", "立场由小星星助手从逐字稿中抽取，引文逐字来自转写；标“建议”的内容需要研究员确认后才算数。"))
     audit(db, ctx.org_id, ctx.actor, "disagreement.export", itv.id)
     db.commit()
     return Response(docx_writer.render(blocks), media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",

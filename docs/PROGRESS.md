@@ -10,6 +10,13 @@
 
 
 
+
+## 2026-11-01 · 去掉页面上带 AI 字眼的标题和句子；接口不缓存
+- 做了什么：删“与 AI 共同编写问卷”“和 AI 一起写大纲”等标题，顶部合成一行；按钮和提示改中性说法；需要署名处用“小星星助手”；后台提示与导出说明同步；`/api/*` 加 `Cache-Control: no-store`。
+- 测试：pytest 1755 通过；qa_site 小节 recruit/review/outline/insights/studies/repo/group/respondent_window/languages 全过。未测：整套、e2e_room。
+- 未改（待用户定名）：“异步 AI 研究”“AI 主持”、合规清单两项、受访者端 AI 告知。
+- EdgeOne：证书已由用户申请，待测加速节点后再改 DNS。
+
 ## 2026-11-01 · 甄别设定大纲可收起（未部署）
 - 做了：招募问卷页右侧大纲有“收起”按钮；收起后对话占满宽度，顶部出现“展开大纲”；选择记在本浏览器（`rform.js`，`ui_screening.css`）。
 - 测试：`pytest -k "recruit or screen or rform or people"` 130 通过、2 失败（`test_screen_form` 的同邮箱用例、`test_studies` 的公开报名用例）。两个都是 429 限流（同一进程里累计请求触发），单独跑都通过（`test_screen_form.py` 21 通过，`test_studies.py` 22 通过）。这是测试之间互相影响，不是本次改动造成。

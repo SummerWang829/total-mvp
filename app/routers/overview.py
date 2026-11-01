@@ -74,7 +74,7 @@ ACTION_ZH = {
     "group.add": "把一位受访者加入座谈会", "group.remove": "从座谈会移除了一位受访者", "group.invite.rotate": "重新生成了座谈会邀请链接",
     "interview.start": "开始了访谈", "interview.end": "结束了访谈", "recording.start": "开始录制", "recording.stop": "停止录制",
     "recording.ready": "录像合成完成", "recording.failed": "录像合成失败", "transcript.transcribe": "完成了转写", "transcript.edit": "校对了转写",
-    "insight.generate": "生成了 AI 洞察", "insight.create": "写了一条洞察", "insight.approve": "通过了一条洞察", "insight.delete": "删除了一条洞察",
+    "insight.generate": "生成了洞察", "insight.create": "写了一条洞察", "insight.approve": "通过了一条洞察", "insight.delete": "删除了一条洞察",
     "clip.create": "生成了片段", "share.create": "创建了分享链接", "share.revoke": "撤销了分享链接", "share.view": "打开了分享链接",
     "interview.purge": "按保留期删除了数据",
 }

@@ -151,7 +151,7 @@ def test_a_refusal_in_the_middle_of_a_run_stops_all_sessions_and_writes_no_repor
     def run_one(scenario, brain, participant, judge):
         started.append(scenario.id)
         if len(started) >= 3:
-            raise ServiceUnavailableError("AI 模型服务拒绝了请求（HTTP 402：账号余额不足）")
+            raise ServiceUnavailableError("AI 模型服务暂时不可用（HTTP 402：账号余额不足）")
         return _quick(scenario)  # the first two sessions finish normally
 
     monkeypatch.setattr(runner, "run_one", run_one)

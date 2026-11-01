@@ -25,8 +25,8 @@ HISTORY_TURNS = 6  # earlier messages the model is shown
 MAX_SUGGESTIONS = 3
 MAX_CHANGES = 6
 MAX_REPLY = 1500
-MSG_FAIL = "AI 没能给出可用的大纲，请换个说法再试一次，或直接在右边手改"
-MSG_MOCK_KEPT = "（演示模式）还没有连接 AI 模型，我现在只能按固定模板起草一份大纲，不能回答问题或给建议；已有大纲时保持不变。"
+MSG_FAIL = "小星星助手没能给出可用的大纲，请换个说法再试一次，或直接在右边手改"
+MSG_MOCK_KEPT = "（演示模式）小星星助手还没有连接，我现在只能按固定模板起草一份大纲，不能回答问题或给建议；已有大纲时保持不变。"
 MSG_MOCK_DRAFT = "（演示模式）按固定模板起草了一份大纲，可以在右边直接修改。"
 MOCK_GUIDE = {"zh": "先让受访者自然讲述，必要时追问具体情境，不诱导。", "en": "Let the participant answer in their own words; probe for concrete situations without leading."}
 MOCK_CHANGE = "按固定模板起草了 3 个话题（演示内容）"
@@ -210,7 +210,7 @@ def converse(chat: ModeratorChatProvider | None, history: list[dict], current: s
         except ChatFatalError:
             raise
         except ChatError as e:
-            raise study_draft.DraftError("AI 暂时无法回答，请稍后再试，或直接在右边手改") from e
+            raise study_draft.DraftError("小星星助手暂时无法回答，请稍后再试，或直接在右边手改") from e
         except (ValueError, KeyError, TypeError) as e:
             problem = f"not a JSON object ({type(e).__name__})"
             log.warning("outline chat attempt %d unusable: %s", attempt + 1, type(e).__name__)
@@ -260,14 +260,14 @@ def answer_only(chat: ModeratorChatProvider | None, current: str, message: str, 
         except ChatFatalError:
             raise
         except ChatError as e:
-            raise study_draft.DraftError("AI 暂时无法回答，请稍后再试") from e
+            raise study_draft.DraftError("小星星助手暂时无法回答，请稍后再试") from e
         except (ValueError, KeyError, TypeError) as e:
             log.warning("outline ask-only attempt %d unusable: %s", attempt + 1, type(e).__name__)
             continue
         reply = str(raw.get("reply", "")).strip() if isinstance(raw, dict) else ""
         if reply:
             return reply[:MAX_REPLY]
-    raise study_draft.DraftError("AI 没能给出回答，请换个说法再试一次")
+    raise study_draft.DraftError("小星星助手没能给出回答，请换个说法再试一次")
 
 
 def record_turn(history: list[dict], message: str, result: dict, current: str) -> tuple[list[dict], str]:

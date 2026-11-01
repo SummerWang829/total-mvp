@@ -132,7 +132,7 @@ def build(db: Session, project: Project) -> dict:
 def mock_summary(dash: dict) -> str:
     t = dash["traits"]
     first = t["qualified"][0] if t["qualified"] else "还没有足够的数据"
-    return f"（离线演示版）合格的人主要特点：{first}。通过率 {dash['kpi']['pass_rate']}%。接上 AI 模型后会给出更完整的画像和投放建议。"
+    return f"（离线演示版）合格的人主要特点：{first}。通过率 {dash['kpi']['pass_rate']}%。接上小星星助手后会给出更完整的画像和投放建议。"
 
 
 def summarize(chat: ModeratorChatProvider | None, dash: dict) -> str:
@@ -153,10 +153,10 @@ def summarize(chat: ModeratorChatProvider | None, dash: dict) -> str:
     except ChatFatalError:
         raise
     except ChatError as e:
-        raise recruit_form.FormError("AI 暂时无法总结，请稍后再试") from e
+        raise recruit_form.FormError("小星星助手暂时无法总结，请稍后再试") from e
     except (KeyError, TypeError, ValueError) as e:
         log.warning("recruiting summary unusable: %s", type(e).__name__)
-        raise recruit_form.FormError("AI 这次没有给出可用的总结，请再试一次") from e
+        raise recruit_form.FormError("小星星助手这次没有给出可用的总结，请再试一次") from e
 
 
 def tag_exclusions(questions: list[recruit_form.Question]) -> dict[str, set[str]]:

@@ -93,7 +93,7 @@ def draft_guide(chat: ModeratorChatProvider | None, goal: str, language: str, du
         except ChatFatalError:
             raise
         except ChatError as e:
-            raise DraftError("AI 暂时无法生成草稿，请稍后再试，或直接手写提纲") from e
+            raise DraftError("小星星助手暂时无法生成草稿，请稍后再试，或直接手写提纲") from e
         except (ValueError, KeyError, TypeError, ValidationError) as e:
             problem = f"not a valid outline ({type(e).__name__})"
             log.warning("study draft attempt %d unusable: %s", attempt + 1, type(e).__name__)
@@ -101,4 +101,4 @@ def draft_guide(chat: ModeratorChatProvider | None, goal: str, language: str, du
         if not (problem := _red_line_problem(guide)):
             return guide
         log.warning("study draft attempt %d broke a red line", attempt + 1)
-    raise DraftError("AI 写的草稿没有通过安全检查（问题里含有不允许的内容），请重试，或直接手写提纲")
+    raise DraftError("小星星助手写的草稿没有通过安全检查（问题里含有不允许的内容），请重试，或直接手写提纲")

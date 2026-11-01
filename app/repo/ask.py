@@ -74,7 +74,7 @@ def ask(db: Session, ctx: Ctx, question: str, project_id: str | None = None, llm
         raw = (llm or get_llm()).answer(question, numbered)
     except (httpx.HTTPError, ValueError, KeyError, TypeError) as e:
         log.warning("library answer failed: %s", type(e).__name__)
-        raise AskError("AI 暂时无法回答，请稍后再试。你仍然可以用搜索查看相关原文。") from e
+        raise AskError("小星星助手暂时无法回答，请稍后再试。你仍然可以用搜索查看相关原文。") from e
     if not isinstance(raw, dict):
         raw = {}  # not a JSON object: treated as "no usable answer"
     claims = []

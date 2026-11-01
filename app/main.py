@@ -2,7 +2,7 @@ import os
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from starlette.responses import Response
 
@@ -36,6 +36,15 @@ app = FastAPI(title="星桐 TOTAL MVP", version="0.1.0", lifespan=lifespan)
 for r in (auth.router, projects.router, interviews.router, overview.router, public.router, ai_room.router, concept.router, analysis.router, group_metrics.router, cues.router, signals.router, studies.router, outline.router, room_assist_router.router, languages_router.router, recruit_translate_router.router, insight_chat_router.router, repo.router, listening.router, recruit.router, quant.router, pool.router, report.router, admin_data.router, group_analysis_router.router, reels_router.router, jobs_router.router, plans_router.router, screen_public.router):
     app.include_router(r)
 app.middleware("http")(ratelimit.middleware)  # no-op unless RATE_LIMIT=1
+
+
+@app.middleware("http")
+async def api_no_store(request: Request, call_next):
+    """API answers are personal and change all the time: no proxy or edge node (EdgeOne) may keep a copy of them."""
+    response = await call_next(request)
+    if request.url.path.startswith("/api/") and "cache-control" not in response.headers:
+        response.headers["Cache-Control"] = "no-store"
+    return response
 if settings.loop_watch_s > 0:
     app.middleware("http")(loopwatch.slow_request_logger)  # diagnostics only: LOOP_WATCH_S=2 logs requests slower than 2 s
 

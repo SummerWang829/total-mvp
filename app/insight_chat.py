@@ -32,8 +32,8 @@ MAX_SUGGESTIONS = 5
 MAX_FOLLOWUPS = 3
 MAX_ANSWER = 3000
 SCOPES = {"transcripts": "segment", "insights": "insight", "library": "document"}
-MSG_NO_ANSWER = "AI 没有给出可用的回答，请换个问法再试一次"
-MSG_MOCK = "（演示模式：没有连接 AI 模型，下面只是按关键词找到的相关原话。）"
+MSG_NO_ANSWER = "小星星助手没有给出可用的回答，请换个问法再试一次"
+MSG_MOCK = "（演示模式：小星星助手未连接，下面只是按关键词找到的相关原话。）"
 MSG_NONE_FOUND = "（演示模式）资料里没有找到相关内容。先完成访谈、转写并确认洞察后再来问。"
 
 SYSTEM = """你是市场研究团队的研究助手，帮团队理解“这一个项目”的深度访谈资料。你会收到：项目的研究背景、访谈大纲（可能为空）、编号的资料片段（受访者的原话、已确认的洞察、研究库资料）、之前的对话，和团队的新问题。
@@ -97,7 +97,7 @@ def _mock_reply(question: str, top: list[search.Source]) -> dict:
     if not top:
         return {"answer": MSG_NONE_FOUND, "suggestions": [], "followups": []}
     cites = "".join(f"[{i}]" for i in range(1, min(3, len(top)) + 1))
-    return {"answer": f"{MSG_MOCK}和你的问题最相关的资料见 {cites}。", "suggestions": ["接入 AI 模型后，这里会给出具体的研究建议。"], "followups": ["这些原话能做成集锦吗？"]}
+    return {"answer": f"{MSG_MOCK}和你的问题最相关的资料见 {cites}。", "suggestions": ["接上小星星助手后，这里会给出具体的研究建议。"], "followups": ["这些原话能做成集锦吗？"]}
 
 
 def reply(db: Session, ctx: Ctx, project: Project, thread: ChatThread, question: str, scope: list[str], chat: ModeratorChatProvider | None, outline_text: str) -> dict:
@@ -115,7 +115,7 @@ def reply(db: Session, ctx: Ctx, project: Project, thread: ChatThread, question:
         raise
     except ChatError as e:
         log.warning("insight chat model call failed: %s", type(e).__name__)
-        raise ChatUnavailable("AI 暂时无法回答，请稍后再试") from e
+        raise ChatUnavailable("小星星助手暂时无法回答，请稍后再试") from e
     if not isinstance(raw, dict):
         raise ChatUnavailable(MSG_NO_ANSWER)
     text = str(raw.get("answer", "")).strip()[:MAX_ANSWER]

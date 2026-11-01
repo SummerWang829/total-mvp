@@ -71,7 +71,7 @@ def test_the_model_refusing_is_reported_not_hidden(org, monkeypatch):
     _use_model(monkeypatch, boom)
     cid = _new(org, pid)
     r = org.c.post(f"/api/chats/{cid}/ask", headers=org.h(), json={"message": "任何问题"})
-    assert r.status_code == 502 and "拒绝了请求" in r.text and "余额" in r.text
+    assert r.status_code == 502 and "暂时不可用" in r.text and "余额" in r.text
     assert org.c.get(f"/api/chats/{cid}", headers=org.h()).json()["messages"] == []  # nothing was stored for the failed turn
 
 

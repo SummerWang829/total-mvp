@@ -736,10 +736,10 @@ async function studiesView(p) {
       <td>${s.counts.invited} 人 · 进行中 ${s.counts.in_progress} · 已完成 ${s.counts.finished}</td></tr>`;
   shell(`${head("异步研究", "受访者在方便的时候，自己和 AI 访谈员完成一场文字访谈。你只需要写研究目标、审核提纲、发链接。")}
     ${list.length ? `<div class="card scroll" style="padding:6px 10px"><table class="tbl rc"><thead><tr><th>研究</th><th>语言</th><th>时长</th><th>状态</th><th>受访者</th></tr></thead><tbody>${list.map(row).join("")}</tbody></table></div>`
-      : `<div class="card empty"><b>还没有异步研究。</b><span>在下面写下研究目标，AI 会起草提纲，你修改后发布。</span></div>`}
+      : `<div class="card empty"><b>还没有异步研究。</b></div>`}
     <div class="card"><h3>新建异步研究</h3><form id="nf">
       <label class="f"><span>研究名称</span><input name="title" required maxlength="200"></label>
-      <label class="f"><span>研究目标（只给 AI 和团队看，不会念给受访者）</span><textarea name="goal" rows="3" required maxlength="1000" placeholder="例如：了解新加坡 25–35 岁女性如何挑选护肤品，以及哪些信息最影响她们的决定"></textarea></label>
+      <label class="f"><span>研究目标（不会念给受访者）</span><textarea name="goal" rows="3" required maxlength="1000" placeholder="例如：了解新加坡 25–35 岁女性如何挑选护肤品，以及哪些信息最影响她们的决定"></textarea></label>
       <div class="row"><label class="f" style="flex:1"><span>访谈语言</span><select name="language">${["zh", "en"].map((k) => `<option value="${k}"${k === (p.language === "en" ? "en" : "zh") ? " selected" : ""}>${LANGS[k]}</option>`).join("")}</select></label>
         <label class="f" style="flex:1"><span>大约时长</span><select name="duration_min">${[10, 15, 20, 30, 45, 60].map((n) => `<option value="${n}"${n === 20 ? " selected" : ""}>${n} 分钟</option>`).join("")}</select></label></div>
       <label class="f"><span>告诉受访者的话题（选填，18 字以内，别写品牌名）</span><input name="participant_topic" maxlength="18"></label>
@@ -765,12 +765,12 @@ async function studyView(p, sid) {
   shell(`${head(esc(s.title), `<a href="#/p/${p.id}/studies">← 全部异步研究</a> · <span class="tag ${stCls}">${stName}${s.version ? ` · 第 ${s.version} 版` : ""}</span> · ${esc(LANGS[s.language])} · ${s.duration_min} 分钟`,
       closed ? "" : `<button class="s warn" id="close">关闭研究</button>`)}
     <div class="card"><h3>研究目标</h3><p style="margin:0;white-space:pre-wrap">${esc(s.goal)}</p></div>
-    <div class="card"><h3>提纲${s.drafted_by ? ` <span class="tag">AI 起草 · ${esc(s.drafted_by)}</span>` : ""}</h3>
+    <div class="card"><h3>提纲${s.drafted_by ? ` <span class="tag">已起草</span>` : ""}</h3>
       
       <label class="f"><span>提纲文字（可直接修改）</span><textarea id="outline" rows="18" ${closed ? "disabled" : ""} style="font-family:ui-monospace,Consolas,'Noto Sans SC','PingFang SC','Microsoft YaHei',monospace;font-size:14px">${esc(s.outline_text)}</textarea></label>
       <p class="sm" id="problem" role="alert" hidden style="color:#A8203E"></p>
       
-      ${closed ? "" : `<div class="row"><button id="draft">${s.outline_text ? "让 AI 重新起草" : "让 AI 起草"}</button><button id="save">保存</button><span class="sp"></span><button class="p" id="publish">${s.version ? `发布第 ${s.version + 1} 版` : "发布"}</button></div>`}</div>
+      ${closed ? "" : `<div class="row"><button id="draft">${s.outline_text ? "重新起草" : "起草"}</button><button id="save">保存</button><span class="sp"></span><button class="p" id="publish">${s.version ? `发布第 ${s.version + 1} 版` : "发布"}</button></div>`}</div>
     ${s.status === "published" ? `<div class="card"><h3>邀请受访者</h3>${canInvite.length
       ? `<form id="inv">
         ${canInvite.map((x) => `<label class="chk"><input type="checkbox" name="pid" value="${x.id}"><span>${esc(x.name)}${x.country ? ` · ${esc(x.country)}` : ""}</span></label>`).join("")}<button class="p" style="margin-top:8px">生成邀请链接</button></form>`
@@ -787,8 +787,8 @@ async function studyView(p, sid) {
   if (!closed) {
     $("#save").onclick = guard(async () => { const r = await api(`/studies/${sid}/outline`, { method: "PUT", body: { text: text() } }); show(r); toast(r.problem ? "已保存，但提纲还有问题" : "已保存"); });
     $("#draft").onclick = guard(async () => {
-      if (text().trim() && !confirm("AI 起草会替换编辑框里的内容。继续？")) return;
-      const b = $("#draft"); b.disabled = true; b.textContent = "AI 正在起草，请稍等…";
+      if (text().trim() && !confirm("起草会替换编辑框里的内容。继续？")) return;
+      const b = $("#draft"); b.disabled = true; b.textContent = "正在起草，请稍等…";
       try { await api(`/studies/${sid}/draft`, { method: "POST" }); toast("已起草，请检查并修改"); render(); } finally { b.disabled = false; }
     });
     $("#publish").onclick = guard(async () => {
@@ -836,7 +836,7 @@ async function repoView() {
   shell(`${head("研究库", "只显示你所在项目的内容；受访者只显示编号。", `<button class="p" id="imp">导入资料</button>`)}
     <div class="card"><form id="qf"><label class="f"><span>输入关键词来搜索，或者直接问一个问题</span><input name="q" required maxlength="500" placeholder="例如：消费者为什么觉得价格太贵？"></label>
       <div class="row"><label class="f" style="flex:1;margin:0"><span>范围</span><select name="project_id">${scope}</select></label>
-      <button class="p" id="ask" type="button">问 AI</button><button id="srch" type="submit">搜索原文</button></div></form></div>
+      <button class="p" id="ask" type="button">提问</button><button id="srch" type="submit">搜索原文</button></div></form></div>
     <div id="res" aria-live="polite"></div>
     <h2>导入的资料</h2>${docs.length ? `<div class="card scroll" style="padding:6px 10px"><table class="tbl rc"><thead><tr><th>标题</th><th>来源说明</th><th>范围</th><th>字数</th><th></th></tr></thead><tbody>
       ${docs.map((d) => `<tr><td><b>${esc(d.title)}</b></td><td class="mut">${esc(d.source_note || "—")}</td><td>${d.project ? esc(d.project.name) : "全公司"}</td><td>${d.chars}</td><td class="acts"><button class="s warn" data-del="${d.id}">删除</button></td></tr>`).join("")}</tbody></table></div>`
@@ -853,7 +853,7 @@ async function repoView() {
   });
   $("#ask").onclick = guard(async () => {
     if (!qf.reportValidity()) return;
-    const v = val(); busy(true, "AI 正在阅读资料并回答，大约需要几秒…");
+    const v = val(); busy(true, "正在阅读资料并回答，大约需要几秒…");
     try {
       const r = await api("/repo/ask", { method: "POST", body: { question: v.q, project_id: v.project_id || null } });
       res.innerHTML = r.insufficient ? `<div class="note" role="status"><b>证据不足。</b> ${esc(r.message)}</div>`
@@ -1171,9 +1171,9 @@ async function disagreeTab(iid, it, my) {
   const status = (c) => c.status === "accepted" ? ` <span class="tag ok">已确认</span>` : ` <span class="tag">建议</span>`;
   const cellHtml = (cs) => cs.map((c) => `<button class="s dcell st-${c.stance}" data-claim="${c.id}">${c.stance_zh}${c.status === "accepted" ? " ✓" : ""}</button>`).join(" ") || `<span class="mut">—</span>`;
   const byClaim = {}; v.matrix.forEach((m) => Object.values(m.cells).forEach((cs) => cs.forEach((c) => { byClaim[c.id] = c; })));
-  $("#tab").innerHTML = `<div class="card"><div class="row"><h3 style="margin:0">分歧地图</h3><span class="sp"></span><button class="p" id="danalyze">${v.analysed ? "重新分析" : "让 AI 分析转写"}</button>${v.analysed ? ` <button class="s" id="dexport">导出 Word</button>` : ""}</div>
+  $("#tab").innerHTML = `<div class="card"><div class="row"><h3 style="margin:0">分歧地图</h3><span class="sp"></span><button class="p" id="danalyze">${v.analysed ? "重新分析" : "分析转写"}</button>${v.analysed ? ` <button class="s" id="dexport">导出 Word</button>` : ""}</div>
       </div>
-    ${!v.analysed ? `<div class="card empty"><b>还没有分析。</b><span>座谈会结束并转写后，点“让 AI 分析转写”。</span></div>` : `
+    ${!v.analysed ? `<div class="card empty"><b>还没有分析。</b><span>座谈会结束并转写后，点“分析转写”。</span></div>` : `
     <div class="card scroll" style="padding:6px 10px"><h3 style="margin:8px 0">立场矩阵</h3><table class="tbl rc" id="dmatrix"><thead><tr><th>议题</th>${v.speakers.map((s) => `<th>${esc(s.label)}</th>`).join("")}</tr></thead><tbody>
       ${v.matrix.map((m) => `<tr><td data-l="议题"><b>${esc(m.topic)}</b></td>${v.speakers.map((s) => `<td data-l="${esc(s.label)}">${cellHtml(m.cells[s.key] || [])}</td>`).join("")}</tr>`).join("")}</tbody></table></div>
     <div class="card"><h3 style="margin-top:0">正面分歧</h3>${v.conflicts.length ? v.conflicts.map((c) => `<div class="hit"><b>${esc(c.topic)}</b><div class="sm"><b class="st-pro">赞成</b> ${esc(c.a.speaker)}：${quote(c.a)}</div><div class="sm"><b class="st-con">反对</b> ${esc(c.b.speaker)}：${quote(c.b)}</div></div>`).join("") : `<p class="mut" style="margin:0">没有发现两个人在同一议题上正面相反。</p>`}</div>
@@ -1182,7 +1182,7 @@ async function disagreeTab(iid, it, my) {
     <div class="card"><h3 style="margin-top:0">共识与少数派</h3>${v.consensus.map((c) => `<p style="margin:4px 0"><span class="tag ok">共识</span> <b>${esc(c.topic)}</b>：${esc(c.speakers.join("、"))} 都${c.stance_zh}</p>`).join("")}
       ${v.dissent.map((d) => `<p style="margin:4px 0"><span class="tag live">少数派</span> <b>${esc(d.topic)}</b>：${esc(d.who)} 一人${d.stance_zh}：${quote(d.claim)}</p>`).join("")}${!v.consensus.length && !v.dissent.length ? `<p class="mut" style="margin:0">没有明显的共识或少数派。</p>` : ""}</div>`}`;
   $("#danalyze").onclick = guard(async () => {
-    const b = $("#danalyze"); b.disabled = true; b.textContent = "AI 正在读转写，请稍等…";
+    const b = $("#danalyze"); b.disabled = true; b.textContent = "正在读转写，请稍等…";
     try { const r = await runJob(iid, "disagreement"); toast(`找到 ${r.claims} 条立场`); render(); } finally { b.disabled = false; }
   });
   const ex = $("#dexport"); if (ex) ex.onclick = guard(async () => {
@@ -1192,7 +1192,7 @@ async function disagreeTab(iid, it, my) {
   });
   app.querySelectorAll("[data-claim]").forEach((b) => b.onclick = () => {
     const c = byClaim[b.dataset.claim];
-    const m = modal(`<h2>${esc(c.speaker)} · ${esc(c.topic)}</h2><p><span class="tag ${STANCE_TAG[c.stance]}">${c.stance_zh}</span>${status(c)}</p>${c.reason ? `<p class="sm mut">AI 的概括：${esc(c.reason)}</p>` : ""}
+    const m = modal(`<h2>${esc(c.speaker)} · ${esc(c.topic)}</h2><p><span class="tag ${STANCE_TAG[c.stance]}">${c.stance_zh}</span>${status(c)}</p>${c.reason ? `<p class="sm mut">概括：${esc(c.reason)}</p>` : ""}
       ${c.quotes.map((q) => `<blockquote style="margin:8px 0;padding-left:10px;border-left:3px solid var(--line2)">“${esc(q.text)}”<div class="sm mut">${fmt(q.at_ms)}</div></blockquote>`).join("")}
       <div class="row">${c.status === "accepted" ? "" : `<button class="p" id="cacc">确认这条立场</button>`}<button class="s warn" id="crej">排除</button><button type="button" id="c">关闭</button></div>`);
     $("#c", m).onclick = () => m.remove();
@@ -1323,11 +1323,11 @@ async function highlightsTab(iid, my) {  // quotes and follow-ups marked in the 
 async function insightsTab(iid, staff, my) {
   const list = await api(`/interviews/${iid}/insights`);
   if (stale(my) || !$("#tab")) return;
-  $("#tab").innerHTML = `${staff ? `<div class="row"><button class="p" id="gen">AI 生成洞察</button><span class="sm mut">AI 只指出依据是哪几句，原话由系统整句填入，并和转写逐字核对。</span></div>` : ""}
+  $("#tab").innerHTML = `${staff ? `<div class="row"><button class="p" id="gen">生成洞察</button></div>` : ""}
     ${list.length ? list.map((i) => `<div class="card"><div class="row"><h3 style="margin:0">${esc(i.theme)}</h3><span class="tag ${i.status === "approved" ? "ok" : i.status === "needs_review" ? "bad" : "o"}">${{ draft: "待审核", approved: "已通过", needs_review: "转写改动后需复核" }[i.status]}</span><span class="tag">${i.kind === "ai" ? "AI" : "人工"}</span><span class="sp"></span>
       ${staff ? `<div class="row">${i.status !== "approved" ? `<button class="s p" data-ap="${i.id}">通过</button>` : ""}<button class="s warn" data-del="${i.id}">删除</button></div>` : ""}</div>
       <p style="margin:10px 0 4px">${esc(i.statement)}</p>${i.evidence.map((e) => `<div class="quote"><div>“${esc(e.quote)}”</div><div class="sm mut">${fmt(e.start_ms)} · 片段 #${e.segment_idx ?? "—"}${staff && e.segment_id ? ` · <a href="#" data-clip="${e.id}">生成片段</a>` : ""}</div></div>`).join("")}</div>`).join("")
-      : `<div class="card empty">${staff ? "还没有洞察。转写完成后点“AI 生成洞察”。" : "研究员审核通过的洞察会显示在这里。"}</div>`}`;
+      : `<div class="card empty">${staff ? "还没有洞察。转写完成后点“生成洞察”。" : "研究员审核通过的洞察会显示在这里。"}</div>`}`;
   const g = $("#gen"); if (g) g.onclick = guard(async () => { g.disabled = true; const r = await api(`/interviews/${iid}/insights/generate`, { method: "POST" }); toast(`生成 ${r.created.length} 条，丢弃 ${r.dropped.length} 条证据不实的`); render(); });
   app.querySelectorAll("[data-ap]").forEach((b) => b.onclick = guard(async () => { await api(`/insights/${b.dataset.ap}/approve`, { method: "POST" }); render(); }));
   app.querySelectorAll("[data-del]").forEach((b) => b.onclick = guard(async () => { if (confirm("删除这条洞察？")) { await api(`/insights/${b.dataset.del}`, { method: "DELETE" }); render(); } }));

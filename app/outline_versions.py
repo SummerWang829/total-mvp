@@ -112,7 +112,7 @@ def generate(p: Project, key: str, chat: ModeratorChatProvider | None) -> str:
     others = [k for k in keys_of(p) if k != key and text_of(p, k).strip()]
     src = next((k for k in others if split(k)[0] == lang), None) or (others[0] if others else None)
     if not src:
-        raise VersionError("还没有大纲，先让 AI 起草一份")
+        raise VersionError("还没有大纲，先起草一份")
     g = _guide_of(text_of(p, src))
     rewrite = fam == "text" and split(src)[1] != "text"
     slots = outline_translate.slots_of(g, guides=not (split(src)[0] == lang and rewrite))  # the guidance is for the interviewer: translated with the rest, but not rewritten as chat messages

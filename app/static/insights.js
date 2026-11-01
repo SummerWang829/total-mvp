@@ -203,7 +203,7 @@ async function insightsHub(p, my) {
     const oldBlocks = wantApp ? (await api(`/projects/${p.id}/report?format=json`).catch(() => ({ blocks: [] }))).blocks : [];
     if (stale(my)) return;
     let sel = null;   // { c: card id, i: bar index }
-    const noteHtml = (n) => `<div class="rp-note"><b>解读：</b>${esc(n.t)}${n.ai ? ` <span class="tag">AI 的判断</span>` : ""}${n.stale ? ` <span class="tag o">数据已更新</span>` : ""}</div>`;
+    const noteHtml = (n) => `<div class="rp-note"><b>解读：</b>${esc(n.t)}${n.ai ? ` <span class="tag">小星星助手的判断</span>` : ""}${n.stale ? ` <span class="tag o">数据已更新</span>` : ""}</div>`;
     const cardHtml = (c) => `<div class="rp-card${sel && sel.c === c.id ? " sel" : ""}" data-c="${esc(c.id)}"><div class="rp-t"><b>${esc(c.title)}</b></div><div class="rp-d">${esc(c.desc)}</div>
       ${c.bars.map((b, i) => `<div role="button" tabindex="0" class="rp-row${sel && sel.c === c.id && sel.i === i ? " on" : ""}" data-c="${esc(c.id)}" data-i="${i}"><span class="rp-h"><span class="rp-label">${esc(b.label)}</span><span class="rp-count">${b.k} / ${b.n}</span></span><span class="rp-tr"><span class="rp-f" style="width:${b.n ? Math.round(b.k * 100 / b.n) : 0}%"></span></span><span class="rp-chevron" aria-hidden="true">›</span></div>`).join("")}</div>${noteHtml(c.note)}`;
     const appendix = () => {
@@ -236,7 +236,7 @@ async function insightsHub(p, my) {
     box.innerHTML = `<article class="rp-editorial" aria-label="研究报告">
       <header class="rp-hero"><div><div class="rp-eyebrow">研究报告 · ${esc(p.market || "")} · 深访</div><h1 class="ins-rt">${esc(p.name)}</h1>
         <p class="rp-meta">${d.n} 位受访者 · 数据截至已结束且可分析的访谈</p><div class="rp-eyebrow"><i>01</i>总体结论</div>
-        <p class="rp-summary">${esc(d.summary.t)}${d.summary.ai ? ` <span class="tag">AI 的判断</span>` : ""}</p>
+        <p class="rp-summary">${esc(d.summary.t)}${d.summary.ai ? ` <span class="tag">小星星助手的判断</span>` : ""}</p>
         <div class="rp-kpis"><div><b>${d.n}</b><span>报告样本</span></div><div><b>${d.cards.length}</b><span>已开启分析图表</span></div><div><b>${topTheme ? `${topTheme.k}/${topTheme.n}` : "—"}</b><span>${topTheme ? `最高提及 · ${esc(topTheme.label)}` : "暂无主题统计"}</span></div></div></div>
         <div><div class="rp-actions">${team ? `<button type="button" id="rpimp">导入报告模版</button>` : ""}<button type="button" class="p" id="rpdl">下载 Word</button></div>
         ${team ? `<div class="rp-blocks" id="rpblocks"></div>` : ""}</div></header>
@@ -279,7 +279,7 @@ async function insightsHub(p, my) {
       mod.remove(); toast(j.unmatched && j.unmatched.length ? `已导入。这几章没找到对应的数据：${j.unmatched.join("、")}` : "已按你的模版排好分析块", !!(j.unmatched && j.unmatched.length)); await report(box); });
     $("#rtok", mod).onclick = guard(async () => { const t = $("#rfocus", mod).value.trim(), b = $("#rtok", mod); b.disabled = true; b.textContent = "正在生成…";
       try { if (t && t !== (d.focus || "")) await api(`/projects/${p.id}/report/focus`, { method: "POST", body: { text: t, add: false } });
-        if (d.ai.ready) await api(`/projects/${p.id}/report/generate`, { method: "POST" }); else toast(d.ai.mock ? "演示模式：没有连接 AI 模型，解读用统计句子" : d.ai.message, true);
+        if (d.ai.ready) await api(`/projects/${p.id}/report/generate`, { method: "POST" }); else toast(d.ai.mock ? "演示模式：解读用统计句子" : d.ai.message, true);
       } finally { mod.remove(); await report(box); } });
   }
 
@@ -344,8 +344,8 @@ async function insightsHub(p, my) {
     const key = `ichat_${p.id}`, status = st.mock ? ["演示模式", "w"] : st.ready ? ["已连接", ""] : ["未连接", "w"];
     const answerHtml = (m) => esc(m.answer).replace(/\[(\d+)\]/g, (_, n) => `<sup class="ins-ref">[${n}]</sup>`).replace(/\n/g, "<br>");
     const aiHtml = (m, i) => `<div class="ins-msg ai"><h5>回答</h5><div data-selk="m:${i}">${answerHtml(m)}</div>
-      ${m.quotes.length ? `<h5>引用原话（程序从转写里原样复制，不是 AI 写的）</h5>${m.quotes.map((q) => `<div class="ins-q"><b>[${q.n}]</b> “${esc(q.text)}”<small> ${esc(q.who || "")} ${q.at_ms ? insClock(q.at_ms) : ""}${q.interview_id ? ` · <a href="#/i/${q.interview_id}">看原文</a>` : ""}</small></div>`).join("")}` : ""}
-      ${m.suggestions.length ? `<h5>建议（AI 的判断，不是受访者原话）</h5><div class="ins-sg"><ul data-selk="g:${i}">${m.suggestions.map((s) => `<li>${esc(s)}</li>`).join("")}</ul></div>` : ""}
+      ${m.quotes.length ? `<h5>引用原话（从转写里原样复制）</h5>${m.quotes.map((q) => `<div class="ins-q"><b>[${q.n}]</b> “${esc(q.text)}”<small> ${esc(q.who || "")} ${q.at_ms ? insClock(q.at_ms) : ""}${q.interview_id ? ` · <a href="#/i/${q.interview_id}">看原文</a>` : ""}</small></div>`).join("")}` : ""}
+      ${m.suggestions.length ? `<h5>建议（小星星助手的判断，不是受访者原话）</h5><div class="ins-sg"><ul data-selk="g:${i}">${m.suggestions.map((s) => `<li>${esc(s)}</li>`).join("")}</ul></div>` : ""}
       <div class="ins-fu">${m.followups.map((f) => `<button type="button" class="s" data-fu="${esc(f)}">${esc(f)}</button>`).join("")}${m.followups.length || m.suggestions.length ? `<button type="button" class="s" data-addq="${i}">把追问加进访谈大纲</button>` : ""}</div>
       <div class="ins-act"><button type="button" class="lnk" data-copy="${i}">复制</button><button type="button" class="lnk" data-redo="${i}">重新生成</button></div></div>`;
     const draw = () => {
@@ -392,8 +392,8 @@ async function insightsHub(p, my) {
         await api(`/projects/${p.id}/outline/edit`, { method: "POST", body: { op: "add", kind: part.kind, ref: part.ref, value: v } }); mod.remove(); toast("已加进访谈大纲，可以到“访谈”页查看"); });
     }
     box.innerHTML = `<div class="ins-chat"><div class="row ins-chead"><b>研究助手</b><span class="tag ${status[1] === "w" ? "o" : "ok"}">${esc(status[0])}</span><span class="sp"></span><span class="ins-hwrap"><button type="button" class="s" id="chbtn">历史对话 ▾</button><div class="ins-hist" id="chist" hidden></div></span><button type="button" class="s" id="cnew">新对话</button></div>
-      <div class="ins-scope" id="cscope" role="group" aria-label="让 AI 读哪些内容">${SCOPES.map(([k, n]) => `<label class="chk"><input type="checkbox" data-sc="${k}" ${scope.includes(k) ? "checked" : ""}><span>${n}</span></label>`).join("")}</div>
-      ${st.ready ? "" : `<div class="card empty"><b>还没连接 AI 模型</b><span>${esc(st.message)}</span></div>`}
+      <div class="ins-scope" id="cscope" role="group" aria-label="参考哪些内容">${SCOPES.map(([k, n]) => `<label class="chk"><input type="checkbox" data-sc="${k}" ${scope.includes(k) ? "checked" : ""}><span>${n}</span></label>`).join("")}</div>
+      ${st.ready ? "" : `<div class="card empty"><b>小星星助手暂不可用</b><span>${esc(st.message)}</span></div>`}
       <div id="cthread" class="ins-thread"></div>
       <div id="cbar" hidden></div>
       <div class="ins-inp"><div class="rf-box"><textarea id="cmsg" rows="2" maxlength="1000" placeholder="${st.ready ? "问问研究助手，比如“受访者为什么觉得价格太贵？”" : "连接模型后才能提问"}" aria-label="提问" ${st.ready ? "" : "disabled"}></textarea><button class="p rf-send" type="button" id="csend" aria-label="发送" ${st.ready ? "" : "disabled"}>↑</button></div>
@@ -403,7 +403,7 @@ async function insightsHub(p, my) {
     $("#cnew").onclick = () => { cur = null; sessionStorage.removeItem(key); draw(); $("#cmsg").focus(); };
     $("#chbtn").onclick = (e) => { e.stopPropagation(); const h = $("#chist"); h.hidden = !h.hidden; if (!h.hidden) drawHist(); };
     pageOn("ins-chist", document, "click", (e) => { const h = $("#chist"); if (h && !h.hidden && !e.target.closest(".ins-hwrap")) h.hidden = true; });
-    box.querySelectorAll("[data-sc]").forEach((c) => (c.onchange = () => { scope = [...box.querySelectorAll("[data-sc]:checked")].map((x) => x.dataset.sc); if (!scope.length) { c.checked = true; scope = [c.dataset.sc]; toast("至少留一项让 AI 读", true); } sessionStorage.setItem("ichat_scope", JSON.stringify(scope)); }));
+    box.querySelectorAll("[data-sc]").forEach((c) => (c.onchange = () => { scope = [...box.querySelectorAll("[data-sc]:checked")].map((x) => x.dataset.sc); if (!scope.length) { c.checked = true; scope = [c.dataset.sc]; toast("至少选一项", true); } sessionStorage.setItem("ichat_scope", JSON.stringify(scope)); }));
     const last = sessionStorage.getItem(key); if (last && threads.some((t) => t.id === last)) { try { await open(last); } catch { draw(); } } else draw();
     drawHist();
     if (st.ready) {   // select words of a reply: ask about them on the side, or collect several and change them in one go (the quotes the server copied cannot be selected)

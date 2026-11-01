@@ -280,7 +280,7 @@ def dashboard_summary(pid: str, ctx: Ctx = Depends(require_roles(*RECRUITERS)), 
     try:
         text = recruit_insights.summarize(chat, recruit_insights.build(db, proj))
     except ChatFatalError as e:
-        raise HTTPException(502, f"AI 模型服务拒绝了请求：{e.reason}") from e
+        raise HTTPException(502, f"小星星助手暂时不可用：{e.reason}") from e
     except recruit_form.FormError as e:
         raise HTTPException(422 if "还没有足够" in str(e) else 502, str(e)) from e
     audit(db, ctx.org_id, ctx.actor, "recruit.summary", proj.id, model=chat.name if chat else "mock")
@@ -432,7 +432,7 @@ def stats_form(pid: str, body: StatsBody, ctx: Ctx = Depends(require_roles(*RECR
     proj = get_project(db, ctx, pid)
     f = db.get(RecruitForm, proj.id)
     if f is None or f.source != "ai" or not f.questions:
-        raise HTTPException(422, "还没有问卷可以分析，先让 AI 起草，或自己加几道题")
+        raise HTTPException(422, "还没有问卷可以分析，先起草，或自己加几道题")
     rep = recruit_review.rate_report(recruit_form.load(f.questions), _quotas_of(db, proj), _stats_of(f), body.kind)
     reply = "\n".join(rep["lines"])
     f.chat = [*(f.chat or []), {"role": "user", "text": STAT_ASK[body.kind]},
@@ -449,7 +449,7 @@ def review_form(pid: str, ctx: Ctx = Depends(require_roles(*RECRUITERS)), db: Se
     proj = get_project(db, ctx, pid)
     f = db.get(RecruitForm, proj.id)
     if f is None or f.source != "ai" or not f.questions:
-        raise HTTPException(422, "还没有问卷可以检查，先让 AI 起草，或自己加几道题")
+        raise HTTPException(422, "还没有问卷可以检查，先起草，或自己加几道题")
     chat = _ai_chat()
     questions = recruit_form.load(f.questions)
     quotas = _quotas_of(db, proj)
@@ -489,7 +489,7 @@ def adopt_suggestion(pid: str, body: SigBody, ctx: Ctx = Depends(require_roles(*
     f = db.get(RecruitForm, proj.id)
     item = next((s for s in (_full(db, proj, f)["suggestions"] if f else []) if s["sig"] == body.sig), None)
     if item is None or not item.get("fix"):
-        raise HTTPException(422, "这条建议已经不适用了，或者需要让 AI 来改")
+        raise HTTPException(422, "这条建议已经不适用了，或者需要重新修改")
     try:
         f.questions = [q.model_dump() for q in recruit_review.apply_fix(recruit_form.load(f.questions), item["fix"])]
     except recruit_form.FormError as e:

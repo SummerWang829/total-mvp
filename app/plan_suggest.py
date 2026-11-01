@@ -75,8 +75,8 @@ def suggest(chat: ModeratorChatProvider | None, brief: str, language: str, libra
         except ChatFatalError:
             raise
         except ChatError as e:
-            raise FormError("AI 暂时无法生成建议，请稍后再试") from e
+            raise FormError("小星星助手暂时无法生成建议，请稍后再试") from e
         except (ValueError, KeyError, TypeError, AttributeError) as e:
             problem = f"not a valid answer ({type(e).__name__})"
             log.warning("plan suggestion attempt %d unusable: %s", attempt + 1, type(e).__name__)
-    raise FormError("AI 写的建议不合格，请再试一次")
+    raise FormError("小星星助手写的建议不合格，请再试一次")

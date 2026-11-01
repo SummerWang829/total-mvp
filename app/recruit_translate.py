@@ -128,10 +128,10 @@ def translate(chat: ModeratorChatProvider | None, questions: list[recruit_form.Q
         except ChatFatalError:
             raise
         except ChatError as e:
-            raise recruit_form.FormError("AI 暂时无法翻译，请稍后再试，或直接手写译文") from e
+            raise recruit_form.FormError("小星星助手暂时无法翻译，请稍后再试，或直接手写译文") from e
         except (ValueError, KeyError, TypeError, ValidationError) as e:
             log.warning("translation attempt %d unusable: %s", attempt + 1, type(e).__name__)
-    raise recruit_form.FormError("AI 没能给出完整的译文，请再试一次，或直接手写译文")
+    raise recruit_form.FormError("小星星助手没能给出完整的译文，请再试一次，或直接手写译文")
 
 
 def store(translations: dict, questions: list[recruit_form.Question], lang: str, made: dict, state: str) -> dict:

@@ -36,7 +36,7 @@ MAX_TAGS = 10
 MIN_IDEA_CHARS = 8
 END_OUT = "end_out"  # screen out: the person does not qualify
 END_OK = "end_ok"  # finish: the person qualifies
-MSG_VENDOR_MISSING = "AI 用的是云端模型，但没有填写服务商名称（.env 里的 MODERATOR_VENDOR），无法告诉你内容发给了谁，所以先不能用"
+MSG_VENDOR_MISSING = "小星星助手还没有配置好（.env 里的 MODERATOR_VENDOR），先不能用"
 CONTACT_WORDS = re.compile(r"(phone number|telephone|e-?mail address|home address|passport|NRIC|身份证|手机号|电话号码|电子邮箱|家庭住址|护照)", re.I)
 
 SYSTEM = """You write the screening questionnaire that decides who may be invited to a market research study. Reply with ONE JSON object and nothing else:
@@ -416,11 +416,11 @@ def generate(chat: ModeratorChatProvider | None, idea: str, language: str, libra
         except ChatFatalError:
             raise
         except ChatError as e:
-            raise FormError("AI 暂时无法生成问卷，请稍后再试") from e
+            raise FormError("小星星助手暂时无法生成问卷，请稍后再试") from e
         except (ValueError, KeyError, TypeError, AttributeError) as e:  # pydantic's ValidationError is a ValueError
             problem = f"not a valid questionnaire ({type(e).__name__})"
             log.warning("screener draft attempt %d unusable: %s", attempt + 1, type(e).__name__)
-    raise FormError("AI 写的问卷不合格（题型、选项或内容不符合要求），请换个说法再试一次")
+    raise FormError("小星星助手写的问卷不合格（题型、选项或内容不符合要求），请换个说法再试一次")
 
 
 # ---------- the conversation that edits the questionnaire ----------
@@ -467,8 +467,8 @@ def mock_chat(message: str, questions: list[Question], language: str) -> ChatRes
     if "删除最后" in message:
         return ChatResult("已删除最后一题。", questions[:-1], kind="change")
     if any(w in message for w in ("为什么", "多少", "吗", "？", "?")):
-        return ChatResult("（离线演示版）我先看了作答统计：数字都在“配额与受访者名单”页的看板里。接上 AI 模型后，这里会结合研究背景、配额和作答统计回答你的问题。", kind="answer", sources=["stats"])
-    return ChatResult("（离线演示版只会“起草问卷”和“删除最后一题”；接上 AI 模型后可以按你的话修改。）")
+        return ChatResult("（离线演示版）我先看了作答统计：数字都在“配额与受访者名单”页的看板里。接上小星星助手后，这里会结合研究背景、配额和作答统计回答你的问题。", kind="answer", sources=["stats"])
+    return ChatResult("（离线演示版只会“起草问卷”和“删除最后一题”；接上小星星助手后可以按你的话修改。）")
 
 
 def _history_messages(history: list[dict]) -> list[dict]:

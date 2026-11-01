@@ -72,7 +72,7 @@ def translate(pid: str, body: TranslateBody, ctx: Ctx = Depends(require_roles(*R
     try:
         made = recruit_translate.translate(chat, todo, body.lang)
     except ChatFatalError as e:
-        raise HTTPException(502, f"AI 模型服务拒绝了请求：{e.reason}") from e
+        raise HTTPException(502, f"小星星助手暂时不可用：{e.reason}") from e
     except recruit_form.FormError as e:
         raise HTTPException(502, str(e)) from e
     f.translations = recruit_translate.store(f.translations or {}, qs, body.lang, made, "machine")

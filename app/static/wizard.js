@@ -111,7 +111,7 @@ function wzSuggest() {  // step 2: what the AI suggests from the research backgr
   const s = WZ.plan.suggest, st = WZ.sugState, list = (a) => `<ul style="margin:4px 0 0 18px">${a.map((t) => `<li><b>${esc(t.title)}</b>：${t.questions.map(esc).join(" / ")}</li>`).join("")}</ul>`;
   if (!s && st !== "running" && st !== "error") return "";
   const pill = st === "running" ? `<span class="pill o">生成中…</span>` : st === "error" ? `<span class="pill r">没生成成功</span>` : `<span class="pill">已生成</span>`;
-  return `<div class="card" id="wzsug" style="display:flex;flex-direction:column;gap:8px"><div class="row"><b>AI 建议（根据研究背景，后台生成）</b>${pill}</div>
+  return `<div class="card" id="wzsug" style="display:flex;flex-direction:column;gap:8px"><div class="row"><b>建议（根据研究背景，后台生成）</b>${pill}</div>
     ${st === "error" ? `<div class="note">${esc(WZ.sugError || "")}。回到第 1 步改一下研究背景再点“下一步”会重新生成。</div>` : ""}
     ${s ? `<div class="grid"><div class="card"><h3>深访提纲建议</h3>${list(s.depth_topics)}</div><div class="card"><h3>座谈会大纲建议</h3>${list(s.group_topics)}</div>
       <div class="card"><h3>配额建议</h3><p class="sm" style="margin:6px 0 0">${esc(s.quota_hint)}</p></div><div class="card"><h3>舆情关键词建议</h3><div style="margin-top:6px">${s.listening_keywords.map((k) => `<span class="tag">${esc(k)}</span>`).join("")}</div></div></div>

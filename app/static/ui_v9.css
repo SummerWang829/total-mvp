@@ -105,3 +105,11 @@ a{text-underline-offset:3px}
 .subrow .rmtabs .rmt.on{background:none;color:var(--ink);font-weight:600;border-bottom-color:var(--ink)}
 .subrow .rmtabs .rmt.on::after{color:var(--muted)}
 @media (max-width:600px){.subrow>.rf-seg button,.subrow .rmtabs .rmt{min-width:36px;justify-content:center}}
+
+/* 对话区顶部：去掉“与 AI …”标题后，读了哪些资料（小标签）和“参考研究库”放在同一行 */
+.ol-hd .ol-ctx{padding:0;border:0;flex:0 1 auto;min-width:0;flex-wrap:nowrap;overflow:hidden}
+#rfctx{display:flex;align-items:center;gap:8px 10px;flex-wrap:wrap}
+#rfctx .rf-cx{order:-1;flex:1 1 auto;min-width:0;margin-top:0}
+#rfctx .rf-ctxh{flex:none;margin-left:auto}
+#rfctx .rf-ctxh .sp{display:none}
+#rfctx .rf-bad{order:2;flex-basis:100%}

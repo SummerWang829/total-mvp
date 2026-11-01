@@ -98,7 +98,7 @@ def _pick(db: Session, proj, text: str, add: bool) -> dict:
     try:
         ids = report_analysis.pick(text, ps, shown, cols, _chat(st))
     except ChatFatalError as e:
-        raise HTTPException(502, f"AI 模型服务拒绝了请求：{e.reason}") from e
+        raise HTTPException(502, f"小星星助手暂时不可用：{e.reason}") from e
     t.focus = (t.focus + "\n" + text).strip()[:600] if add else text
     t.picked = list(dict.fromkeys(([*t.picked] if add else []) + ids))
     t.off = [x for x in t.off if x not in ids]
@@ -126,15 +126,15 @@ def generate(pid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = 
     if not st["ready"]:
         raise HTTPException(409, st["message"])
     if st["mock"]:
-        raise HTTPException(409, "当前是演示模式，没有连接 AI 模型")
+        raise HTTPException(409, "当前是演示模式，小星星助手未连接")
     if wait := ratelimit.ask_allowed(ctx.user.id):
         raise HTTPException(429, f"操作太频繁，请 {wait} 秒后再试")
     try:
         out = report_analysis.write_notes(db, proj, get_moderator_chat())
     except ChatFatalError as e:
-        raise HTTPException(502, f"AI 模型服务拒绝了请求：{e.reason}") from e
+        raise HTTPException(502, f"小星星助手暂时不可用：{e.reason}") from e
     except ChatError as e:
-        raise HTTPException(502, "AI 暂时无法写解读，请稍后再试") from e
+        raise HTTPException(502, "小星星助手暂时无法写解读，请稍后再试") from e
     audit(db, ctx.org_id, ctx.actor, "report.generate", proj.id, written=out["written"])
     db.commit()
     return out
@@ -199,7 +199,7 @@ async def import_template(pid: str, request: Request, ctx: Ctx = Depends(require
             if not got:
                 unmatched.append(h)
     except ChatFatalError as e:
-        raise HTTPException(502, f"AI 模型服务拒绝了请求：{e.reason}") from e
+        raise HTTPException(502, f"小星星助手暂时不可用：{e.reason}") from e
     t.picked = list(dict.fromkeys(picked))
     t.focus = "\n".join(wanted)[:600]
     t.order = list(dict.fromkeys(["summary", *t.picked, *order]))

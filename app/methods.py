@@ -64,7 +64,7 @@ def starmap(db: Session, project: Project) -> list[dict]:
             sess = {s.interview_id: s for s in db.scalars(select(AiSession).where(AiSession.interview_id.in_([i.id for i in mine]))).all()} if mine else {}
             finished = sum(1 for i in mine if sess.get(i.id) and sess[i.id].finished)
             nodes.append({"key": m, "title": LABELS[m], "big": finished, "unit": "人已完成", "sub": f"{len(studies)} 项研究，{len(mine)} 人受邀" if studies else "还没有研究",
-                          "page": "studies", "started": bool(studies), "next": "写研究目标，让 AI 起草提纲" if not studies else "发布并邀请受访者" if not mine else "看进度和转写"})
+                          "page": "studies", "started": bool(studies), "next": "写研究目标，起草提纲" if not studies else "发布并邀请受访者" if not mine else "看进度和转写"})
         elif m == "listening":
             sources = db.scalar(select(func.count()).select_from(ListeningSource).where(ListeningSource.project_id == project.id)) or 0
             total = db.scalar(select(func.count()).select_from(Mention).where(Mention.project_id == project.id)) or 0

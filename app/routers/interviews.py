@@ -296,7 +296,7 @@ def generate_answers(iid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Se
     try:
         out = interview_answers.generate(db, itv, questions, chat, proj.language if proj.language in ("en", "zh") else "zh", respondent_table.match_texts(proj, itv, questions))
     except ChatFatalError as e:
-        raise HTTPException(502, f"AI 模型服务拒绝了请求：{e.reason}") from e
+        raise HTTPException(502, f"小星星助手暂时不可用：{e.reason}") from e
     audit(db, ctx.org_id, ctx.actor, "interview.answers", itv.id, answered=out["answered"], themes=out["themes"])   # counts only, never the words
     db.commit()
     return {**out, "themes_skipped_reason": "云端模型还没有在 .env 里写明服务商，没有发送任何内容，主题标签没有生成" if cloud_unnamed else ""}

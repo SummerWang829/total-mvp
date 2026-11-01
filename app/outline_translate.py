@@ -81,7 +81,7 @@ def translate(chat: ModeratorChatProvider | None, strings: list[str], lang: str,
         except ChatFatalError:
             raise
         except ChatError as e:
-            raise TranslateError("AI 暂时无法翻译，请稍后再试") from e
+            raise TranslateError("小星星助手暂时无法翻译，请稍后再试") from e
         except (ValueError, KeyError, TypeError) as e:
             log.warning("outline translation attempt %d unusable: %s", attempt + 1, type(e).__name__)
-    raise TranslateError("AI 没能给出完整的译文，请再试一次")
+    raise TranslateError("小星星助手没能给出完整的译文，请再试一次")

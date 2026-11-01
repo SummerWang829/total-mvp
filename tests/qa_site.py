@@ -684,7 +684,7 @@ def review_section(br, D):
     pg.goto(B + f"/#/p/{pid}/people"); pg.wait_for_selector("#rfchat .rf-chips")
     chips = [x.strip() for x in pg.locator("#rfchat .rf-chips button").all_inner_texts()]
     ok(chips == ["检查问卷", "对照研究目标", "优化措辞的中立性", "测试这份问卷"], f"[review] with nobody answering yet the quick buttons are these four, no 预估通过率 (got {chips})")
-    ok("与 AI 共同编写问卷" in pg.inner_text("#rfctx") and pg.locator("#rfctx .rf-model").count() == 0 and pg.locator("#rfctx .rf-cx span", has_text="当前问卷（2 题）").count() == 1 and pg.locator("#rflib").is_checked(), "[review] the header names the model and shows what the AI reads")
+    ok("AI" not in pg.inner_text("#rfctx") and pg.locator("#rfctx .rf-model").count() == 0 and pg.locator("#rfctx .rf-cx span", has_text="当前问卷（2 题）").count() == 1 and pg.locator("#rflib").is_checked(), "[review] the header names the model and shows what the AI reads")
     # a passing failure: the reason in plain words, the question kept, 重新尝试 asks again; a refusal greys out the buttons that need the model
     fails = {"n": 0}
     def flaky(route):
@@ -700,7 +700,7 @@ def review_section(br, D):
     pg.click(".rf-err [data-chip=retry]"); pg.wait_for_selector(".rf-kind.ans")
     ok(pg.locator(".rf-err").count() == 0, "[review] 重新尝试 sends the question again and the failure card is gone")
     pg.unroute("**/recruiting/form/chat")
-    pg.route("**/recruiting/form/chat", lambda route: route.fulfill(status=503, content_type="application/json", body=json.dumps({"detail": "DeepSeek拒绝了请求：账户余额不足，请联系管理员处理。"})))
+    pg.route("**/recruiting/form/chat", lambda route: route.fulfill(status=503, content_type="application/json", body=json.dumps({"detail": "DeepSeek暂时不可用：账户余额不足，请联系管理员处理。"})))
     pg.fill("#rfmsg", "对照一下"); pg.click("#rfsend"); pg.wait_for_selector(".rf-err")
     ok(pg.locator(".rf-err button").count() == 0 and pg.locator("#rfctx .rf-model.bad").count() == 1 and pg.locator("[data-chip=goals]").is_disabled() and pg.locator("[data-chip=review]").is_enabled(), "[review] a refusal shows no retry, marks the model 不可用 and greys out only the buttons that need it")
     pg.unroute("**/recruiting/form/chat")

@@ -107,7 +107,7 @@ def ask(cid: str, body: AskBody, ctx: Ctx = Depends(require_roles(*STAFF)), db: 
         try:
             ai = insight_chat.reply(db, ctx, proj, t, body.message.strip(), body.scope, chat, proj.outline_text)
         except ChatFatalError as e:
-            raise HTTPException(502, f"AI 模型服务拒绝了请求：{e.reason}") from e
+            raise HTTPException(502, f"小星星助手暂时不可用：{e.reason}") from e
         except insight_chat.ChatUnavailable as e:
             raise HTTPException(502, e.message) from e
     if body.ask_only:   # a side question about one passage: the conversation stays as it was

@@ -195,7 +195,7 @@ def ai_review(chat: ModeratorChatProvider | None, questions: list[recruit_form.Q
         text, instruction = str(it.get("text", "")).strip()[:MAX_TEXT], str(it.get("instruction", "")).strip()[:MAX_TEXT]
         if not text or not instruction or (qid and qid not in by_id):
             continue
-        item = _item(it["kind"], qid, text[:40], text, instruction, [s for s in it.get("sources", []) if isinstance(s, str)], button="采纳：让 AI 改")
+        item = _item(it["kind"], qid, text[:40], text, instruction, [s for s in it.get("sources", []) if isinstance(s, str)], button="采纳")
         item["qhash"] = qhash(by_id[qid]) if qid else ""
         out.append(item)
     return out

@@ -45,7 +45,7 @@ function rfCard(p, form) {
   const ctxHtml = () => {
     const a = f.ai || { ok: true, name: "" }, docs = f.library_docs || 0, started = (f.stats && f.stats.started) || 0;
     const cx = [f.brief && f.brief.trim() ? "✓ 研究背景" : "· 研究背景（未填写）", `${useLib && docs ? "✓" : "·"} 研究库 ${docs} 份`, ...(Q.length ? [`✓ 当前问卷（${Q.length} 题）`] : []), ...(started ? [`✓ 作答统计（${started} 人）`] : [])];
-    return `<div class="rf-ctxh"><b>与 AI 共同编写问卷</b>${a.ok ? "" : `<span class="rf-model bad">不可用</span>`}<span class="sp"></span><label class="chk"><input type="checkbox" id="rflib" ${useLib ? "checked" : ""}>参考研究库</label></div>
+    return `<div class="rf-ctxh">${a.ok ? "" : `<span class="rf-model bad">不可用</span>`}<span class="sp"></span><label class="chk"><input type="checkbox" id="rflib" ${useLib ? "checked" : ""}>参考研究库</label></div>
       ${a.ok ? "" : `<div class="rf-bad" role="alert">${esc(a.reason)}</div>`}<div class="rf-cx">${cx.map((x) => `<span>${esc(x)}</span>`).join("")}</div>`;
   };
   const sugCard = (s) => `<div class="rf-sg"><span class="rf-sgk">${esc(s.label)}${s.qno ? ` · 第 ${s.qno} 题` : ""}</span><div>${esc(s.text)}</div>${chipsOf(s.sources)}
@@ -99,7 +99,7 @@ function rfCard(p, form) {
     const row = !Q.length ? [need("draft", "帮我起草问卷")] : !started ? [free("review", "检查问卷"), need("goals", "对照研究目标"), need("neutral", "优化措辞的中立性"), free("test", "测试这份问卷")]
       : [free("review", "检查问卷"), free("rate", "预估通过率"), free("worst", "定位筛除率较高的题目"), need("neutral", "优化措辞的中立性")];
     const chips = `<div class="rf-chips">${row.join("")}</div>`;
-    return hello + msgs + cards + failHtml + (pending ? `<div class="rf-msg rf-me">${esc(pending)}</div><div class="rf-msg mut">AI 正在处理…</div>` : news + chips);
+    return hello + msgs + cards + failHtml + (pending ? `<div class="rf-msg rf-me">${esc(pending)}</div><div class="rf-msg mut">正在处理…</div>` : news + chips);
   }
   const drawChat = () => { const c = $("#rfchat"); if (!c) return; const x = $("#rfctx"); if (x) { x.innerHTML = ctxHtml(); const l = $("#rflib"); if (l) l.onchange = () => { useLib = l.checked; drawChat(); }; } c.innerHTML = chatHtml(); c.scrollTop = c.scrollHeight; wireChips(); };
   async function send(text) {
@@ -193,9 +193,9 @@ ${text}
     return `<div class="rf-q${changedIds.has(q.id) ? " rf-hl" : ""}" data-qid="${q.id}" data-selk="q:${q.id}"><div class="row"><span class="rf-n">${i + 1}</span><b>${esc(q.text || "（还没写题目）")}</b>${qBadge(q)}<span class="sp"></span><span class="tag nw">${RF_TYPE[q.type]}${q.required ? " · 必答" : ""}</span><button class="s" type="button" data-edit="${q.id}">编辑</button></div>${lines}${exWarn(q)}</div>`;
   }
   function outline() {
-    return `<h3 class="rf-h">研究背景</h3><div class="rf-blk">${f.brief && f.brief.trim() ? `${esc(f.brief)} <span class="mut sm">（来自立项向导）</span>` : '<span class="mut">还没有研究背景。到立项向导第 1 步写，或在左边对话里告诉 AI。</span>'}</div>
-      <h3 class="rf-h">研究目标</h3><textarea id="rfgoals" class="rf-blk" rows="3" placeholder="每行一条。可以让 AI 根据研究背景整理，也可以自己写。" aria-label="研究目标">${esc(goals.join("\n"))}</textarea>
-      <h3 class="rf-h">招募需求</h3><textarea id="rfneed" class="rf-blk" rows="2" placeholder="谁、多少人、哪些情况要筛掉。可以让 AI 整理，也可以自己写。" aria-label="招募需求">${esc(need)}</textarea>
+    return `<h3 class="rf-h">研究背景</h3><div class="rf-blk">${f.brief && f.brief.trim() ? `${esc(f.brief)} <span class="mut sm">（来自立项向导）</span>` : '<span class="mut">还没有研究背景。到立项向导第 1 步写，或在左边对话里补充。</span>'}</div>
+      <h3 class="rf-h">研究目标</h3><textarea id="rfgoals" class="rf-blk" rows="3" placeholder="每行一条。" aria-label="研究目标">${esc(goals.join("\n"))}</textarea>
+      <h3 class="rf-h">招募需求</h3><textarea id="rfneed" class="rf-blk" rows="2" placeholder="谁、多少人、哪些情况要筛掉。" aria-label="招募需求">${esc(need)}</textarea>
       <h3 class="rf-h">问卷流程（共 ${Q.length} 题）</h3>${Q.length ? Q.map(qCard).join("") : `<div class="empty"><b>还没有题目</b><span>在左边说“帮我起草问卷”，或点下面的按钮自己加。</span></div>`}
       <div class="row"><button class="s" type="button" data-add="single">+ 单选</button><button class="s" type="button" data-add="multi">+ 多选</button><button class="s" type="button" data-add="text">+ 文字填空</button><button class="s" type="button" data-add="number">+ 数字填空</button></div>`;
   }
@@ -243,7 +243,7 @@ ${text}
   }
   const retest = () => {
     const host = $("#rfrun"); if (!host) return; const res = $("#rfresult"); res.hidden = true;
-    if (!Q.length) { host.innerHTML = `<div class="empty"><b>还没有题目</b><span>先在左边让 AI 起草，或到“大纲”里自己添加。</span></div>`; return; }
+    if (!Q.length) { host.innerHTML = `<div class="empty"><b>还没有题目</b><span>先在左边起草，或到“大纲”里自己添加。</span></div>`; return; }
     if (incomplete()) { host.innerHTML = `<div class="empty"><b>有题目还没写完</b><span>题目和选项都写好后，这里就能测试。</span></div>`; return; }
     scrRunner(host, {
       lang: ["zh", "en", "ms", "ta"].includes(ver) ? ver : "zh",

@@ -41,7 +41,7 @@ def guide_of(study: AsyncStudy) -> dict:
         StudyError: the outline is missing or invalid, or one of its prepared questions breaks a red line.
     """
     if not study.outline_text.strip():
-        raise StudyError(422, "还没有提纲：请先让 AI 起草，或自己写")
+        raise StudyError(422, "还没有提纲：请先起草，或自己写")
     try:
         g = guide_text.parse_guide_text(study.outline_text)
     except guide_text.GuideTextError as e:

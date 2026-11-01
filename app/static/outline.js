@@ -79,7 +79,7 @@ async function outlineView(p) {
     const msgs = S.chat.map((m, i) => (m.role === "user" ? `<div class="rf-msg rf-me">${esc(m.text)}</div>` : `<div class="rf-msg" data-selk="m:${i}">${aiBody(m)}</div>`)).join("");
     const fix = S.problem && !pending ? `<div class="rf-msg"><div class="ol-tx">我发现大纲文字里有一处写得不对，系统看不懂：</div><div class="ol-sg"><div>${esc(S.problem)}</div></div><div class="row"><button class="p" type="button" data-fix="1">帮我修好</button></div></div>` : "";
     const chips = S.summary ? ["给每个核心问题补追问", "检查有没有引导性问题", "缩短到 30 分钟"] : ["帮我起草大纲"];
-    return hello + msgs + fix + (pending ? `<div class="rf-msg rf-me">${esc(pending)}</div><div class="rf-msg mut">AI 正在想…</div>`
+    return hello + msgs + fix + (pending ? `<div class="rf-msg rf-me">${esc(pending)}</div><div class="rf-msg mut">正在思考…</div>`
       : `<div class="rf-chips">${chips.map((c) => `<button class="s" type="button" data-chip="${esc(c)}">${esc(c)}</button>`).join("")}</div>`);
   };
   const fixMessage = () => `请帮我修好大纲文字里的这个问题：${S.problem}。如果修不了，就按研究背景重新整理一份大纲。`.slice(0, 900);
@@ -121,7 +121,7 @@ async function outlineView(p) {
   /* ---------- right: outline / text / settings / test ---------- */
   const edit = guard(async (body) => { const r = await api(`/projects/${p.id}/outline/edit`, { method: "POST", body: { ...body, v: V, sync: syncKeys() } }); take(r); editing = ""; drawRight(); drawChat(); syncNote(r.sync); });
   const putSettings = guard(async (body) => { const r = await api(`/projects/${p.id}/outline/settings`, { method: "PUT", body: { ...body, v: V, sync: syncKeys() } }); take(r); resetSync(); drawRight(); drawChat(); syncNote(r.sync); if (!(r.sync && r.sync.synced.length)) stat("已保存"); if (body.languages || body.formats) autoGen(); });
-  const notes = () => `${S.problem ? `<div class="rf-warn" role="alert">${esc(S.problem)}<button class="s" type="button" data-fixnote="1">让 AI 帮我修</button></div>` : ""}${S.warning ? `<div class="rf-warn" role="note">${esc(S.warning)}</div>` : ""}`;
+  const notes = () => `${S.problem ? `<div class="rf-warn" role="alert">${esc(S.problem)}<button class="s" type="button" data-fixnote="1">帮我修好</button></div>` : ""}${S.warning ? `<div class="rf-warn" role="note">${esc(S.warning)}</div>` : ""}`;
   const drawNotes = () => { const n = $("#olnotes"); if (n) { n.innerHTML = notes(); n.querySelectorAll("[data-fixnote]").forEach((b) => (b.onclick = () => send(fixMessage()))); } };
 
   const DEPTH = { none: ["不追问", "只问这一题"], shallow: ["浅度追问", "追问 1 个"], deep: ["深度追问", "追问 2–3 个"], free: ["自由讨论", "追问 1–3 个，不限"] };
@@ -152,7 +152,7 @@ async function outlineView(p) {
   };
   function outlineHtml() {
     const sum = S.summary, live = cur().family === "live";
-    if (!sum) return famRow() + (S.text.trim() ? `<div class="empty"><b>文字还不能当大纲用</b><span>在左边让 AI 帮你修好或重新起草。</span></div>` : `<div class="empty"><b>还没有访谈大纲</b><span>在左边说“帮我起草大纲”。</span></div>`);
+    if (!sum) return famRow() + (S.text.trim() ? `<div class="empty"><b>文字还不能当大纲用</b><span>在左边修好或重新起草。</span></div>` : `<div class="empty"><b>还没有访谈大纲</b><span>在左边说“帮我起草大纲”。</span></div>`);
     const mins = olMinutes(sum), cols = ["#9FC9B8", "#1F6B54", "#EF9F27", "#6FD3A6", "#E8CF7A", "#B84900"];
     let n0 = 0; const cards = sum.parts.map((x, i) => { const c = partCard(x, mins[i], i, n0); n0 += x.questions.filter((q) => !q.cover).length; return c; });
     const real = sum.parts.flatMap((x, i) => x.questions.map((q, qi) => (q.cover ? null : `${x.kind}:${x.ref}:${qi}`))).filter(Boolean), n = syncKeys().length + 1;
@@ -176,7 +176,7 @@ async function outlineView(p) {
       ${ok ? "" : `<p class="sm mut">先有一份大纲，对外标题和时长才会生效。</p>`}`;
   };
   function testHtml() {
-    const sum = S.summary; if (!sum) return `<div class="empty"><b>还没有可以试走的大纲</b><span>先在左边让 AI 起草。</span></div>`;
+    const sum = S.summary; if (!sum) return `<div class="empty"><b>还没有可以试走的大纲</b><span>先在左边起草。</span></div>`;
     const flat = []; sum.parts.forEach((x, pi) => x.questions.forEach((q) => { if (!q.cover) flat.push({ part: x, pi, text: q.text }); }));
     if (!flat.length) return `<div class="empty"><b>大纲里还没有问题</b></div>`;
     step = Math.min(step, flat.length); const mins = olMinutes(sum), done = step >= flat.length, cur = flat[Math.min(step, flat.length - 1)];
@@ -284,8 +284,8 @@ async function outlineView(p) {
   document.addEventListener("click", window._olOff);
 
   /* ---------- the whole page ---------- */
-  shell(`<div class="rf-seg" id="olseg" role="tablist" aria-label="大纲视图" data-subrow></div><div class="rf" style="padding:0"><div class="rf-ws" id="olws"><div class="rf-pane"><div class="rf-hd"><b>和 AI 一起写大纲</b><span class="sp"></span><label class="chk"><input type="checkbox" id="ollib" ${useLib ? "checked" : ""}>参考研究库</label></div>
-      <div class="ol-ctx" id="olctx"></div><div class="rf-sc" id="olchat"></div>
+  shell(`<div class="rf-seg" id="olseg" role="tablist" aria-label="大纲视图" data-subrow></div><div class="rf" style="padding:0"><div class="rf-ws" id="olws"><div class="rf-pane"><div class="rf-hd ol-hd"><div class="ol-ctx" id="olctx"></div><span class="sp"></span><label class="chk"><input type="checkbox" id="ollib" ${useLib ? "checked" : ""}>参考研究库</label></div>
+      <div class="rf-sc" id="olchat"></div>
       <div id="olsel" hidden></div><div class="rf-inp"><div class="rf-box"><textarea id="olmsg" rows="2" maxlength="1000" placeholder="说说你想怎么改，或者直接问我问题……" aria-label="对话输入"></textarea><button class="p rf-send" type="button" id="olsend" aria-label="发送">↑</button></div></div></div>
       <div class="rf-split" id="olsplit" role="separator" aria-orientation="vertical" aria-label="拖动调整对话和大纲的宽度（双击恢复）" tabindex="0"><i></i></div><div class="rf-pane" id="olright"></div></div></div>`, { active: "outline", p });
   document.body.classList.add("rfmode", "pgw");

@@ -11,7 +11,7 @@ from .groups import speaker_label
 
 CSV_HEADER = ["受访者", "场次", "主题", "洞察", "状态", "来源", "引文", "发言人", "时间(秒)"]
 STATUS_ZH = {"approved": "已通过", "draft": "待审核", "needs_review": "需复核"}
-KIND_ZH = {"ai": "AI 生成", "manual": "人工"}
+KIND_ZH = {"ai": "小星星助手生成", "manual": "人工"}
 NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 REL = "http://schemas.openxmlformats.org/package/2006/relationships"
 OFFICE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
