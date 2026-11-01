@@ -1,6 +1,6 @@
 /* 访谈房间（主持人 / 观察员）：四列，画面可平分或大屏，追问框和后台聊天是聊天框，等候区放行。只管排版和外观。 */
 body.q4mode .q4{gap:12px;padding:0 16px}
-body[data-room-role=moderator].q4mode .q4,body[data-room-role=observer].q4mode .q4{grid-template-columns:minmax(0,1.15fr) minmax(0,1.5fr) minmax(0,.85fr) minmax(0,.6fr)}
+body[data-room-role=moderator].q4mode .q4,body[data-room-role=observer].q4mode .q4{grid-template-columns:repeat(4,minmax(0,1fr))}
 body.q4mode .q4>.qc{display:flex}
 
 /* 画面：默认平分（主持人左、受访者右）；大屏 = 一个大画面加一个小窗，点画面换大小，点小窗互换 */
