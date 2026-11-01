@@ -198,7 +198,14 @@ async function roomsView(p) {
     const c = $("#rmclr"); if (c) c.onclick = () => { RM.sel[RM.tab] = rmEmptySel(); drawHead(); drawBody(); drawTabs(); };
   };
   const drawAll = () => { document.querySelectorAll(".rmpop,#rmcard").forEach((x) => x.remove()); drawTabs(); drawHead(); drawBody(); };
-  const drawSide = () => { const s = $("#rmside"); if (s) { s.innerHTML = rmAsideHtml(its, mods); wireSide(); } };
+  /* the right column can be folded into a thin strip so the table gets the whole width; the choice is kept in this browser */
+  const sideOff = () => { try { return localStorage.getItem("rm_side_off") === "1"; } catch { return false; } };
+  const drawSide = () => {
+    const s = $("#rmside"), w = $("#rmws"); if (!s) return;
+    const off = sideOff(); if (w) w.classList.toggle("off", off);
+    s.innerHTML = `<button type="button" class="s rmside-tg" id="rmsidetg" aria-expanded="${!off}">${off ? "展开提醒" : "收起"}</button>` + rmAsideHtml(its, mods); wireSide();
+    $("#rmsidetg").onclick = () => { try { localStorage.setItem("rm_side_off", off ? "0" : "1"); } catch { /* private window: this page only */ } drawSide(); };
+  };
   const banner = (i, what) => {   // the change is saved and the invitation already shows it; a mail already sent can be followed by an update mail
     const mail = CONFIG && CONFIG.mail_ready && i.mail_status === "sent" && i.kind !== "group";
     $("#rmban").innerHTML = `<div class="rmban" role="status"><span>${esc(what)}，邀请函已同步。</span><span class="sp"></span>${mail ? `<label class="chk"><input type="checkbox" id="rmmail" checked><span>同时给受访者发更新邮件</span></label><button type="button" class="p" id="rmsend">发送</button>` : ""}<button type="button" class="s" id="rmbx" aria-label="关闭">×</button></div>`;

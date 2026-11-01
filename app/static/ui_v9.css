@@ -74,7 +74,7 @@ a{text-underline-offset:3px}
 /* 右侧整列可以收起（点“收起”），表格占满宽度，状态列不再被挡 */
 .rmws.side.off{grid-template-columns:minmax(0,1fr) 36px}
 .rmws.off .rmside>:not(.rmside-tg){display:none}
-.rmside-tg{align-self:flex-end;height:30px;padding:0 10px;font-size:13px}
+.rmside-tg{align-self:flex-end;flex:none;height:30px;min-height:30px;padding:0 12px;font-size:13px}
 .rmws.off .rmside-tg{writing-mode:vertical-rl;height:auto;padding:10px 0;width:36px;align-self:stretch;justify-content:flex-start}
 
 /* ---------- 名单页：折叠行的箭头放在标题前面；一眼看数据的标签不折行 ---------- */
@@ -87,3 +87,8 @@ a{text-underline-offset:3px}
 :root[data-theme="dark"] main a.btn.p,:root[data-theme="dark"] main a.btn.p.s,:root[data-theme="dark"] main table button.p,:root[data-theme="dark"] main .head .btn.p,:root[data-theme="dark"] main .head button.p{color:#9FD8BE;border-color:#4C7A68}
 :root[data-theme="dark"] main a.btn.p:hover,:root[data-theme="dark"] main table button.p:hover:not(:disabled),:root[data-theme="dark"] main .head .btn.p:hover,:root[data-theme="dark"] main .head button.p:hover:not(:disabled){color:#0A1612;border-color:#9FD8BE}
 :root[data-theme="dark"] main a.btn.p::before,:root[data-theme="dark"] main table button.p::before,:root[data-theme="dark"] main .head .btn.p::before,:root[data-theme="dark"] main .head button.p::before{background:#9FD8BE}
+/* 深色主题：标题原来用品牌深绿，在深底上看不见，改用主题的正文色 */
+:root[data-theme="dark"] main .head h1,:root[data-theme="dark"] main h2,:root[data-theme="dark"] main h3,:root[data-theme="dark"] .ovx .hm-langs h3{color:var(--ink)}
+/* 手机宽度：所有小按钮（包括右侧面板、弹层里的）点击区不小于 36px */
+@media (max-width:600px){button.s,.btn.s{height:36px;min-height:36px}}
+@media (max-width:600px){.rd-sh .rd-arr{width:36px;height:36px;min-height:36px}}
