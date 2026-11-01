@@ -26,4 +26,4 @@ webhook:
 room:
   empty_timeout: 300
 logging:
-  level: info          # shows joins, leaves and connection quality while we are still testing; set back to warn later
+  level: warn          # info printed TURN passwords into the logs; kept at warn
