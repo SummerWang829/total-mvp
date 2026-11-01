@@ -12,6 +12,12 @@
 
 
 
+## 2026-11-01 · deepresearch 切到 EdgeOne（已完成）
+- DNSPod：`deepresearch` 由 A 记录改为 CNAME → `deepresearch.morningstarsystem.tech.eo.dnse0.com`（用户扫码验证后保存，“修改成功”）。`lk-deepresearch` 仍是 A 记录（LiveKit 不走 EdgeOne）。
+- 切换前检查：EdgeOne 节点 43.159.98.75 的 HTTPS 证书有效，首页、/api/health、theme.js、ui_v10.css、ai_idle.webp 都 200。切换后 8.8.8.8 解析到 EdgeOne 节点，https://deepresearch.morningstarsystem.tech/ 200。
+- 源站 43.160.208.195 不变；EdgeOne 回源到它。
+- 注意：运营商缓存最长 24–48 小时，部分地区可能暂时仍指向源站，两边都能访问。
+
 ## 2026-11-01 · 告警通道接通；服务器 .env 误清空后已恢复
 - 告警：企业微信新建群“kelly、Bobbie、finance”，添加消息推送（webhook）“星桐告警”；地址写入服务器 `deploy/.env` 的 `ALERT_WEBHOOK_URL`（不进仓库、不进聊天）。测试消息 errcode 0；app 重建后 `app.doctor` 显示“监控告警：已配置”。
 - 事故：写入 `ALERT_WEBHOOK_URL` 时，临时文件写入失败，`.env` 被清空约 1 分钟；随后从运行中容器的环境变量恢复了全部 36 个键（排除镜像自带的 PATH/GPG_KEY/PYTHON_*/LANG/PYTHONUNBUFFERED/PYTHONUTF8），权限 600。之前的注释行和空行没有保留。恢复后 `app.doctor` 没有必须解决的问题，健康检查 200。
