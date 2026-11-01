@@ -12,6 +12,13 @@
 
 
 
+## 2026-11-01 · 部署（提交 da37b41，用户确认“部署”）
+- 部署前：线上无进行中的访谈（只读查 `interviews`：live 0、进行中 0）；`backup.sh` 备份 total-20261101-125206.db.gz 并异地上传成功。
+- 部署：`git archive` 传到 /opt/total-mvp；`docker compose up -d --build --no-deps app`；`app.doctor` 没有必须解决的问题；公网 /api/health、首页、theme.js、ui_v10.css、ai_idle.webp 均 200。
+- 未做：监控告警没配（ALERT_WEBHOOK_URL 未设，doctor 提示）。
+- EdgeOne：验证 TXT `edgeonereclaim` 已生效（8.8.8.8 可查到）；`deepresearch` 的 CNAME 切换需要在 DNSPod/EdgeOne 控制台改，本机没有可用的 DNS 凭据，等用户改或给出接入地址。
+- 回到顶部保持“滚动超过 300px 才出现”；“异步 AI 研究”“AI 主持”名字保持不改。
+
 ## 2026-11-01 AI 主持房间、输入框与表情、底部按钮条、橙色主题、主题开关、AI 头像（已完成）
 - 做了：AI 主持房间四列、研究员/客户/观察员只看不出镜（令牌隐身）、悄悄话与接管权限、接管后文字/语音/视频/屏幕共享；受访者大输入框（约 16×8cm）+ 苹果式表情面板；悬浮图标按钮条；橙色主题左栏深褐到橙渐变；主题开关改右上角胶囊 + 回到顶部 + 页签行右端放“深访/结项” + 全部项目页去重复标题；发送键改橙色渐变带箭头；AI 头像两张去白底、会动（呼吸、张嘴、摆动、声波）。
 - 测了：pytest tests/test_ai_room.py 27 通过；`QA_EARLY=projects_section` 24 通过；`QA_EARLY=ai_room_section` 151 通过；`E2E_ONLY=ai` 11 通过。
