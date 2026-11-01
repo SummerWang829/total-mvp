@@ -10,6 +10,13 @@
 
 
 
+## 2026-11-01 · LiveKit TURN 上线（提交 04a077a，只改视频服务配置）
+- 用户授权：在轻量云防火墙（Ubuntu-aDDV，lhins-7h9fxm7j）新增 TCP 5349、UDP 3478（来源 全部 IPv4，允许）。原有规则未动。
+- 部署前：无进行中访谈、无录制/合成/后台任务。备份旧配置到 `/opt/rollback-livekit-20261101/`（livekit.yaml、docker-compose.yml）。
+- 改动：`deploy/livekit.yaml` 增加 turn（domain lk-deepresearch…、tls_port 5349、udp_port 3478）；`deploy/docker-compose.yml` 的 livekit 挂载 `/opt/livekit-turn`（证书副本）。证书：Caddy 为 lk-deepresearch… 签发的证书，复制到 `/opt/livekit-turn/fullchain.crt` 与 `private.key`（权限 600），有效期到 2027-01-13。
+- 只重启 livekit 容器（app 与 caddy 没重启）。日志：Starting TURN server（TLS 5349、UDP 3478，relay 30000–40000 仅服务器内部使用）。
+- 验证：从本机 TLS 连接 5349，证书校验通过（TLSv1.3）；UDP 3478 回应 STUN 绑定请求；app 健康；lk 域名 HTTP 200。
+- 还没做：真实手机/不同网络下的视频测试（需要一场真实访谈，等你定时间）；证书到期前需要重新复制并重启 livekit（Caddy 会自动续期，但 TURN 用的是副本，需要手动同步，建议做成定时任务，待你定）。
 ## 2026-11-01 · 部署到新加坡测试服务器（提交 4f8383e）：字体减重 + 第二版视觉 + 三个主题 + 访谈室跟随主题
 SW 执行。部署前：无进行中访谈、无录制/合成/后台任务；数据库备份 `total-20261031-152910.db.gz` + COS 异地成功；回滚点：旧镜像 `deploy-app:rollback-before-4f8383e`、旧代码包 `/opt/total-mvp-code-before-4f8383e.tgz`。解包 `sudo tar`，`deploy/.env` 未动。只重建 app。检查：app healthy；cannot add 0、error/traceback 0；doctor 无必须解决项；/api/health、/api/public/config、/index.html、fonts（Latin）、fonts.css、ui_v8.css、theme.js、room.html、rooms.js 全 200；未登录 /api/projects 401。
 **字体减重**：Chinese 网页字体（约 5.3 MB）去掉，只保留 Latin（约 104 KB）；中文用系统字体。
