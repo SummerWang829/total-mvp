@@ -1,0 +1,89 @@
+/* 第三版收尾：全站统一的尺寸、字号、圆角、间距和动效（2026-11-01）。只改展示，不改任何功能。
+   一套数值：字号 12 / 14 / 16 / 20 / 28；字重 400 / 600；圆角 6（控件）/ 12（卡片、弹层）/ 999（标签）；
+   控件高 36（按钮）/ 30（表格里的小按钮）/ 40（输入框）；间距 4 / 8 / 12 / 16 / 24 / 32；动效 120 / 200 / 280ms。三个主题共用。 */
+:root{
+  --s1:4px;--s2:8px;--s3:12px;--s4:16px;--s5:24px;--s6:32px;
+  --r-ctl:6px;--r-pan:12px;--r-pop:12px;
+  --h-btn:36px;--h-btn-s:30px;--h-inp:40px;
+  --d1:120ms;--d2:200ms;--d3:280ms;--ease:cubic-bezier(.23,1,.32,1);
+}
+
+/* ---------- 字号与字重：去掉 12.5 / 13.5 / 14.5 这类半像素和 650 / 700 ---------- */
+h1{font-weight:600}
+main .head h1,main:has(.chain:not(.hm-chain)) .head h1{font-size:28px;line-height:36px}
+h2{font-size:20px;line-height:28px;font-weight:600}
+h3{font-size:16px;line-height:24px;font-weight:600}
+h4,h5{font-size:14px;font-weight:600}
+.lead,.note,.tbl,code,main code{font-size:14px}
+.note{line-height:22px}
+button,.btn{font-weight:600}
+button.p,.btn.p{font-weight:600}
+button.s,.btn.s{font-size:13px}
+.tag{font-weight:600}
+
+/* ---------- 控件：按钮 36、小按钮 30、输入框 40，统一圆角 6 ---------- */
+button,.btn{height:var(--h-btn);border-radius:var(--r-ctl)}
+button.s,.btn.s{height:var(--h-btn-s);border-radius:var(--r-ctl)}
+input,select{min-height:var(--h-inp);border-radius:var(--r-ctl)}
+textarea{border-radius:var(--r-ctl);min-height:80px;line-height:1.6}
+input,select,textarea{transition:border-color var(--d1),box-shadow var(--d1)}
+input:hover:not(:disabled):not(:focus),select:hover:not(:disabled):not(:focus),textarea:hover:not(:disabled):not(:focus){border-color:var(--muted)}
+::placeholder{color:var(--muted);opacity:1}
+
+/* ---------- 卡片与间距：卡片内边距 20（套在卡片里的 16），区块之间 24 ---------- */
+.card{border-radius:var(--r-pan);padding:20px}
+.card .card{border-radius:10px;padding:16px}
+.note{border-radius:10px;padding:12px 16px}
+main{gap:var(--s5)}
+main>.head{padding-bottom:var(--s4);margin-bottom:0}
+.tbl td,main table td{padding-top:12px;padding-bottom:12px}
+.tbl th,main table th{padding-top:10px;padding-bottom:10px}
+
+/* ---------- 浏览器自带部分也跟随主题：选中文字、滚动条、光标、链接下划线 ---------- */
+::selection{background:var(--orange-mid);color:var(--ink)}
+*{scrollbar-width:thin;scrollbar-color:var(--line2) transparent}
+*::-webkit-scrollbar{width:10px;height:10px}
+*::-webkit-scrollbar-thumb{background:var(--line2);border-radius:999px;border:3px solid transparent;background-clip:padding-box}
+*::-webkit-scrollbar-thumb:hover{background-color:var(--muted)}
+*::-webkit-scrollbar-track{background:transparent}
+input,textarea{caret-color:var(--orange)}
+a{text-underline-offset:3px}
+
+/* ---------- 动效：只在“出现”的那一刻，短、从已可见状态开始；系统要求减少动效时全部关掉 ---------- */
+@keyframes v9-in-right{from{transform:translateX(24px);opacity:.4}to{transform:none;opacity:1}}
+@keyframes v9-pop{from{transform:scale(.97);opacity:0}to{transform:none;opacity:1}}
+@keyframes v9-fade{from{opacity:0}to{opacity:1}}
+.rsp{animation:v9-in-right var(--d3) var(--ease) both;transition:width var(--d2) var(--ease)}
+.rmcard{animation:v9-pop var(--d2) var(--ease) both;box-shadow:0 12px 32px rgba(6,35,25,.16)}
+.modal{animation:v9-fade var(--d2) var(--ease) both}
+.modal>div{animation:v9-pop var(--d3) var(--ease) both}
+.rfold>:not(h4){animation:v9-fade var(--d2) var(--ease) both}
+.wztoc button,.tbl tbody tr,.pcard{transition:background-color var(--d1) var(--ease),border-color var(--d1) var(--ease),color var(--d1) var(--ease)}
+@media (prefers-reduced-motion:reduce){.rsp,.rmcard,.modal,.modal>div,.rfold>:not(h4){animation:none}}
+
+/* ---------- 深色主题：卡片和弹层的阴影换成更深的、标签文字对比度够 ---------- */
+:root[data-theme="dark"] .rmcard{box-shadow:0 12px 32px rgba(0,0,0,.45)}
+:root[data-theme="dark"] ::selection{background:#5A3A1C;color:#FFFFFF}
+
+/* ---------- 直播间右侧卡片：时间在上一行、名字整行、按钮靠右，不再挤成三四行 ---------- */
+.rma-n{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"tm act" "b act";column-gap:12px;row-gap:2px;align-items:center}
+.rma-n .rma-tm{grid-area:tm;width:auto;font-size:12px;font-weight:600;color:var(--muted)}
+.rma-n .rma-b{grid-area:b;overflow-wrap:normal}
+.rma-n>.btn,.rma-n>button{grid-area:act}
+.rma-d i{margin:2px 1px;padding:1px 0;letter-spacing:-.01em}
+/* 右侧整列可以收起（点“收起”），表格占满宽度，状态列不再被挡 */
+.rmws.side.off{grid-template-columns:minmax(0,1fr) 36px}
+.rmws.off .rmside>:not(.rmside-tg){display:none}
+.rmside-tg{align-self:flex-end;height:30px;padding:0 10px;font-size:13px}
+.rmws.off .rmside-tg{writing-mode:vertical-rl;height:auto;padding:10px 0;width:36px;align-self:stretch;justify-content:flex-start}
+
+/* ---------- 名单页：折叠行的箭头放在标题前面；一眼看数据的标签不折行 ---------- */
+.rd-sh{gap:10px}
+.rd-sh .rd-arr{order:-1;width:28px;height:28px;min-height:28px;margin:0}
+.rd-k span{font-size:12px;line-height:1.4;text-wrap:balance}
+.rd-k b{font-size:20px}
+
+/* 深色主题：深绿细框按钮（进入房间、页头操作、表格里的主按钮）在深底上看不见，改成浅绿字和可见的框 */
+:root[data-theme="dark"] main a.btn.p,:root[data-theme="dark"] main a.btn.p.s,:root[data-theme="dark"] main table button.p,:root[data-theme="dark"] main .head .btn.p,:root[data-theme="dark"] main .head button.p{color:#9FD8BE;border-color:#4C7A68}
+:root[data-theme="dark"] main a.btn.p:hover,:root[data-theme="dark"] main table button.p:hover:not(:disabled),:root[data-theme="dark"] main .head .btn.p:hover,:root[data-theme="dark"] main .head button.p:hover:not(:disabled){color:#0A1612;border-color:#9FD8BE}
+:root[data-theme="dark"] main a.btn.p::before,:root[data-theme="dark"] main table button.p::before,:root[data-theme="dark"] main .head .btn.p::before,:root[data-theme="dark"] main .head button.p::before{background:#9FD8BE}

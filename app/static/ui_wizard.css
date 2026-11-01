@@ -25,3 +25,8 @@ main:has(.chain:not(.hm-chain)) .head h1{font-size:40px;line-height:1.2}
 @media (max-width:1000px){.wzgrid{grid-template-columns:1fr}.wztoc{display:none}}
 .wztoc button{white-space:nowrap}
 .chain:not(.hm-chain) .step{white-space:nowrap}
+/* 目录按钮：编号用 ::before 画（和按钮通用的“扫过”底色共用伪元素，这里把它复原成普通的小圆）；悬停时字保持深色 */
+.wztoc button{justify-content:flex-start;gap:10px}
+.wztoc button::before{position:static;inset:auto;transform:none;z-index:auto;transition:none;display:inline-flex;align-items:center;justify-content:center;flex:none;min-width:22px;height:22px;border-radius:999px;border:1px solid var(--line2);background:var(--surface);color:var(--ink2);font-size:12px;font-weight:600}
+.wztoc button:hover:not(.on):not(:disabled){color:var(--ink);background:var(--surface);border-color:transparent}
+.wztoc button.on:hover:not(:disabled){color:#fff}
