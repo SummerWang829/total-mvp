@@ -21,7 +21,7 @@ async function outlineView(p) {
   if (!["outline", "settings", "test"].includes(seg)) seg = "outline";
   let useLib = sessionStorage.getItem("ol_lib") !== "0";
   const notice = () => (S.ai_local ? "AI 运行在我们自己的服务器上，对话内容不会发给其他公司。"
-    : `你说的话、立项里的研究背景和本项目研究库里的资料，会发送给 AI 服务商${S.ai_vendor ? `“${S.ai_vendor}”` : ""}来改大纲。请不要写入受访者的姓名、电话等个人信息。`);
+    : `将你的话、研究背景和研究库资料发送给 AI 服务商${S.ai_vendor ? `“${S.ai_vendor}”` : ""}来改大纲。请勿写入个人信息。`);
   const stat = (t) => { const s = $("#olstat"); if (s) s.textContent = t; };
   const take = (r) => { S = { ...S, ...r }; V = S.v; try { sessionStorage.setItem("ol_v_" + p.id, V); } catch { /* no storage */ } };
   const cur = () => S.versions.find((x) => x.key === V) || S.versions[0];

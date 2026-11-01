@@ -94,7 +94,7 @@ function wzDesignView() {
 
 function wzNotice() {  // where the research background goes: the AI service (and the project's research library comes along)
   return CONFIG && CONFIG.ai_local ? "AI 运行在我们自己的服务器上，这段文字不会发给其他公司。"
-    : `这段文字会发送给 AI 服务商${CONFIG && CONFIG.ai_vendor ? `“${CONFIG.ai_vendor}”` : ""}来生成内容，只用来写问卷和建议；本项目研究库里已有的资料也会一起发送。请不要写入受访者的姓名、电话等个人信息。`;
+    : `将这段文字发送给 AI 服务商${CONFIG && CONFIG.ai_vendor ? `“${CONFIG.ai_vendor}”` : ""}来生成内容，并附上研究库资料。请勿写入个人信息。`;
 }
 
 /** Leaving step 1 with a research background: it goes into the project's research library and the AI writes its suggestions in the background (shown on step 2). */
@@ -301,7 +301,7 @@ function wzConfirm() {
   const M = { depth: "深访", group: "座谈会", async: "异步 AI 研究", listening: "舆情监测", quant: "定量结果" };
   return `<div class="grid"><div class="card"><h3>${esc(P.name)}</h3><div class="sm mut">${c.subs.map((s) => `${esc(s.name)}（${WZ_DESIGNS[s.design][0]}）`).join("、")} · 留存 ${c.retention} 天 · ${esc(c.type)}</div>
       <div style="margin-top:8px">${[...wzMethods()].map((m) => `<span class="tag">${M[m]}</span>`).join("")}${wzMethod("quant") && c.n.q ? `<span class="tag">定量 ${c.n.q}</span>` : ""}${wzMethod("depth") && c.n.i ? `<span class="tag">深访 ${c.n.i}</span>` : ""}${wzMethod("group") && c.n.f ? `<span class="tag">座谈会 ${c.n.f} 场 × ${c.n.fs}</span>` : ""}</div></div>
-    <div class="card"><h3>发布后会发生什么</h3><div class="sm mut" style="margin-top:6px">项目与配额暂时锁定，邀请模板不可再改；用到的研究方法进入左侧菜单；团队成员加入项目；“执行监控”按配额开始计数。之后要改样本或加方案，由管理员或项目经理解锁，改完重新审查、发布，配额和监控同步更新。</div></div></div>
+    <div class="card"><h3>发布后</h3><div class="sm mut" style="margin-top:6px">锁定配额与邀请模板；改动需管理员或项目经理解锁并重新审查。</div></div></div>
     <div class="row"><button class="p" id="wzpub" type="button" ${approved ? "" : "disabled"}>${done ? "已发布并锁定" : P.live ? `发布新版本（v${P.version + 1}）` : "发布并锁定"}</button>${approved || done ? "" : `<span class="sm mut">需要先通过合规审查（第 6 步）。</span>`}</div>`;
 }
 
@@ -310,7 +310,7 @@ function wzBody() {
   switch (WZ.step) {
     case 0: return `<div class="grid"><label class="field">主项目名称${wzInp('data-meta="name" aria-label="主项目名称"', WZ.name_edit ?? WZ.plan.name)}</label>
       <label class="field">数据留存期限${wzSel('data-w="retention" aria-label="数据留存期限"', c.retention, WZ_RETENTION.map((d) => [d, `${d} 天${d === 180 ? "（平台上限）" : ""}`]))}<span class="mut" style="font-weight:400">同意书里写明的就是这个期限：项目结项后 ${c.retention} 天自动删除个人数据，洞察结论保留。${WZ.plan.live ? "已发布过的项目只能缩短，不能延长。" : ""}</span></label></div>
-      <label class="field">研究背景（选填，只给团队看）<textarea class="autosize" data-meta="brief" rows="3"placeholder="写清这个项目要解决什么问题、做给谁看。">${esc(WZ.brief_edit ?? WZ.plan.brief ?? "")}</textarea><span class="mut" style="font-weight:400">点“下一步”后，系统会自动把它存入研究库，并在后台生成深访提纲、座谈会大纲、配额建议和舆情关键词的建议，生成好后在“研究设计”页查看；招募问卷也会参考它。</span></label>
+      <label class="field">研究背景（选填，只给团队看）<textarea class="autosize" data-meta="brief" rows="3"placeholder="写清这个项目要解决什么问题、做给谁看。">${esc(WZ.brief_edit ?? WZ.plan.brief ?? "")}</textarea><span class="mut" style="font-weight:400">保存后存入研究库，AI 在后台生成建议（发给 AI 服务商）。</span></label>
       ${WZ.live ? "" : wzLangFmt()}
       <div class="note">${esc(wzNotice())}</div>${wzSubs()}`;
     case 1: return `${wzSuggest()}${wzDesignView()}<label class="field" style="max-width:360px">研究类型（带出模板）${wzSel('data-w="type"', c.type, Object.keys(WZ_TYPES).map((x) => [x, x]))}</label>

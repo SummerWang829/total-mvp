@@ -522,7 +522,7 @@ function importModal(p) {
   const m = modal(`<h2>导入名单（外部渠道）</h2><form id="f">
     <label class="f"><span>这批名单从哪里来？（必填，会显示在名单的“来源”列）</span><input name="source" required maxlength="60" placeholder="例如：客户 A 老客户名单"></label>
     <div class="row" style="flex-wrap:wrap;margin:-4px 0 8px">${["客户提供", "合作方 / 社群", "自己采集", "其他"].map((s) => `<button type="button" class="s" data-src="${s}">${s}</button>`).join("")}</div>
-    <p class="sm mut">表头：必须有“姓名”（或 name）；可选 邮箱、国家（如 SG）、语言（en/zh/ms/ta）、标签（用分号隔开）；其余每一列都当作一个关键回答（表头是题目，格子是答案）。一次最多 500 行。<button type="button" class="lnk" id="tpl">下载模板</button></p>
+    <p class="sm mut">表头：姓名（必填）；邮箱、国家、语言、标签（分号分隔）；其余列为关键回答。最多 500 行。<button type="button" class="lnk" id="tpl">下载模板</button></p>
     <label class="f"><span>选择文件（.csv / .txt，Excel 请另存为 CSV UTF-8）</span><input type="file" id="file" accept=".csv,.txt,text/csv,text/plain"></label>
     <label class="f"><span>或粘贴内容</span><textarea name="csv" rows="6" required placeholder="姓名,邮箱,国家,语言,标签,年龄&#10;林小雨,lin@example.com,SG,zh,女性;学生,22"></textarea></label>
     <div id="prev" class="sm" role="status" aria-live="polite"></div>
@@ -819,7 +819,7 @@ async function repoView() {
   const [docs, projs] = await Promise.all([api("/repo/documents"), projects()]);
   if (stale(my)) return;
   const scope = `<option value="">全部我能看到的项目</option>${projs.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join("")}`;
-  shell(`${head("研究库", "", `<button class="p" id="imp">导入资料</button>`)}
+  shell(`${head("研究库", "只显示你所在项目的内容；受访者只显示编号。", `<button class="p" id="imp">导入资料</button>`)}
     <div class="card"><form id="qf"><label class="f"><span>输入关键词来搜索，或者直接问一个问题</span><input name="q" required maxlength="500" placeholder="例如：消费者为什么觉得价格太贵？"></label>
       <div class="row"><label class="f" style="flex:1;margin:0"><span>范围</span><select name="project_id">${scope}</select></label>
       <button class="p" id="ask" type="button">问 AI</button><button id="srch" type="submit">搜索原文</button></div></form></div>
@@ -921,7 +921,7 @@ async function listeningView(p) {
   if (!RO) $("#addsrc").onclick = () => {
     const m = modal(`<h2>添加来源</h2><form id="f"><label class="f"><span>类型</span><select name="kind" id="kind">${o.kinds.map((k) => `<option value="${k}">${esc(L_KIND[k])}</option>`).join("")}</select></label>
       <label class="f"><span>名称（方便你认）</span><input name="name" required maxlength="200"></label><div id="cfg"></div>
-      <p class="sm mut">只读取公开页面：遵守网站的 robots.txt，限速，不登录，不绕过任何限制；网站拒绝就停止。</p>
+      <p class="sm mut">只读公开页面，遵守 robots.txt，限速，不登录。</p>
       <div class="row"><button class="p">添加</button><button type="button" id="c">取消</button></div></form>`);
     const FIELDS = { mock: [["brand", "品牌名", "示例品牌"], ["lang", "语言（zh 或 en）", "zh"]], rss: [["url", "订阅源网址（RSS/Atom）", ""], ["keywords", "只要提到这些词的（用逗号隔开，可空）", ""]],
       appstore: [["app_id", "App 编号（数字）", ""], ["country", "国家代码", "sg"]], web: [["url", "页面网址", ""], ["item", "每条内容的选择器（如 div.post）", ""], ["text", "正文选择器（在每条内容里，可空）", ""], ["link", "链接选择器（可空）", ""], ["title", "标题选择器（可空）", ""], ["date", "日期选择器（可空）", ""], ["author", "作者选择器（可空，只存哈希）", ""], ["keywords", "只要提到这些词的（逗号隔开，可空）", ""]] };
@@ -966,7 +966,7 @@ GET  ${origin}/api/ingest/ping           检查密钥</pre>
   app.querySelectorAll("[data-rk]").forEach((b) => b.onclick = guard(async () => { if (!confirm("撤销后用这把密钥的平台马上不能再推送。继续？")) return; await api(`/projects/${p.id}/quant/keys/${b.dataset.rk}`, { method: "DELETE" }); toast("已撤销"); render(); }));
   app.querySelectorAll("[data-ds]").forEach((b) => b.onclick = guard(async () => { if (!confirm("删除这份问卷结果？")) return; await api(`/quant/surveys/${b.dataset.ds}`, { method: "DELETE" }); toast("已删除"); render(); }));
   $("#impq").onclick = () => {
-    const m = modal(`<h2>导入问卷结果</h2><form id="f"><p class="sm mut">表格三列：题目、选项、人数（第一行是表头）。同名问卷再导入会替换旧结果。</p>
+    const m = modal(`<h2>导入问卷结果</h2><form id="f"><p class="sm mut">表格三列：题目、选项、人数（首行表头）。同名会替换。</p>
       <label class="f"><span>问卷名称</span><input name="title" required maxlength="200"></label><label class="f"><span>有效回答人数</span><input name="respondents" type="number" min="0" value="0"></label>
       <label class="f"><span>选择文件（.csv）</span><input type="file" id="qfile" accept=".csv,.txt,text/csv"></label>
       <label class="f"><span>或粘贴内容</span><textarea name="csv" rows="8" required placeholder="题目,选项,人数&#10;你听说过 Acme 吗？,听说过,320"></textarea></label>
@@ -1451,7 +1451,7 @@ async function dataView() {
   const row = (p) => `<tr><td data-l="项目"><b>${esc(p.name)}</b></td><td data-l="结项">${p.closed_at ? esc(day(p.closed_at)) : `<span class="tag">未结项</span>`}</td>
     <td data-l="删除日期">${p.purge_at ? `${esc(day(p.purge_at))}<div class="sm mut">还剩 ${p.days_left} 天${p.hold_until ? " · 已延后" : ""}</div>` : `<span class="mut">结项后 ${o.retention_days} 天</span>`}</td><td class="mut" data-l="现在保有">${esc(holds(p.holds))}</td>
     <td class="acts" data-l="操作">${p.closed_at ? `<button class="s" data-hold="${p.id}">延后</button> ${p.hold_until ? `<button class="s" data-rel="${p.id}">取消延后</button> ` : ""}<button class="s warn" data-now="${p.id}" data-name="${esc(p.name)}">立即清除</button>` : ""}</td></tr>`;
-  shell(`${head("数据保留", ``)}
+  shell(`${head("数据保留", `个人数据在项目结项 ${o.retention_days} 天后删除，洞察结论保留。`)}
     <div class="card scroll" style="padding:6px 10px"><table class="tbl rc"><thead><tr><th>项目</th><th>结项</th><th>删除日期</th><th>现在保有</th><th>操作</th></tr></thead><tbody>${o.projects.length ? o.projects.map(row).join("") : `<tr><td colspan="5" class="mut">还没有项目。</td></tr>`}</tbody></table></div>`, { active: "retention", title: "数据保留" });
   app.querySelectorAll("[data-hold]").forEach((b) => b.onclick = () => {
     const m = modal(`<h2>延后删除</h2><form id="f"><label class="f"><span>在原定删除日期之后再保留多久？</span><select name="days"><option value="30">30 天</option><option value="90">90 天</option><option value="180">180 天</option><option value="365">365 天</option></select></label>

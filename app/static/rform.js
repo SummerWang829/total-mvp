@@ -16,7 +16,7 @@ function rfAutosize(t) {
   t.addEventListener("input", fit); fit();
 }
 const rfAiNotice = () => (CONFIG && CONFIG.ai_local ? "AI 运行在我们自己的服务器上，对话内容不会发给其他公司。"
-  : `你说的话、立项里的研究背景、本项目研究库里的资料、作答的统计数字（只有人数，不含任何人的答案）会发送给 AI 服务商${CONFIG && CONFIG.ai_vendor ? `“${CONFIG.ai_vendor}”` : ""}来改问卷、回答问题。请不要写入受访者的姓名、电话等个人信息。`);
+  : `将你的话、研究背景、研究库资料和作答人数（不含答案）发送给 AI 服务商${CONFIG && CONFIG.ai_vendor ? `“${CONFIG.ai_vendor}”` : ""}来改问卷、回答问题。请勿写入个人信息。`);
 
 /** 整个“招募问卷”卡片，返回 { html, wire, fit }。 */
 function rfCard(p, form) {
