@@ -23,7 +23,11 @@
 - 当前：deepresearch.morningstarsystem.tech 已在腾讯云申请免费证书（自动 DNS 验证，已自动在 DNSPod 添加 `_dnsauth.deepresearch` TXT 记录）。证书 ID c2DpEJf2，等待签发。
 - 之前 EdgeOne 自动签证书失败（原因：域名未 CNAME 到 EdgeOne）。
 - DNS 仍为 A 记录指向源站 43.160.208.195，网站正常。
-- 下一步：证书签发后，在 EdgeOne 域名的 HTTPS 配置里绑定为自有证书；从服务器用 --resolve 指向 EdgeOne 节点检查 HTTPS；通过后再把 DNSPod `deepresearch` 切到 CNAME（deepresearch.morningstarsystem.tech.eo.dnse0.com）。不通过则不切。
+- 证书已签发（ID c2DpEJf2，2027-01-30 到期）。EdgeOne 面板里没有自有证书入口，只能"重新申请"（需要 CNAME）。
+- 今天尝试切 CNAME 时 DNSPod 要求微信扫码验证，用户扫不了，已取消，未保存；DNS 仍为 A 记录（已用公共 DNS 核对）。明天扫码后再做。
+- 线上代码已是最新（05df525），无需部署。
+- 下一步（明天）：扫码后把 DNSPod deepresearch 改为 CNAME（deepresearch.morningstarsystem.tech.eo.dnse0.com），EdgeOne 证书面板"重新申请"，服务器检查 HTTPS，不通过则切回 A。
+- 旧计划：证书签发后，在 EdgeOne 域名的 HTTPS 配置里绑定为自有证书；从服务器用 --resolve 指向 EdgeOne 节点检查 HTTPS；通过后再把 DNSPod `deepresearch` 切到 CNAME（deepresearch.morningstarsystem.tech.eo.dnse0.com）。不通过则不切。
 
 ## 2026-11-01 · 部署 da37b41→（本次部署）AI 接管录制；EdgeOne 切换回滚（重要更正）
 - 部署：备份 total-20261101-135648.db.gz（已异地上传）；线上无进行中访谈；`git archive` 上传；`docker compose up -d --build --no-deps app`；doctor 无必须解决的问题；源站 /api/health 200，room.html 含新代码；告警配置仍在（.env 38 行未改）。没有新增数据库列。
