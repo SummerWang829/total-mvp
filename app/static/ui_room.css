@@ -59,3 +59,4 @@ body.q4mode #bar button[aria-pressed=true]{color:var(--r-bad,#B72C3C)}
 @media (hover:hover) and (pointer:fine){.qvm button:hover,.q4 .qx:hover{filter:brightness(1.15)}}
 @media (max-width:1050px){.q4 .qrow.big{height:55vh}}
 body.q4mode.has-admit .q4{height:calc(100vh - 232px)}
+@media (max-width:600px){.qbox .qsend{width:36px;min-width:36px;height:36px;min-height:36px}}

@@ -1,7 +1,7 @@
 /* 第二版视觉（2026-10-31，只改展示）：字体打包（fonts.css）+ 纸白底、细线卡片、去掉阴影。不改任何功能、布局结构或数据。 */
 :root{
   --f:"Source Sans 3","Noto Sans SC","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
-  --fd:"Source Serif 4","Noto Serif SC","Songti SC",Georgia,serif;
+  --fd:"Source Serif 4","Noto Sans SC","PingFang SC","Microsoft YaHei",Georgia,sans-serif;  /* Chinese always in the same sans font as the body (user 2026-11-01); only Latin headings stay serif */
 }
 :root:not([data-theme="dark"]){--bg:#FAFAF7}
 h1,h2,h3{font-family:var(--fd);font-weight:600;letter-spacing:-.005em}
@@ -20,11 +20,11 @@ main .head h1{font-size:30px;color:var(--brand)}
 .ovx .hm-stage .sic{border:0;background:none;color:var(--mut);font-family:var(--fd);font-size:15px;font-weight:400;width:auto;height:auto}
 .ovx .hm-langs{border:0;border-top:1px solid var(--ink);border-radius:0;padding:18px 0 0;background:none}
 /* 表格：表头小字大写、细线分隔，像报告的数据表 */
-.tbl th,main table th{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--mut);font-weight:500;border-bottom:1px solid var(--ink);background:none}
+.tbl th,main table th{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--mut);font-weight:500;border-bottom:1px solid var(--ink);background:none}
 .tbl td,main table td{border-bottom:1px solid var(--line)}
 .ovx .card.hm-langs{border-radius:0;border-left:0;border-right:0;border-bottom:0}
 /* 甄别设定（招募问卷）：右侧大纲的分段标题用小字大写的灰色，细线分隔；左侧对话区保持不变 */
-.rf-h{font-family:var(--f);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--mut);font-weight:500;margin:18px 0 6px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+.rf-h{font-family:var(--f);font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--mut);font-weight:500;margin:18px 0 6px;padding-bottom:6px;border-bottom:1px solid var(--line)}
 .rf-blk{border-left:0 !important;padding-left:0 !important}
 /* 列表里的主操作：不再整排橙色，改成深绿细框文字，橙色只留给页面唯一的主操作（第二版风格） */
 main table button.p{background:transparent;color:var(--brand);border:1px solid var(--brand);box-shadow:none;font-weight:600}
@@ -35,7 +35,7 @@ main table .pill{white-space:nowrap}
 main a.btn.p,main a.btn.p.s{background:transparent;color:var(--brand);border:1px solid var(--brand);box-shadow:none;font-weight:600}
 main a.btn.p:hover{background:var(--brand);color:#fff}
 /* 代码和说明文字：等宽字体，不用衬线回退（避免中英混排时字形杂乱） */
-code,pre,kbd,samp{font-family:ui-monospace,"Cascadia Mono",Consolas,monospace}
+code,pre,kbd,samp{font-family:ui-monospace,"Cascadia Mono",Consolas,"Noto Sans SC","PingFang SC","Microsoft YaHei",monospace}
 main code{font-size:12.5px;background:var(--wash);padding:1px 5px;border-radius:4px;color:var(--ink2)}
 /* 被访者端（问卷、邀请页）：细线分隔代替卡片外框；选项是整行可点的细线行，点击区不小于 44px（手机） */
 body.participant .card{border:0;border-top:1px solid var(--ink);border-radius:0;background:none;padding:18px 0 22px;box-shadow:none}

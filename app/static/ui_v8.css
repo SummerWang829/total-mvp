@@ -46,3 +46,11 @@ html[data-theme="orange"] body.stage.t-light.solo #bar button:not(:last-child){b
 .themebtn:hover{background:rgba(255,255,255,.14)}
 html[data-theme="orange"] .themebtn{border-color:rgba(255,244,234,.5);background:rgba(255,255,255,.1);color:#FFF4EA}
 html[data-theme="orange"] body.stage.t-light{background:#FBF1E8}
+
+/* 手机宽度的点击区不小于 36px（全站检查要求）。 */
+@media (max-width:600px){
+  .themebtn{min-height:36px;min-width:36px}
+  .hubtabs a{min-width:36px;justify-content:center}
+  main button.s,main a.btn.s,main a.btn,.rmt,.rf-hd button,.rf-seg button{min-height:36px}
+}
+@media (max-width:600px){.rf-hd{flex-wrap:wrap;height:auto;min-height:52px;padding:6px 12px;white-space:normal}.rf-hd button{flex:none;min-width:36px}}

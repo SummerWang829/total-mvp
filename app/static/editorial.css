@@ -1,7 +1,7 @@
 /* Visual baseline: original ui_v4.html recording + report_prototype_A.html.
    Presentation only: API routes, permissions, data and workflows stay in their existing modules. */
 @import url('/ui-shell.css');
-:root{--r-ctl:4px;--r-pan:12px;--r-pop:12px;--gx:40px;--ease:cubic-bezier(.23,1,.32,1);--fd:"Newsreader","Noto Serif SC","Songti SC","SimSun",serif}
+:root{--r-ctl:4px;--r-pan:12px;--r-pop:12px;--gx:40px;--ease:cubic-bezier(.23,1,.32,1);--fd:"Newsreader","Noto Sans SC","PingFang SC","Microsoft YaHei",sans-serif}
 body{line-height:1.7}
 h1,h2,.hm-name,.ins-rt,.ins-h1,.rp-t{font-family:var(--fd)}
 h1{font-size:32px;line-height:1.35}h2{font-size:24px;line-height:1.4;font-weight:700}
@@ -68,7 +68,7 @@ main.enter>*{animation:none}
 .rp-appendix{background:var(--wash);border-top:1px solid var(--line2);padding:32px;margin:0 32px;border-radius:0}
 .rp-appendix summary{font:700 24px var(--fd);cursor:pointer}.rp-appendix[open] summary{margin-bottom:24px}
 .rp-empty{padding:32px;border:1px dashed var(--line2);color:var(--muted)}
-@media(min-width:821px){.app.rail nav.side{gap:2px}.app.rail nav.side a.nv,.app.rail nav.side .stghead{font-size:11px;min-height:48px}.app.rail nav.side .brandsvg{width:76px}}
+@media(min-width:821px){.app.rail nav.side{gap:2px}.app.rail nav.side a.nv,.app.rail nav.side .stghead{font-size:12px;min-height:48px}.app.rail nav.side .brandsvg{width:76px}}
 @media(max-width:1100px){:root{--gx:24px}.rp-hero,.rp-body{grid-template-columns:minmax(0,5fr) minmax(240px,3fr);padding-left:24px;padding-right:24px}.rp-editorial .ins-rt{font-size:32px}}
 @media(max-width:800px){:root{--gx:16px}.rp-hero,.rp-body{grid-template-columns:1fr;padding:24px 16px}.rp-editorial .rp-side{position:static;max-height:none}.rp-editorial .ins-rt{font-size:28px}.rp-actions{justify-content:flex-start}.rp-appendix{margin:0 16px;padding:24px 16px}.rp-editorial .rp-row{grid-template-columns:90px minmax(0,1fr) 56px 12px}.hubtabs,.hubtabs.sub{gap:16px}.rp-kpis b{font-size:24px}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation:none!important;transition:none!important}}

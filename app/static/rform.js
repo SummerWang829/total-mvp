@@ -346,7 +346,7 @@ ${text}
     s.ondblclick = () => { setRatio(42); try { localStorage.removeItem(ratioKey); } catch { /* no storage */ } };
     s.onkeydown = (e) => { if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return; e.preventDefault(); const cur = parseFloat(w.style.getPropertyValue("--rfl")) || 42; setRatio(cur + (e.key === "ArrowRight" ? 2 : -2)); try { localStorage.setItem(ratioKey, parseFloat(w.style.getPropertyValue("--rfl")) || 42); } catch { /* no storage */ } };
   }
-  addEventListener("resize", fit);
+  pageOn("rf-fit", window, "resize", fit);
   const html = `<div class="rf" style="padding:0"><div id="rfbody">${panels()}</div></div>`;
   return { html, wire, fit };
 }

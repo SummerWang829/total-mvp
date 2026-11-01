@@ -22,3 +22,6 @@
 /* 二级行里的“大纲 / 设置 / 预览测试” */
 .subrow>.rf-seg{height:32px;margin:0;flex:none}
 .subrow>.rf-seg button{height:30px;min-height:0;padding:0 14px;font-size:14px}
+
+/* 手机宽度：大纲 / 设置 / 预览测试 的点击区不小于 36px。 */
+@media (max-width:600px){.subrow>.rf-seg button{height:36px;min-height:36px}}

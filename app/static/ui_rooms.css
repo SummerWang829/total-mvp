@@ -21,3 +21,9 @@
 .rfold.fold > h4::after{content:"▸"}
 .rfold.fold > :not(h4){display:none}
 .rfold.fold{padding-bottom:12px}
+
+/* 直播间资料卡：点一行才打开，固定在页面中间，可关（2026-11-01 用户要求，不再悬停弹出）。 */
+#rmb tr[data-ri]{cursor:pointer}
+.rmcard{width:min(640px,calc(100vw - 32px));max-width:none;max-height:min(70vh,560px)}
+.rmcard .rmx{margin-left:8px;flex:none}
+@media (max-width:600px){.rmbox td.acts .btn{height:36px;min-height:36px}}

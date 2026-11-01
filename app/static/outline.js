@@ -292,7 +292,7 @@ async function outlineView(p) {
       <div class="rf-split" id="olsplit" role="separator" aria-orientation="vertical" aria-label="拖动调整对话和大纲的宽度（双击恢复）" tabindex="0"><i></i></div><div class="rf-pane" id="olright"></div></div></div>`, { active: "outline", p });
   document.body.classList.add("rfmode", "pgw");
   const ws = $("#olws"), fit = () => { if (ws && ws.offsetParent) ws.style.height = Math.max(380, innerHeight - ws.getBoundingClientRect().top - 18) + "px"; };
-  fit(); addEventListener("resize", fit);
+  fit(); pageOn("fit", window, "resize", fit);
   resetSync(); drawChat(); drawRight(); wireSel(); autoGen();
   const m = $("#olmsg");
   $("#olsend").onclick = () => send(m.value);

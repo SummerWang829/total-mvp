@@ -14,6 +14,7 @@ function rspInstall() {
   const page = render;
   render = function () {   // eslint-disable-line no-global-assign
     if (!(RSP.open && RSP.refresh)) return page();
+    if (location.hash !== RSP.base && !/^#\/i\//.test(location.hash)) { if (RSP.close) RSP.close(false); return page(); }   // the user went to another page (the side panel no longer blocks the menu): close it and go
     if (location.hash !== RSP.base) { const m = /^#\/i\/[^/]+\/?(.*)$/.exec(location.hash); history.replaceState(history.state, "", RSP.base); if (m && m[1]) RSP.tab = m[1]; }   // an old function set the hash to #/i/…: keep the page's own address
     return RSP.refresh();
   };

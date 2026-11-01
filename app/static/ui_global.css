@@ -13,3 +13,4 @@
 .projects-page .project-select{left:10px;top:10px;width:22px;height:22px}
 .projects-page .project-select>span{width:16px;height:16px}
 .projects-page.delete-selecting .pcard>.row{padding-left:28px}
+.projects-page.delete-selecting .pcard>.pc-top{padding-left:28px}  /* the status tags (now above the name) move right of the checkbox in delete mode */

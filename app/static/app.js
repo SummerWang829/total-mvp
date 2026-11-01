@@ -8,9 +8,19 @@ async function api(path, { method = "GET", body, auth = true, signal } = {}) {
   if (body !== undefined) h["Content-Type"] = "application/json";
   const t = store.get("tt_token");
   if (auth && t) h.Authorization = "Bearer " + t;
-  const r = await fetch("/api" + path, { method, headers: h, body: body !== undefined ? JSON.stringify(body) : undefined, signal });
-  let data = null;
-  try { data = await r.json(); } catch {}
+  // reads (GET) never hang for ever on a bad network: they give up after 45 s with a message, and a dropped connection is tried once more.
+  // Writes and AI requests are not cut off (some take long on purpose) and are never sent twice.
+  const get = method === "GET" && !signal, ctl = get ? new AbortController() : null, timer = get ? setTimeout(() => ctl.abort(), 45000) : null;
+  const send = () => fetch("/api" + path, { method, headers: h, body: body !== undefined ? JSON.stringify(body) : undefined, signal: get ? ctl.signal : signal });
+  let r, data = null;
+  try {
+    try { r = await send(); }
+    catch (e) { if (!get || ctl.signal.aborted) throw e; await new Promise((ok) => setTimeout(ok, 800)); r = await send(); }
+    try { data = await r.json(); } catch {}
+  } catch (e) {
+    if (get && ctl.signal.aborted) { const er = new Error("网络太慢，没有等到服务器回复，请稍后再试。"); er.status = 0; throw er; }
+    throw e;
+  } finally { if (timer) clearTimeout(timer); }
   if (!r.ok) {
     if (r.status === 401 && auth) { store.del("tt_token"); if (!location.hash.startsWith("#/login") && location.pathname === "/") location.hash = "#/login"; }
     const d = data && data.detail;

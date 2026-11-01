@@ -20,7 +20,7 @@ async function insightsHub(p, my) {
   shell(`${team ? `<div class="hubtabs sub" id="itabs" role="tablist" aria-label="洞察与片段">${tabs.map(([k, n]) => `<a href="#" role="tab" data-k="${k}">${n}</a>`).join("")}</div>` : ""}<div id="ipanel" class="ins ins-ws"></div>`, { active: "insights", p });
   document.body.classList.add("rfmode", "pgw");   // the page itself does not scroll: each tab's content scrolls inside its own box
   const fit = () => { const b = $("#ipanel"); if (b && b.offsetParent) b.style.height = Math.max(320, innerHeight - b.getBoundingClientRect().top - 18) + "px"; };
-  fit(); addEventListener("resize", fit);
+  fit(); pageOn("fit", window, "resize", fit);
   const drawTabs = () => document.querySelectorAll("#itabs a").forEach((a) => { const on = a.dataset.k === tab; a.classList.toggle("on", on); a.setAttribute("aria-selected", on); });
   let selOff = null;   // takes the text-selection helper of the open tab down (see chatsel.js)
   const show = async (k) => { if (selOff) { selOff(); selOff = null; } tab = k; sessionStorage.setItem("itab", k); drawTabs(); const box = $("#ipanel"); box.innerHTML = `<div class="mut" style="padding:16px">加载中…</div>`; try { await ({ r: respondents, p: report, q: questions, v: reels, c: chat })[k](box); } catch (e) { if (!stale(my)) box.innerHTML = `<div class="card empty"><b>${esc(e.message)}</b></div>`; } };
@@ -108,7 +108,7 @@ async function insightsHub(p, my) {
     if (!rows.length) return;
     const wrap = $("#iwrap"), sx = $("#isx"), tbl = $("#itbl"), pop = $("#ipop");
     const fit = () => { const b = $(".ins-sc"), pane = $("#ipanel"); if (!b || !pane || !b.offsetParent) return; b.style.height = Math.max(200, pane.getBoundingClientRect().bottom - b.getBoundingClientRect().top - 34) + "px"; };
-    addEventListener("resize", fit);
+    pageOn("ins-tbl-fit", window, "resize", fit);
     let shown = [], open = -1;
     const closeCard = () => { open = -1; pop.hidden = true; tbl.querySelectorAll("tr.hv").forEach((x) => x.classList.remove("hv")); };
     const card = (r) => {
@@ -321,7 +321,7 @@ async function insightsHub(p, my) {
         o = await fetchOutline(k); qs = qsOf(); cur = 0; draw(); wireVer();
       })));
     };
-    document.addEventListener("click", () => { if (menu && $("#qverbar")) { menu = false; $("#qverbar").innerHTML = verBar(); wireVer(); } });
+    pageOn("ins-qv", document, "click", () => { if (menu && $("#qverbar")) { menu = false; $("#qverbar").innerHTML = verBar(); wireVer(); } });
     draw(); wireVer();
   }
 
@@ -402,7 +402,7 @@ async function insightsHub(p, my) {
     $("#cmsg").onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send($("#cmsg").value); } };
     $("#cnew").onclick = () => { cur = null; sessionStorage.removeItem(key); draw(); $("#cmsg").focus(); };
     $("#chbtn").onclick = (e) => { e.stopPropagation(); const h = $("#chist"); h.hidden = !h.hidden; if (!h.hidden) drawHist(); };
-    document.addEventListener("click", (e) => { const h = $("#chist"); if (h && !h.hidden && !e.target.closest(".ins-hwrap")) h.hidden = true; });
+    pageOn("ins-chist", document, "click", (e) => { const h = $("#chist"); if (h && !h.hidden && !e.target.closest(".ins-hwrap")) h.hidden = true; });
     box.querySelectorAll("[data-sc]").forEach((c) => (c.onchange = () => { scope = [...box.querySelectorAll("[data-sc]:checked")].map((x) => x.dataset.sc); if (!scope.length) { c.checked = true; scope = [c.dataset.sc]; toast("至少留一项让 AI 读", true); } sessionStorage.setItem("ichat_scope", JSON.stringify(scope)); }));
     const last = sessionStorage.getItem(key); if (last && threads.some((t) => t.id === last)) { try { await open(last); } catch { draw(); } } else draw();
     drawHist();

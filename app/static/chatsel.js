@@ -145,7 +145,9 @@ const ChatSel = (() => {
     let tick = 0;
     const onSel = () => { clearTimeout(tick); tick = setTimeout(() => { if (dlg) return; const s = readSelection(); cur = s; s ? showFloat(s) : hideFloat(); }, 120); };
     const onKey = (e) => { if (e.key === "Escape") { if (dlg) closeDialog(); else hideFloat(); } };
-    document.addEventListener("selectionchange", onSel); document.addEventListener("keydown", onKey);
+    const lk = "chatsel:" + ((opts.roots && opts.roots[0] && opts.roots[0].id) || "x");   // one pair of listeners per selectable area, removed when the page changes
+    if (window.pageOn) { window.pageOn(lk + ":sel", document, "selectionchange", onSel); window.pageOn(lk + ":key", document, "keydown", onKey); }
+    else { document.addEventListener("selectionchange", onSel); document.addEventListener("keydown", onKey); }
 
     /* ----- the small window for one passage ----- */
     function closeDialog() { if (dlg) { dlg.remove(); dlg = null; } }

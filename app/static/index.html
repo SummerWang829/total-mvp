@@ -104,7 +104,21 @@ let renderSeq = 0;
 let CUR_PROJ = null;  // the project last opened: the settings pages (team, data retention, audit log) keep its menu on the left
 const stale = (my) => my !== renderSeq;
 
+/* Listeners a page adds on window/document live only while that page is on screen: each page registers them by name (the same name replaces the
+   old one, so re-drawing never stacks them) and they are all removed before the next page draws. Stacked listeners made the site slower the longer it was used. */
+const PAGE_LS = new Map();
+function pageOn(key, target, type, fn, opts) {
+  const old = PAGE_LS.get(key); if (old) old();
+  target.addEventListener(type, fn, opts);
+  PAGE_LS.set(key, () => target.removeEventListener(type, fn, opts));
+}
+function pageOff() {
+  PAGE_LS.forEach((off) => off()); PAGE_LS.clear();
+  if (typeof RSP !== "undefined" && RSP.open && RSP.close) RSP.close(false);   // the respondent panel belongs to the page it was opened on
+  document.body.classList.remove("rsp-open", "rsp-collapsed");
+}
 async function render() {
+  pageOff();
   const seq = ++renderSeq;
   // the layout classes of the page on screen stay until the next page is painted (see shell / loginView): taking them off here made the old page reflow narrow, with a scrollbar and a blank right side, for as long as the next page was waiting for its data
   const r = route();
@@ -388,7 +402,7 @@ async function peopleView(p) {
     const host = pop.offsetParent || pop.parentElement, a = anchor.getBoundingClientRect(), h = host.getBoundingClientRect();
     pop.style.left = Math.max(0, Math.min(a.left - h.left, h.width - pop.offsetWidth - 8)) + "px"; pop.style.top = a.bottom - h.top + 4 + "px";
   };
-  document.addEventListener("click", (e) => { if (!pop.hidden && !pop.contains(e.target) && !e.target.closest("[data-tier],[data-tadd]")) closePop(); });
+  pageOn("pl-pop", document, "click", (e) => { if (!pop.hidden && !pop.contains(e.target) && !e.target.closest("[data-tier],[data-tadd]")) closePop(); });
   const person = (id) => parts.find((x) => x.id === id);
   const refreshPeople = async () => {   // fetch the people and the quota numbers again and redraw only those two places: no page reload, the scroll position stays
     const [np, nits, nrec, nlib] = await Promise.all([api(`/projects/${p.id}/participants`), api(`/projects/${p.id}/interviews`), api(`/projects/${p.id}/recruiting`), api(`/projects/${p.id}/recruiting/tags`)]);
@@ -753,7 +767,7 @@ async function studyView(p, sid) {
     <div class="card"><h3>研究目标</h3><p style="margin:0;white-space:pre-wrap">${esc(s.goal)}</p></div>
     <div class="card"><h3>提纲${s.drafted_by ? ` <span class="tag">AI 起草 · ${esc(s.drafted_by)}</span>` : ""}</h3>
       
-      <label class="f"><span>提纲文字（可直接修改）</span><textarea id="outline" rows="18" ${closed ? "disabled" : ""} style="font-family:ui-monospace,Consolas,monospace;font-size:14px">${esc(s.outline_text)}</textarea></label>
+      <label class="f"><span>提纲文字（可直接修改）</span><textarea id="outline" rows="18" ${closed ? "disabled" : ""} style="font-family:ui-monospace,Consolas,'Noto Sans SC','PingFang SC','Microsoft YaHei',monospace;font-size:14px">${esc(s.outline_text)}</textarea></label>
       <p class="sm" id="problem" role="alert" hidden style="color:#A8203E"></p>
       
       ${closed ? "" : `<div class="row"><button id="draft">${s.outline_text ? "让 AI 重新起草" : "让 AI 起草"}</button><button id="save">保存</button><span class="sp"></span><button class="p" id="publish">${s.version ? `发布第 ${s.version + 1} 版` : "发布"}</button></div>`}</div>

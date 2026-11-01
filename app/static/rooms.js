@@ -150,32 +150,27 @@ async function roomsView(p) {
     em.querySelectorAll("[data-goto]").forEach((b) => (b.onclick = () => { RM.tab = b.dataset.goto; RM.wall = false; drawAll(); }));
     rspSetList(rows.filter((r) => r.status === "ended").map((r) => r.id)); wireEdits(); wireCard(rows);
   };
-  /* the card (资料卡) of the row the mouse is on: the questionnaire answers and the two lengths */
+  /* the card (资料卡) of a row, opened by clicking the row (not on hover): the questionnaire answers and the two lengths; it sits in the middle of the page */
   function wireCard(rows) {
     if (obs) return;
-    let hideTimer = null;
-    const hide = () => { clearTimeout(hideTimer); const c = $("#rmcard"); if (c) c.remove(); document.querySelectorAll("#rmb tr.hv").forEach((x) => x.classList.remove("hv")); };
-    const hideSoon = () => { clearTimeout(hideTimer); hideTimer = setTimeout(hide, 150); };   // the mouse may move from the row into the card to scroll it
+    const hide = () => { const c = $("#rmcard"); if (c) c.remove(); document.querySelectorAll("#rmb tr.hv").forEach((x) => x.classList.remove("hv")); };
     const show = (tr) => {
       const i = rows[+tr.dataset.ri]; if (!i) return; hide(); tr.classList.add("hv");
       const c = document.createElement("div"); c.id = "rmcard"; c.className = "rmcard";
       const ans = (i.key_answers || []).map((a, n) => `<div class="rmq"><small><em>${n + 1}.</em>${esc(a.q)}</small><span>${esc(a.a)}</span></div>`).join("");
       const tags = (i.participant.tags || []).map((t) => `<span class="tag">${esc(t)}</span>`).join("");
-      c.innerHTML = `<h5><b>${esc(i.participant.name)}</b><span class="tag">${roomState(i)[0]}</span>${tags}<span class="sp"></span><span class="mut sm">${esc(i.participant.country || "")} · ${esc(LANGS[i.language] || i.language)}</span></h5>${ans || `<div class="mut sm">没有问卷答案（手动添加或外部名单的人没有）。</div>`}
+      c.innerHTML = `<h5><b>${esc(i.participant.name)}</b><span class="tag">${roomState(i)[0]}</span>${tags}<span class="sp"></span><span class="mut sm">${esc(i.participant.country || "")} · ${esc(LANGS[i.language] || i.language)}</span><button type="button" class="s rmx" aria-label="关闭">×</button></h5>${ans || `<div class="mut sm">没有问卷答案（手动添加或外部名单的人没有）。</div>`}
         <div class="rmft"><span>预计 ${i.duration_min || 45} 分</span>${i.actual_min != null ? `<span>访谈 ${i.actual_min} 分</span>` : ""}${i.moderator_name ? `<span>主持 ${esc(i.moderator_name)}</span>` : ""}</div>`;
-      c.onmouseenter = () => clearTimeout(hideTimer); c.onmouseleave = hideSoon;
-      document.body.appendChild(c);
-      const a = tr.getBoundingClientRect(), w = c.offsetWidth, h = c.offsetHeight;
-      c.style.left = Math.max(8, Math.min(innerWidth - w - 8, a.left + a.width * 0.45)) + "px"; c.style.top = (a.bottom + h + 8 > innerHeight ? Math.max(8, a.top - h - 4) : a.bottom + 4) + "px";
+      document.body.appendChild(c); c.querySelector(".rmx").onclick = hide;
+      const m = (app.querySelector("main") || document.body).getBoundingClientRect(), w = c.offsetWidth, h = c.offsetHeight;
+      c.style.left = Math.max(8, m.left + (m.width - w) / 2) + "px"; c.style.top = Math.max(16, (innerHeight - h) / 2) + "px";
     };
     app.querySelectorAll("#rmb tr[data-ri]").forEach((tr) => {
-      tr.onmouseenter = () => { clearTimeout(hideTimer); if (matchMedia("(hover:hover)").matches && !document.querySelector(".rmpop")) show(tr); };
-      tr.onmouseleave = () => { if (matchMedia("(hover:hover)").matches) hideSoon(); };
-      tr.onfocus = () => { if (tr.matches(":focus-visible")) show(tr); };
-      tr.onblur = hide;
-      tr.onclick = (e) => { if (e.target.closest("a,button") || matchMedia("(hover:hover)").matches) return; tr.classList.contains("hv") ? hide() : show(tr); };
+      tr.onclick = (e) => { if (e.target.closest("a,button,input,select,label")) return; tr.classList.contains("hv") ? hide() : show(tr); };
+      tr.onkeydown = (e) => { if (e.key === "Enter" && e.target === tr) { e.preventDefault(); tr.click(); } };
     });
-    $("#rmscroll").onscroll = hide;
+    pageOn("rmcard-out", document, "click", (e) => { if ($("#rmcard") && !e.target.closest("#rmcard, #rmb tr[data-ri]")) hide(); });
+    pageOn("rmcard-esc", document, "keydown", (e) => { if (e.key === "Escape") hide(); });
   }
   /* a column filter opens as a small panel floating over the table, with search, 全选 / 清除 and a tick list; it only applies to the page (tab) you are on */
   function openFilter(btn, k, label, get) {
@@ -227,11 +222,11 @@ async function roomsView(p) {
   }
   document.body.classList.add("rfmode", "pgw");   // the page does not scroll: the table and the side cards scroll inside their own boxes
   const ws = $("#rmws"), fit = () => { if (ws && ws.offsetParent) ws.style.height = Math.max(380, innerHeight - ws.getBoundingClientRect().top - 18) + "px"; };
-  fit(); addEventListener("resize", fit);
+  fit(); pageOn("fit", window, "resize", fit);
   drawAll(); drawSide();
   if (window._rmPoll) clearInterval(window._rmPoll);
   window._rmPoll = setInterval(async () => {   // a moderator or a time changed elsewhere: update the table, keep the filters and anything open
-    if (document.hidden || !location.hash.endsWith("/rooms") || document.querySelector(".rmpop")) return;
+    if (document.hidden || !location.hash.endsWith("/rooms") || document.querySelector(".rmpop, #rmcard")) return;
     try { its = shFilterInterviews(p, await api(`/projects/${p.id}/interviews`)); drawTabs(); drawBody(); drawSide(); } catch { /* the next tick tries again */ }
   }, 10000);
 }
