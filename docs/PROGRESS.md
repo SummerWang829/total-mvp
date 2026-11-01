@@ -12,6 +12,13 @@
 
 
 
+## 2026-11-01 · 告警通道接通；服务器 .env 误清空后已恢复
+- 告警：企业微信新建群“kelly、Bobbie、finance”，添加消息推送（webhook）“星桐告警”；地址写入服务器 `deploy/.env` 的 `ALERT_WEBHOOK_URL`（不进仓库、不进聊天）。测试消息 errcode 0；app 重建后 `app.doctor` 显示“监控告警：已配置”。
+- 事故：写入 `ALERT_WEBHOOK_URL` 时，临时文件写入失败，`.env` 被清空约 1 分钟；随后从运行中容器的环境变量恢复了全部 36 个键（排除镜像自带的 PATH/GPG_KEY/PYTHON_*/LANG/PYTHONUNBUFFERED/PYTHONUTF8），权限 600。之前的注释行和空行没有保留。恢复后 `app.doctor` 没有必须解决的问题，健康检查 200。
+- 注意：以后改服务器 `.env` 先备份再改，并用管道或 sed 做单行替换，不再用“临时文件 + cat 覆盖”。
+- EdgeOne：`deepresearch` 仍是 A 记录指向 43.160.208.195；等待 morningstarsystem.tech 的 CNAME 接入地址后再切换。
+- 接管录制：方案已确认，代码尚未开始。
+
 ## 2026-11-01 · 部署（提交 da37b41，用户确认“部署”）
 - 部署前：线上无进行中的访谈（只读查 `interviews`：live 0、进行中 0）；`backup.sh` 备份 total-20261101-125206.db.gz 并异地上传成功。
 - 部署：`git archive` 传到 /opt/total-mvp；`docker compose up -d --build --no-deps app`；`app.doctor` 没有必须解决的问题；公网 /api/health、首页、theme.js、ui_v10.css、ai_idle.webp 均 200。
