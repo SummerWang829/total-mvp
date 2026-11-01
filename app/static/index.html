@@ -261,7 +261,7 @@ const METHOD_ORDER = ["depth", "group", "async", "listening", "quant"];
 function starmapHtml(p, nodes) {
   const ic = { depth: "◉", group: "◍", async: "✦", listening: "◔", quant: "▤" };
   return `<div class="starmap" role="list" aria-label="研究方法进度">${nodes.map((n) => `<a class="snode card${n.started ? "" : " idle"}" role="listitem" href="#/p/${p.id}/${n.page}" data-m="${n.key}"><div class="sm mut"><span aria-hidden="true">${ic[n.key] || "◆"}</span> ${esc(n.title)}</div>
-    <div class="big">${n.big}<span class="sm mut" style="font-size:14px;font-weight:400"> ${esc(n.unit)}</span></div><div class="sm">${esc(n.sub)}</div><div class="sm mut" style="margin-top:6px">下一步：${esc(n.next)}</div></a>`).join("")}</div>`;
+    <div class="big">${n.big}<span class="sm mut" style="font-size:14px;font-weight:400"> ${esc(n.unit)}</span></div><div class="sm">${esc(n.sub)}</div></a>`).join("")}</div>`;
 }
 // ---------------- 项目总览：整体进度 + 分项进度 + 下一步 + 最近动态 ----------------
 const PAGE_NAME = { people: "去受访者招募", rooms: "去直播间", insights: "去洞察与片段" };

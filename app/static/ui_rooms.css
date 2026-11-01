@@ -14,3 +14,10 @@
 .subrow .rmtabs{flex:1;min-width:0;height:40px;margin:0;padding:0;display:flex;align-items:center;gap:8px;border:0;background:transparent}
 .subrow .rmtabs .sp{flex:1}
 .subrow .rmtabs #rmwallbtn,.subrow .rmtabs #rmclr{height:30px;min-height:30px;padding:0 12px;font-size:13px}
+
+/* 第三版：右侧卡片可以收起（点标题）。 */
+.rfold > h4{cursor:pointer;display:flex;align-items:center;gap:8px}
+.rfold > h4::after{content:"▾";margin-left:auto;color:var(--muted);font-size:12px}
+.rfold.fold > h4::after{content:"▸"}
+.rfold.fold > :not(h4){display:none}
+.rfold.fold{padding-bottom:12px}

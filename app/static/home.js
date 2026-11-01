@@ -68,7 +68,7 @@ function hmLangCard(info) {
     <td data-l="同意书"><span class="tag ${r.consent_reviewed ? "ok" : "o"}">${r.consent_reviewed ? "已审" : "文案待复核"}</span></td>
     <td data-l="AI 主持"><span class="tag ${HM_AI[r.ai][1]}">${HM_AI[r.ai][0]}</span></td><td data-l="使用">${r.on ? (r.in_use ? r.in_use + " 场" : "0 场") : "—"}</td>
     <td class="acts" data-l="操作">${!info.can_edit ? "" : r.on ? (r.default ? "" : `<button type="button" class="s" data-lg="default|${r.code}">设为默认</button> <button type="button" class="s" data-lg="off|${r.code}">停用</button>`) : `<button type="button" class="p" data-lg="on|${r.code}">添加</button>`}</td></tr>`).join("");
-  return `<div class="card hm-langs" id="hmlang"><h3 style="margin:0 0 8px">语言与受访形式 <span class="sm mut" style="font-weight:400">${info.can_edit ? "改完立刻生效，不用重新发布" : "只有管理员、项目经理和项目负责人能改"}</span></h3>
+  return `<div class="card hm-langs" id="hmlang"><h3 style="margin:0 0 8px">语言与受访形式 </h3>
     <table class="tbl rc"><thead><tr><th>语言</th><th>同意书</th><th>AI 主持</th><th>使用</th><th></th></tr></thead><tbody>${rows}</tbody></table>${hmFmtRows(info)}<div class="sm" id="hmlmsg" role="status" aria-live="polite" style="margin-top:6px"></div></div>`;
 }
 /** The interview formats each live method allows (深访 / 座谈会): tick the kinds candidates may choose; it applies at once. */

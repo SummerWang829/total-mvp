@@ -36,8 +36,8 @@ function rmAsideHtml(its, mods) {
   const week = Date.now() + 7 * 86400000, load = (id) => open.filter((i) => (i.moderator_id || "") === id && (rmAt(i) === null || rmAt(i) < week)).length;
   const rows = [...mods.map((m) => [m.name, load(m.id)]), ["未指定", load("")]], max = Math.max(1, ...rows.map((r) => r[1]));
   const loadCard = rows.map(([name, n]) => `<div class="rma-m"><div class="rma-l"><span>${esc(name)}</span><span>${n ? n + " 场" : name === "未指定" ? "0 场" : `<span style="color:var(--green);font-weight:600">空闲</span>`}</span></div><div class="rma-bar"><i class="${name === "未指定" ? "w" : ""}" style="width:${(n / max) * 100}%"></i></div></div>`).join("");
-  return `<div class="card"><h4>接下来的场次</h4>${nextCard}</div><div class="card"><h4>待办提醒 <span class="sm mut">${todos.length} 件</span></h4>${todoCard}</div>
-    <div class="card"><h4>本周日历 <span class="sm mut">今天起 5 天</span></h4><div class="rma-cal">${cal}</div></div><div class="card"><h4>主持人安排 <span class="sm mut">7 天内</span></h4>${loadCard}</div>`;
+  return `<div class="card rfold"><h4 tabindex="0" aria-expanded="true">接下来的场次</h4>${nextCard}</div><div class="card rfold"><h4 tabindex="0" aria-expanded="true">待办提醒 <span class="sm mut">${todos.length} 件</span></h4>${todoCard}</div>
+    <div class="card rfold"><h4 tabindex="0" aria-expanded="true">本周日历 <span class="sm mut">今天起 5 天</span></h4><div class="rma-cal">${cal}</div></div><div class="card rfold"><h4 tabindex="0" aria-expanded="true">主持人安排 <span class="sm mut">7 天内</span></h4>${loadCard}</div>`;
 }
 
 /** One small popup next to the button that was clicked; closes on a click anywhere else and on Esc. */
@@ -235,3 +235,14 @@ async function roomsView(p) {
     try { its = shFilterInterviews(p, await api(`/projects/${p.id}/interviews`)); drawTabs(); drawBody(); drawSide(); } catch { /* the next tick tries again */ }
   }, 10000);
 }
+
+/* 右侧卡片：点标题收起或展开（第三版效果图）。只管显示，不影响数据。 */
+document.addEventListener("click", (e) => {
+  const h = e.target.closest && e.target.closest(".rfold > h4");
+  if (!h) return;
+  const card = h.parentElement, fold = card.classList.toggle("fold");
+  h.setAttribute("aria-expanded", String(!fold));
+});
+document.addEventListener("keydown", (e) => {
+  if ((e.key === "Enter" || e.key === " ") && e.target.matches && e.target.matches(".rfold > h4")) { e.preventDefault(); e.target.click(); }
+});
