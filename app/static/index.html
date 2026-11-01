@@ -418,7 +418,7 @@ async function peopleView(p) {
   app.querySelectorAll("[data-tadd]").forEach((b) => b.onclick = (e) => {
     e.stopPropagation(); const x = person(b.dataset.tadd), left = lib.tags.map((t) => t.tag).filter((t) => !x.tags.includes(t));
     const why = (t) => x.tags.find((h) => (EX()[t] || []).includes(h));
-    openPop(b, `<div class="lbox" style="border:0;background:none;padding:0">${left.length ? left.map((t) => (why(t) ? `<button type="button" class="lch dis" disabled title="与 ${esc(why(t))} 互斥">＋ ${esc(t)}</button>` : `<button type="button" class="lch ${lcolor(t)}" data-pick="${esc(t)}">＋ ${esc(t)}</button>`)).join("") : `<span class="sm mut">这份问卷的标签都已经选上了</span>`}</div>${left.some(why) ? `<div class="sm mut" style="margin-top:6px">灰色的标签和这个人已有的标签互斥，不能同时加。</div>` : ""}`);
+    openPop(b, `<div class="lbox" style="border:0;background:none;padding:0">${left.length ? left.map((t) => (why(t) ? `<button type="button" class="lch dis" disabled title="与 ${esc(why(t))} 互斥">＋ ${esc(t)}</button>` : `<button type="button" class="lch ${lcolor(t)}" data-pick="${esc(t)}">＋ ${esc(t)}</button>`)).join("") : `<span class="sm mut">这份问卷的标签都已经选上了</span>`}</div>${left.some(why) ? `` : ""}`);
     pop.querySelectorAll("[data-pick]").forEach((m) => (m.onclick = () => putTags(x, [...x.tags, m.dataset.pick])));
   });
   if (window._tagDelOff) { document.removeEventListener("click", window._tagDelOff); document.removeEventListener("keydown", window._tagDelEsc); }
@@ -432,7 +432,7 @@ async function peopleView(p) {
     const view = r.items.length ? r.items.map((it) => `<div class="sa-it"><span class="sa-n">${it.n}</span><div class="sa-q">${esc(it.question)}${TY[it.type] ? `<span class="sa-ty">${TY[it.type]}</span>` : ""}</div>
       <div class="sa-a">${it.options.length ? it.options.map((o) => `<span class="sa-o">${esc(o.text)}${o.code ? ` <span class="sa-cd" title="选项 ${o.code}">${o.code}</span>` : ""}</span>`).join("") : esc(it.answer)}</div></div>`).join("") : `<p class="sm mut" style="margin:8px 0">还没有答案。点“编辑答案”添加。</p>`;
     const m = modal(`<h2>甄别问卷答案</h2><div class="sa-list" id="saview">${view}</div>
-      <p class="sm mut">只能查看，不能在这里修改题目和答案。只有研究团队和 AI 主持人能看到。删除受访者数据时会一并清除。</p><div class="row"><button type="button" id="c">关闭</button></div>`);
+      <p class="sm mut">只能查看。只有研究团队和 AI 主持人能看到。删除受访者数据时会一并清除。</p><div class="row"><button type="button" id="c">关闭</button></div>`);
     $("#c", m).onclick = () => m.remove();
   }));
   app.querySelectorAll("[data-inv]").forEach((b) => b.onclick = () => inviteModal(p, parts, { preselect: b.dataset.inv, onDone: refreshPeople }));
@@ -596,7 +596,7 @@ function quotasModal(p, rec) {
 
 function showGroupInvites(it) {
   const rows = (it.group_invites || []).map((g) => `<li style="margin:8px 0"><b>座位 ${g.seat}</b><code class="copy">${esc(location.origin + g.invite_path)}</code></li>`).join("");
-  const m = modal(`<h2>座谈会已创建</h2><p class="sm mut">每人一条邀请链接，只显示这一次。请分别发给对应的受访者，不要互相转发。丢了可以在场次页单独重新生成。</p><ul style="padding-left:18px">${rows}</ul><div class="row"><button class="p" id="cx">完成</button></div>`);
+  const m = modal(`<h2>座谈会已创建</h2><p class="sm mut">每人一条邀请链接，只显示这一次。</p><ul style="padding-left:18px">${rows}</ul><div class="row"><button class="p" id="cx">完成</button></div>`);
   $("#cx", m).onclick = () => { m.remove(); location.hash = `#/i/${it.id}`; };
 }
 
@@ -623,7 +623,7 @@ function downloadIcs(title, sched, url) {
 }
 function showInvite(iid, url, created, sched, onClose) {
   sessionStorage.setItem("invite_" + iid, url);
-  const m = modal(`<h2>${created ? "场次已创建" : "新的邀请链接"}</h2><p class="sm mut">把这个链接发给受访者。它只显示这一次，请不要转发；丢了可以重新生成（旧链接会立即失效）。平台不会替你发消息，下面的按钮帮你准备好内容。</p>
+  const m = modal(`<h2>${created ? "场次已创建" : "新的邀请链接"}</h2><p class="sm mut">它只显示这一次，请不要转发；丢了可以重新生成（旧链接会立即失效）。</p>
     <code class="copy" id="invlink">${esc(url)}</code><div class="row" style="margin-top:14px"><button class="p" id="cp">复制链接</button><button id="ct">复制邀请文案</button>${sched ? `<button id="cr">复制提醒文案</button><button id="ci">下载日历文件</button>` : ""}<button id="cx">完成</button></div>`);
   const copy = (txt) => navigator.clipboard?.writeText(txt).then(() => toast("已复制"), () => toast("请手动复制", true));
   $("#cp", m).onclick = () => copy(url);
@@ -755,13 +755,7 @@ async function studyView(p, sid) {
       
       <label class="f"><span>提纲文字（可直接修改）</span><textarea id="outline" rows="18" ${closed ? "disabled" : ""} style="font-family:ui-monospace,Consolas,monospace;font-size:14px">${esc(s.outline_text)}</textarea></label>
       <p class="sm" id="problem" role="alert" hidden style="color:#A8203E"></p>
-      <details class="sm mut"><summary>提纲怎么写</summary><pre style="white-space:pre-wrap;margin:6px 0">## 暖场
-- 一个轻松的开场问题
-## 话题: 话题名称
-- 一个开放式的问题（一句话只问一件事）
-* 了解: 这个话题必须弄清楚的一点
-## 禁谈
-- 不要谈的内容</pre></details>
+      
       ${closed ? "" : `<div class="row"><button id="draft">${s.outline_text ? "让 AI 重新起草" : "让 AI 起草"}</button><button id="save">保存</button><span class="sp"></span><button class="p" id="publish">${s.version ? `发布第 ${s.version + 1} 版` : "发布"}</button></div>`}</div>
     ${s.status === "published" ? `<div class="card"><h3>邀请受访者</h3>${canInvite.length
       ? `<form id="inv">
@@ -795,7 +789,7 @@ async function studyView(p, sid) {
     });
   }
   const showOpen = (r) => { if (!r.open_path) { toast("已更新"); render(); return; }
-    const m = modal(`<h2>公开报名链接（只显示这一次）</h2><code class="copy">${esc(location.origin + r.open_path)}</code><p class="sm mut">把它发出去即可。重新生成会让旧链接失效。</p><div class="row" style="margin-top:12px"><button class="p" id="done2">我已复制</button></div>`);
+    const m = modal(`<h2>公开报名链接（只显示这一次）</h2><code class="copy">${esc(location.origin + r.open_path)}</code><p class="sm mut">重新生成会让旧链接失效。</p><div class="row" style="margin-top:12px"><button class="p" id="done2">我已复制</button></div>`);
     $("#done2", m).onclick = () => { m.remove(); render(); }; };
   const post = (enabled, cap) => api(`/studies/${sid}/open-link`, { method: "POST", body: { enabled, cap } }).then(showOpen);
   const of = $("#olform"); if (of) of.onsubmit = guard(async (e) => { e.preventDefault(); await post(true, Number(new FormData(of).get("cap"))); });
@@ -825,7 +819,7 @@ async function repoView() {
   const [docs, projs] = await Promise.all([api("/repo/documents"), projects()]);
   if (stale(my)) return;
   const scope = `<option value="">全部我能看到的项目</option>${projs.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join("")}`;
-  shell(`${head("研究库", "搜索和提问整个公司做过的研究：访谈原话、已确认的洞察、导入的历史资料。你只能看到自己所在项目的内容；受访者只显示编号。", `<button class="p" id="imp">导入资料</button>`)}
+  shell(`${head("研究库", "", `<button class="p" id="imp">导入资料</button>`)}
     <div class="card"><form id="qf"><label class="f"><span>输入关键词来搜索，或者直接问一个问题</span><input name="q" required maxlength="500" placeholder="例如：消费者为什么觉得价格太贵？"></label>
       <div class="row"><label class="f" style="flex:1;margin:0"><span>范围</span><select name="project_id">${scope}</select></label>
       <button class="p" id="ask" type="button">问 AI</button><button id="srch" type="submit">搜索原文</button></div></form></div>
@@ -849,8 +843,8 @@ async function repoView() {
     try {
       const r = await api("/repo/ask", { method: "POST", body: { question: v.q, project_id: v.project_id || null } });
       res.innerHTML = r.insufficient ? `<div class="note" role="status"><b>证据不足。</b> ${esc(r.message)}</div>`
-        : `<h2>回答</h2>${r.answer.map((c, i) => `<div class="card"><p style="margin:0 0 8px"><b>${i + 1}.</b> ${esc(c.text)}</p><details open><summary class="sm mut">依据（${c.evidence.length} 条原文，逐字来自资料库）</summary>${c.evidence.map(hitHtml).join("")}</details></div>`).join("")}
-          <p class="sm mut">AI 只能引用上面这些原文；结论是它的归纳，请以原文为准。</p>`;
+        : `<h2>回答</h2>${r.answer.map((c, i) => `<div class="card"><p style="margin:0 0 8px"><b>${i + 1}.</b> ${esc(c.text)}</p><details open><summary class="sm mut">依据（${c.evidence.length} 条原文）</summary>${c.evidence.map(hitHtml).join("")}</details></div>`).join("")}
+          `;
     } finally { $("#ask").disabled = false; $("#srch").disabled = false; }
   });
   $("#imp").onclick = () => {
@@ -955,7 +949,7 @@ async function quantView(p) {
   const RO = VIEWER();
   shell(`${head("定量结果", "外部问卷平台把通过甄别的人和问卷结果推送进来（或你手工导入表格），和访谈放在同一个项目里对照着看。", RO ? "" : `<button class="p" id="impq">导入结果表格</button>`)}
     ${RO ? "" : `<div class="card"><h3 style="margin-top:0">接入问卷平台</h3>
-      <p class="sm mut">给问卷平台一把密钥（只显示一次），它用 <code>Authorization: Bearer 密钥</code> 调用下面的接口：</p>
+      
       <pre class="sm" style="white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-all;margin:0 0 8px">POST ${origin}/api/ingest/participants   通过甄别的人（external_id、name、country、language、tags、answers）
 POST ${origin}/api/ingest/surveys        问卷的汇总结果（survey_id、title、respondents、questions）
 GET  ${origin}/api/ingest/ping           检查密钥</pre>
@@ -966,7 +960,7 @@ GET  ${origin}/api/ingest/ping           检查密钥</pre>
   if (RO) return;
   const kf = $("#kf"); if (kf) kf.onsubmit = guard(async (e) => {
     e.preventDefault(); const r = await api(`/projects/${p.id}/quant/keys`, { method: "POST", body: { name: new FormData(kf).get("name") } });
-    const m = modal(`<h2>密钥（只显示这一次）</h2><code class="copy">${esc(r.key)}</code><p class="sm mut">复制给问卷平台。丢了只能撤销再建新的。</p><div class="row" style="margin-top:12px"><button class="p" id="done">我已复制</button></div>`);
+    const m = modal(`<h2>密钥（只显示这一次）</h2><code class="copy">${esc(r.key)}</code><p class="sm mut">丢了只能撤销再建新的。</p><div class="row" style="margin-top:12px"><button class="p" id="done">我已复制</button></div>`);
     $("#done", m).onclick = () => { m.remove(); render(); };
   });
   app.querySelectorAll("[data-rk]").forEach((b) => b.onclick = guard(async () => { if (!confirm("撤销后用这把密钥的平台马上不能再推送。继续？")) return; await api(`/projects/${p.id}/quant/keys/${b.dataset.rk}`, { method: "DELETE" }); toast("已撤销"); render(); }));
@@ -1024,7 +1018,7 @@ async function membersView(p) {  // who works on this project and in which resea
     const want = ["admin", "viewer", "support"].includes(u.role) ? all : u.role === "researcher" ? (k === "quant" ? ["quant", "listening"] : k === "qual" ? ["depth", "group", "listening", "async"] : all) : [];
     return all.filter((x) => want.includes(x));
   };
-  const stageBox = (on) => `<div class="stagebox"><div class="sm mut">本项目的研究阶段（可多选，同一个人可以同时负责多个）</div>${d.stages.map((s, i) => `<label class="chk"><input type="checkbox" name="scopes" value="${s.key}" ${on.includes(s.key) ? "checked" : ""}><span><b>${s.label}</b>${s.where.length ? ` <span class="mut sm">${esc(s.where.join("、"))}</span>` : ""}</span></label>`).join("") || '<p class="sm mut" style="margin:0">这个项目还没有研究阶段。</p>'}</div>`;
+  const stageBox = (on) => `<div class="stagebox"><div class="sm mut">本项目的研究阶段（可多选）</div>${d.stages.map((s, i) => `<label class="chk"><input type="checkbox" name="scopes" value="${s.key}" ${on.includes(s.key) ? "checked" : ""}><span><b>${s.label}</b>${s.where.length ? ` <span class="mut sm">${esc(s.where.join("、"))}</span>` : ""}</span></label>`).join("") || '<p class="sm mut" style="margin:0">这个项目还没有研究阶段。</p>'}</div>`;
   const row = (m) => `<tr><td><b>${esc(m.name)}</b>${m.role !== "researcher" ? ` <span class="tag">${roleName(m)}</span>` : ` <span class="tag">${roleName(m)}</span>`}${m.user_id === ME.id ? ' <span class="tag">我</span>' : ""}${m.active ? "" : ' <span class="tag">已停用</span>'}</td><td class="mut">${esc(m.email)}</td>
       <td>${m.is_owner ? '<span class="tag ok">项目负责人</span>' : '<span class="tag">成员</span>'}</td>
       <td>${(m.scopes || []).length ? m.scopes.filter((k) => stageName[k]).map((k) => `<span class="tag o nw">${stageName[k]}</span>`).join("") : '<span class="mut sm">未指定</span>'}</td>
@@ -1077,7 +1071,7 @@ async function loadTimeslotsCard(iid, canEdit) {
 
 function editTimeslots(iid, slots) {
   const row = (iso) => `<div class="ptrow"><input type="datetime-local" class="tsq" aria-label="候选时间"${iso ? ` value="${tsLocalInput(iso)}"` : ""}><button type="button" class="s warn tsdel">删除</button></div>`;
-  const m = modal(`<h2>候选时间</h2><p class="sm mut">最多 6 个，按你本地时区填写。保存后原先的固定时间会被清除，受访者需要自己选一个；全部清空则恢复用固定时间。</p>
+  const m = modal(`<h2>候选时间</h2><p class="sm mut">保存后原先的固定时间会被清除。</p>
     <form id="f"><div id="tsrows">${(slots.length ? slots.map((s) => s.start_at) : [null]).map(row).join("")}</div>
     <button type="button" class="s" id="tsadd">+ 再加一个时间</button>
     <div class="row" style="margin-top:14px"><button class="p">保存</button><button type="button" id="c">取消</button></div></form>`);
@@ -1110,7 +1104,7 @@ async function loadPretaskCard(iid, canEdit) {
 function editPretask(iid, qs) {
   const row = (q = { prompt: "", required: true }) => `<div class="ptrow"><textarea rows="2" class="ptq" placeholder="问题，例如：你平时的护肤步骤是怎样的？" maxlength="500">${esc(q.prompt || "")}</textarea>
     <label class="chk"><input type="checkbox" class="ptr" ${q.required ? "checked" : ""}><span>必填</span></label><button type="button" class="s warn ptdel">删除</button></div>`;
-  const m = modal(`<h2>访谈前问题</h2><p class="sm mut">每行一题，最多 10 题。留空的题目会被忽略；全部清空则取消这一步。</p>
+  const m = modal(`<h2>访谈前问题</h2><p class="sm mut"></p>
     <form id="f"><div id="ptrows">${(qs.length ? qs : [{ prompt: "", required: true }]).map(row).join("")}</div>
     <button type="button" class="s" id="ptadd">+ 再加一题</button>
     <div class="row" style="margin-top:14px"><button class="p">保存</button><button type="button" id="c">取消</button></div></form>`);
@@ -1206,9 +1200,9 @@ async function transcriptTab(iid, it, staff, my) {
   const ready = recs.find((r) => r.status === "ready"), play = recs.find((r) => r.playable), busy = recs.some((r) => ["recording", "processing"].includes(r.status));
   const mock = cfg.asr === "mock";
   $("#tab").innerHTML = `${staff ? `<div class="card" id="recs"><div class="row"><h3 style="margin:0">录制</h3><span class="sp"></span><button class="p" id="tr" ${ready ? "" : "disabled"} title="${ready ? "" : "有录制并合成完成后才能转写"}">${segs.length ? "重新转写" : "转写录制"}</button></div>
-      ${recs.length ? recs.map((r, n) => `<div class="row sm" style="margin-top:8px"><span>第 ${n + 1} 段 · ${esc(new Date(r.started_at + "Z").toLocaleString())}</span><span class="tag ${REC_ST[r.status][1]}">${REC_ST[r.status][0]}</span>${r.duration_ms ? `<span class="mut">${fmt(r.duration_ms)}</span>` : ""}${r.error ? `<span class="mut">${esc(r.error)}</span>` : ""}</div>`).join("") : `<p class="sm mut" style="margin:8px 0 0">还没有录制。进入房间，受访者同意后点“开始录制”。</p>`}
+      ${recs.length ? recs.map((r, n) => `<div class="row sm" style="margin-top:8px"><span>第 ${n + 1} 段 · ${esc(new Date(r.started_at + "Z").toLocaleString())}</span><span class="tag ${REC_ST[r.status][1]}">${REC_ST[r.status][0]}</span>${r.duration_ms ? `<span class="mut">${fmt(r.duration_ms)}</span>` : ""}${r.error ? `<span class="mut">${esc(r.error)}</span>` : ""}</div>`).join("") : `<p class="sm mut" style="margin:8px 0 0">还没有录制。</p>`}
       ${busy ? `<p class="sm mut" style="margin:8px 0 0">正在处理，这个区域会自动刷新。</p>` : ""}
-      ${caps.lines.length ? `<div class="row" style="margin-top:10px"><span class="sm mut">访谈时有 ${caps.lines.length} 句实时字幕。没有录像或想先看看时，可以直接用它生成转写（可能有错字）。</span><span class="sp"></span><button class="s" id="fromcaps">用实时字幕生成转写</button></div>` : ""}
+      ${caps.lines.length ? `<div class="row" style="margin-top:10px"><span class="sm mut">访谈时有 ${caps.lines.length} 句实时字幕。</span><span class="sp"></span><button class="s" id="fromcaps">用实时字幕生成转写</button></div>` : ""}
       <p class="sm mut" style="margin:8px 0 0">${mock ? "当前是演示转写：内容是固定的示例对话，不是真的识别录音（接入语音识别服务后才是真实转写，见 README）。" : "转写会调用语音识别服务，录音越长耗时越久。"}</p>
       ${play ? `<video id="pv" controls controlsList="nodownload" playsinline style="width:100%;max-height:360px;background:#0E1A16;border-radius:12px;margin-top:10px"></video>` : ""}</div>` : ""}
     ${segs.length ? `<div class="card row" style="align-items:flex-end"><label class="f" style="margin:0;flex:1"><span>在这场转写里找</span><input id="tsearch" type="search" placeholder="输入文字，只显示包含它的句子" maxlength="100"></label><span class="sm mut" id="tcount" role="status"></span></div>` : ""}
@@ -1235,7 +1229,7 @@ async function transcriptTab(iid, it, staff, my) {
   });
   app.querySelectorAll("[data-edit]").forEach((a) => a.onclick = (e) => {
     e.preventDefault(); const sg = segById[a.dataset.edit];
-    const m = modal(`<h2>校对转写 #${sg.idx}</h2><p class="sm mut">${esc(speakerName(sg.speaker))} · ${fmt(sg.start_ms)}。改动会记入审计日志；如果某条洞察引用的原话被改没了，那条洞察会自动变成“需复核”，客户立刻看不到。</p>
+    const m = modal(`<h2>校对转写 #${sg.idx}</h2><p class="sm mut">${esc(speakerName(sg.speaker))} · ${fmt(sg.start_ms)}。改动会记入审计日志。</p>
       <form id="f"><label class="f"><span>原文</span><textarea name="text_orig" rows="3" required>${esc(sg.text_orig)}</textarea></label>
       <label class="f"><span>中文翻译</span><textarea name="text_zh" rows="3">${esc(sg.text_zh)}</textarea></label>
       <div class="row"><button class="p">保存</button><button type="button" id="c">取消</button></div></form>`);
@@ -1248,7 +1242,7 @@ async function transcriptTab(iid, it, staff, my) {
   });
   app.querySelectorAll("[data-ins]").forEach((a) => a.onclick = (e) => {
     e.preventDefault(); const sg = segById[a.dataset.ins];
-    const m = modal(`<h2>写一条洞察</h2><p class="sm mut">证据必须是这段话里<b>逐字出现</b>的内容（可以只摘一部分，中间用“…”连接）。对不上会被拒绝。</p>
+    const m = modal(`<h2>写一条洞察</h2>
       <form id="f"><label class="f"><span>主题（几个字）</span><input name="theme" required maxlength="200"></label>
       <label class="f"><span>洞察（一句话）</span><textarea name="statement" rows="2" required></textarea></label>
       <label class="f"><span>证据原话</span><textarea name="quote" rows="3" required>${esc(sg.text_zh || sg.text_orig)}</textarea></label>
@@ -1285,11 +1279,11 @@ async function signalsTab(iid, my) {  // how things were said (pace, pauses, vol
   const tags = (o) => Object.entries(o).map(([k, n]) => `${esc(tagName[k] || k)} ${n}`).join("、") || "—";
   const reacts = (o) => Object.entries(o).map(([k, n]) => `<span class="emo">${esc(k)}</span> ${n}`).join("　") || "—";   // the keys are the emoji themselves
   const mat = Object.entries(d.stimuli);
-  $("#tab").innerHTML = `<div class="card"><h3>情绪信号</h3><p class="sm mut">${esc(d.note)}。语速、停顿、音量只和这个人自己平时比较；表情符号是受访者自己发的。</p>
+  $("#tab").innerHTML = `<div class="card"><h3>情绪信号</h3><p class="sm mut">${esc(d.note)}</p>
     ${d.speakers.length ? `<div class="scroll"><table class="tbl"><thead><tr><th>谁</th><th>句数</th><th>词句的整体倾向</th><th>标记</th><th>表情反应</th></tr></thead><tbody>
       ${d.speakers.map((s) => `<tr><td><b>${esc(s.who)}</b></td><td>${s.sentences}</td><td>${s.tone > 0.15 ? "偏正面" : s.tone < -0.15 ? "偏负面" : "中性"}（${s.tone.toFixed(2)}）</td><td>${tags(s.tags)}</td><td>${reacts(s.reactions)}</td></tr>`).join("")}</tbody></table></div>`
       : `<p class="mut">这场访谈还没有实时字幕或表情反应。</p>`}</div>
-    <div class="card"><h3>值得回看的时刻（${d.moments.length}）</h3>${d.moments.length ? d.moments.map((m) => `<div class="sig-moment"><div class="sm mut">${fmt(m.at_ms)} · ${esc(m.who)}</div><div>${esc(m.text)}</div><div class="sm hint">${esc(m.hints.join(" · "))}</div></div>`).join("") : `<p class="mut">暂时没有。出现回答前停顿很长、语速或音量明显偏离平时、或词句明显偏负面的地方会列在这里。</p>`}</div>
+    <div class="card"><h3>值得回看的时刻（${d.moments.length}）</h3>${d.moments.length ? d.moments.map((m) => `<div class="sig-moment"><div class="sm mut">${fmt(m.at_ms)} · ${esc(m.who)}</div><div>${esc(m.text)}</div><div class="sm hint">${esc(m.hints.join(" · "))}</div></div>`).join("") : `<p class="mut">暂时没有。</p>`}</div>
     ${mat.length ? `<div class="card"><h3>各素材的表情反应</h3>${mat.map(([k, o]) => `<p><b>${esc(MATERIAL[k] || k)}</b>：${reacts(o)}</p>`).join("")}</div>` : ""}`;
 }
 
@@ -1380,7 +1374,7 @@ async function teamView() {
   shell(`${head("团队", "管理员在这里添加成员并赋予身份：全科/定量/定性研究员、项目经理、主持人、观察员、客户、技术支持。客户要填品牌（直接输入，没有的会自动新建）、职位和联系方式；观察员只能隐身旁听被指派的场次，看不到受访者姓名。", `<button class="p" id="ni">邀请成员</button> <button id="nu">直接添加</button>`)}
     <div class="card scroll" style="padding:6px 10px"><table class="tbl rc"><thead><tr><th>姓名</th><th>邮箱</th><th>角色</th><th>操作</th></tr></thead><tbody>${us.map(row).join("")}</tbody></table></div>
     ${invs.length ? `<h2>等待加入（链接 7 天有效）</h2><div class="card scroll" style="padding:6px 10px"><table class="tbl rc"><thead><tr><th>邮箱</th><th>角色</th><th>类型</th><th></th></tr></thead><tbody>${invs.map((i) => `<tr><td>${esc(i.email)}</td><td><span class="tag">${ROLE[i.role]}</span></td><td class="mut">${i.kind === "join" ? "新成员" : "重置密码"}</td><td><button data-rv="${i.id}">作废</button></td></tr>`).join("")}</tbody></table></div>` : ""}`, { active: "team", title: "团队" });
-  const showLink = (r, what) => modal(`<h2>${what}</h2>${r.emailed ? `<p class="sm" role="status">已经发邮件给 ${esc(r.email)}（几分钟内到达，可能进垃圾邮件箱）。</p>` : ""}<code class="copy">${esc(location.origin + r.invite_path)}</code><p class="sm mut" style="margin:8px 0 0">${r.emailed ? "也可以把这条链接直接发给" : "把链接发给"} ${esc(r.email)}（7 天内有效，只能用一次）。这个链接只显示这一次。</p>`);
+  const showLink = (r, what) => modal(`<h2>${what}</h2>${r.emailed ? `<p class="sm" role="status">已经发邮件给 ${esc(r.email)}。</p>` : ""}<code class="copy">${esc(location.origin + r.invite_path)}</code><p class="sm mut" style="margin:8px 0 0">${r.emailed ? "也可以把这条链接直接发给" : "把链接发给"} ${esc(r.email)}（7 天内有效，只能用一次）。这个链接只显示这一次。</p>`);
   $("#ni").onclick = () => {
     const m = modal(`<h2>邀请成员</h2><form id="f"><label class="f"><span>邮箱</span><input name="email" type="email" required></label>
       <label class="f"><span>角色</span><select name="role">${roleOpts("researcher|all")}</select></label>${clientFields}
@@ -1457,7 +1451,7 @@ async function dataView() {
   const row = (p) => `<tr><td data-l="项目"><b>${esc(p.name)}</b></td><td data-l="结项">${p.closed_at ? esc(day(p.closed_at)) : `<span class="tag">未结项</span>`}</td>
     <td data-l="删除日期">${p.purge_at ? `${esc(day(p.purge_at))}<div class="sm mut">还剩 ${p.days_left} 天${p.hold_until ? " · 已延后" : ""}</div>` : `<span class="mut">结项后 ${o.retention_days} 天</span>`}</td><td class="mut" data-l="现在保有">${esc(holds(p.holds))}</td>
     <td class="acts" data-l="操作">${p.closed_at ? `<button class="s" data-hold="${p.id}">延后</button> ${p.hold_until ? `<button class="s" data-rel="${p.id}">取消延后</button> ` : ""}<button class="s warn" data-now="${p.id}" data-name="${esc(p.name)}">立即清除</button>` : ""}</td></tr>`;
-  shell(`${head("数据保留", `受访者的个人数据（录像、转写、引文、聊天、没访谈过的人、采集的公开内容、导入的项目文档）在项目结项 ${o.retention_days} 天后自动删除，洞察结论保留。没结项的项目，访谈结束 ${o.backstop_days} 天后兜底删除。这里可以延后、或在确认后立即清除。`)}
+  shell(`${head("数据保留", ``)}
     <div class="card scroll" style="padding:6px 10px"><table class="tbl rc"><thead><tr><th>项目</th><th>结项</th><th>删除日期</th><th>现在保有</th><th>操作</th></tr></thead><tbody>${o.projects.length ? o.projects.map(row).join("") : `<tr><td colspan="5" class="mut">还没有项目。</td></tr>`}</tbody></table></div>`, { active: "retention", title: "数据保留" });
   app.querySelectorAll("[data-hold]").forEach((b) => b.onclick = () => {
     const m = modal(`<h2>延后删除</h2><form id="f"><label class="f"><span>在原定删除日期之后再保留多久？</span><select name="days"><option value="30">30 天</option><option value="90">90 天</option><option value="180">180 天</option><option value="365">365 天</option></select></label>

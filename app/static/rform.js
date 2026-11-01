@@ -94,7 +94,7 @@ function rfCard(p, form) {
     const hello = `<div class="rf-msg">您好！我可以根据研究背景和研究库资料协助设计招募问卷，也可以按您的要求修改，例如“年龄放最前面，18 岁以下筛掉”“每天都用的人跳过频率题”“把第 3 题改成多选”。可先说“帮我起草问卷”。</div>`;
     const all = f.chat || [], msgs = all.map((m, i) => msgHtml(m, i === all.length - 1 && !fail, i)).join("");
     const failHtml = fail ? `<div class="rf-msg rf-me">${esc(fail.ask)}</div><div class="rf-err" role="alert"><b>本次未能完成回复</b><div>${esc(fail.text)}</div>${fail.fatal ? "" : `<button class="s" type="button" data-chip="retry">重新尝试</button><button class="s" type="button" data-chip="rephrase">调整提问方式</button>`}</div>` : "";
-    const cards = showSug && sugs().length ? `<div class="rf-sgs"><div class="sm mut">建议 ${sugs().length} 条。这些只是建议，不点也没关系：问卷不会变，也不影响你继续写和发布。</div>${sugs().map(sugCard).join("")}</div>` : "";
+    const cards = showSug && sugs().length ? `<div class="rf-sgs"><div class="sm mut">建议 ${sugs().length} 条。</div>${sugs().map(sugCard).join("")}</div>` : "";
     const news = !showSug && sugs().length && sugSeen() !== sugs().map((s) => s.sig).join(",") ? `<button type="button" class="rf-news" data-chip="showsug">有 ${sugs().length} 条建议，点这里查看</button>` : "";
     const started = (f.stats && f.stats.started) || 0, why = aiOk() ? "" : ` disabled title="${esc(f.ai.reason)}"`;   // the buttons that need the model are greyed out, with the reason, when it cannot be used
     const need = (c, label) => `<button class="s" type="button" data-chip="${c}"${why}>${label}</button>`, free = (c, label) => `<button class="s" type="button" data-chip="${c}">${label}</button>`;

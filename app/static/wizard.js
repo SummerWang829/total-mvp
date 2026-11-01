@@ -51,7 +51,7 @@ async function wizardView(p) {
   const live = plan.live ? await api(`/projects/${p.id}/languages`).catch(() => null) : null;   // a published project: languages and formats are the live ones (shared with the overview page)
   if (stale(my)) return;
   if (plan.legacy) {
-    shell(`${head("立项向导", "这个项目创建时还没有立项向导，所以没有立项记录。新建项目会从向导开始。")}<div class="card empty"><b>没有立项记录</b><span>老项目照常使用，不受影响。</span><a class="btn p" href="#/p/${p.id}/home">回到项目总览</a></div>`, { active: "wiz", p });
+    shell(`${head("立项向导", "这个项目创建时还没有立项向导，所以没有立项记录。新建项目会从向导开始。")}<div class="card empty"><b>没有立项记录</b><a class="btn p" href="#/p/${p.id}/home">回到项目总览</a></div>`, { active: "wiz", p });
     return;
   }
   Object.assign(WZ, { p, plan, live, cfg: plan.config, users: users.filter((u) => u.active), picks: {}, known: [], step: Math.min(WZ.p && WZ.p.id === p.id ? WZ.step : 0, 6), estNote: "", sugState: WZ.p && WZ.p.id === p.id ? WZ.sugState : "", sugBrief: WZ.p && WZ.p.id === p.id ? WZ.sugBrief : "" });
@@ -85,7 +85,7 @@ function wzSave(now = false) {
 function wzDesignView() {
   const c = WZ.cfg;
   return `<div class="card" style="display:flex;flex-direction:column;gap:10px"><b>各子项目的研究设计</b>
-    <p class="sm mut" style="margin:0">研究顺序在第 1 步按子项目（国家）选好，这里只用来核对，给研究员和项目经理看。要改请回第 1 步。</p>
+    <p class="sm mut" style="margin:0"></p>
     <div class="scroll"><table class="tbl"><thead><tr><th>子项目</th><th>研究顺序</th><th>阶段</th><th>舆情</th><th>异步 AI 研究</th></tr></thead><tbody>
     ${c.subs.map((s, i) => `<tr><td><b>S${i + 1}</b> ${esc(s.name)}<div class="sm mut">${esc(s.lang)}</div></td><td>${wzDesignHtml(s.design)}</td>
       <td>${WZ_DESIGNS[s.design][1].map((m, k) => `<span class="tag nw ${WZ_MCLS[m]}">${k + 1} ${WZ_MNAME[m]}</span>`).join("")}</td><td>${s.listening ? "做" : '<span class="mut">不做</span>'}</td><td>${s.async_ai ? "做" : '<span class="mut">不做</span>'}</td></tr>`).join("")}
@@ -119,7 +119,7 @@ function wzSuggest() {  // step 2: what the AI suggests from the research backgr
     ${st === "error" ? `<div class="note">${esc(WZ.sugError || "")}。回到第 1 步改一下研究背景再点“下一步”会重新生成。</div>` : ""}
     ${s ? `<div class="grid"><div class="card"><h3>深访提纲建议</h3>${list(s.depth_topics)}</div><div class="card"><h3>座谈会大纲建议</h3>${list(s.group_topics)}</div>
       <div class="card"><h3>配额建议</h3><p class="sm" style="margin:6px 0 0">${esc(s.quota_hint)}</p></div><div class="card"><h3>舆情关键词建议</h3><div style="margin-top:6px">${s.listening_keywords.map((k) => `<span class="tag">${esc(k)}</span>`).join("")}</div></div></div>
-    <div class="sm mut">仅供参考，需要的内容自己复制；招募问卷会自动参考研究库里的这份研究背景。</div>` : ""}</div>`;
+    ` : ""}</div>`;
 }
 
 const WZ_CODE = { 中文: "zh", 英语: "en", 马来语: "ms", 泰米尔语: "ta" }, WZ_FMT = { audio: "纯音频", text: "文字访谈", text_voice: "文字+语音转录", video: "视频", video_screen: "视频+屏幕共享" };
@@ -213,7 +213,7 @@ function wzRoles() {
   const roleName = (u) => (u.role === "researcher" ? WZ_KIND[u.research_kind || "all"] : WZ_ROLE[u.role] || u.role);
   const row = (u, m, fixed) => `<tr><td>${esc(u.name)}</td><td>${roleName(u)}</td>${keys.map((k, j) => `<td><label class="chk wzbig"><input type="checkbox" aria-label="${esc(u.name)} ${names[j]}" ${fixed ? "checked disabled" : `data-member="${u.id}|${k}" ${m[k] ? "checked" : ""} ${en[j] ? "" : "disabled"}`}></label></td>`).join("")}
     <td>${(WZ_PERMS[u.role] || []).map((t) => `<span class="tag">${t}</span>`).join("")}</td><td>${fixed ? "" : `<button class="s" data-memdel="${u.id}" type="button">移出</button>`}</td></tr>`;
-  return `<p class="sub">每个人参与哪些环节。人员来自“团队”；加进来时按角色自动勾好，可以再改。管理员自动参与全部。研究员、项目经理、客户在发布时加入项目；主持人和观察员按场次安排，不是项目成员。</p>
+  return `
     <div class="row"><label class="field" style="flex-direction:row;align-items:center;gap:8px">添加人员${wzSel('id="memsel" aria-label="选择要添加的人员"', "", [["", addable.length ? "选择一位同事" : "没有可添加的人"], ...addable.map((u) => [u.id, `${u.name}（${roleName(u)}）`])], 260)}</label>
       <button class="s p" id="memadd" type="button" ${addable.length ? "" : "disabled"}>添加</button>
       <span class="mut sm">按列勾选：</span>${names.map((n, j) => en[j] ? `<span class="row" style="gap:4px"><b>${n}</b><button class="lnk" data-col="${j}|1" type="button">全选</button><button class="lnk" data-col="${j}|0" type="button">全不选</button></span>` : "").join("")}</div>
@@ -267,7 +267,7 @@ function wzChannels() {
   const body = q
     ? `<div class="grid"><div class="card"><h3>防重复作答（全局 IP 规则）</h3><label class="chk" style="margin-top:8px"><input type="checkbox" data-ip="on" ${c.ip.on ? "checked" : ""}><span>开启：同一 IP 命中终态后，窗口内再次访问将被拦截</span></label>
         <label class="field" style="margin-top:8px">拦截窗口${wzSel('data-ipwin aria-label="拦截窗口"', c.ip.win, [[7, "7 天"], [30, "30 天"], [90, "90 天"]])}</label></div>
-        <div class="card"><h3>外部问卷平台</h3><p class="sm mut" style="margin:6px 0 0">问卷由外部平台发出，通过项目密钥把通过甄别的人和结果推送进来（见“定量结果”页）。这里设置的邀请文字用于合规检查。</p></div></div>`
+        <div class="card"><h3>外部问卷平台</h3><p class="sm mut" style="margin:6px 0 0"></p></div></div>`
     : `<div class="grid"><div class="card" style="display:flex;flex-direction:column;gap:8px"><h3>受访者来源</h3>${[["pool", "从受访者库按标签圈人（推荐）"], ["rec", "招募员名单"], ["panel", "外部样本库"]].map((x) => `<label class="chk"><input type="radio" name="src" data-src="${x[0]}" ${c.src === x[0] ? "checked" : ""}><span>${x[1]}</span></label>`).join("")}</div>
         <div class="card" style="display:flex;flex-direction:column;gap:8px"><h3>预约规则</h3>
         <label class="field">提前排期不少于（小时，保证现场支持）${wzInp('type="number" min="0" data-n2="lead"', c.lead)}</label><label class="field">每人 90 天内最多邀请（次，防疲劳）${wzInp('type="number" min="1" data-n2="inv"', c.inv)}</label>
@@ -284,7 +284,7 @@ function wzCompliance() {
   const tick = (k, label) => `<label class="chk"><input type="checkbox" data-cons="${k}" ${WZ.cfg.cons[k] ? "checked" : ""}><span>${label}</span></label>`;
   const chain = ["提交审查", "法务审查", "审查通过"].map((x, i) => `<div class="step ${["draft"].includes(st) ? "" : (st === "review" ? i < 2 : true) ? "on" : ""}"><b>${i + 1} ${x}</b></div>`).join("");
   const me = ME.role === "admin";
-  return `<p class="sub">十四项合规要求，使用访谈时再加四项。系统根据前面的选择自动判定，未通过的在这里补。</p>
+  return `
     <div class="card"><div class="row" style="justify-content:space-between"><b>补充确认</b><button class="s" id="wzall" type="button">一键全选同意以下所有条款</button></div><div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">${tick("xb", "已签署标准合同或完成跨境评估（c6）")}${tick("minor", "人群限定 18 岁以上并在筛选题校验（c11）")}
       ${wzInterviews() ? tick("rec", "进入房间前单独征得录音录像同意（q1）") + tick("recon", "定量问卷末尾询问是否同意再联系（q2）") + tick("mask", "观察员只见编号（q3）") + tick("ai", "告知 AI 转写、翻译与摘要（q4）") : ""}</div></div>
     <div class="scroll"><table class="tbl"><thead><tr><th>编号</th><th>要求</th><th>依据</th><th>怎么满足</th><th>状态</th></tr></thead><tbody>${P.compliance.map((x) => `<tr class="${x.passed ? "" : "sel"}"><td>${x.id}</td><td><b>${x.title}</b></td><td><span class="pill ${x.basis === "定性新增" ? "o" : "g"}">${x.basis}</span></td><td class="sm mut">${esc(x.how)}</td><td>${wzCheck(x.passed)}</td></tr>`).join("")}</tbody></table></div>
@@ -487,7 +487,7 @@ function wzClick(b, e) {
 
 /* 新建项目：先起一个草稿，再进向导 */
 function newProjectPrompt() {
-  const m = modal(`<h2>新建项目</h2><p class="sm mut">先给项目起个名字，接下来在立项向导里一步一步配置（研究顺序、样本和配额、合规），审查通过后发布。</p>
+  const m = modal(`<h2>新建项目</h2><p class="sm mut"></p>
     <form id="npf"><label class="f"><span>项目名称</span><input name="name" required maxlength="200" autofocus></label><div class="row" style="margin-top:14px"><button class="p">开始立项</button><button type="button" id="npc">取消</button></div></form>`);
   $("#npc", m).onclick = () => m.remove();
   $("#npf", m).onsubmit = guard(async (e) => {
@@ -504,7 +504,7 @@ async function monitorView(p) {
   const m = await api(`/projects/${p.id}/monitor`);
   if (stale(my)) return;
   if (!m.published) {
-    shell(`${head("执行监控", "按立项里的配额，看每一行的目标、已就绪和缺口。")}<div class="card empty"><b>项目还没有发布。</b><span>在立项向导里通过合规审查并发布后，这里按配额开始计数。</span><a class="btn p" href="#/p/${p.id}/wiz">去立项向导</a></div>`, { active: "monitor", p });
+    shell(`${head("执行监控", "按立项里的配额，看每一行的目标、已就绪和缺口。")}<div class="card empty"><b>项目还没有发布。</b><span></span><a class="btn p" href="#/p/${p.id}/wiz">去立项向导</a></div>`, { active: "monitor", p });
     return;
   }
   const sub = shSub(p);  // the sub-project chosen in the project bar: only its rows

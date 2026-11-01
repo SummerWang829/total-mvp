@@ -26,14 +26,14 @@ async function openRespondent(iid, tab = "transcript") {
   const it = await api(`/interviews/${iid}`);
   if (my !== renderSeq) return;   // the user moved on to another page while this was loading
   const root = document.createElement("div"); root.className = "rsp"; root.setAttribute("role", "dialog"); root.setAttribute("aria-modal", "true"); root.setAttribute("aria-label", "受访者");
-  app.appendChild(root);
+  app.appendChild(root); document.body.classList.add("rsp-open");
   const [t, c] = STATUS[it.status] || [it.status, ""];
   const canRoom = it.status !== "ended" && !it.purged;
   const room = (as, label, cls) => `<a class="btn s ${cls}" href="/room.html?i=${iid}&as=${as}" target="_blank" rel="noopener">${label}</a>`;
   const tabs = [...RSP_TABS_ALL, ...(staff ? [["highlights", "引用与追问"], ["signals", "情绪"]] : []), ...(it.kind === "group" ? [["fairness", "发言情况"], ...(staff ? [["disagree", "分歧地图"]] : [])] : []), ...(staff ? [["info", "资料"]] : [])];
   const idx = RSP.list.indexOf(iid), hasNav = RSP.list.length > 1 && idx >= 0;
   const planned = it.duration_min || 45;
-  root.innerHTML = `<div class="rsp-md" tabindex="-1"><div class="rsp-hd"><b>${esc(it.kind === "group" ? "座谈会" : (it.participant.code || "受访者"))}</b>${staff && it.kind !== "group" ? `<span class="mut">${esc(it.participant.name)}</span>` : ""}<span class="tag ${c}">${t}</span>
+  root.innerHTML = `<button type="button" class="rsp-tab" id="rsp-col" aria-label="收起">›</button><div class="rsp-md" tabindex="-1"><div class="rsp-hd"><b>${esc(it.kind === "group" ? "座谈会" : (it.participant.code || "受访者"))}</b>${staff && it.kind !== "group" ? `<span class="mut">${esc(it.participant.name)}</span>` : ""}<span class="tag ${c}">${t}</span>
       ${obs ? "" : `<span class="tag">${esc(it.participant.country || "—")} · ${esc(LANGS[it.language] || it.language)}</span><span class="tag">预计 ${planned} 分${it.actual_min != null ? ` / 访谈 ${it.actual_min} 分` : ""}</span>`}<span class="sp"></span>
       ${canRoom ? (obs ? room("observer", "隐身观察", "") : staff ? room("moderator", "进入房间", "p") + room("observer", "隐身观察", "") : room("moderator", "进入房间", "p")) : ""}
       ${hasNav ? `<button type="button" class="s" id="rsp-prev" ${idx > 0 ? "" : "disabled"}>上一位</button><button type="button" class="s" id="rsp-next" ${idx < RSP.list.length - 1 ? "" : "disabled"}>下一位</button>` : ""}
@@ -43,7 +43,7 @@ async function openRespondent(iid, tab = "transcript") {
   RSP.open = true; RSP.iid = iid; RSP.tab = tab; RSP.base = location.hash;
   const prevFocus = document.activeElement;
   function onPop() { if (RSP.open && RSP.close) done(false); }
-  const done = (pop = true) => { window.removeEventListener("popstate", onPop); document.removeEventListener("keydown", onKey, true); const v = $("#rsp-v"); if (v) v.pause(); root.remove(); RSP.open = false; RSP.refresh = null; RSP.close = null; if (prevFocus && prevFocus.focus) prevFocus.focus(); if (pop && history.state && history.state.rsp) history.back(); };
+  const done = (pop = true) => { window.removeEventListener("popstate", onPop); document.removeEventListener("keydown", onKey, true); const v = $("#rsp-v"); if (v) v.pause(); root.remove(); document.body.classList.remove("rsp-open", "rsp-collapsed"); RSP.open = false; RSP.refresh = null; RSP.close = null; if (prevFocus && prevFocus.focus) prevFocus.focus(); if (pop && history.state && history.state.rsp) history.back(); };
   RSP.close = done;
   const state = { video: null, segs: [], insights: [], clips: [], recs: [], dur: 0, sel: null };
   /* ----- keyboard ----- */
@@ -57,7 +57,7 @@ async function openRespondent(iid, tab = "transcript") {
   };
   document.addEventListener("keydown", onKey, true);
   $("#rsp-x").onclick = () => done();
-  root.onclick = (e) => { if (e.target === root) done(); };
+  $("#rsp-col").onclick = () => { const c = document.body.classList.toggle("rsp-collapsed"); $("#rsp-col").textContent = c ? "‹" : "›"; $("#rsp-col").setAttribute("aria-label", c ? "展开" : "收起"); };
   if (hasNav) { $("#rsp-prev").onclick = () => openRespondent(RSP.list[idx - 1], RSP.tab); $("#rsp-next").onclick = () => openRespondent(RSP.list[idx + 1], RSP.tab); }
   history.pushState({ rsp: iid }, "");   // the browser's Back button closes the window
   window.addEventListener("popstate", onPop);
@@ -176,7 +176,7 @@ async function openRespondent(iid, tab = "transcript") {
     const fc = $("#fromcaps"); if (fc) fc.onclick = guard(async () => { if (segs.length && !confirm("现在的转写会被字幕生成的内容替换。继续吗？")) return; await api(`/interviews/${iid}/transcript/from-captions`, { method: "POST" }); toast("已用实时字幕生成转写"); await RSP.refresh(); });
     box.querySelectorAll("[data-edit]").forEach((a) => (a.onclick = (e) => {
       e.preventDefault(); const sg = segs[+a.dataset.edit];
-      const m = modal(`<h2>校对转写 #${sg.idx}</h2><p class="sm mut">${esc(speakerName(sg.speaker))} · ${fmt(sg.start_ms)}。改动会记入审计日志；如果某条洞察引用的原话被改没了，那条洞察会自动变成“需复核”。</p>
+      const m = modal(`<h2>校对转写 #${sg.idx}</h2><p class="sm mut">${esc(speakerName(sg.speaker))} · ${fmt(sg.start_ms)}。改动会记入审计日志。</p>
         <form id="f"><label class="f"><span>原文</span><textarea name="text_orig" rows="3" required>${esc(sg.text_orig)}</textarea></label><label class="f"><span>中文翻译</span><textarea name="text_zh" rows="3">${esc(sg.text_zh)}</textarea></label>
         <div class="row"><button class="p">保存</button><button type="button" id="c">取消</button></div></form>`);
       $("#c", m).onclick = () => m.remove();
@@ -184,7 +184,7 @@ async function openRespondent(iid, tab = "transcript") {
     }));
     box.querySelectorAll("[data-ins]").forEach((a) => (a.onclick = (e) => {
       e.preventDefault(); const sg = segs[+a.dataset.ins];
-      const m = modal(`<h2>写一条洞察</h2><p class="sm mut">证据必须是这段话里<b>逐字出现</b>的内容（可以只摘一部分，中间用“…”连接）。对不上会被拒绝。</p>
+      const m = modal(`<h2>写一条洞察</h2>
         <form id="f"><label class="f"><span>主题（几个字）</span><input name="theme" required maxlength="200"></label><label class="f"><span>洞察（一句话）</span><textarea name="statement" rows="2" required></textarea></label>
         <label class="f"><span>证据原话</span><textarea name="quote" rows="3" required>${esc(sg.text_zh || sg.text_orig)}</textarea></label>
         <label class="f"><span>证据语言</span><select name="lang"><option value="${sg.text_zh ? "zh" : "orig"}">${sg.text_zh ? "中文翻译" : "原文"}</option>${sg.text_zh ? `<option value="orig">原文</option>` : ""}</select></label>

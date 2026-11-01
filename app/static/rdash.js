@@ -26,16 +26,16 @@ async function rdBuild(p, rec) {
         <div class="row" style="margin-top:6px"><button class="s" type="button" id="rdcopy">复制链接</button><a class="btn s" href="${esc(f.link)}" target="_blank" rel="noopener">打开答题页</a>${live ? `<button class="s" type="button" id="rdclose">停止收集</button>` : ""}</div></div><div class="rd-qrc"><img id="rdqr" alt="问卷二维码" width="108" height="108"><button class="s" type="button" id="rdcopyqr">复制二维码</button><span class="sm rd-ok" id="rdqrok" role="status" aria-live="polite"></span></div></div>`
     : `<div class="empty" style="padding:14px"><b>${d.has_form ? "问卷还没有发布" : "还没有招募问卷"}</b><span>到“招募问卷”页对话编写、测试，点“发布成链接和二维码”，链接和二维码就出现在这里。</span><button class="s" type="button" id="rdgo">去招募问卷</button></div>`;
   const kpi = (v, l, cls = "") => `<div class="rd-k ${cls}"><b>${v}</b><span>${l}</span></div>`;
-  const quotas = rec.quotas.length ? rec.quotas.map(rdQuota).join("") : `<p class="sm mut" style="margin:0">还没有配额。例如“新加坡 10 人”“女性 5 人”。</p>`;
+  const quotas = rec.quotas.length ? rec.quotas.map(rdQuota).join("") : `<p class="sm mut" style="margin:0">还没有配额。</p>`;
   const rules = d.rules.count ? `<div class="sm" style="margin-top:6px"><button class="lnk" type="button" id="rules">旧版资格规则（${d.rules.count} 条）· 编辑或清空</button> <button class="lnk" type="button" id="reapply">重新筛一遍</button></div>` : "";
   const traits = (xs, cls, none) => (xs.length ? xs.map((t) => `<span class="rd-chip ${cls}">${esc(t)}</span>`).join("") : `<span class="sm mut">${none}</span>`);
   const TYPE = { single: "单选", multi: "多选" };
   const cmp = d.compare.length ? `<table class="rd-cmp"><colgroup><col style="width:55%"><col style="width:15%"><col style="width:15%"><col style="width:15%"></colgroup><thead><tr><th>题目 / 选项</th><th>合格</th><th>被筛掉</th><th>差异</th></tr></thead><tbody>${d.compare.map((r) => `<tr><td><div class="rd-q" tabindex="0" data-full="${esc(r.question)}" data-type="${TYPE[r.type] || ""}" data-opt="${esc(r.option)}"><div class="rd-qa"><span class="rd-qt">${esc(r.question)}</span>${TYPE[r.type] ? `<span class="rd-ty">${TYPE[r.type]}</span>` : ""}</div><div class="rd-qo">${esc(r.option)}</div></div></td>
       <td>${rdCell(r.qualified, "g")}</td><td>${rdCell(r.out, "r")}</td><td><span class="rd-chip">差 ${r.gap} 点</span></td></tr>`).join("")}</tbody></table><div class="rd-tip" id="rdtip" role="tooltip" hidden></div>
-      <div class="sm mut" style="margin-top:6px">差异越大，说明这个条件越能区分“合格”和“不合格”；也能看出投放该往哪类人群去。鼠标移到题目上（手机上点一下）可以看完整内容。被筛掉的人只统计选了哪个选项的人数，不保存个人信息。</div>`
-    : `<p class="sm mut" style="margin:0">还没有足够的数据：有人答完问卷后，这里会对比合格和被筛掉的人在每题上的答案。</p>`;
+      <div class="sm mut" style="margin-top:6px">被筛掉的人只统计选了哪个选项的人数，不保存个人信息。</div>`
+    : `<p class="sm mut" style="margin:0">还没有足够的数据。</p>`;
   const traitSum = () => `合格者共同点：${d.traits.qualified.length ? esc(d.traits.qualified[0]) : "暂无"}`;
-  const updateQuotas = (qs) => { const box = $("#rdquotas"); if (box) box.innerHTML = qs.length ? qs.map(rdQuota).join("") : `<p class="sm mut" style="margin:0">还没有配额。例如“新加坡 10 人”“女性 5 人”。</p>`; };
+  const updateQuotas = (qs) => { const box = $("#rdquotas"); if (box) box.innerHTML = qs.length ? qs.map(rdQuota).join("") : `<p class="sm mut" style="margin:0">还没有配额。</p>`; };
   const opened = rdOpenSet();
   const html = `<div class="rd">
     <div class="rd-row rd-top"><div class="card"><h3>问卷发布 ${live ? `<span class="tag ok">发布中</span>` : f.link ? `<span class="tag">已停止</span>` : ""}</h3>${publish}</div>
