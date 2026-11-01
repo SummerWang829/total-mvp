@@ -3,14 +3,20 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import concept, outline, room_assist
+from .. import ai_room, concept, outline, room_assist
 from ..db import get_db
 from ..deps import Ctx, require_roles, visible_interview
-from ..models import CaptionLine, Project
+from ..models import CaptionLine, ChatMessage, Project
 
 router = APIRouter(prefix="/api", tags=["room"])
 OPERATE = ("admin", "researcher", "support", "moderator")
 MAX_ASKED = 40
+
+
+def _ai_lines(db: Session, itv) -> list[dict]:
+    """The text chat of an AI-moderated interview in the shape of caption lines (AI / human moderator = "moderator", never whispers)."""
+    rows = db.scalars(select(ChatMessage).where(ChatMessage.interview_id == itv.id, ChatMessage.sender.in_(("ai", "moderator", "participant"))).order_by(ChatMessage.seq).limit(2000)).all()
+    return [{"id": r.id, "speaker": "participant" if r.sender == "participant" else "moderator", "text": r.text, "at_ms": ai_room.chat_at_ms(itv, r)} for r in rows]
 
 
 @router.get("/interviews/{iid}/assist")
@@ -19,7 +25,7 @@ def assist(iid: str, asked: str = Query("", max_length=1200), ctx: Ctx = Depends
     itv = visible_interview(db, ctx, iid)
     proj = db.get(Project, itv.project_id)
     summary = outline.summary_of(proj.outline_text or "")
-    lines = [{"id": c.id, "speaker": c.speaker, "text": c.text, "at_ms": c.at_ms}
+    lines = _ai_lines(db, itv) if itv.moderation == "ai" else [{"id": c.id, "speaker": c.speaker, "text": c.text, "at_ms": c.at_ms}
              for c in db.scalars(select(CaptionLine).where(CaptionLine.interview_id == itv.id).order_by(CaptionLine.seq).limit(2000)).all()]
     planned = (summary["minutes"] if summary else None) or itv.duration_min or 45
     out = {"has_outline": bool(summary), "planned_min": planned, "talk": room_assist.talk_share(lines)}

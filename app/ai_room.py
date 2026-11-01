@@ -47,6 +47,21 @@ _LOCKS: dict[str, threading.Lock] = {}
 _REGISTRY_LOCK = threading.Lock()
 
 
+TAKEOVER_ROLES = ("admin", "researcher", "support")   # who may take over the whole interview (then speak, show video, share the screen)
+WHISPER_ROLES = ("admin", "researcher", "support", "moderator", "observer")   # who may whisper to the AI (the client observer too)
+
+
+def is_ai_one_to_one(itv: Interview) -> bool:
+    """An AI-moderated depth interview (the AI has no camera or voice; the participant types)."""
+    return itv.moderation == "ai" and itv.kind == "depth"
+
+
+def human_in_control(db: Session, itv: Interview) -> bool:
+    """True while a researcher has taken the interview over from the AI."""
+    sess = _session(db, itv.id)
+    return bool(sess and sess.control == "human" and not sess.finished)
+
+
 class AiRoomError(Exception):
     """Something staff or the participant asked for cannot be done now; `status` is the HTTP status, `message` plain Chinese."""
 
@@ -367,6 +382,10 @@ def ack_alert(db: Session, itv: Interview, actor: str) -> None:
     sess = _need_session(db, itv)
     sess.alert, sess.alert_reason = AlertLevel.NONE.value, ""
     audit(db, itv.org_id, actor, "ai.ack_alert", itv.id)
+
+
+def chat_at_ms(itv: Interview, row: ChatMessage) -> int:
+    return _at_ms(itv, row)
 
 
 def _at_ms(itv: Interview, row: ChatMessage) -> int:

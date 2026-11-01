@@ -2,7 +2,7 @@
 <html lang="zh-CN" data-theme="light"><head><meta charset="utf-8"><script src="/theme.js"></script><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>星桐 TOTAL · 深访</title><link rel="stylesheet" href="/app.css">
 <link rel="stylesheet" href="/editorial.css"><link rel="stylesheet" href="/fonts.css"><link rel="stylesheet" href="/ui_v7.css"><link rel="stylesheet" href="/ui_v8.css"><link rel="stylesheet" href="/ui_rooms.css">
-<link rel="stylesheet" href="/chat.css"><link rel="stylesheet" href="/chatsel.css"><link rel="stylesheet" href="/ui_list.css"><link rel="stylesheet" href="/ui_screening.css"><link rel="stylesheet" href="/ui_outline.css"><link rel="stylesheet" href="/ui_wizard.css"><link rel="stylesheet" href="/ui_overview.css"><link rel="stylesheet" href="/ui_v6.css"><link rel="stylesheet" href="/ui_global.css"><link rel="stylesheet" href="/ui_v9.css"></head>
+<link rel="stylesheet" href="/chat.css"><link rel="stylesheet" href="/chatsel.css"><link rel="stylesheet" href="/ui_list.css"><link rel="stylesheet" href="/ui_screening.css"><link rel="stylesheet" href="/ui_outline.css"><link rel="stylesheet" href="/ui_wizard.css"><link rel="stylesheet" href="/ui_overview.css"><link rel="stylesheet" href="/ui_v6.css"><link rel="stylesheet" href="/ui_global.css"><link rel="stylesheet" href="/ui_v9.css"><link rel="stylesheet" href="/ui_v10.css"></head>
 <body>
 <div id="app"></div>
 <script src="/app.js"></script>
@@ -234,6 +234,8 @@ async function projectsView() {
       <div class="grid" id="pgrid">${ps.map(projectCard).join("")}</div><div class="card empty" id="pnone" hidden>没有符合条件的项目。换个关键词，或点“全部”。</div>`
       : `<div class="card empty">${canMake ? `<b>还没有项目。</b><span>新建一个项目，然后在里面添加受访者、新建场次。</span>` : `<b>还没有分配给你的项目。</b><span>研究员把你加到某场访谈后，项目会出现在这里。</span>`}</div>`}`, { active: "projects", title: "全部项目" });
   app.querySelector("main").classList.add("projects-page");
+  const pf = app.querySelector("main .filters"), pa = app.querySelector("main .project-actions"), ph = app.querySelector("main > .head");
+  if (pf && pa && ph) { pf.appendChild(pa); ph.remove(); }  // the top bar already says "全部项目": no second title; the buttons sit at the right end of the search row
   const apply = () => {
     const qq = ($("#pq") || {}).value?.trim().toLowerCase() || "", ff = sessionStorage.getItem("pf") || "open";
     let n = 0;
@@ -1506,5 +1508,6 @@ async function demoView() {
 }
 
 window.addEventListener("hashchange", () => { document.querySelectorAll(".modal").forEach((m) => m.remove()); render(); });  // an open dialog never survives a page change
+if (window.TT_THEME) TT_THEME.mount();  // theme switch (top right) and the back-to-top button
 render();
 </script></body></html>

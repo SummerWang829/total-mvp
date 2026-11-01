@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><script src="/theme.js"></script><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Interview room</title><link rel="stylesheet" href="/app.css"><link rel="stylesheet" href="/editorial.css"><link rel="stylesheet" href="/fonts.css"><link rel="stylesheet" href="/ui_v7.css"><link rel="stylesheet" href="/ui_v8.css"><link rel="stylesheet" href="/room-role.css"><link rel="stylesheet" href="/ui_room.css"></head>
+<title>Interview room</title><link rel="stylesheet" href="/app.css"><link rel="stylesheet" href="/editorial.css"><link rel="stylesheet" href="/fonts.css"><link rel="stylesheet" href="/ui_v7.css"><link rel="stylesheet" href="/ui_v8.css"><link rel="stylesheet" href="/room-role.css"><link rel="stylesheet" href="/ui_room.css"><link rel="stylesheet" href="/emoji.css"><link rel="stylesheet" href="/room_bar.css"><script src="/emoji.js"></script></head>
 <body class="stage t-light">
 <script>try { if (localStorage.getItem("tt_room_theme") === "dark") document.body.className = "stage t-dark"; } catch (e) {}</script>
 <header class="rhead">
@@ -56,28 +56,28 @@ const I18N = {
         rec: "Recording", mic: "Mic", micOff: "Mic off", cam: "Camera", camOff: "Camera off", leave: "Leave", react: "Reactions", rxSent: "sent", rxSlow: "A little slower, please", rxWait: "Not available right now", rxMore: "More emoji", rxInsert: "Add an emoji", rx: { like: "Agree", love: "Love it", smile: "Happy", laugh: "Funny", surprise: "Surprised", confused: "Confused", sad: "Sad", dislike: "Disagree" }, left: "You have left the interview.", ended: "The interview has ended. Thank you for taking part!",
         sound: "Tap to turn on sound", noDevice: "We could not access your camera or microphone. Please allow access in your browser, then reload this page.",
         noCam: "Your camera is not available, joining with microphone only.", lost: "Connection lost. Please reload this page.", connecting: "Connecting…", upload: "Having trouble saving the recording. Please keep this page open.",
-        cantEnter: "Unable to enter", aiName: "AI moderator", chatTitle: "Chat with the moderator", chatPh: "Type your answer here…", send: "Send", typing: "The moderator is replying…",
+        cantEnter: "Unable to enter", aiName: "AI moderator", aiSpeaking: "AI is speaking…", chatTitle: "Chat with the moderator", chatPh: "Type your answer here…", send: "Send", typing: "The moderator is replying…",
         chatWait: "The moderator will write to you here shortly.", chatClosed: "The conversation has ended. Thank you!", chatErr: "Could not send. Please try again.", playHint: "Tap the play button on the video to watch it.", person: "Participant", names: { moderator: "Moderator" }, toDark: "Dark green", toLight: "Light", themeName: "Room colours", leftBack: "To come back, open your invitation link again; the moderator will let you in.",
         markHint: "Tap the picture to mark what you like or dislike.", markLike: "Like", markDislike: "Dislike", markRemove: "Remove this mark" },
   zh: { title: "访谈房间", you: "我", mod: "主持人", waiting: "你已进入。请稍等，主持人很快会开始访谈。", live: "访谈进行中。",
         rec: "正在录制", mic: "麦克风", micOff: "麦克风已关", cam: "摄像头", camOff: "摄像头已关", leave: "离开", react: "表情", rxSent: "已发送", rxSlow: "慢一点，稍后再发", rxWait: "现在还不能发送", rxMore: "更多表情", rxInsert: "插入表情", rx: { like: "赞同", love: "喜欢", smile: "开心", laugh: "好笑", surprise: "惊讶", confused: "困惑", sad: "难过", dislike: "不赞同" }, left: "你已离开访谈。", ended: "访谈已结束，感谢你的参与！",
         sound: "点击开启声音", noDevice: "无法使用你的摄像头或麦克风。请在浏览器里允许访问后刷新本页。",
         noCam: "摄像头不可用，将只用麦克风加入。", lost: "连接已断开，请刷新本页。", connecting: "正在连接…", upload: "录制保存遇到问题，请保持本页打开。",
-        cantEnter: "无法进入", aiName: "AI 主持人", chatTitle: "和主持人聊天", chatPh: "在这里输入你的回答…", send: "发送", typing: "主持人正在回复…",
+        cantEnter: "无法进入", aiName: "AI 主持人", aiSpeaking: "AI 正在发言…", chatTitle: "和主持人聊天", chatPh: "在这里输入你的回答…", send: "发送", typing: "主持人正在回复…",
         chatWait: "主持人很快会在这里给你发消息。", chatClosed: "对话已结束，谢谢！", chatErr: "没有发送成功，请再试一次。", playHint: "请点击视频上的播放键观看。", person: "参与者", names: {}, toDark: "深绿主题", toLight: "浅色主题", themeName: "切换房间配色", leftBack: "如需回来，请重新打开邀请链接，等主持人再次放行。",
         markHint: "点图片，标出你喜欢或不喜欢的地方。", markLike: "喜欢", markDislike: "不喜欢", markRemove: "删除这个标记" },
   ms: { title: "Bilik temu bual", you: "Anda", mod: "Moderator", waiting: "Anda sudah masuk. Sila tunggu, moderator akan memulakan temu bual sebentar lagi.", live: "Temu bual sedang berlangsung.",
         rec: "Sedang dirakam", mic: "Mikrofon", micOff: "Mikrofon dimatikan", cam: "Kamera", camOff: "Kamera dimatikan", leave: "Keluar", react: "Reaksi", rxSent: "dihantar", rxSlow: "Perlahan sedikit, sila", rxWait: "Tidak tersedia sekarang", rxMore: "Lagi emoji", rxInsert: "Tambah emoji", rx: { like: "Setuju", love: "Suka sangat", smile: "Gembira", laugh: "Kelakar", surprise: "Terkejut", confused: "Keliru", sad: "Sedih", dislike: "Tidak setuju" }, left: "Anda telah keluar dari temu bual.", ended: "Temu bual telah tamat. Terima kasih kerana mengambil bahagian!",
         sound: "Ketik untuk menghidupkan bunyi", noDevice: "Kami tidak dapat mengakses kamera atau mikrofon anda. Sila benarkan akses dalam pelayar anda, kemudian muat semula halaman ini.",
         noCam: "Kamera tidak tersedia, menyertai dengan mikrofon sahaja.", lost: "Sambungan terputus. Sila muat semula halaman ini.", connecting: "Menyambung…", upload: "Ada masalah menyimpan rakaman. Sila biarkan halaman ini terbuka.",
-        cantEnter: "Tidak dapat masuk", aiName: "Moderator AI", chatTitle: "Sembang dengan moderator", chatPh: "Taip jawapan anda di sini…", send: "Hantar", typing: "Moderator sedang membalas…",
+        cantEnter: "Tidak dapat masuk", aiName: "Moderator AI", aiSpeaking: "AI sedang bercakap…", chatTitle: "Sembang dengan moderator", chatPh: "Taip jawapan anda di sini…", send: "Hantar", typing: "Moderator sedang membalas…",
         chatWait: "Moderator akan menulis kepada anda di sini sebentar lagi.", chatClosed: "Perbualan telah tamat. Terima kasih!", chatErr: "Tidak dapat menghantar. Sila cuba lagi.", playHint: "Ketik butang main pada video untuk menontonnya.", person: "Peserta", names: {}, toDark: "Hijau gelap", toLight: "Cerah", themeName: "Warna bilik", leftBack: "Untuk kembali, buka semula pautan jemputan anda; moderator akan membenarkan anda masuk.",
         markHint: "Ketik gambar untuk menanda apa yang anda suka atau tidak suka.", markLike: "Suka", markDislike: "Tidak suka", markRemove: "Buang tanda ini" },
   ta: { title: "நேர்காணல் அறை", you: "நீங்கள்", mod: "நெறியாளர்", waiting: "நீங்கள் உள்ளே வந்துவிட்டீர்கள். சிறிது காத்திருங்கள், நெறியாளர் விரைவில் நேர்காணலைத் தொடங்குவார்.", live: "நேர்காணல் நடைபெறுகிறது.",
         rec: "பதிவு செய்யப்படுகிறது", mic: "ஒலிவாங்கி", micOff: "ஒலிவாங்கி அணைக்கப்பட்டது", cam: "கேமரா", camOff: "கேமரா அணைக்கப்பட்டது", leave: "வெளியேறு", react: "எதிர்வினை", rxSent: "அனுப்பப்பட்டது", rxSlow: "கொஞ்சம் மெதுவாக, தயவுசெய்து", rxWait: "இப்போது கிடைக்கவில்லை", rxMore: "மேலும் எமோஜி", rxInsert: "எமோஜி சேர்", rx: { like: "ஒப்புதல்", love: "மிகவும் பிடிக்கும்", smile: "மகிழ்ச்சி", laugh: "வேடிக்கை", surprise: "ஆச்சரியம்", confused: "குழப்பம்", sad: "சோகம்", dislike: "மறுப்பு" }, left: "நீங்கள் நேர்காணலிலிருந்து வெளியேறிவிட்டீர்கள்.", ended: "நேர்காணல் முடிந்தது. பங்கேற்றதற்கு நன்றி!",
         sound: "ஒலியை இயக்கத் தட்டவும்", noDevice: "உங்கள் கேமரா அல்லது ஒலிவாங்கியை அணுக முடியவில்லை. உலாவியில் அனுமதி அளித்து, இந்தப் பக்கத்தை மீண்டும் ஏற்றவும்.",
         noCam: "கேமரா கிடைக்கவில்லை, ஒலிவாங்கியுடன் மட்டும் இணைகிறீர்கள்.", lost: "இணைப்பு துண்டிக்கப்பட்டது. இந்தப் பக்கத்தை மீண்டும் ஏற்றவும்.", connecting: "இணைக்கப்படுகிறது…", upload: "பதிவைச் சேமிப்பதில் சிக்கல். இந்தப் பக்கத்தைத் திறந்தே வைத்திருங்கள்.",
-        cantEnter: "உள்ளே நுழைய முடியவில்லை", aiName: "AI நெறியாளர்", chatTitle: "நெறியாளருடன் அரட்டை", chatPh: "உங்கள் பதிலை இங்கே தட்டச்சு செய்யவும்…", send: "அனுப்பு", typing: "நெறியாளர் பதிலளிக்கிறார்…",
+        cantEnter: "உள்ளே நுழைய முடியவில்லை", aiSpeaking: "AI பேசுகிறது…", aiName: "AI நெறியாளர்", chatTitle: "நெறியாளருடன் அரட்டை", chatPh: "உங்கள் பதிலை இங்கே தட்டச்சு செய்யவும்…", send: "அனுப்பு", typing: "நெறியாளர் பதிலளிக்கிறார்…",
         chatWait: "நெறியாளர் விரைவில் இங்கே உங்களுக்கு எழுதுவார்.", chatClosed: "உரையாடல் முடிந்தது. நன்றி!", chatErr: "அனுப்ப முடியவில்லை. மீண்டும் முயற்சிக்கவும்.", playHint: "வீடியோவைப் பார்க்க, அதில் உள்ள இயக்கு பொத்தானைத் தட்டவும்.", person: "பங்கேற்பாளர்", names: {}, toDark: "அடர் பச்சை", toLight: "வெளிர்", themeName: "அறையின் நிறம்", leftBack: "திரும்ப வர, உங்கள் அழைப்பு இணைப்பை மீண்டும் திறக்கவும்; நெறியாளர் உங்களை அனுமதிப்பார்.",
         markHint: "பிடித்த/பிடிக்காத இடத்தைக் குறிக்கப் படத்தைத் தட்டவும்.", markLike: "பிடிக்கும்", markDislike: "பிடிக்காது", markRemove: "இந்தக் குறியை அகற்று" },
 };
@@ -102,52 +102,9 @@ let room = null, S = null, role = null, ended = false, localTracks = [], camTrac
 
 // ---- emoji: a quick row, and the full panel (search, categories, skin tones, recents) like a phone keyboard; all files come from our own server ----
 const QUICK = [["like", "👍"], ["love", "❤️"], ["smile", "😊"], ["laugh", "😂"], ["surprise", "😮"], ["confused", "😕"], ["sad", "😢"], ["dislike", "👎"]];
-const EMO = { pop: null, picker: null, loading: null, onPick: null };
-async function loadPicker() {
-  if (EMO.picker) return EMO.picker;
-  if (!EMO.loading) EMO.loading = (async () => {
-    const l = S.language || "en", loc = l === "zh" ? "zh" : "en", ui = l === "zh" ? "zh_CN" : l === "ms" ? "ms_MY" : "en";   // emoji names exist in English and Chinese; the panel's own words also in Malay
-    await import("/vendor/emoji/index.js");
-    const p = document.createElement("emoji-picker");
-    p.className = document.body.classList.contains("t-dark") ? "dark" : "light";
-    p.setAttribute("locale", loc); p.setAttribute("data-source", `/vendor/emoji/data/${loc}.json`); p.i18n = (await import(`/vendor/emoji/i18n/${ui}.js`)).default;
-    p.addEventListener("emoji-click", (e) => { if (EMO.onPick) EMO.onPick(e.detail.unicode); });
-    return p;
-  })();
-  try { EMO.picker = await EMO.loading; } catch (e) { EMO.loading = null; throw e; }
-  return EMO.picker;
-}
-async function showFullPicker() {
-  const full = $id("rxfull"); if (!full) return;
-  try {
-    const p = await loadPicker(); if (!full.contains(p)) full.appendChild(p);
-    full.hidden = false; $id("rx-more").setAttribute("aria-expanded", "true");
-    const sb = p.shadowRoot && p.shadowRoot.querySelector("input[type=search]"); if (sb) sb.focus();
-  } catch { toast(T.rxWait); }
-}
-function emojiPopover() {
-  if (EMO.pop) return EMO.pop;
-  const pop = document.createElement("div"); pop.id = "rxpop"; pop.className = "rxpop"; pop.hidden = true; pop.setAttribute("role", "group"); pop.setAttribute("aria-label", T.react);
-  const quick = document.createElement("div"); quick.className = "rxq";
-  QUICK.forEach(([key, glyph]) => {
-    const b = document.createElement("button"); b.type = "button"; b.textContent = glyph; b.dataset.k = glyph; b.setAttribute("aria-label", T.rx[key]); b.title = T.rx[key];
-    b.onclick = () => { if (EMO.onPick) EMO.onPick(glyph); }; quick.appendChild(b);
-  });
-  const more = document.createElement("button"); more.type = "button"; more.id = "rx-more"; more.className = "rxmore"; more.textContent = T.rxMore; more.setAttribute("aria-expanded", "false"); more.onclick = showFullPicker;
-  const full = document.createElement("div"); full.id = "rxfull"; full.hidden = true;
-  pop.append(quick, more, full); document.body.appendChild(pop);
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !pop.hidden) closeEmoji(); });
-  document.addEventListener("pointerdown", (e) => { if (!pop.hidden && !pop.contains(e.target) && !e.target.closest("#b-react, #cemoji")) closeEmoji(); });
-  return (EMO.pop = pop);
-}
-function closeEmoji() {
-  const pop = EMO.pop; if (!pop) return; pop.hidden = true;
-  $id("b-react")?.setAttribute("aria-expanded", "false"); $id("cemoji")?.setAttribute("aria-expanded", "false");
-}
-function openEmoji(onPick, { quick }) {   // quick: the row of eight first (a reaction); otherwise straight to the full panel (inserting into a message)
-  const pop = emojiPopover(); EMO.onPick = (g) => { closeEmoji(); onPick(g); };
-  pop.querySelector(".rxq").hidden = !quick; pop.querySelector("#rx-more").hidden = !quick; pop.hidden = false;
-  if (!quick) showFullPicker();
+function closeEmoji() { EmojiPanel.close(); }
+function openEmoji(onPick, { quick, anchor, toggle, stay }) {   // quick: the row of eight reactions on top (a reaction); stay: keep the panel open while inserting into a message
+  return EmojiPanel.open({ anchor, toggle, onPick, stay, lang: role === "participant" ? S.language || "en" : "zh", quick: quick ? QUICK.map(([k, g]) => [T.rx[k], g]) : null });
 }
 async function sendReaction(glyph) {
   try {
@@ -156,7 +113,7 @@ async function sendReaction(glyph) {
   } catch { toast(T.rxWait); }
 }
 function buildReactionButton() {  // a participant can send an emoji at any moment; the team sees it with the time and the material on screen
-  const b = addBtn("b-react", T.react, async () => { if (EMO.pop && !EMO.pop.hidden) closeEmoji(); else { openEmoji(sendReaction, { quick: true }); b.setAttribute("aria-expanded", "true"); } });
+  const b = addBtn("b-react", T.react, async () => { if (EmojiPanel.isOpen()) closeEmoji(); else openEmoji(sendReaction, { quick: true, anchor: b, toggle: b }); });
   b.setAttribute("aria-haspopup", "true"); b.setAttribute("aria-expanded", "false");
 }
 function addBtn(id, label, fn, cls = "") {
@@ -326,10 +283,24 @@ function finish() {
 // ---------------- AI moderation: the text chat ----------------
 const C = { on: false, after: 0, started: false, control: "ai", finished: false, sending: false, engine: true };
 const chatUrl = () => (inviteT ? `/api/public/join/${encodeURIComponent(inviteT)}/chat` : `/api/interviews/${iid}/ai/state`);
+function putAtCursor(ta, g) {
+  const a = ta.selectionStart ?? ta.value.length, z = ta.selectionEnd ?? a;
+  ta.value = ta.value.slice(0, a) + g + ta.value.slice(z); ta.selectionStart = ta.selectionEnd = a + g.length;
+  ta.dispatchEvent(new Event("input", { bubbles: true })); if (innerWidth > 600) ta.focus();
+}
 const WHO_STAFF = { ai: "AI 主持人", moderator: "主持人", participant: "受访者", whisper: "悄悄话（只有 AI 看到）" };
 const whoLabel = (s) => (role === "participant" ? { ai: T.aiName, moderator: T.mod, participant: T.you }[s] : WHO_STAFF[s]);
+// the AI moderator's face: calm while it listens, speaking (with a small "AI 正在发言…" tag) for a few seconds after each of its lines
+const AIF = { timer: 0 };
+const aiFace = (name) => `<span class="aiface" role="img" aria-label="${name}"><span class="aiwave l" aria-hidden="true"><i></i><i></i><i></i></span><span class="aiwave r" aria-hidden="true"><i></i><i></i><i></i></span><span class="aibody"><img class="ai-idle" src="/ai_idle.webp" alt=""><img class="ai-talk" src="/ai_talk.webp" alt=""></span><i class="aitag" role="status"><u aria-hidden="true"></u><u aria-hidden="true"></u><u aria-hidden="true"></u>${role === "participant" ? (T.aiSpeaking || "AI is speaking…") : "AI 正在发言…"}</i></span>`;
+function aiSpeak(text) {
+  document.querySelectorAll(".aiface").forEach((f) => f.classList.add("talking"));
+  clearTimeout(AIF.timer);
+  AIF.timer = setTimeout(() => document.querySelectorAll(".aiface").forEach((f) => f.classList.remove("talking")), Math.max(2500, Math.min(9000, 1800 + (text || "").length * 90)));
+}
 function addLine(m) {
   const log = $id("clog"); if (!log) return;
+  if (m.sender === "ai" && C.after > 0) aiSpeak(m.text);   // only lines that arrive while the page is open (not the history loaded at start)
   const d = document.createElement("div");
   d.className = "m" + (m.sender === "participant" && role === "participant" ? " me" : m.sender === "moderator" ? " human" : m.sender === "whisper" ? " whisper" : "");
   const w = document.createElement("span"); w.className = "who"; w.textContent = whoLabel(m.sender); d.appendChild(w);
@@ -361,7 +332,7 @@ function aiRender(st) {
     return;
   }
   const live = last && last.status === "live";
-  $id("aist").textContent = !C.started ? "AI 主持还没有启动" : C.finished ? "AI 已说完结束语，可以结束访谈" : C.control === "human" ? "已由你接管：AI 不会说话" : "AI 正在主持";
+  $id("aist").textContent = !C.started ? "AI 主持还没有启动" : C.finished ? "AI 已说完结束语，可以结束访谈" : C.control === "human" ? "已由研究员接管：AI 不会说话" : "AI 正在主持";
   const box = $id("aalert");
   if (box) {
     box.hidden = !st || !st.alert || st.alert === "none";
@@ -370,18 +341,19 @@ function aiRender(st) {
       box.querySelector("span").textContent = (st.alert === "red" ? "红色告警：" : "提醒：") + (st.alert_reason || "请查看对话");
     }
   }
+  const set = (id, on) => { const b = $id(id); if (b) b.disabled = !on; };
   if (role === "moderator") {
-    const set = (id, on) => { const b = $id(id); if (b) b.disabled = !on; };
     set("a-start", live && !C.started); set("a-take", C.started && C.control === "ai" && !C.finished);
     set("a-back", C.started && C.control === "human" && !C.finished && C.engine);
-    $id("hform").hidden = !(C.started && C.control === "human");
-    $id("win").disabled = !(C.started && C.engine) ; $id("wsend").disabled = !(C.started && C.engine);
   }
+  const hf = $id("hform"); if (hf) hf.hidden = !(C.started && C.control === "human");
+  const wi = $id("win") || $id("pin"); if (wi) wi.disabled = !(C.started && C.engine); set("wsend", C.started && C.engine);
+  if (S.can_takeover) humanMedia(C.control === "human" && C.started && !C.finished);
 }
 function buildParticipantChat() {
   const box = document.createElement("div"); box.className = "rpan chat"; box.id = "chatbox"; box.setAttribute("aria-label", T.chatTitle);
-  box.innerHTML = `<h3></h3><div class="log" id="clog" role="log" aria-live="polite"></div><p class="closed" id="cnote" role="status"></p>
-    <form id="cform"><textarea id="cin" rows="2" maxlength="2000" disabled></textarea><button type="button" id="cemoji" class="emo" aria-haspopup="true" aria-expanded="false" disabled>😊</button><button class="p" id="csend" type="submit" disabled></button></form>`;
+  box.innerHTML = `<div class="aihead">${aiFace(T.aiName)}</div><h3></h3><div class="log" id="clog" role="log" aria-live="polite"></div><p class="closed" id="cnote" role="status"></p>
+    <form id="cform" class="composer"><textarea id="cin" rows="6" maxlength="2000" disabled></textarea><div class="ctools"><button type="button" id="cemoji" class="emo" aria-haspopup="true" aria-expanded="false" disabled>😊</button><span class="ccount" id="ccount" aria-hidden="true"></span><span class="sp"></span><button class="p" id="csend" type="submit" disabled></button></div></form>`;
   $("h3", box).textContent = T.chatTitle; $("#cin", box).placeholder = T.chatPh; $("#cin", box).setAttribute("aria-label", T.chatPh); $("#csend", box).textContent = T.send; $("#cemoji", box).setAttribute("aria-label", T.rxInsert); $("#cemoji", box).title = T.rxInsert;
   grid.parentNode.appendChild(box);
   const send = async () => {
@@ -394,51 +366,63 @@ function buildParticipantChat() {
     C.sending = false; await pollChat(); $id("cin").focus();
   };
   $id("cform").onsubmit = (e) => { e.preventDefault(); send(); };
-  $id("cemoji").onclick = () => {   // put the chosen emoji into the message at the cursor
-    if (EMO.pop && !EMO.pop.hidden) return closeEmoji();
-    $id("cemoji").setAttribute("aria-expanded", "true");
-    openEmoji((g) => { const ta = $id("cin"), a = ta.selectionStart ?? ta.value.length, z = ta.selectionEnd ?? a; ta.value = ta.value.slice(0, a) + g + ta.value.slice(z); ta.selectionStart = ta.selectionEnd = a + g.length; ta.focus(); }, { quick: false });
+  $id("cemoji").onclick = () => {   // put the chosen emoji into the message at the cursor; the panel stays open for more
+    if (EmojiPanel.isOpen()) return closeEmoji();
+    openEmoji((g) => putAtCursor($id("cin"), g), { quick: false, stay: true, anchor: $id("cform"), toggle: $id("cemoji") });
   };
+  $id("cin").addEventListener("input", () => { $id("ccount").textContent = $id("cin").value.length > 1500 ? `${$id("cin").value.length} / 2000` : ""; });
   $id("cin").onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); } };
 }
-function buildAiPanel() {  // the team's side: status, alert, controls (moderator only), the conversation, whispers
-  const ctl = role === "moderator";
-  $id("rpan").innerHTML = `<h3>AI 主持</h3><div class="wst" id="aist" role="status"></div>
-    <div class="alertbox" id="aalert" role="alert" hidden><span></span>${ctl ? `<button type="button" id="a-ack">我知道了</button>` : ""}</div>
+function buildAiPanel() {  // the team's side: status, alert, controls, the whisper box. The four-column room has the conversation in column 2 and whispers in column 3
+  const ctl = role === "moderator", take = !!S.can_takeover, q4 = Q4.on;
+  const controls = `<h3>AI 主持</h3><div class="wst" id="aist" role="status"></div>
+    <div class="alertbox" id="aalert" role="alert" hidden><span></span>${take ? `<button type="button" id="a-ack">我知道了</button>` : ""}</div>
     ${ctl ? `<details class="gbox" id="gbox"><summary>访谈提纲（不上传就用示范提纲）</summary>
       <label for="gfile">上传 .txt 提纲，或直接粘贴到下面</label><input type="file" id="gfile" accept=".txt,text/plain">
       <textarea id="gtext" rows="6" maxlength="20000" aria-label="访谈提纲"></textarea>
-      <div class="row"><button id="gcheck" type="button">检查提纲</button></div><p class="sm" id="gnote" role="status"></p></details>` : ""}
-    ${ctl ? `<div class="row"><button class="p" id="a-start" type="button">启动 AI 主持</button><button id="a-take" type="button">接管</button><button id="a-back" type="button">交还 AI</button></div>` : ""}
-    <div class="chat"><div class="log" id="clog" role="log" aria-live="polite" tabindex="0"></div></div>
-    ${ctl ? `<form id="hform" hidden><label for="hin">你接管了：以主持人身份回复受访者</label><textarea id="hin" rows="2" maxlength="2000"></textarea><button class="p" id="hsend" type="submit">发送给受访者</button></form>
-    <form id="wform"><div class="qqh sm" id="qqh">点上面对话里的某一句，可以把它引用到这里，让 AI 围绕它追问</div><div class="qqchips" id="qq"></div><label for="win">悄悄话：只给 AI 看，受访者看不到，AI 也不会照念</label><textarea id="win" rows="2" maxlength="500"></textarea>
+      <div class="row"><button id="gcheck" type="button">检查提纲</button></div><p class="sm" id="gnote" role="status"></p></details>
+      <div class="row"><button class="p" id="a-start" type="button">启动 AI 主持</button>${take ? `<button id="a-take" type="button">接管</button><button id="a-back" type="button">交还 AI</button>` : ""}</div>` : ""}
+    ${take ? `<form id="hform" class="composer" hidden><label for="hin">你接管了：以主持人身份回复受访者</label><textarea id="hin" rows="5" maxlength="2000"></textarea>
+      <div class="ctools"><button type="button" id="hemoji" class="emo" aria-haspopup="true" aria-expanded="false" aria-label="表情" title="表情">😊</button><span class="sp"></span><button class="p" id="hsend" type="submit">发送给受访者</button></div></form>` : ""}`;
+  if (q4) {
+    const box = document.createElement("div"); box.id = "aibox"; box.className = "aibox"; box.innerHTML = controls; $id("c3").prepend(box);
+    aiQ4Layout();
+  } else {
+    $id("rpan").innerHTML = controls + `<div class="chat"><div class="log" id="clog" role="log" aria-live="polite" tabindex="0"></div></div>
+    ${S.can_whisper ? `<form id="wform"><div class="qqh sm" id="qqh">点上面对话里的某一句，可以把它引用到这里，让 AI 围绕它追问</div><div class="qqchips" id="qq"></div><label for="win">悄悄话：只给 AI 看，受访者看不到，AI 也不会照念</label><textarea id="win" rows="2" maxlength="500"></textarea>
       <div class="qdepth" id="qdepth" role="group" aria-label="追问深度"><button type="button" data-d="shallow">轻问 1 个</button><button type="button" data-d="deep">深挖 2–3 个</button></div><button id="wsend" type="submit">发送悄悄话</button></form>` : `<p>你是观察员：可以看对话，不能操作。</p>`}`;
-  buildBackroom($id("rpan"));
-  if (!ctl) return;
+    buildBackroom($id("rpan"));
+  }
   const call = (path, body) => api(`/interviews/${iid}/ai/${path}`, { method: "POST", body: body || {} });
-  const act = (id, path, okMsg) => ($id(id).onclick = guard(async () => { await call(path); toast(okMsg); await pollChat(); }));
-  let guide = null;  // the checked outline, sent with "start"; none = the demo outline
-  const note = (t, bad) => { const n = $id("gnote"); n.textContent = t; n.classList.toggle("bad", !!bad); };
-  $id("gfile").onchange = guard(async (e) => { const f = e.target.files[0]; if (f) { $id("gtext").value = (await f.text()).slice(0, 20000); guide = null; note("已读入，请点“检查提纲”。"); } });
-  $id("gtext").oninput = () => { guide = null; };
-  $id("gcheck").onclick = guard(async () => {
-    const text = $id("gtext").value.trim(); if (!text) { guide = null; return note("没有内容：将使用示范提纲。"); }
-    try {
-      const r = await call("guide/check", { text }); guide = r.guide;
-      const miss = r.missing_stimuli.length ? `；这些素材还没装进这场访谈，AI 问到时不会自动展示：${r.missing_stimuli.join("、")}` : "";
-      note(`提纲可用：${r.summary.topics} 个话题、${r.summary.questions} 个问题、${r.summary.stimuli} 个素材${miss}`);
-    } catch (x) { guide = null; note(x.message, true); }
-  });
-  $id("a-start").onclick = guard(async () => {
-    if ($id("gtext").value.trim() && !guide) { note("提纲还没检查，请先点“检查提纲”。", true); return; }
-    await call("start", guide ? { guide } : {}); toast("AI 主持已启动"); await pollChat();
-  });
-     act("a-take", "takeover", "你已接管，AI 保持沉默"); act("a-back", "handback", "已交还给 AI"); act("a-ack", "ack-alert", "已确认");
-  const form = (fid, tid, path, okMsg) => ($id(fid).onsubmit = guard(async (e) => {
-    e.preventDefault(); const ta = $id(tid), text = ta.value.trim(); if (!text) return;
-    await call(path, { text }); ta.value = ""; toast(okMsg); await pollChat();
-  }));
+  const act = (id, path, okMsg) => { const b = $id(id); if (b) b.onclick = guard(async () => { await call(path); toast(okMsg); await pollChat(); }); };
+  if (ctl) {
+    let guide = null;  // the checked outline, sent with "start"; none = the demo outline
+    const note = (t, bad) => { const n = $id("gnote"); n.textContent = t; n.classList.toggle("bad", !!bad); };
+    $id("gfile").onchange = guard(async (e) => { const f = e.target.files[0]; if (f) { $id("gtext").value = (await f.text()).slice(0, 20000); guide = null; note("已读入，请点“检查提纲”。"); } });
+    $id("gtext").oninput = () => { guide = null; };
+    $id("gcheck").onclick = guard(async () => {
+      const text = $id("gtext").value.trim(); if (!text) { guide = null; return note("没有内容：将使用示范提纲。"); }
+      try {
+        const r = await call("guide/check", { text }); guide = r.guide;
+        const miss = r.missing_stimuli.length ? `；这些素材还没装进这场访谈，AI 问到时不会自动展示：${r.missing_stimuli.join("、")}` : "";
+        note(`提纲可用：${r.summary.topics} 个话题、${r.summary.questions} 个问题、${r.summary.stimuli} 个素材${miss}`);
+      } catch (x) { guide = null; note(x.message, true); }
+    });
+    $id("a-start").onclick = guard(async () => {
+      if ($id("gtext").value.trim() && !guide) { note("提纲还没检查，请先点“检查提纲”。", true); return; }
+      await call("start", guide ? { guide } : {}); toast("AI 主持已启动"); await pollChat();
+    });
+  }
+  act("a-take", "takeover", "你已接管，AI 保持沉默"); act("a-back", "handback", "已交还给 AI"); act("a-ack", "ack-alert", "已确认");
+  if (take) {
+    $id("hform").onsubmit = guard(async (e) => {
+      e.preventDefault(); const ta = $id("hin"), text = ta.value.trim(); if (!text) return;
+      await call("say", { text }); ta.value = ""; toast("已发送"); await pollChat();
+    });
+    $id("hemoji").onclick = () => { if (EmojiPanel.isOpen()) return closeEmoji(); openEmoji((g) => putAtCursor($id("hin"), g), { quick: false, stay: true, anchor: $id("hform"), toggle: $id("hemoji") }); };
+    $id("hin").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); $id("hform").requestSubmit(); } });
+  }
+  if (!S.can_whisper) return;
   qqInit();
   const topicWhisper = (guidance) => {  // quoted lines go to the AI only as a topic: it is told to write its own complete question, never to repeat them
     const cut = (s) => (s.length > 80 ? s.slice(0, 80) + "…" : s);
@@ -446,14 +430,70 @@ function buildAiPanel() {  // the team's side: status, alert, controls (moderato
     const how = QQ.depth === "deep" ? "可以连续深挖 2–3 个问题" : "问 1 个问题即可";
     return `追问主题（只当提示，不要照念原话，请自己组织一个完整的问题）：围绕${topic}${guidance ? "，指引：" + guidance : ""}。${how}。`;
   };
-  $id("wform").onsubmit = guard(async (e) => {
-    e.preventDefault(); const ta = $id("win"), g = ta.value.trim(); if (!g && !QQ.items.length) return;
+  const wf = $id(q4 ? "pform" : "wform");
+  wf.onsubmit = guard(async (e) => {
+    e.preventDefault(); const ta = $id(q4 ? "pin" : "win"), g = ta.value.trim(); if (!g && !QQ.items.length) return;
     const text = QQ.items.length ? topicWhisper(g) : g;
     if (text.length > 500) { toast("引用和指引合起来太长了，请少引用几句或写短一点"); return; }
-    await call("whisper", { text }); ta.value = ""; qqClear(); toast("悄悄话已发给 AI（下一轮生效）"); await pollChat();
+    await call("whisper", { text }); ta.value = ""; ta.dispatchEvent(new Event("input")); qqClear(); toast("悄悄话已发给 AI（下一轮生效）"); await pollChat();
   });
-  form("hform", "hin", "say", "已发送");
 }
+function aiQ4Layout() {   // the AI room uses the same four columns as a human-moderated one: the AI's tile, the conversation, whispers, chapter summaries
+  document.body.classList.add("aimode");
+  const mid = $id("c2c"); mid.classList.remove("cp"); mid.innerHTML = `<h3>对话</h3><div class="log aichat" id="clog" role="log" aria-live="polite" tabindex="0"></div>`;
+  $id("c1t").innerHTML = `<div class="aitile">${aiFace("AI 主持人")}<span>AI 主持人</span></div>`;
+  [...$id("c3").children].forEach((e) => { if (e.matches("h3")) e.hidden = true; });
+  ["probes", "sugg"].forEach((i) => ($id(i).hidden = true)); $id("sugh").hidden = true;
+  $id("pform").hidden = !S.can_whisper;
+  $id("pin").placeholder = "悄悄话：只给 AI 看，受访者看不到，AI 也不会照念"; $id("pin").setAttribute("aria-label", "悄悄话");
+  $id("qqh").textContent = "点中间对话里的话，会引用到输入框上方";
+}
+
+// ---------------- AI interview, a researcher in control: speak, show video, share the screen (the room token is view-only until then) ----------------
+const LIVE = { on: false, busy: false, retryAt: 0, mic: null, cam: null, nameOf: null, reconnecting: false };
+async function swapToken() {   // a token that matches who may publish now; join the video room again with it
+  const t = await api(`/interviews/${iid}/token`, { method: "POST", body: asRole ? { as: asRole } : {} });
+  LIVE.reconnecting = true;
+  try {
+    await room.disconnect(); await room.connect(t.url || S.url, t.token); S.view_only = t.view_only;
+    room.remoteParticipants.forEach((p) => tile(p.identity, LIVE.nameOf(p)));
+  } finally { LIVE.reconnecting = false; }
+}
+function dropHuman() {
+  ["mic", "cam"].forEach((k) => { if (LIVE[k]) { try { LIVE[k].stop(); } catch {} LIVE[k] = null; } });
+  $id("t_me")?.remove(); ["b-hmic", "b-hcam", "b-hscr"].forEach((i) => $id(i)?.remove());
+}
+function humanButtons() {
+  const toggle = (id, on, off, run) => {
+    const b = addBtn(id, on, async () => {
+      const want = b.getAttribute("aria-pressed") !== "true";
+      try { await run(want); } catch (e) { toast(want ? "没有打开成功：请允许浏览器使用设备" : "没有关闭成功", true); return; }
+      b.setAttribute("aria-pressed", String(want)); b.textContent = want ? off : on;
+    });
+    b.setAttribute("aria-pressed", "false");
+  };
+  const lp = () => room.localParticipant;
+  toggle("b-hmic", "开启语音", "关闭语音", async (want) => {
+    if (want) { LIVE.mic = await LivekitClient.createLocalAudioTrack(); await lp().publishTrack(LIVE.mic); }
+    else { await lp().unpublishTrack(LIVE.mic); LIVE.mic.stop(); LIVE.mic = null; }
+  });
+  toggle("b-hcam", "开启视频", "关闭视频", async (want) => {
+    if (want) { LIVE.cam = await LivekitClient.createLocalVideoTrack({ resolution: { width: 640, height: 360, frameRate: 25 } }); await lp().publishTrack(LIVE.cam); setTileVideo(tile("me", "我"), LIVE.cam); }
+    else { await lp().unpublishTrack(LIVE.cam); LIVE.cam.stop(); LIVE.cam = null; $id("t_me")?.remove(); }
+  });
+  toggle("b-hscr", "共享屏幕", "停止共享", async (want) => { await lp().setScreenShareEnabled(want); });
+}
+async function humanMedia(on) {   // called with every poll: idempotent
+  if (!room || LIVE.busy || on === LIVE.on || Date.now() < LIVE.retryAt) return;
+  LIVE.busy = true;
+  try {
+    if (on) { await swapToken(); LIVE.on = true; humanButtons(); }
+    else { dropHuman(); LIVE.on = false; await swapToken(); }
+  } catch { LIVE.retryAt = Date.now() + 15000; toast("视频连接没有切换成功，稍后会再试", true); } finally { LIVE.busy = false; }
+}
+
+// the big send button goes grey while the box is empty (the value is also cleared from code after sending, so look at it now and then)
+setInterval(() => document.querySelectorAll("form.composer").forEach((f) => { const t = f.querySelector("textarea"); f.classList.toggle("empty", !t || !t.value.trim()); }), 300);
 
 // ---------------- concept test: the material on the participant's screen ----------------
 let shownId = null, markPoll = null;
@@ -625,18 +665,24 @@ function buildBackroom(host) {
     e.preventDefault(); const ta = $id("brin"), text = ta.value.trim(); if (!text) return;
     await api(`/interviews/${iid}/backroom`, { method: "POST", body: { text } }); ta.value = ""; await brPoll();
   });
-  chatBox($id("brin"), $id("brform"), $id("brsend"));
+  chatBox($id("brin"), $id("brform"), $id("brsend")); addEmoji($id("brin"));
   brPoll(); BR.timer = setInterval(brPoll, 2000);
 }
 
 // ---- the team's caption panel: both speakers, quote and follow-up on any sentence ----
 const CP = { after: 0 };
 function chatBox(ta, form, send, extra) {
-  const sync = () => { ta.style.height = "auto"; ta.style.height = Math.min(ta.scrollHeight, 120) + "px"; if (send) send.disabled = !(ta.value.trim() || (extra && extra())); };
+  const sync = () => { ta.style.height = "auto"; ta.style.height = Math.min(ta.scrollHeight, 220) + "px"; if (send) send.disabled = !(ta.value.trim() || (extra && extra())); };
   ta.addEventListener("input", sync);
   ta.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); if (!send || !send.disabled) form.requestSubmit(); } });
   form.addEventListener("submit", () => setTimeout(sync, 0));
   sync(); return sync;
+}
+function addEmoji(ta) {   // an emoji button in a chat box of the team's room, before the send button
+  const host = ta.closest(".qin"), box = ta.closest(".qbox"); if (!host || host.querySelector(".qemo")) return;
+  const b = document.createElement("button"); b.type = "button"; b.className = "emo qemo"; b.textContent = "😊"; b.title = "表情"; b.setAttribute("aria-label", "表情"); b.setAttribute("aria-haspopup", "true"); b.setAttribute("aria-expanded", "false");
+  b.onclick = () => { if (EmojiPanel.isOpen()) return closeEmoji(); openEmoji((g) => putAtCursor(ta, g), { quick: false, stay: true, anchor: box, toggle: b }); };
+  host.insertBefore(b, host.querySelector(".qsend"));
 }
 // ---- follow-up composer: click a line to quote it, then write what to dig into; the same state serves the caption panel and the AI room's conversation ----
 const QQ = { items: [], depth: "shallow" }, QQ_MAX = 6;
@@ -942,7 +988,7 @@ function buildQ4() {
   const wb = $id("wbox"); if (wb) { wb.hidden = role !== "moderator"; $id("c1o").insertBefore(wb, $id("olbody")); }   // who is in the room, above the outline
   const pb = $id("prebox"), plb = $id("planbox"); [pb, plb].forEach((b) => { if (b) $id("c1o").appendChild(b); });
   const stim = $id("stim"); if (stim) { if (role === "observer") qc1.insertBefore(stim, $id("c1o")); else $id("c1o").insertBefore(stim, $id("olbody")); }   // the material on the participant's screen, small, above the outline   // the pre-interview answers and the concept-test script, when there are any
-  $id("psend").title = role === "moderator" ? "加入待追问" : "发给主持人"; qqInit(); chatBox($id("pin"), $id("pform"), $id("psend"), () => QQ.items.length);
+  $id("psend").title = role === "moderator" ? "加入待追问" : "发给主持人"; qqInit(); chatBox($id("pin"), $id("pform"), $id("psend"), () => QQ.items.length); addEmoji($id("pin"));
   $id("olbody").addEventListener("click", (e) => { const x = e.target.closest(".qx"); if (!x) return; const k = x.dataset.qi; Q4.open.has(k) ? Q4.open.delete(k) : Q4.open.add(k); renderAssist(Q4.lastAssist); });
   if (role === "moderator") {   // the waiting area: let the participant in, once
     $id("b-admit").onclick = guard(async () => { await api(`/interviews/${iid}/admit`, { method: "POST" }); toast("已放行"); poll(); });
@@ -1018,7 +1064,7 @@ async function start() {
   document.body.classList.toggle("role-one-to-one", S.kind !== "group" && S.moderation !== "ai");
   if (role === "participant") { $id("q4").remove(); $id("brpop").remove(); }   // the team's four columns are not even in the participant's page
   if (role === "participant") { T = I18N[S.language] || I18N.en; document.documentElement.lang = S.language || "en"; document.body.classList.add("solo"); themeLabel(); }
-  else if (S.moderation !== "ai" && S.kind !== "group") buildQ4();   // the four-column room
+  else if (S.kind !== "group") buildQ4();   // the four-column room
   else { $id("lpan").hidden = false; $id("rpan").hidden = false; }
   if (role === "moderator") {  // who is in the room (nobody has to let the participant in)
     $id("wbox").hidden = false;
@@ -1045,7 +1091,7 @@ async function start() {
     addBtn("b-stop", "停止录制", () => api(`/interviews/${iid}/recording/stop`, { method: "POST" }).then(() => toast("已停止，正在合成录像")));
     addBtn("b-end", "结束访谈", async () => { if (confirm("结束后所有人会被移出，且不能再进入。")) { await api(`/interviews/${iid}/end`, { method: "POST" }); } }, "bad");
   }
-  if (role !== "observer") {
+  if (role !== "observer" && !S.view_only) {
     addBtn("b-mic", T.mic, async (b) => { if (!micTrack) return; micTrack.mediaStreamTrack.enabled = !micTrack.mediaStreamTrack.enabled; b.textContent = micTrack.mediaStreamTrack.enabled ? T.mic : T.micOff; b.setAttribute("aria-pressed", String(!micTrack.mediaStreamTrack.enabled)); });
     addBtn("b-cam", T.cam, async (b) => { if (!camTrack) return; const on = (camTrack.mediaStreamTrack.enabled = !camTrack.mediaStreamTrack.enabled); b.textContent = on ? T.cam : T.camOff; b.setAttribute("aria-pressed", String(!on)); const o = $id("t_me")?.querySelector(".off"); if (o) { o.hidden = on; o.textContent = T.camOff; } });
   }
@@ -1074,19 +1120,20 @@ async function start() {
   const { Room, RoomEvent, Track, createLocalTracks } = LivekitClient;
   // The hidden observer only watches and subscribes the moment it joins: with adaptive stream on, its first quality message raced the connection
   // ("cannot send signal request before connected"). It has nothing to save by adapting, so it gets full quality; everybody else keeps adaptive stream.
-  room = new Room({ adaptiveStream: role !== "observer", dynacast: true });
+  room = new Room({ adaptiveStream: role !== "observer" && !S.view_only, dynacast: true });
   const personName = (p) => { const m = /^P-(\d+)$/.exec(p.name || ""); return m ? `${T.person} ·${m[1]}` : "受访者"; };  // group seats are "P-01"; a depth interview stays "受访者". Real names never reach the room.
   const nameOf = (p) => (p.identity.startsWith("participant:") ? personName(p) : role === "participant" ? T.mod : p.name || p.identity);
+  LIVE.nameOf = nameOf;
   room.on(RoomEvent.ParticipantConnected, (p) => tile(p.identity, nameOf(p)));
   room.on(RoomEvent.TrackSubscribed, (track, pub, p) => { const el = tile(p.identity, nameOf(p)); if (track.kind === Track.Kind.Video) setTileVideo(el, track); else el.appendChild(track.attach()); });
   room.on(RoomEvent.TrackUnsubscribed, (track) => track.detach().forEach((x) => x.remove()));
   room.on(RoomEvent.ParticipantDisconnected, (p) => document.getElementById("t_" + p.identity)?.remove());
   room.on(RoomEvent.AudioPlaybackStatusChanged, () => { $id("snd")?.remove(); if (!room.canPlaybackAudio) { const b = document.createElement("button"); b.id = "snd"; b.textContent = T.sound; b.onclick = () => room.startAudio().then(() => b.remove()); bar.prepend(b); } });
-  room.on(RoomEvent.Disconnected, () => { if (!ended) { poll(); setTimeout(() => { if (!ended) msg(`<b>${esc(T.lost)}</b>`); }, 1500); } });
+  room.on(RoomEvent.Disconnected, () => { if (!ended && !LIVE.reconnecting) { poll(); setTimeout(() => { if (!ended) msg(`<b>${esc(T.lost)}</b>`); }, 1500); } });
   try {
     await room.connect(S.url, S.token);
     room.remoteParticipants.forEach((p) => { tile(p.identity, nameOf(p)); });
-    if (role !== "observer") {
+    if (role !== "observer" && !S.view_only) {
       try { localTracks = await createLocalTracks({ audio: true, video: { resolution: { width: 640, height: 360, frameRate: 25 } } }); }
       catch { try { localTracks = await createLocalTracks({ audio: true, video: false }); msg(esc(T.noCam)); } catch { msg(`<b>${esc(T.noDevice)}</b>`); } }
       camTrack = localTracks.find((t) => t.kind === "video") || null; micTrack = localTracks.find((t) => t.kind === "audio") || null;

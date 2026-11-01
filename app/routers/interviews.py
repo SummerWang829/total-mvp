@@ -568,10 +568,15 @@ def room_token(iid: str, request: Request, body: TokenReq | None = None, ctx: Ct
         role = "observer"
     if want and role_user not in STAFF and want != role:
         raise HTTPException(403, "没有权限以该身份进入")
-    token = build_room_token(identity=f"{'obs' if role == 'observer' else 'staff'}:{ctx.user.id}", name=ctx.user.name, room=itv.room_name, role=role)
-    audit(db, ctx.org_id, ctx.actor, "room.token", itv.id, ip=ctx.ip, role=role)
+    # AI moderation: staff only watch (no camera, microphone or screen) until a researcher / admin takes over; then they may speak, show video and share the screen
+    view_only = role == "moderator" and ai_room.is_ai_one_to_one(itv) and not (ai_room.human_in_control(db, itv) and ctx.user.role in ai_room.TAKEOVER_ROLES)
+    grant = "observer" if view_only else role
+    token = build_room_token(identity=f"{'obs' if grant == 'observer' else 'staff'}:{ctx.user.id}", name=ctx.user.name, room=itv.room_name, role=grant)
+    audit(db, ctx.org_id, ctx.actor, "room.token", itv.id, ip=ctx.ip, role=grant)
     db.commit()
-    return {"token": token, "url": url_for_client(request.headers.get("host")), "room": itv.room_name, "role": role, "dev_mode": not settings.livekit_url, "moderation": itv.moderation, "kind": itv.kind}
+    ai = itv.moderation == "ai"
+    return {"token": token, "url": url_for_client(request.headers.get("host")), "room": itv.room_name, "role": role, "dev_mode": not settings.livekit_url, "moderation": itv.moderation, "kind": itv.kind,
+            "view_only": view_only or (ai_room.is_ai_one_to_one(itv) and role == "observer"), "can_takeover": ai and ctx.user.role in ai_room.TAKEOVER_ROLES, "can_whisper": ai and ctx.user.role in ai_room.WHISPER_ROLES}
 
 
 @router.post("/interviews/{iid}/start")

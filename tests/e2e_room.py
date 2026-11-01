@@ -132,8 +132,12 @@ logging:
     try:
         if not wait_for(lambda: urllib.request.urlopen(B + "/api/health").status == 200, 20):
             print("server did not start"); sys.exit(2)
-        run(tmp)
-        run_group(tmp)
+        if os.environ.get("E2E_ONLY") == "ai":
+            run_ai(tmp)
+        else:
+            run(tmp)
+            run_group(tmp)
+            run_ai(tmp)
     finally:
         FAKE.stop()
         srv.terminate(); lk.terminate()
@@ -436,9 +440,9 @@ def run(tmp):
         in_room = lambda pg: pg.evaluate("() => room && room.state === 'connected'")
         ok(wait_for(lambda: in_room(pam) and in_room(pap) and in_room(pao), 30), "AI interview: everybody is in the real video room")
         sizes = lambda: (pam.evaluate("() => room.remoteParticipants.size"), pap.evaluate("() => room.remoteParticipants.size"))
-        ok(wait_for(lambda: sizes() == (1, 1), 15), f"AI interview: each of them sees exactly one other person: the observer is invisible ({sizes()})")  # "connected" does not mean the other is listed yet
+        ok(wait_for(lambda: sizes() == (1, 0), 15), f"AI interview: the team only watches: it sees the participant, and the participant sees nobody from the team ({sizes()})")  # "connected" does not mean the other is listed yet
         pam.wait_for_timeout(1500)
-        ok(sizes() == (1, 1), f"AI interview: the observer stays invisible a moment later ({sizes()})")
+        ok(sizes() == (1, 0), f"AI interview: the team stays invisible a moment later ({sizes()})")
         ok(pao.locator("#a-start, #a-take, #a-back, #wform, #hform").count() == 0, "AI interview: the observer has no controls")
         ok("还没有启动" in pam.inner_text("#aist") and pap.is_disabled("#cin"), "AI interview: nothing is said and the participant cannot type before the AI is started")
         pam.click("#a-start")
@@ -661,6 +665,66 @@ def _tiles(page):
 
 def _tiles_ready(page, n):
     return lambda: (lambda vs: len(vs) == n and all(v["w"] > 0 and v["playing"] for v in vs))(_tiles(page))
+
+
+def run_ai(tmp):
+    """AI-moderated depth interview on a real video server: the team only watches (no voice, camera, screen) until a researcher takes over;
+    then voice / video / screen sharing work and reach the participant; handing back takes the rights away again."""
+    reg = call("/auth/register", {"org_name": "AiCo", "name": "Admin", "email": "a@ai.test", "password": "password123"})
+    adm = reg["token"]
+    ids = {}
+    for role, name in (("moderator", "Mika Moderator"), ("observer", "Olive Observer"), ("researcher", "Rae Researcher")):
+        ids[role] = call("/users", {"name": name, "email": f"{role}@ai.test", "password": "password123", "role": role}, adm)["id"]
+    tok = {r: call("/auth/login", {"email": f"{r}@ai.test", "password": "password123"})["token"] for r in ids}
+    pid = call("/projects", {"name": "AI SG", "market": "SG", "language": "zh"}, tok["researcher"])["id"]
+    part = call(f"/projects/{pid}/participants", {"name": "Wei Ling", "country": "SG", "language": "zh"}, tok["researcher"])
+    itv = call(f"/projects/{pid}/interviews", {"participant_id": part["id"], "title": "AI 深访", "language": "zh", "moderation": "ai", "observer_ids": [ids["observer"]]}, tok["researcher"])
+    iid, T = itv["id"], itv["invite_token"]
+    call(f"/public/join/{T}/device", {"camera": True, "microphone": True, "speaker": True})
+    call(f"/public/join/{T}/consent", {"country": "SG", "recording": True, "observers": True, "cross_border": True, "ai": True})
+    call(f"/interviews/{iid}/start", {}, tok["researcher"])
+    with sync_playwright() as pw:
+        br = pw.chromium.launch(args=["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream", "--autoplay-policy=no-user-gesture-required", "--auto-select-desktop-capture-source=Entire screen"])
+        errs = []
+
+        def ctx(name, token=None):
+            c = br.new_context(viewport={"width": 1280, "height": 800}, permissions=["camera", "microphone"])
+            if token:
+                c.add_init_script(f"try{{localStorage.setItem('tt_token','{token}')}}catch(e){{}}")
+            p = c.new_page()
+            p.on("console", lambda m: errs.append(f"[{name}] console: {m.text}") if m.type == "error" else None)
+            p.on("pageerror", lambda e: errs.append(f"[{name}] pageerror: {e}"))
+            return c, p
+
+        cp, pp = ctx("participant")
+        pp.goto(f"{B}/room.html?t={T}")
+        cr, pr = ctx("researcher", tok["researcher"])
+        pr.goto(f"{B}/room.html?i={iid}&as=moderator")
+        co, po = ctx("observer", tok["observer"])
+        po.goto(f"{B}/room.html?i={iid}&as=observer")
+        PUMP[0] = pr
+        call(f"/interviews/{iid}/ai/start", {}, tok["researcher"])
+        pubs = lambda pg: pg.evaluate("() => room && room.localParticipant ? room.localParticipant.permissions.canPublish : null")
+        remote = lambda pg: pg.evaluate("() => room ? [...room.remoteParticipants.values()].map(p => [p.identity.split(':')[0], p.trackPublications.size]) : null")
+        ok(wait_for(lambda: pr.is_visible("#a-take") and pubs(pr) is False, 30), "[ai takeover] the researcher joins the video room without the right to publish")
+        ok(pr.locator("#b-mic, #b-cam, #b-hmic").count() == 0, "[ai takeover] no microphone or camera buttons while the AI moderates")
+        ok(wait_for(lambda: pubs(po) is False, 20), "[ai takeover] the observer cannot publish either")
+        ok(wait_for(lambda: all(r[0] != "staff" and r[0] != "obs" for r in (remote(pp) or [("x", 0)])), 20), "[ai takeover] the participant sees nobody from the team in the room")
+        pr.click("#a-take")
+        ok(wait_for(lambda: pr.locator("#b-hmic").count() == 1 and pubs(pr) is True, 40), "[ai takeover] after taking over the researcher may publish and gets voice, video and screen buttons")
+        pr.screenshot(path=f"{SHOTS}/e2e_ai_takeover_bar.png")
+        pr.click("#b-hmic"); pr.click("#b-hcam")
+        ok(wait_for(lambda: pr.get_attribute("#b-hmic", "aria-pressed") == "true" and pr.get_attribute("#b-hcam", "aria-pressed") == "true", 20), "[ai takeover] voice and video switch on")
+        ok(wait_for(lambda: any(r[0] == "staff" and r[1] >= 2 for r in (remote(pp) or [])), 30), "[ai takeover] the participant receives the researcher's voice and video")
+        pr.click("#b-hscr")
+        shared = wait_for(lambda: pr.get_attribute("#b-hscr", "aria-pressed") == "true", 15)
+        ok(shared and wait_for(lambda: any(r[0] == "staff" and r[1] >= 3 for r in (remote(pp) or [])), 30), "[ai takeover] screen sharing reaches the participant")
+        pp.screenshot(path=f"{SHOTS}/e2e_ai_takeover_participant.png")
+        pr.click("#a-back")
+        ok(wait_for(lambda: pr.locator("#b-hmic").count() == 0 and pubs(pr) is False, 40), "[ai takeover] handing back removes the buttons and the right to publish")
+        ok(wait_for(lambda: not any(r[0] == "staff" and r[1] > 0 for r in (remote(pp) or [])), 30), "[ai takeover] the participant no longer receives anything from the team")
+        ok(not errs, f"[ai takeover] no console errors: {errs[:3]}")
+        br.close()
 
 
 def run_group(tmp):

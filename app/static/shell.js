@@ -67,7 +67,7 @@ function shNav(p, active) {
 }
 
 /** 顶部项目条：项目号、名称、状态、子项目选择、研究路径、访问方式。 */
-function shCtx(p, active) {
+function shCtx(p, active, extraOnly) {
   const [stLabel, stCls] = shStatus(p), hub = shHubOf(active), subs = (p.setup && p.setup.subs) || [], sub = shSub(p), kinds = shKinds(p), qm = shQmode();
   const cur = hub === "qt" ? "quant" : hub === "ql" ? (qm && kinds.includes(qm) ? qm : kinds.find((k) => k !== "quant")) : "", idxOn = kinds.indexOf(cur);
   const modes = [["定量", "quant"], ["深访", "depth"], ["座谈会", "group"], ["舆情", "listening"]].filter(([, m]) => (p.methods || []).includes(m));
@@ -76,17 +76,22 @@ function shCtx(p, active) {
   const sel = subs.length > 1 && !shSetup(p) ? `<label class="ctx-sub"><span>子项目</span><select id="subsel" aria-label="切换子项目"><option value="all" ${sub ? "" : "selected"}>总项目（全部 ${subs.length} 个）</option>${subs.map((s, i) => `<option value="${s.id}" ${sub && sub.id === s.id ? "selected" : ""}>S${i + 1} ${esc(s.name)}</option>`).join("")}</select></label>` : "";
   const track = shSetup(p) ? "" : `<div class="track"><span class="track-cap">${shDesignName(p)}</span><ol aria-label="研究路径">${kinds.map((k, i) => `<li class="${idxOn >= 0 && i < idxOn ? "done" : ""} ${i === idxOn ? "on" : ""}" ${i === idxOn ? 'aria-current="step"' : ""}><i>${idxOn >= 0 && i < idxOn ? "✓" : i + 1}</i>${SH_KIND[k]}</li>`).join("")}</ol></div>`;
   const modesHtml = shSetup(p) ? "" : `<div class="ctx-modes" aria-label="访问方式">${modes.map(([n, m]) => `<span class="${hi.includes(m) ? "on" : ""}">${n}</span>`).join("")}</div>`;
-  return `<div class="ctx"><div class="ctx-row"><span class="ctx-no">${shNumber(p)}</span><span class="ctx-name">${esc(p.name)}</span><span class="pill ${stCls}">${stLabel}</span>${sel}${track}<span class="sp"></span>${modesHtml}${close}</div></div>`;
+  if (extraOnly) return modesHtml + close;
+  return `<div class="ctx"><div class="ctx-row"><span class="ctx-no">${shNumber(p)}</span><span class="ctx-name">${esc(p.name)}</span><span class="pill ${stCls}">${stLabel}</span>${sel}${track}<span class="sp"></span>${shTabbed(p, active) ? "" : modesHtml + close}</div></div>`;
+  // (with a tab row, the access modes and the close button live at the right end of that row: see shTabs)
 }
 
 /** 页签：同一类页面放在一排（原版的 hubtabs）。 */
-function shTabs(p, active) {
-  if (shSetup(p)) return "";
+function shTabbed(p, active) {   // does this page have a tab row?
+  if (shSetup(p)) return false;
   const hub = SH_HUBS.find((h) => h.id === shHubOf(active));
-  if (!hub) return "";
+  return !!hub && hub.tabs.filter((t) => shPageOk(t[0], p)).length >= 2;
+}
+function shTabs(p, active) {
+  if (!shTabbed(p, active)) return "";
+  const hub = SH_HUBS.find((h) => h.id === shHubOf(active));
   const ts = hub.tabs.filter((t) => shPageOk(t[0], p));
-  if (ts.length < 2) return "";
-  return `<div class="hubtabs pin" role="tablist" aria-label="${hub.n}">${ts.map(([k, n]) => `<a role="tab" class="${active === k ? "on" : ""}" href="#/p/${p.id}/${k}" data-t="${n}" aria-selected="${active === k}" ${active === k ? 'aria-current="page"' : ""}>${n}</a>`).join("")}</div>`;
+  return `<div class="hubtabs pin" role="tablist" aria-label="${hub.n}">${ts.map(([k, n]) => `<a role="tab" class="${active === k ? "on" : ""}" href="#/p/${p.id}/${k}" data-t="${n}" aria-selected="${active === k}" ${active === k ? 'aria-current="page"' : ""}>${n}</a>`).join("")}<span class="tabx">${shCtx(p, active, true)}</span></div>`;
 }
 
 function shWire(p) {
@@ -109,7 +114,7 @@ function shMount({ proj, p, active, nav, top, tabs, notice, inner }) {
     const navEl = cur.querySelector("nav.side"), ctx = cur.querySelector(".work>.ctx"), main = cur.querySelector(".work>main"), tb = cur.querySelector(".work>.hubtabs.pin");
     if (cur._nav !== nav) { navEl.innerHTML = nav; cur._nav = nav; }
     if (cur._top !== top) { ctx.innerHTML = shHtml(top).innerHTML; cur._top = top; }
-    if (tb) { const want = shHtml(tabs); tb.querySelectorAll("a").forEach((a, i) => { const b = want.children[i]; if (!b) return; a.className = b.className; ["aria-selected", "aria-current"].forEach((n) => (b.hasAttribute(n) ? a.setAttribute(n, b.getAttribute(n)) : a.removeAttribute(n))); }); }
+    if (tb) { const want = shHtml(tabs); const tx = tb.querySelector(".tabx"); if (tx && want.querySelector(".tabx")) tx.innerHTML = want.querySelector(".tabx").innerHTML; tb.querySelectorAll("a").forEach((a, i) => { const b = want.children[i]; if (!b) return; a.className = b.className; ["aria-selected", "aria-current"].forEach((n) => (b.hasAttribute(n) ? a.setAttribute(n, b.getAttribute(n)) : a.removeAttribute(n))); }); }
     main.className = cls; main.innerHTML = notice + inner; main.scrollTop = 0;
     shMoveSub(cur);
     return;

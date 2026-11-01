@@ -119,25 +119,25 @@ def test_a_participant_who_is_not_in_the_room_cannot_chat(org):
 def test_while_a_human_has_control_the_ai_stays_silent_and_remembers_the_conversation(room):
     org, itv = room
     _say(org, itv, "Yes, ready.")
-    assert org.c.post(f"/api/interviews/{itv['id']}/ai/takeover", headers=org.h("moderator")).status_code == 200
-    assert org.c.post(f"/api/interviews/{itv['id']}/ai/takeover", headers=org.h("moderator")).status_code == 409
+    assert org.c.post(f"/api/interviews/{itv['id']}/ai/takeover", headers=org.h("researcher")).status_code == 200
+    assert org.c.post(f"/api/interviews/{itv['id']}/ai/takeover", headers=org.h("researcher")).status_code == 409
     before = len(_participant(org, itv)["messages"])
     _say(org, itv, "I am not sure how to explain it.")
     msgs = _participant(org, itv)["messages"]
     assert len(msgs) == before + 1 and msgs[-1]["sender"] == "participant"  # the AI did not answer (red line H11)
-    assert org.c.post(f"/api/interviews/{itv['id']}/ai/say", headers=org.h("moderator"), json={"text": "No rush, take your time."}).status_code == 200
+    assert org.c.post(f"/api/interviews/{itv['id']}/ai/say", headers=org.h("researcher"), json={"text": "No rush, take your time."}).status_code == 200
     assert _participant(org, itv)["messages"][-1]["sender"] == "moderator"
     assert _participant(org, itv)["control"] == "human"
-    assert org.c.post(f"/api/interviews/{itv['id']}/ai/handback", headers=org.h("moderator")).status_code == 200
+    assert org.c.post(f"/api/interviews/{itv['id']}/ai/handback", headers=org.h("researcher")).status_code == 200
     _say(org, itv, "Mostly price, I think.")
     assert _participant(org, itv)["messages"][-1]["sender"] == "ai"  # the AI speaks again after the hand back
 
 
 def test_the_human_can_only_type_while_in_control(room):
     org, itv = room
-    r = org.c.post(f"/api/interviews/{itv['id']}/ai/say", headers=org.h("moderator"), json={"text": "hello"})
+    r = org.c.post(f"/api/interviews/{itv['id']}/ai/say", headers=org.h("researcher"), json={"text": "hello"})
     assert r.status_code == 409 and "接管" in r.json()["detail"]
-    assert org.c.post(f"/api/interviews/{itv['id']}/ai/handback", headers=org.h("moderator")).status_code == 409  # the AI is already in control
+    assert org.c.post(f"/api/interviews/{itv['id']}/ai/handback", headers=org.h("researcher")).status_code == 409  # the AI is already in control
 
 
 # ---------- whispers ----------
@@ -151,10 +151,63 @@ def test_a_whisper_reaches_the_ai_but_never_the_participant_or_the_observer(room
     assert any(m["sender"] == "whisper" and m["text"] == secret for m in _staff(org, itv)["messages"])
 
 
-def test_only_staff_whisper_and_a_note_has_a_limit(room):
+def _grants(token: str) -> dict:
+    import jwt
+    return jwt.decode(token, options={"verify_signature": False})["video"]
+
+
+def test_staff_only_watch_an_ai_interview_until_a_researcher_takes_over(room):
+    org, itv = room
+    for who in ("researcher", "admin", "moderator", "observer"):
+        r = org.c.post(f"/api/interviews/{itv['id']}/token", headers=org.h(who), json={}).json()
+        g = _grants(r["token"])
+        assert not g["canPublish"] and g["hidden"] and r["view_only"], who   # no voice, camera or screen; the participant never sees them
+    assert org.c.post(f"/api/interviews/{itv['id']}/ai/takeover", headers=org.h("moderator")).status_code == 403   # a moderator account cannot take over
+    assert org.c.post(f"/api/interviews/{itv['id']}/ai/takeover", headers=org.h("researcher")).status_code == 200
+    r = org.c.post(f"/api/interviews/{itv['id']}/token", headers=org.h("researcher"), json={}).json()
+    assert _grants(r["token"])["canPublish"] and not r["view_only"] and r["can_takeover"]   # now text, voice, video and screen are allowed
+    assert _grants(org.c.post(f"/api/interviews/{itv['id']}/token", headers=org.h("observer"), json={}).json()["token"])["canPublish"] is False
+    assert org.c.post(f"/api/interviews/{itv['id']}/ai/handback", headers=org.h("researcher")).status_code == 200
+    r = org.c.post(f"/api/interviews/{itv['id']}/token", headers=org.h("researcher"), json={}).json()
+    assert r["view_only"] and not _grants(r["token"])["canPublish"]   # handed back: view-only again
+
+
+def test_the_client_observer_may_whisper_but_not_take_over_or_read_the_teams_notes(room):
+    org, itv = room
+    assert org.c.post(f"/api/interviews/{itv['id']}/ai/whisper", headers=org.h("observer"), json={"text": "ask about price"}).status_code == 200
+    assert org.c.post(f"/api/interviews/{itv['id']}/ai/takeover", headers=org.h("observer")).status_code == 403
+    st = org.c.get(f"/api/interviews/{itv['id']}/ai/state", headers=org.h("observer")).json()
+    assert all(m["sender"] != "whisper" for m in st["messages"])   # observers read the conversation only
+
+
+def test_the_rooms_panels_read_the_ai_chat_when_there_are_no_captions(room):
+    org, itv = room
+    for i in range(4):
+        _say(org, itv, f"我平时在网上买护肤品，因为方便，也因为有评价可以参考，价格也比商场便宜很多（第 {i} 次）。")
+    d = org.c.get(f"/api/interviews/{itv['id']}/assist", headers=org.h("researcher")).json()
+    assert d["talk"]["moderator_pct"] is not None and d["talk"]["participant_pct"] is not None   # who said how much comes from the conversation
+    assert org.c.get(f"/api/interviews/{itv['id']}/assist", headers=org.h("observer")).status_code == 403
+
+
+def test_handing_back_takes_staff_publishing_rights_away_in_the_video_room(monkeypatch):
+    from app import livekit
+    calls = []
+
+    class R:
+        def json(self): return {"participants": [{"identity": "staff:u1"}, {"identity": "participant:p1"}, {"identity": "obs:u2"}]}
+
+    monkeypatch.setattr(livekit.settings, "livekit_url", "ws://127.0.0.1:7880")
+    monkeypatch.setattr("httpx.post", lambda url, json=None, headers=None, timeout=None: (calls.append((url.rsplit("/", 1)[-1], json)), R())[1])
+    livekit.revoke_publishing("room1")
+    updates = [j for n, j in calls if n == "UpdateParticipant"]
+    assert [u["identity"] for u in updates] == ["staff:u1"] and updates[0]["permission"]["can_publish"] is False   # only the staff member, never the participant
+    calls.clear(); monkeypatch.setattr(livekit.settings, "livekit_url", "")
+    livekit.revoke_publishing("room1"); assert calls == []   # no video server: nothing to do
+
+
+def test_a_whisper_has_a_limit(room):
     org, itv = room
     url = f"/api/interviews/{itv['id']}/ai/whisper"
-    assert org.c.post(url, headers=org.h("observer"), json={"text": "x"}).status_code == 403
     r = org.c.post(url, headers=org.h("moderator"), json={"text": "y" * 501})
     assert r.status_code == 422
     assert org.c.post(url, headers=org.h("moderator"), json={"text": "  "}).status_code == 422
@@ -170,7 +223,7 @@ def test_a_crisis_gets_a_safe_reply_and_a_red_alert_only_staff_can_see(room):
     staff = _staff(org, itv)
     assert staff["alert"] == "red" and staff["alert_reason"]
     assert "alert" not in _participant(org, itv) and "alert" not in _staff(org, itv, role="observer")
-    assert org.c.post(f"/api/interviews/{itv['id']}/ai/ack-alert", headers=org.h("moderator")).status_code == 200
+    assert org.c.post(f"/api/interviews/{itv['id']}/ai/ack-alert", headers=org.h("researcher")).status_code == 200
     assert _staff(org, itv)["alert"] == "none"
 
 
@@ -180,7 +233,7 @@ def test_after_the_ai_has_said_goodbye_the_chat_is_closed(room):
     _say(org, itv, "I want to stop now.")
     assert _participant(org, itv)["finished"] is True
     assert _say(org, itv, "wait").status_code == 409
-    assert org.c.post(f"/api/interviews/{itv['id']}/ai/handback", headers=org.h("moderator")).status_code in (409,)
+    assert org.c.post(f"/api/interviews/{itv['id']}/ai/handback", headers=org.h("researcher")).status_code in (409,)
 
 
 # ---------- observers and other organisations ----------
@@ -209,8 +262,8 @@ def test_ending_turns_the_chat_into_a_transcript_with_the_ai_labelled_and_no_whi
     org.c.post(f"/api/interviews/{itv['id']}/ai/whisper", headers=org.h("moderator"), json={"text": "private note"})
     _say(org, itv, "Yes, ready.")
     _say(org, itv, "I order from Grab because it is quick.")
-    org.c.post(f"/api/interviews/{itv['id']}/ai/takeover", headers=org.h("moderator"))
-    org.c.post(f"/api/interviews/{itv['id']}/ai/say", headers=org.h("moderator"), json={"text": "Thanks, let me add something."})
+    org.c.post(f"/api/interviews/{itv['id']}/ai/takeover", headers=org.h("researcher"))
+    org.c.post(f"/api/interviews/{itv['id']}/ai/say", headers=org.h("researcher"), json={"text": "Thanks, let me add something."})
     assert org.c.post(f"/api/interviews/{itv['id']}/end", headers=org.h("moderator")).status_code == 200
     segs = org.c.get(f"/api/interviews/{itv['id']}/transcript", headers=org.h("researcher")).json()
     assert {s["speaker"] for s in segs} == {"ai_moderator", "participant", "moderator"}
@@ -257,14 +310,14 @@ def test_after_a_restart_the_ai_does_not_start_over_the_human_takes_the_room(roo
     assert mine["control"] == "human" and len(mine["messages"]) == before + 1  # the participant's line was kept, nobody invented an answer
     staff = _staff(org, itv)
     assert staff["alert"] == "red" and "重启" in staff["alert_reason"] and staff["engine_alive"] is False
-    assert org.c.post(f"/api/interviews/{itv['id']}/ai/handback", headers=org.h("moderator")).status_code == 409  # it cannot resume without its memory
-    assert org.c.post(f"/api/interviews/{itv['id']}/ai/say", headers=org.h("moderator"), json={"text": "Sorry, I am here."}).status_code == 200
+    assert org.c.post(f"/api/interviews/{itv['id']}/ai/handback", headers=org.h("researcher")).status_code == 409  # it cannot resume without its memory
+    assert org.c.post(f"/api/interviews/{itv['id']}/ai/say", headers=org.h("researcher"), json={"text": "Sorry, I am here."}).status_code == 200
 
 
 def test_the_ai_actions_are_in_the_audit_log(room):
     org, itv = room
-    org.c.post(f"/api/interviews/{itv['id']}/ai/takeover", headers=org.h("moderator"))
-    org.c.post(f"/api/interviews/{itv['id']}/ai/handback", headers=org.h("moderator"))
+    org.c.post(f"/api/interviews/{itv['id']}/ai/takeover", headers=org.h("researcher"))
+    org.c.post(f"/api/interviews/{itv['id']}/ai/handback", headers=org.h("researcher"))
     actions = [a["action"] for a in org.c.get("/api/audit?limit=100", headers=H(org.admin)).json()]
     assert {"ai.start", "ai.takeover", "ai.handback"} <= set(actions)
 

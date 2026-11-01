@@ -513,6 +513,24 @@ def projects_section(br, D):
     sel = pg.evaluate("(() => { const c = document.querySelector('#pgrid .pcard.is-selected'); return c ? [getComputedStyle(c).backgroundColor, c.getAttribute('aria-selected')] : null; })()")
     ok(sel and sel[0] == "rgb(255, 248, 244)" and "删除所选" in pg.inner_text("#pdel"), f"[projects] a selected card is light orange and the button says 删除所选 (got {sel})")
     pg.click("#pdc"); ok(pg.locator("main.delete-selecting").count() == 0, "[projects] 取消选择 leaves delete mode")
+    ok(pg.locator("main > .head").count() == 0 and pg.locator(".filters .project-actions #np").count() == 1, "[projects] no second 全部项目 title; 新建项目 sits on the search row")
+    for th, want in (("orange", "orange"), ("dark", "dark"), ("light", "light")):
+        pg.click(f".tsw button[data-theme={th}]")
+        ok(pg.evaluate("document.documentElement.dataset.theme") == want and pg.get_attribute(f".tsw button[data-theme={th}]", "aria-checked") == "true", f"[theme] the top-right switch selects {th}")
+    box = pg.evaluate("(() => { const r = document.querySelector('.tsw').getBoundingClientRect(); return [Math.round(innerWidth - r.right), Math.round(r.top), document.querySelectorAll('.themebtn').length]; })()")
+    ok(box[0] <= 30 and box[1] <= 20 and box[2] == 0, f"[theme] the switch is fixed at the top right and the old sidebar button is gone (got {box})")
+    ok(pg.locator(".totop").is_hidden(), "[totop] hidden at the top of the page")
+    pg.evaluate("(() => { const m = document.querySelector('main'); const d = document.createElement('div'); d.style.height = '3000px'; m.appendChild(d); window.scrollTo(0, 800); document.scrollingElement.scrollTop = 800; })()")
+    pg.wait_for_timeout(300)
+    ok(pg.locator(".totop").is_visible(), "[totop] shows after scrolling down")
+    pg.click(".totop"); pg.wait_for_timeout(900)
+    ok(pg.evaluate("document.scrollingElement.scrollTop") < 5 and pg.locator(".totop").is_hidden(), "[totop] clicking it scrolls back to the top and hides it")
+    ctx.close()
+    ctx, pg, errs = new_page(br, 1440, token=adm)   # inside a project the access modes and 结项 sit at the right end of the tab row
+    pg.goto(B + f"/#/p/{D['pid']}/live"); pg.wait_for_selector(".work>.hubtabs.pin .tabx")
+    ok(pg.locator(".hubtabs.pin .tabx #closeproj").count() == 1 and pg.locator(".ctx-row #closeproj").count() == 0 and pg.locator(".tabx .ctx-modes").count() == 1, "[tabs] 深访/座谈会 and 结项 are at the right end of the tab row, not in the project bar")
+    pg.goto(B + f"/#/p/{D['pid']}/wiz"); pg.wait_for_selector(".ctx-row #closeproj", timeout=8000)
+    ok(pg.locator(".ctx-row #closeproj").count() == 1, "[tabs] a page without tabs keeps 结项 in the project bar")
     ctx.close()
 
 
@@ -1914,7 +1932,7 @@ def concept_room_section(br, D):
 
 def ai_room_section(br, D):
     """An AI-moderated interview in the room, seen by the participant, the moderator and a hidden observer."""
-    it, mod, obs, adm = D["itv"]["ai_zh"], D["tok"]["moderator"], D["tok"]["observer"], D["tok"]["admin"]
+    it, mod, obs, adm, res = D["itv"]["ai_zh"], D["tok"]["moderator"], D["tok"]["observer"], D["tok"]["admin"], D["tok"]["researcher"]
     tk = it["invite_token"]
     call(f"/public/join/{tk}/device", {"camera": True, "microphone": True, "speaker": True})
     call(f"/public/join/{tk}/consent", {"country": "SG", "recording": True, "observers": True, "cross_border": True, "ai": True})
@@ -1926,50 +1944,68 @@ def ai_room_section(br, D):
             tag = f"{theme or 'light'}/{vp}"
             if theme is None and vp == "desktop":
                 # the moderator before the AI starts: the panel, the start button, no reply box
-                ctx, pg, errs = new_page(br, w, token=mod, room_theme=theme)
+                ctx, pg, errs = new_page(br, w, token=res, room_theme=theme)
                 pg.goto(B + f"/room.html?i={it['id']}&as=moderator"); pg.wait_for_selector("#aist")
                 ok("还没有启动" in pg.inner_text("#aist") and pg.is_enabled("#a-start") and pg.is_disabled("#a-take"), f"[ai room moderator {tag}] before starting: start is on, take over is off")
                 ok(pg.locator("#hform:visible").count() == 0, f"[ai room moderator {tag}] the human reply box is hidden while the AI is in control")
                 audit_page(pg, f"ai room moderator before start/{tag}", errs)
                 ctx.close()
                 call(f"/interviews/{it['id']}/ai/start", {}, mod)
-            ctx, pg, errs = new_page(br, w, token=mod, room_theme=theme)
-            pg.goto(B + f"/room.html?i={it['id']}&as=moderator"); pg.wait_for_selector("#clog .m")
-            ok("AI 正在主持" in pg.inner_text("#aist"), f"[ai room moderator {tag}] status line shows who is moderating")
-            ok(any("AI" in x and "不是真人" in x for x in log_texts(pg)), f"[ai room moderator {tag}] the AI's opening says it is an AI")
-            ok(pg.locator("#clog .m details").count() >= 1, f"[ai room moderator {tag}] the AI's reasoning is available to the team")
-            ok(pg.is_visible("#wform") and pg.is_visible("#win"), f"[ai room moderator {tag}] whisper box present")
-            audit_page(pg, f"ai room moderator running/{tag}", errs)
-            ctx.close()
+            if vp == "desktop":
+                ctx, pg, errs = new_page(br, w, token=res, room_theme=theme)
+                pg.goto(B + f"/room.html?i={it['id']}&as=moderator"); pg.wait_for_selector("#clog .m")
+                ok("AI 正在主持" in pg.inner_text("#aist"), f"[ai room moderator {tag}] status line shows who is moderating")
+                ok(any("AI" in x and "不是真人" in x for x in log_texts(pg)), f"[ai room moderator {tag}] the AI's opening says it is an AI")
+                ok(pg.locator("#clog .m details").count() >= 1, f"[ai room moderator {tag}] the AI's reasoning is available to the team")
+                if vp == "desktop":   # the same four columns as a human-moderated room; the team only watches: no microphone, camera or screen
+                    ok(pg.locator("#q4 > .qc:visible").count() == 4, f"[ai room moderator {tag}] four columns, like a human-moderated room")
+                    ok(pg.locator("#b-mic, #b-cam, #b-hmic, #b-hcam, #b-hscr").count() == 0, f"[ai room moderator {tag}] no microphone, camera or screen buttons while the AI moderates")
+                    ok('"canPublish": false' in pg.inner_text("#claims") and '"hidden": true' in pg.inner_text("#claims"), f"[ai room moderator {tag}] the room token cannot publish and is hidden from the participant")
+                    ok(pg.locator("#c2c #clog").count() == 1 and pg.locator("#c1t .aitile").count() == 1, f"[ai room moderator {tag}] the AI's tile and the conversation are in the first two columns")
+                ok(pg.is_visible("#pform") and pg.is_visible("#pin"), f"[ai room moderator {tag}] whisper box present")
+                audit_page(pg, f"ai room moderator running/{tag}", errs)
+                ctx.close()
             # the participant: a chat in the interview's language, nothing internal
             ctx, pg, errs = new_page(br, w, room_theme=theme)
             pg.goto(B + f"/room.html?t={tk}"); pg.wait_for_selector("#cin")
             ok(pg.locator("#lpan:visible, #rpan:visible").count() == 0, f"[ai room participant {tag}] no internal panels")
             ok(wait_until(lambda: any("AI 主持人" in x for x in log_texts(pg)), 8), f"[ai room participant {tag}] sees the AI's opening, labelled")
             ok(pg.locator("#clog .m details").count() == 0 and "悄悄话" not in pg.inner_text("body"), f"[ai room participant {tag}] sees no notes or whispers")
+            if vp == "desktop":   # the answer box is big (about 16 cm x 8 cm) and the emoji panel opens above it, like a phone keyboard
+                bx = pg.locator("#cform").bounding_box()
+                ok(540 <= bx["width"] <= 640 and 240 <= bx["height"] <= 340, f"[ai room participant {tag}] the answer box is about 16 x 8 cm (got {bx['width']:.0f} x {bx['height']:.0f} px)")
+                wait_until(lambda: pg.is_enabled("#cemoji"), 8)
+                pg.click("#cemoji"); pg.wait_for_selector(".empanel .emc", timeout=8000)
+                ok(pg.locator(".empanel .emsearch input").count() == 1 and pg.locator(".empanel .emtab").count() >= 6, f"[ai room participant {tag}] the emoji panel has search and category tabs")
+                pg.locator(".empanel .emc").first.click(); pg.locator(".empanel .emc").nth(3).click()
+                ok(len(pg.input_value("#cin")) >= 2 and pg.locator(".empanel").count() == 1, f"[ai room participant {tag}] emojis go into the answer and the panel stays open")
+                if theme is None: pg.screenshot(path=os.path.join(ROOT, "qa_shots", "ai_room_participant_emoji_1280.png"))
+                pg.keyboard.press("Escape"); ok(pg.locator(".empanel").count() == 0, f"[ai room participant {tag}] Escape closes the emoji panel")
+                pg.fill("#cin", "")
             audit_page(pg, f"ai room participant/{tag}", errs)
             if theme is None and vp == "phone":
                 pg.screenshot(path=os.path.join(ROOT, "qa_shots", "ai_room_participant_390.png"), full_page=True)
             ctx.close()
             # the hidden observer: reads, cannot act
-            ctx, pg, errs = new_page(br, w, token=obs, room_theme=theme)
-            pg.goto(B + f"/room.html?i={it['id']}&as=observer"); pg.wait_for_selector("#clog .m")
-            ok(pg.locator("#a-start, #a-take, #a-back, #wform, #hform, #a-ack").count() == 0, f"[ai room observer {tag}] no controls")
-            ok(pg.locator("#clog .m details").count() == 0 and "悄悄话" not in pg.inner_text("#clog"), f"[ai room observer {tag}] sees the conversation only")
-            audit_page(pg, f"ai room observer/{tag}", errs)
-            ctx.close()
+            if vp == "desktop":   # researcher pages are desktop-first: the team's AI room is checked on desktop only
+                ctx, pg, errs = new_page(br, w, token=obs, room_theme=theme)
+                pg.goto(B + f"/room.html?i={it['id']}&as=observer"); pg.wait_for_selector("#clog .m")
+                ok(pg.locator("#a-start, #a-take, #a-back, #hform, #a-ack, #b-mic, #b-cam").count() == 0, f"[ai room observer {tag}] no controls, no microphone or camera")
+                ok(pg.locator("#clog .m details").count() == 0 and "悄悄话" not in pg.inner_text("#clog"), f"[ai room observer {tag}] sees the conversation only")
+                audit_page(pg, f"ai room observer/{tag}", errs)
+                ctx.close()
     # a live conversation, once: the participant types, the AI answers; whisper, take over, hand back; a crisis shows a red alert to the team only
-    ctx, pg, errs = new_page(br, 1280, token=mod)
+    ctx, pg, errs = new_page(br, 1280, token=res)
     pgp_ctx, pgp, perrs = new_page(br, 390)
     pg.goto(B + f"/room.html?i={it['id']}&as=moderator"); pg.wait_for_selector("#clog .m")
     pgp.goto(B + f"/room.html?t={tk}"); pgp.wait_for_selector("#cin")
     ok(wait_until(lambda: pgp.is_enabled("#cin"), 8), "[ai room] the participant can type once the AI has started")
     pgp.fill("#cin", "我平时在网上买护肤品，因为方便。"); pgp.click("#csend")
     ok(wait_until(lambda: len(log_texts(pgp)) >= 3, 12) and "我平时在网上买护肤品" in pgp.inner_text("#clog"), "[ai room] the participant's line and the AI's reply appear")
-    pg.fill("#win", "多问问退货的体验"); pg.click("#wsend")
+    pg.fill("#pin", "多问问退货的体验"); pg.click("#psend")
     ok(wait_until(lambda: any("多问问退货" in x for x in log_texts(pg)), 8), "[ai room] the whisper shows in the team's log")
     ok("多问问退货" not in pgp.inner_text("body"), "[ai room] the participant never sees a whisper")
-    pg.click("#a-take"); ok(wait_until(lambda: pg.is_visible("#hform"), 8) and "已由你接管" in pg.inner_text("#aist"), "[ai room] taking over shows the reply box")
+    pg.click("#a-take"); ok(wait_until(lambda: pg.is_visible("#hform"), 8) and "已由研究员接管" in pg.inner_text("#aist"), "[ai room] taking over shows the reply box")
     n = len(log_texts(pgp)); pgp.fill("#cin", "我想想怎么说。"); pgp.click("#csend")
     ok(wait_until(lambda: "我想想怎么说" in pgp.inner_text("#clog"), 8), "[ai room] the participant's line arrives while a human has control")
     pgp.wait_for_timeout(2500); after = log_texts(pgp); ok(len(after) == n + 1, f"[ai room] the AI stays silent while a human has control (lines before {n}, after {len(after)}: {[x[:30] for x in after[n:]]})")

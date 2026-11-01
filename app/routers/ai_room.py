@@ -10,12 +10,17 @@ from sqlalchemy.orm import Session
 
 from .. import ai_room, guide_text
 from ..db import get_db
+from ..livekit import revoke_publishing
 from ..deps import Ctx, current_ctx, require_roles, visible_interview
 from ..models import Interview, Stimulus
 from .public import resolve_join  # noqa: PLC2701 — the same invite-token lookup as the rest of the participant flow
 
 router = APIRouter(prefix="/api", tags=["ai-room"])
 STAFF_AND_MODERATOR = ("admin", "researcher", "support", "moderator")  # who may control the AI (observers may not)
+
+
+TAKEOVER = ai_room.TAKEOVER_ROLES
+WHISPERERS = ai_room.WHISPER_ROLES
 
 
 def _run(db: Session, fn, *args) -> None:
@@ -37,7 +42,7 @@ class TextBody(BaseModel):
 
 
 def _view(ctx: Ctx) -> str:
-    return "observer" if ctx.user.role == "observer" else "staff"
+    return "staff" if ctx.user.role in STAFF_AND_MODERATOR else "observer"   # the client and observers read the conversation only (no notes, whispers or alerts)
 
 
 class GuideText(BaseModel):
@@ -72,35 +77,36 @@ def ai_state(iid: str, after: int = 0, ctx: Ctx = Depends(current_ctx), db: Sess
 
 
 @router.post("/interviews/{iid}/ai/takeover")
-def ai_takeover(iid: str, ctx: Ctx = Depends(require_roles(*STAFF_AND_MODERATOR)), db: Session = Depends(get_db)):
+def ai_takeover(iid: str, ctx: Ctx = Depends(require_roles(*TAKEOVER)), db: Session = Depends(get_db)):
     itv = visible_interview(db, ctx, iid)
     _run(db, ai_room.takeover, itv, ctx.actor)
     return {"control": "human"}
 
 
 @router.post("/interviews/{iid}/ai/handback")
-def ai_handback(iid: str, ctx: Ctx = Depends(require_roles(*STAFF_AND_MODERATOR)), db: Session = Depends(get_db)):
+def ai_handback(iid: str, ctx: Ctx = Depends(require_roles(*TAKEOVER)), db: Session = Depends(get_db)):
     itv = visible_interview(db, ctx, iid)
     _run(db, ai_room.handback, itv, ctx.actor)
+    revoke_publishing(itv.room_name)   # whoever was speaking or showing video loses that right at once
     return {"control": "ai"}
 
 
 @router.post("/interviews/{iid}/ai/say")
-def ai_say(iid: str, body: TextBody, ctx: Ctx = Depends(require_roles(*STAFF_AND_MODERATOR)), db: Session = Depends(get_db)):
+def ai_say(iid: str, body: TextBody, ctx: Ctx = Depends(require_roles(*TAKEOVER)), db: Session = Depends(get_db)):
     itv = visible_interview(db, ctx, iid)
     _run(db, ai_room.human_says, itv, body.text, ctx.actor)
     return {"ok": True}
 
 
 @router.post("/interviews/{iid}/ai/whisper")
-def ai_whisper(iid: str, body: TextBody, ctx: Ctx = Depends(require_roles(*STAFF_AND_MODERATOR)), db: Session = Depends(get_db)):
+def ai_whisper(iid: str, body: TextBody, ctx: Ctx = Depends(require_roles(*WHISPERERS)), db: Session = Depends(get_db)):
     itv = visible_interview(db, ctx, iid)
     _run(db, ai_room.whisper, itv, body.text, ctx.actor)
     return {"ok": True}
 
 
 @router.post("/interviews/{iid}/ai/ack-alert")
-def ai_ack_alert(iid: str, ctx: Ctx = Depends(require_roles(*STAFF_AND_MODERATOR)), db: Session = Depends(get_db)):
+def ai_ack_alert(iid: str, ctx: Ctx = Depends(require_roles(*TAKEOVER)), db: Session = Depends(get_db)):
     itv = visible_interview(db, ctx, iid)
     _run(db, ai_room.ack_alert, itv, ctx.actor)
     return {"ok": True}

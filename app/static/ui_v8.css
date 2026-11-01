@@ -3,8 +3,8 @@
 :root[data-theme="orange"]{
   --bg:#FBF1E8; --surface:#FFFFFF; --wash:#F6E0CC;
   --ink:#2A1407; --ink2:#55280F; --muted:#734127; --line:#EDC7A4; --line2:#DDA676;
-  --nav:#BF4F0A; --nav-on:#8A3300; --nav-ink:#FFF4EA;
-  --brand:#9A3C00; --orange:#E3701F; --on-orange:#2A1407; --orange-ink:#9A3C00;
+  --nav:#B4520F; --nav-on:#8F3A0B; --nav-ink:#FFF4EA;
+  --brand:#8A3705; --orange:#E0701F; --on-orange:#2A1407; --orange-ink:#8A3705;
   --orange-soft:#FBE6D3; --orange-mid:#F5C9A2;
   --green:#7A3B12; --green-soft:#FBE6D3;
   color-scheme:light;
@@ -12,12 +12,12 @@
 html[data-theme="orange"] body{background:var(--bg);color:var(--ink)}
 html[data-theme="orange"] h1,html[data-theme="orange"] h2,html[data-theme="orange"] h3{color:var(--brand)}
 /* 左侧导航：深一点的橙色底，白字；当前页用更深的橙色块 */
-html[data-theme="orange"] nav.side{background:var(--nav);color:var(--nav-ink)}
+html[data-theme="orange"] nav.side{background:linear-gradient(180deg,#2B1305 0%,#4A200A 14%,#7A3409 38%,#A8480F 68%,#C25A14 100%);color:var(--nav-ink);box-shadow:inset -1px 0 0 rgba(255,255,255,.06)}   /* 2026-11-01 用户确认：从 logo 处最深的深褐往下渐变成橙色，logo 才看得清 */
 html[data-theme="orange"] nav.side .sec{color:#FFD9BC}
 html[data-theme="orange"] nav.side .sec b{color:#FFFFFF}
 html[data-theme="orange"] nav.side a.nv{color:#FFF4EA}
 html[data-theme="orange"] nav.side a.nv:hover{background:rgba(255,255,255,.12)}
-html[data-theme="orange"] nav.side a.nv[aria-current=page]{background:var(--nav-on);color:#FFFFFF}
+html[data-theme="orange"] nav.side a.nv[aria-current=page]{background:rgba(255,255,255,.16);box-shadow:inset 3px 0 0 #FFB070;color:#FFFFFF}
 html[data-theme="orange"] nav.side .me span{color:#FFF4EA}
 html[data-theme="orange"] nav.side .me button{color:#FFF4EA;border-color:rgba(255,244,234,.55);background:transparent}
 html[data-theme="orange"] nav.side .stghead{color:#FFF4EA}
@@ -30,12 +30,12 @@ html[data-theme="orange"] .card{background:var(--surface);border-color:var(--lin
 html[data-theme="orange"] table th{color:var(--muted);border-bottom-color:var(--brand)}
 html[data-theme="orange"] table td{border-bottom-color:var(--line)}
 html[data-theme="orange"] .tabs span.on,html[data-theme="orange"] .hubtabs a.on{color:var(--ink);box-shadow:inset 0 -2px 0 var(--brand)}
-html[data-theme="orange"] .overview-band{background:var(--brand)}
+html[data-theme="orange"] .overview-band{background:linear-gradient(95deg,#2B1305 0%,#6A2C08 60%,#8A3705 100%)}
 /* 受访者页：顶部 logo 栏用深橙 */
-html[data-theme="orange"] body.participant .pbar{background:var(--brand)}
+html[data-theme="orange"] body.participant .pbar{background:linear-gradient(95deg,#2B1305 0%,#6A2C08 60%,#8A3705 100%)}
 html[data-theme="orange"] body.participant .pwrap>h1{color:var(--brand)}
 /* 访谈室（受访者和主持人）跟随橙色：画面区用暖白，顶栏用深橙，控制按钮白底 */
-html[data-theme="orange"] .rhead{background:var(--brand)}
+html[data-theme="orange"] .rhead{background:linear-gradient(95deg,#2B1305 0%,#6A2C08 60%,#8A3705 100%)}
 html[data-theme="orange"] body.stage.t-light.solo.role-one-to-one .rbody>section{background:#FBEBDD}
 html[data-theme="orange"] body.stage.t-light.solo.role-one-to-one #grid>.tile.me{background:#F5D9C0;border-color:#DDA676}
 html[data-theme="orange"] body.stage.t-light.solo #bar{background:#FFF7EF;border-top:1px solid #EDC7A4}

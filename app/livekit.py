@@ -85,3 +85,27 @@ def url_for_client(host_header: str | None) -> str | None:
         return u
     host = host_header.split(":")[0]
     return f"{m.group(1)}{host}{m.group(3) or ''}{m.group(4) or ''}" if host not in ("localhost", "127.0.0.1") else u
+
+
+def revoke_publishing(room: str) -> None:
+    """Take the right to speak / show video / share the screen away from every staff member in the room (the AI got the interview back).
+
+    Best effort: a failure is logged without a body; the staff page also stops its own tracks, and a new token is view-only again.
+    """
+    if not settings.livekit_url:
+        return
+    import logging
+
+    import httpx
+
+    now = int(time.time())
+    tok = jwt.encode({"iss": settings.livekit_api_key, "nbf": now - 5, "exp": now + 60, "video": {"roomAdmin": True, "room": room}}, settings.livekit_api_secret, algorithm="HS256")
+    hdr = {"Authorization": "Bearer " + tok}
+    try:
+        listed = httpx.post(http_base() + "/twirp/livekit.RoomService/ListParticipants", json={"room": room}, headers=hdr, timeout=5).json()
+        for p in listed.get("participants", []):
+            if str(p.get("identity", "")).startswith("staff:"):
+                httpx.post(http_base() + "/twirp/livekit.RoomService/UpdateParticipant", json={"room": room, "identity": p["identity"], "permission": {"can_subscribe": True, "can_publish": False, "can_publish_data": False, "hidden": True}},
+                           headers=hdr, timeout=5)
+    except (httpx.HTTPError, ValueError):
+        logging.getLogger(__name__).warning("could not revoke staff publishing in a room", exc_info=True)
