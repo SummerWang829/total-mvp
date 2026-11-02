@@ -24,6 +24,7 @@ function rfCard(p, form) {
   const isSource = () => !ver || (vers && ver === vers.source);
   let showSug = false, changedIds = new Set();   // showSug: the suggestion cards are open in the chat; changedIds: the questions the last change touched ("刚改")
   let useLib = true, fail = null;   // useLib: the "参考研究库" tick; fail: the last turn that did not get an answer { ask, text, fatal } (kept here only, never saved)
+  let menu = null;   // the open ⋮ menu of a question ("q:<id>") or an option ("o:<id>:<number>"); one at a time
   const RF_KIND = { answer: ["回答", "ans"], suggest: ["建议", "sug"], stat: ["统计", "stat"] };
   const aiOk = () => !f.ai || f.ai.ok;
   const nl = (s) => esc(s).replace(/\n/g, "<br>");
@@ -94,14 +95,16 @@ function rfCard(p, form) {
     const failHtml = fail ? `<div class="rf-msg rf-me">${esc(fail.ask)}</div><div class="rf-err" role="alert"><b>本次未能完成回复</b><div>${esc(fail.text)}</div>${fail.fatal ? "" : `<button class="s" type="button" data-chip="retry">重新尝试</button><button class="s" type="button" data-chip="rephrase">调整提问方式</button>`}</div>` : "";
     const cards = showSug && sugs().length ? `<div class="rf-sgs"><div class="sm mut">建议 ${sugs().length} 条。</div>${sugs().map(sugCard).join("")}</div>` : "";
     const news = !showSug && sugs().length && sugSeen() !== sugs().map((s) => s.sig).join(",") ? `<button type="button" class="rf-news" data-chip="showsug">有 ${sugs().length} 条建议，点这里查看</button>` : "";
+    return hello + msgs + cards + failHtml + (pending ? `<div class="rf-msg rf-me">${esc(pending)}</div><div class="rf-msg mut">正在处理…</div>` : news);
+  }
+  function bubbles() {   // the 建议 bubbles above the input: at most three of the actions for the state of the questionnaire; a click sends those words
     const started = (f.stats && f.stats.started) || 0, why = aiOk() ? "" : ` disabled title="${esc(f.ai.reason)}"`;   // the buttons that need the model are greyed out, with the reason, when it cannot be used
-    const need = (c, label) => `<button class="s" type="button" data-chip="${c}"${why}>${label}</button>`, free = (c, label) => `<button class="s" type="button" data-chip="${c}">${label}</button>`;
+    const need = (c, label) => `<button class="rq-bub" type="button" data-chip="${c}"${why}>${label}</button>`, free = (c, label) => `<button class="rq-bub" type="button" data-chip="${c}">${label}</button>`;
     const row = !Q.length ? [need("draft", "帮我起草问卷")] : !started ? [free("review", "检查问卷"), need("goals", "对照研究目标"), need("neutral", "优化措辞的中立性"), free("test", "测试这份问卷")]
       : [free("review", "检查问卷"), free("rate", "预估通过率"), free("worst", "定位筛除率较高的题目"), need("neutral", "优化措辞的中立性")];
-    const chips = `<div class="rf-chips">${row.join("")}</div>`;
-    return hello + msgs + cards + failHtml + (pending ? `<div class="rf-msg rf-me">${esc(pending)}</div><div class="rf-msg mut">正在处理…</div>` : news + chips);
+    return `<span class="rq-bubh">建议</span>${row.slice(0, 3).join("")}`;
   }
-  const drawChat = () => { const c = $("#rfchat"); if (!c) return; const x = $("#rfctx"); if (x) { x.innerHTML = ctxHtml(); const l = $("#rflib"); if (l) l.onchange = () => { useLib = l.checked; drawChat(); }; } c.innerHTML = chatHtml(); c.scrollTop = c.scrollHeight; wireChips(); };
+  const drawChat = () => { const c = $("#rfchat"); if (!c) return; const x = $("#rfctx"); if (x) { x.innerHTML = ctxHtml(); const l = $("#rflib"); if (l) l.onchange = () => { useLib = l.checked; drawChat(); }; } c.innerHTML = chatHtml(); c.scrollTop = c.scrollHeight; const b = $("#rfbub"); if (b) b.innerHTML = pending ? "" : bubbles(); wireChips(); };
   async function send(text) {
     text = (text || "").trim(); if (!text || sending) return;
     if (incomplete()) return toast("有题目或选项还没写完，先写完再对话", true);
@@ -185,15 +188,80 @@ ${text}
         <button class="s" type="button" data-radd="1" ${(q.rules || []).length >= 4 ? "disabled" : ""}>+ 添加规则（例如 小于 18 → 结束 · 不符合）</button></div>` : ""}</div>`;
   }
   const qBadge = (q) => (changedIds.has(q.id) ? `<span class="rf-bd new">刚改</span>` : showSug && sugs().some((s) => s.qid === q.id) ? `<span class="rf-bd sug">建议</span>` : "");
-  function qCard(q, i) {
-    if (editing.has(q.id)) return `<div class="rf-q" data-qid="${q.id}">${qEditor(q, i)}</div>`;
-    const lines = q.type === "single" || q.type === "multi"
-      ? q.options.map((o, j) => `<div class="rf-o"><span class="rf-code">${j + 1}</span>${q.type === "single" ? "○" : "☐"} ${esc(o.text || "（空选项）")} ${badge(o.goto)}${o.tag ? `<span class="rf-lg jump">标签：${esc(o.tag)}</span>` : ""}${(o.excl || []).length ? `<span class="rf-lg exb">互斥：${exLabel(q, o)}</span>` : ""}</div>`).join("")
-      : q.type === "number" ? (q.rules || []).map((r) => `<div class="rf-o">如果数字${RF_OP[r.op]} ${r.value} ${badge(r.goto)}</div>`).join("") : "";
-    return `<div class="rf-q${changedIds.has(q.id) ? " rf-hl" : ""}" data-qid="${q.id}" data-selk="q:${q.id}"><div class="row"><span class="rf-n">${i + 1}</span><b>${esc(q.text || "（还没写题目）")}</b>${qBadge(q)}<span class="sp"></span><span class="tag nw">${RF_TYPE[q.type]}${q.required ? " · 必答" : ""}</span><button class="s" type="button" data-edit="${q.id}">编辑</button></div>${lines}${exWarn(q)}</div>`;
+  // a jump must still go forward (or to an end) after the questions are moved: a move that would turn one back is refused, never silently dropped
+  const orderOk = (list) => list.every((q, i) => [...q.options.map((o) => o.goto), ...(q.rules || []).map((r) => r.goto)].every((g) => {
+    const at = list.findIndex((x) => x.id === g);
+    return !g || g.startsWith("end_") || at < 0 || at > i;
+  }));
+  const blankQ = () => ({ id: nextId(), type: "single", text: "", required: true, options: blank(), rules: [] });
+  const moveQ = (from, to) => {
+    const next = [...Q], [m] = next.splice(from, 1); next.splice(to, 0, m);
+    if (!orderOk(next)) return toast("这样换会让某题的跳题指回前面，请先改跳题", true);
+    pushHist(); Q = next; changed();
+  };
+  function menuAct(act, i, j) {   // the ⋮ menus of a question and of an option; the question keeps its id whatever happens to its place
+    const q = Q[i]; if (!q) return; menu = null;
+    if (act === "logic") { editing.add(q.id); return drawRight(); }
+    if (act === "excl") { editing.add(q.id); openEx.add(q.options[j].id); return drawRight(); }
+    pushHist();
+    if (act === "single" || act === "multi") { q.type = act; if (act !== "multi") q.options.forEach((o) => { o.excl = []; }); return changed(); }
+    if (act === "copy") { const c = JSON.parse(JSON.stringify(q)); c.id = nextId(); Q.splice(i + 1, 0, c); return changed(); }
+    if (act === "above" || act === "below") { const n = blankQ(); Q.splice(act === "above" ? i : i + 1, 0, n); editing.add(n.id); return changed(); }
+    if (act === "delete") { editing.delete(q.id); Q.splice(i, 1); changed(); }
   }
+  function dragQ(e, from) {   // press the handle, move up or down, release: the question lands in front of the card under the pointer
+    e.preventDefault();
+    const cards = [...document.querySelectorAll("#rfright .rf-q[data-qi]")];
+    let slot = from;   // the question goes in front of cards[slot]
+    cards[from].classList.add("rq-dragging");
+    const mark = () => cards.forEach((c, k) => c.classList.toggle("rq-drop", k === slot && slot !== from && slot !== from + 1));
+    const move = (ev) => { slot = cards.filter((c) => ev.clientY > c.getBoundingClientRect().top + c.offsetHeight / 2).length; mark(); };
+    const up = () => {
+      removeEventListener("pointermove", move); removeEventListener("pointerup", up);
+      cards.forEach((c) => c.classList.remove("rq-dragging", "rq-drop"));
+      const to = slot > from ? slot - 1 : slot;
+      if (to !== from) moveQ(from, to);
+    };
+    addEventListener("pointermove", move); addEventListener("pointerup", up);
+  }
+  const qMenu = (q, i) => `<div class="rq-menu" role="menu">
+      <button type="button" role="menuitem" data-mact="logic" data-qi="${i}">条件逻辑（跳题）</button><button type="button" role="menuitem" data-mact="copy" data-qi="${i}">复制</button>
+      <button type="button" role="menuitem" data-mact="above" data-qi="${i}">在上方添加问题</button><button type="button" role="menuitem" data-mact="below" data-qi="${i}">在下方添加问题</button>
+      <hr><button type="button" role="menuitem" class="del" data-mact="delete" data-qi="${i}">删除</button></div>`;
+  const oMenu = (q, i, j) => `<div class="rq-menu rq-om" role="menu">
+      <button type="button" role="menuitem" data-mact="single" data-qi="${i}" data-oj="${j}" class="${q.type === "single" ? "on" : ""}">单选</button>
+      <button type="button" role="menuitem" data-mact="multi" data-qi="${i}" data-oj="${j}" class="${q.type === "multi" ? "on" : ""}">多选</button>
+      ${q.type === "multi" ? `<hr><button type="button" role="menuitem" data-mact="excl" data-qi="${i}" data-oj="${j}">设为互斥项</button>` : ""}</div>`;
+  const optMark = (q, o) => (o.goto === "end_ok" ? `<span class="rq-ic y" title="结束 · 符合" aria-label="结束 · 符合">✓</span>`
+    : o.goto === "end_out" ? `<span class="rq-ic n" title="结束 · 不符合" aria-label="结束 · 不符合">✗</span>` : `<span class="rq-ic">${q.type === "single" ? "○" : "☐"}</span>`);
+  const jumpBadge = (g) => (g && !g.startsWith("end_") ? badge(g) : "");   // the two endings show as ✓ / ✗; only a jump to a question needs its own label
+  function qCard(q, i) {
+    if (editing.has(q.id)) return `<div class="rf-q" data-qid="${q.id}" data-qi="${i}">${qEditor(q, i)}</div>`;
+    const qk = "q:" + q.id, choice = q.type === "single" || q.type === "multi";
+    const opts = choice ? q.options.map((o, j) => {
+      const ok = `o:${q.id}:${j}`;
+      return `<div class="rq-opt">${optMark(q, o)}<span>${esc(o.text || "（空选项）")}</span>${jumpBadge(o.goto)}${o.tag ? `<span class="rf-lg jump">标签：${esc(o.tag)}</span>` : ""}${(o.excl || []).length ? `<span class="rf-lg exb">互斥：${exLabel(q, o)}</span>` : ""}<span class="sp"></span>
+        <button class="rq-more" type="button" data-menu="${ok}" aria-label="选项 ${j + 1} 菜单" aria-expanded="${menu === ok}">⋮</button>${menu === ok ? oMenu(q, i, j) : ""}</div>`;
+    }).join("") + `<button class="rq-add" type="button" data-oadd-view="${q.id}">＋ 添加选项</button>` : "";
+    const rules = q.type === "number" ? (q.rules || []).map((r) => `<div class="rq-opt">如果数字${RF_OP[r.op]} ${r.value} ${badge(r.goto)}</div>`).join("") : "";
+    return `<div class="rf-q${changedIds.has(q.id) ? " rf-hl" : ""}" data-qid="${q.id}" data-qi="${i}" data-selk="q:${q.id}">
+      <span class="rq-grip" data-grip="${i}" title="按住拖动排序" aria-label="拖动第 ${i + 1} 题">⋮⋮</span>
+      <div class="rq-top"><span class="rq-qn">Q${i + 1}</span><button class="rq-title" type="button" data-edit="${q.id}">${esc(q.text || "（还没写题目）")}</button>${qBadge(q)}<span class="sp"></span>
+        <span class="rq-type">${RF_TYPE[q.type]}${q.required ? " · 必答" : ""}</span>
+        <button class="rq-more" type="button" data-menu="${qk}" aria-label="题目菜单" aria-expanded="${menu === qk}">⋮</button>${menu === qk ? qMenu(q, i) : ""}</div>
+      ${opts}${rules}${exWarn(q)}</div>`;
+  }
+  // 研究背景: one bullet per line of the project's background; the numbering in front of a line is not shown
+  const briefLines = () => (f.brief || "").split("\n").map((l) => l.replace(/^\s*(?:\d+\s*[.、)]|[-•·])\s*/, "").trim()).filter(Boolean);
+  const briefHtml = () => `<ul class="rq-bl" id="rfbrief">${(briefLines().length ? briefLines() : [""]).map((l) => `<li><span class="rq-bt" contenteditable="true" spellcheck="false" aria-label="研究背景的一条">${esc(l)}</span></li>`).join("")}</ul>`;
+  const saveBrief = guard(async () => {   // on leaving a bullet: the whole list is saved as the project's 研究背景 (没有变化就不发)
+    const text = [...document.querySelectorAll("#rfbrief .rq-bt")].map((e) => e.textContent.trim()).filter(Boolean).join("\n");
+    if (text === briefLines().join("\n")) return;
+    await api(`/projects/${p.id}/outline/settings`, { method: "PUT", body: { brief: text } });
+    f = { ...f, brief: text }; stat("研究背景已保存");
+  });
   function outline() {
-    return `<h3 class="rf-h">研究背景</h3><div class="rf-blk">${f.brief && f.brief.trim() ? `${esc(f.brief)} <span class="mut sm">（来自立项向导）</span>` : '<span class="mut">还没有研究背景。到立项向导第 1 步写，或在左边对话里补充。</span>'}</div>
+    return `<h3 class="rf-h rq-bold">研究背景</h3>${briefHtml()}
       <h3 class="rf-h">研究目标</h3><textarea id="rfgoals" class="rf-blk" rows="3" placeholder="每行一条。" aria-label="研究目标">${esc(goals.join("\n"))}</textarea>
       <h3 class="rf-h">招募需求</h3><textarea id="rfneed" class="rf-blk" rows="2" placeholder="谁、多少人、哪些情况要筛掉。" aria-label="招募需求">${esc(need)}</textarea>
       <h3 class="rf-h">问卷流程（共 ${Q.length} 题）</h3>${Q.length ? Q.map(qCard).join("") : `<div class="empty"><b>还没有题目</b><span>在左边说“帮我起草问卷”，或点下面的按钮自己加。</span></div>`}
@@ -277,6 +345,23 @@ ${text}
       Q.push(q); editing.add(q.id); changed();
     }));
     document.querySelectorAll("[data-edit]").forEach((b) => (b.onclick = () => { editing.add(b.dataset.edit); drawRight(); }));
+    const bindBullet = (el) => {   // 研究背景 bullets: Enter adds a line after this one; leaving a bullet saves the list, an empty one is dropped
+      el.onblur = () => { if (!el.textContent.trim() && el.parentElement.parentElement.children.length > 1) el.parentElement.remove(); saveBrief(); };
+      el.onkeydown = (e) => {
+        if (e.key !== "Enter" || e.isComposing) return;
+        e.preventDefault();
+        const li = document.createElement("li"), t = document.createElement("span");
+        t.className = "rq-bt"; t.contentEditable = "true"; t.spellcheck = false; li.append(t); el.parentElement.after(li); bindBullet(t); t.focus();
+      };
+    };
+    document.querySelectorAll("#rfbrief .rq-bt").forEach(bindBullet);
+    document.querySelectorAll("[data-grip]").forEach((g) => (g.onpointerdown = (e) => dragQ(e, +g.dataset.grip)));
+    document.querySelectorAll("[data-menu]").forEach((b) => (b.onclick = (e) => { e.stopPropagation(); menu = menu === b.dataset.menu ? null : b.dataset.menu; drawRight(); }));
+    document.querySelectorAll("[data-mact]").forEach((b) => (b.onclick = (e) => { e.stopPropagation(); menuAct(b.dataset.mact, +b.dataset.qi, +(b.dataset.oj ?? -1)); }));
+    document.querySelectorAll("[data-oadd-view]").forEach((b) => (b.onclick = () => {
+      const q = Q.find((x) => x.id === b.dataset.oaddView); if (!q) return;
+      pushHist(); q.options.push({ id: optId(q), text: "", goto: "", tag: "" }); editing.add(q.id); changed();
+    }));
     document.querySelectorAll(".rf-q .rf-edit").forEach((card) => {
       const i = +card.dataset.qi, q = Q[i];
       card.querySelectorAll("[data-f]").forEach((el) => (el.onchange = () => {
@@ -306,7 +391,7 @@ ${text}
       <div class="note">问卷在别的系统里制作和托管，这里只保存链接，点下面的按钮在新窗口里测试；不会嵌进本页面。</div><div class="row"><button class="p" id="rfsave" type="button">保存链接</button>${f.html_url ? `<button class="s" id="rftest" type="button">打开测试窗口</button>` : ""}</div>${f.html_url ? `<code class="rfurl">${esc(f.html_url)}</code>` : ""}</div>`;
     return `<div class="rf-ws${rightOpen ? "" : " rf-collapsed"}" id="rfws"><div class="rf-pane"><div class="rf-hd">${modeSwitch()}<span class="sp"></span><button class="s" type="button" id="rfundo" disabled>撤销</button><button class="s" type="button" id="rfredo" disabled>重做</button><button class="s" type="button" id="rfexp">展开大纲</button></div>
       <div class="rf-ctx" id="rfctx"></div><div class="rf-sc" id="rfchat"></div>
-      <div id="rfsel" hidden></div><div class="rf-inp"><div class="rf-box"><textarea id="rfmsg" rows="2" maxlength="2000" placeholder="请输入修改要求或问题，例如“帮我起草问卷”" aria-label="对话输入"></textarea><button class="p rf-send" type="button" id="rfsend" aria-label="发送">↑</button></div></div></div>
+      <div id="rfsel" hidden></div><div class="rq-bubs" id="rfbub"></div><div class="rf-inp"><div class="rf-box"><textarea id="rfmsg" rows="2" maxlength="2000" placeholder="请输入修改要求或问题，例如“帮我起草问卷”" aria-label="对话输入"></textarea><button class="p rf-send" type="button" id="rfsend" aria-label="发送">↑</button></div></div></div>
       <div class="rf-split" id="rfsplit" role="separator" aria-orientation="vertical" aria-label="拖动调整对话和大纲的宽度（双击恢复）" tabindex="0"><i></i></div><div class="rf-pane" id="rfright"></div></div>`;
   }
   const modeSwitch = () => `<div class="rf-seg" role="radiogroup" aria-label="问卷来源"><button type="button" role="radio" data-mode="ai" class="${mode === "ai" ? "on" : ""}" aria-checked="${mode === "ai"}">问卷编写</button><button type="button" role="radio" data-mode="html" class="${mode === "html" ? "on" : ""}" aria-checked="${mode === "html"}">导入问卷链接</button></div>`;
@@ -326,6 +411,9 @@ ${text}
     if (window._rfExOff) document.removeEventListener("click", window._rfExOff);
     window._rfExOff = (e) => { if (openEx.size && !e.target.closest(".rf-expanel, [data-ex]")) { openEx.clear(); drawRight(); } };   // the 互斥 picker closes when you click anywhere else
     document.addEventListener("click", window._rfExOff);
+    if (window._rfMenuOff) document.removeEventListener("click", window._rfMenuOff);
+    window._rfMenuOff = (e) => { if (menu && !e.target.closest("[data-menu], .rq-menu")) { menu = null; drawRight(); } };   // a ⋮ menu closes on a click anywhere else
+    document.addEventListener("click", window._rfMenuOff);
     const m = $("#rfmsg");
     $("#rfsend").onclick = () => send(m.value);
     m.onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(m.value); } };

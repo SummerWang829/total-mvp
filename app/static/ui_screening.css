@@ -17,3 +17,40 @@
 .rf-ws.rf-collapsed #rfexp{display:inline-flex}
 /* 招募问卷页：内容在框里滚动、整页不滚动，所以不为滚动条预留右侧空白（只这一页） */
 html body.rfmode .app.shfix .work>main{scrollbar-gutter:auto}
+
+/* 招募问卷题目卡片、研究背景圆点列表、建议气泡（效果图 2026-11-02）：只在招募问卷页（#rfws）里生效，访谈页的同名样式不动 */
+#rfws .rf-q{position:relative;padding:12px 14px 12px 36px;gap:6px}
+#rfws .rq-grip{position:absolute;left:10px;top:12px;color:var(--mut);cursor:grab;user-select:none;letter-spacing:-2px;touch-action:none;line-height:1.4}
+#rfws .rq-grip:active{cursor:grabbing}
+#rfws .rq-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+#rfws .rq-qn{background:#E6ECE8;color:var(--ink2);border-radius:999px;padding:0 9px;font-size:12px;font-weight:700;line-height:20px;flex:none}
+#rfws .rq-title{min-height:36px;display:inline-flex;align-items:center;background:none;border:0;padding:0;font:inherit;font-weight:600;text-align:left;color:var(--ink);cursor:pointer;min-width:0;overflow-wrap:anywhere}
+#rfws .rq-type{border:1px solid var(--line);border-radius:999px;padding:0 10px;font-size:12px;color:var(--mut);line-height:20px;flex:none}
+#rfws .rq-more{width:36px;height:36px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--mut);cursor:pointer;flex:none;line-height:1}
+#rfws .rq-more:hover{color:var(--ink);border-color:var(--ink2)}
+#rfws .rq-opt{position:relative;display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:3px 0;font-size:13.5px}
+#rfws .rq-ic{width:20px;height:20px;border-radius:50%;display:inline-grid;place-items:center;font-size:12px;font-weight:700;flex:none;color:var(--mut);border:1px solid var(--line)}
+#rfws .rq-ic.y{background:var(--green);border-color:var(--green);color:#fff}
+#rfws .rq-ic.n{background:var(--risk);border-color:var(--risk);color:#fff}
+#rfws .rq-add{min-height:36px;background:none;border:0;padding:4px 0;color:var(--green);font-size:13px;cursor:pointer;text-align:left}
+#rfws .rq-menu{position:absolute;right:8px;top:44px;z-index:30;min-width:200px;background:var(--surface);border:1px solid var(--line2);border-radius:10px;box-shadow:0 8px 22px rgba(11,56,44,.15);padding:6px 0;display:flex;flex-direction:column}
+#rfws .rq-menu.rq-om{top:26px;right:0}
+#rfws .rq-menu button{min-height:36px;background:none;border:0;padding:7px 14px;font:inherit;font-size:13px;color:var(--ink);text-align:left;cursor:pointer}
+#rfws .rq-menu button:hover{background:var(--wash)}
+#rfws .rq-menu button.on{font-weight:700}
+#rfws .rq-menu button.del{color:var(--risk)}
+#rfws .rq-menu hr{border:0;border-top:1px solid var(--line);margin:4px 0}
+#rfws .rf-q.rq-dragging{opacity:.5}
+#rfws .rf-q.rq-drop{box-shadow:0 -3px 0 var(--orange)}
+#rfws .rq-bold{font-weight:700}
+#rfws .rq-bl{list-style:disc;margin:0 0 8px;padding-left:22px;line-height:1.75}
+#rfws .rq-bl li{padding:1px 0}
+#rfws .rq-bt{display:inline-block;min-width:80px;outline:none;border-radius:4px;padding:0 2px;overflow-wrap:anywhere}
+#rfws .rq-bt:focus{background:var(--orange-soft)}
+#rfws .rq-bt:empty::before{content:"写一条…";color:var(--mut)}
+.rq-bubs{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:8px 12px 0;border-top:1px solid var(--line)}
+.rq-bubs:empty{display:none}
+.rq-bubh{font-size:12px;color:var(--mut);margin-right:2px}
+.rq-bub{min-height:36px;border:1px solid var(--line);background:var(--green-soft);color:var(--green);border-radius:999px;padding:8px 12px;font-size:13px;line-height:20px;cursor:pointer}
+.rq-bub:hover:not(:disabled){background:var(--wash)}
+.rq-bub:disabled{opacity:.5;cursor:not-allowed}

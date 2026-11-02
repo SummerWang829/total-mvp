@@ -744,9 +744,9 @@ def review_section(br, D):
     call(f"/projects/{pid}/recruiting/form", {"source": "ai", "questions": qs, "goals": [], "need": ""}, adm, "PUT")
     ctx, pg, errs = new_page(br, 1280, token=adm)
     pg.goto(B + "/"); pg.evaluate("sessionStorage.setItem('ptab', 'form')")
-    pg.goto(B + f"/#/p/{pid}/people"); pg.wait_for_selector("#rfchat .rf-chips")
-    chips = [x.strip() for x in pg.locator("#rfchat .rf-chips button").all_inner_texts()]
-    ok(chips == ["检查问卷", "对照研究目标", "优化措辞的中立性", "测试这份问卷"], f"[review] with nobody answering yet the quick buttons are these four, no 预估通过率 (got {chips})")
+    pg.goto(B + f"/#/p/{pid}/people"); pg.wait_for_selector("#rfbub .rq-bub")
+    chips = [x.strip() for x in pg.locator("#rfbub .rq-bub").all_inner_texts()]
+    ok(chips == ["检查问卷", "对照研究目标", "优化措辞的中立性"], f"[review] with nobody answering yet the 建议 bubbles above the input are these three, no 预估通过率 (got {chips})")
     ok("AI" not in pg.inner_text("#rfctx") and pg.locator("#rfctx .rf-model").count() == 0 and pg.locator("#rfctx .rf-cx span", has_text="当前问卷（2 题）").count() == 1 and pg.locator("#rflib").is_checked(), "[review] the header names the model and shows what the AI reads")
     # a passing failure: the reason in plain words, the question kept, 重新尝试 asks again; a refusal greys out the buttons that need the model
     fails = {"n": 0}
@@ -768,7 +768,7 @@ def review_section(br, D):
     ok(pg.locator(".rf-err button").count() == 0 and pg.locator("#rfctx .rf-model.bad").count() == 1 and pg.locator("[data-chip=goals]").is_disabled() and pg.locator("[data-chip=review]").is_enabled(), "[review] a refusal shows no retry, marks the model 不可用 and greys out only the buttons that need it")
     pg.unroute("**/recruiting/form/chat")
     errs.clear()   # the 502 / 503 above were made up on purpose
-    pg.reload(); pg.wait_for_selector("#rfchat .rf-chips")
+    pg.reload(); pg.wait_for_selector("#rfbub .rq-bub")
     ok("作答的统计数字" not in pg.inner_text(".rf-inp") and "AI 服务商" not in pg.inner_text(".rf-inp"), "[review] there is no outbound notice by the input (user and legal, 2026-11-01)")
     pg.fill("#rfmsg", "为什么第 1 题要筛人？"); pg.click("#rfsend")
     pg.wait_for_selector(".rf-kind.ans")
@@ -812,7 +812,7 @@ def review_section(br, D):
     pg.locator(".rf-sg [data-adopt]").first.click()
     ok(wait_until(lambda: pg.locator(".rf-q .rf-bd.new").count() == 1 and pg.locator(".rf-sg").count() < n, 8), "[review] adopting changes that question only, marks it 刚改, and the suggestion is gone")
     ok(pg.locator("#rfundo").is_enabled(), "[review] the change can be undone")
-    pg.reload(); pg.wait_for_selector("#rfchat .rf-chips")
+    pg.reload(); pg.wait_for_selector("#rfbub .rq-bub")
     got = call(f"/projects/{pid}/recruiting/form", None, adm)
     ok(all(s["kind"] != "exclusive" for s in got["suggestions"]), "[review] the fixed suggestion does not come back after a reload")
     if got["suggestions"]:
@@ -822,7 +822,7 @@ def review_section(br, D):
     ctx.close()
     ctx, pg, errs = new_page(br, 390, token=adm)
     pg.goto(B + "/"); pg.evaluate("sessionStorage.setItem('ptab', 'form')")
-    pg.goto(B + f"/#/p/{pid}/people"); pg.wait_for_selector("#rfchat .rf-chips")
+    pg.goto(B + f"/#/p/{pid}/people"); pg.wait_for_selector("#rfbub .rq-bub")
     audit_page(pg, "review chat/phone", errs)
     pg.screenshot(path=os.path.join(ROOT, "qa_shots", "review_390.png"))
     ctx.close()
@@ -1191,7 +1191,7 @@ def recruit_section(br, D):
     big = pg.evaluate("(() => { const t = document.querySelector('#rfgoals'); const lh = parseFloat(getComputedStyle(t).lineHeight); return [t.offsetHeight < lh * 9, getComputedStyle(t).overflowY]; })()")
     ok(big[0] and big[1] == "auto", f"[recruit] a long goals text stops at 8 lines and scrolls inside the box (got {big})")
     pg.fill("#rfgoals", "了解购买决策"); pg.dispatch_event("#rfgoals", "input"); pg.click("body", position={"x": 5, "y": 5})
-    ok(pg.locator("#rfout .rf-lg.out").count() >= 1 and pg.locator("#rfout h3", has_text="研究背景").count() == 1, "[recruit] the outline shows the logic of each option and starts with the research background")
+    ok(pg.locator("#rfout .rq-ic.n").count() >= 1 and pg.locator("#rfout h3", has_text="研究背景").count() == 1, "[recruit] the outline shows the logic of each option (✗ for an ending) and starts with the research background")
     n0 = pg.locator("#rfout .rf-q").count()
     # layout: one-row headers, the mode switch on the left (with the conversation), the workspace runs to the bottom of the window, a divider between the frames
     tops = pg.evaluate("[...document.querySelectorAll('.rf-hd')].map((h) => h.getBoundingClientRect().height)")
@@ -1222,7 +1222,7 @@ def recruit_section(br, D):
     pg.click("#rfundo"); ok(wait_until(lambda: pg.locator("#rfout .rf-q").count() == n0 + 1, 5), "[recruit] undo brings the deleted question back")
     pg.click("#rfredo"); ok(wait_until(lambda: pg.locator("#rfout .rf-q").count() == n0, 5), "[recruit] redo deletes it again")
     # options that cannot be chosen together: the multiple-choice question gets option codes and a 互斥 picker that lists the other codes
-    ok(pg.locator("#rfout .rf-q .rf-o .rf-code").count() >= 8, "[recruit] every option in the outline carries its code number")
+    ok(pg.locator("#rfout .rf-q .rq-opt .rq-ic").count() >= 8, "[recruit] every option in the outline card shows its ✓ / ✗ / ○ marker")
     mq = pg.locator("#rfout .rf-q", has_text="Where do you usually buy"); mq.locator("[data-edit]").click(); pg.wait_for_selector("#rfout .rf-edit [data-ex]")
     ok(pg.locator("#rfout .rf-edit .rf-optrow .rf-code").count() == 3 and pg.locator("#rfout .rf-edit [data-ex]").count() == 3 and pg.locator("#rfout .rf-edit [data-f=tag], #rfout .rf-edit [data-o=tag]").count() == 0, "[recruit] the editor shows option codes and a 互斥 button for a multiple-choice question, and no tag box")
     pg.locator("#rfout .rf-edit [data-ex='0']").click(); pg.wait_for_selector("#rfout .rf-expanel")
