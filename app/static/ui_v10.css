@@ -30,3 +30,9 @@ nav.side .me{margin-top:auto}
 html body #closeproj,html body #reopen{position:fixed;top:11px;right:24px;z-index:50;min-height:34px;padding:0 14px;white-space:nowrap}
 html body:has(#closeproj) .tsw{right:96px}
 html body:has(#reopen) .tsw{right:128px}
+/* 结项：红底白字；已结项后的“重新打开”：灰底白字（用户 2026-11-02 确认） */
+html body #closeproj{background:#C0392B;border-color:#C0392B;color:#fff}
+html body #closeproj:hover:not(:disabled){background:#A93226;border-color:#A93226;color:#fff}
+html body #reopen{background:#8A9A92;border-color:#8A9A92;color:#fff}
+html body #reopen:hover:not(:disabled){background:#738379;border-color:#738379;color:#fff}
+html body #closeproj::before,html body #reopen::before{display:none}
