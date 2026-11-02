@@ -133,13 +133,11 @@ function wzSubLangs(s) {  // 执行语言: the languages as chips (× removes on
     <button class="s" type="button" data-pick="lang|${s.id}" style="margin-top:6px">选择语言</button>`;
 }
 const wzMyLangs = (s) => (s.langs && s.langs.length ? s.langs : [s.lang]);
-/** 访谈形式 under a sub-project's research order: one row per live method it runs (深访 / 座谈会), with 选择形式 in a popup. */
+/** 深访形式 of one sub-project: its chips and 选择形式 in a popup; empty when its research order has no 深访. */
 function wzSubFmts(s) {
-  return WZ_DESIGNS[s.design][1].filter((m) => m === "depth" || m === "group").map((m) => {
-    const codes = (s.fmt && s.fmt[m]) || ["video"];
-    return `<div class="sm" style="margin-top:8px">${WZ_MNAME[m]}形式：${codes.map((k) => `<span class="tag">${WZ_FMT[k]}</span>`).join(" ")}
-      <button class="s" type="button" data-pick="fmt|${s.id}|${m}">选择形式</button></div>`;
-  }).join("");
+  if (!WZ_DESIGNS[s.design][1].includes("depth")) return "";
+  const codes = (s.fmt && s.fmt.depth) || ["video"];
+  return `${codes.map((k) => `<span class="tag">${WZ_FMT[k]}</span>`).join(" ")}<button class="s" type="button" data-pick="fmt|${s.id}|depth" style="margin-top:4px">选择形式</button>`;
 }
 /** A small popup to tick options: search, tick, untick. 完成 keeps at least one; 取消 leaves everything as it was. */
 function wzPick(title, options, picked, onDone) {
@@ -178,16 +176,17 @@ function wzSubs() {
     <div class="row" style="margin:6px 0"><label class="chk"><input type="radio" name="split" data-split="country" ${single ? "" : "checked"}>按国家拆成子项目（日本、韩国……各一个）</label>
     <label class="chk"><input type="radio" name="split" data-split="single" ${single ? "checked" : ""}>只有一个子项目（在里面分组）</label>
     <span class="sp"></span><button class="s" id="subtpl" type="button">下载 Excel 模板</button><button class="s" id="subimp" type="button">导入表格</button><input type="file" id="subfile" accept=".csv,text/csv" hidden aria-label="导入子项目表格"></div>
-    <div class="scroll"><table class="tbl"><thead><tr><th>编号</th><th>${single ? "名称" : "国家（可改名）"}</th><th>执行语言</th><th>责任人</th><th>研究顺序</th><th>访谈时间</th><th>舆情</th><th></th></tr></thead><tbody>
+    <div class="scroll wzsubs"><table class="tbl"><thead><tr><th>编号</th><th>${single ? "名称" : "国家（可改名）"}</th><th>执行语言</th><th>责任人</th><th>研究顺序</th><th>深访形式</th><th>访谈时间</th><th>舆情</th><th></th></tr></thead><tbody>
     ${c.subs.map((s, i) => `<tr><td><b>S${i + 1}</b></td><td>${wzInp(`data-sub="${s.id}|name" aria-label="名称"`, s.name, 'size="12"')}</td>
       <td>${wzSubLangs(s)}</td>
       <td>${wzSel(`data-sub="${s.id}|pm" aria-label="责任人"`, s.pm, pms, 150)}</td>
-      <td>${wzSel(`data-sub="${s.id}|design" aria-label="研究顺序"`, s.design, Object.keys(WZ_DESIGNS).map((k) => [k, WZ_DESIGNS[k][0]]), 170)}<div class="sm" style="margin-top:4px">${wzDesignHtml(s.design)}</div>${wzSubFmts(s)}</td>
+      <td>${wzSel(`data-sub="${s.id}|design" aria-label="研究顺序"`, s.design, Object.keys(WZ_DESIGNS).map((k) => [k, WZ_DESIGNS[k][0]]), 170)}</td>
+      <td>${wzSubFmts(s)}</td>
       <td>${wzMinutes(s)}</td>
       <td><label class="chk wzbig"><input type="checkbox" data-subx="${s.id}|listening" ${s.listening ? "checked" : ""} aria-label="${esc(s.name)} 做舆情收集"></label></td>
       <td>${c.subs.length > 1 ? `<button class="s" data-subdel="${s.id}" type="button">删除</button>` : ""}</td></tr>`).join("")}</tbody></table></div>
-    ${single ? `<div class="note">一个子项目：定量一份问卷，定性按组拆分。</div>` : `<div class="row" style="margin-top:8px"><input id="subnew" placeholder="新增国家，例如：马来西亚" aria-label="新增国家"><button class="s p" id="subadd" type="button">+ 添加子项目</button></div>
-    <div class="note">改名或删除后，配额和执行监控会同步更新。模板按“编号、国家、执行语言、责任人、研究顺序、舆情”填好后导入。</div>`}</div>`;
+    ${single ? `<div class="note">一个子项目：定量一份问卷，定性按组拆分。</div>` : `<div class="row" style="margin-top:8px"><button class="s p" id="subadd" type="button">+ 添加子项目</button></div>
+    `}</div>`;
 }
 
 /** 访谈时间 of one sub-project: 30 / 45 / 60 minutes, or a custom 5–240; 45 when nothing is set. */
@@ -492,7 +491,7 @@ function wzClick(b, e) {
     WZ.estNote = r.tags.length ? `这个项目的受访者库共 ${r.pool} 人，其中 ${r.reach} 人带有这些标签。` : `这个项目的受访者库共 ${r.pool} 人。${r.known.length ? "描述里没有提到已有的标签（已有标签：" + r.known.slice(0, 8).join("、") + "）。" : "还没有人带标签。"}`;
     await wzSave(true); wzRedraw();
   })();
-  if (b.id === "subadd") { const v = $("#subnew").value.trim(); if (!v) return toast("先写国家名", true); wzMutate(() => { c.subs.push({ id: wzUid("s"), name: v, lang: "英语", pm: "", design: c.subs.length ? c.subs[c.subs.length - 1].design : "iq", listening: false, async_ai: false }); wzSyncCountry(); }); return wzRedraw(); }
+  if (b.id === "subadd") { wzMutate(() => { c.subs.push({ id: wzUid("s"), name: "新国家", lang: "英语", pm: "", design: c.subs.length ? c.subs[c.subs.length - 1].design : "iq", listening: false, async_ai: false }); wzSyncCountry(); }); return wzRedraw(); }
   if (d.subdel) { wzMutate(() => { c.subs = c.subs.filter((s) => s.id !== d.subdel); wzSyncCountry(); }); return wzRedraw(); }
   if (d.col) { const [j, on] = d.col.split("|"), k = ["q", "i", "f", "l"][+j]; wzMutate(() => c.team.forEach((m) => (m[k] = on === "1"))); return wzRedraw(); }
   if (b.id === "memadd") { const id = $("#memsel").value, u = WZ.users.find((x) => x.id === id); if (!u) return toast("先选一位同事", true); wzMutate(() => c.team.push({ user_id: id, ...wzDefault(u) })); return wzRedraw(); }

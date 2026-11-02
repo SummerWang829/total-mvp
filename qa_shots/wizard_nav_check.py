@@ -36,7 +36,11 @@ try:
                 return { toc: document.querySelectorAll('.wztoc').length, formW: Math.round(f.width), formRight: Math.round(f.right), vw: innerWidth,
                          mainW: m ? Math.round(m.width) : null }; }""")
             print(w, r)
-            pg.screenshot(path=str(ROOT / "qa_shots" / f"wiz_nav_{w}.png"), full_page=False)
+            heads = pg.locator("table.tbl thead th").all_inner_texts()
+            print("  columns:", heads)
+            print("  has 座谈会形式:", any("座谈会形式" in h for h in heads), "| 新增国家 box:", pg.locator("#subnew").count(),
+                  "| grey note:", pg.locator("text=改名或删除后").count(), "| 选择形式 buttons:", pg.locator("button[data-pick^='fmt|']").count())
+            pg.screenshot(path=str(ROOT / "qa_shots" / f"wiz_v6_{w}.png"), full_page=False)
             ctx.close()
         br.close()
 finally:

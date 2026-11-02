@@ -16,3 +16,7 @@ main:has(.chain:not(.hm-chain)) .head h1{font-size:40px;line-height:1.2}
 /* 效果图改版（2026-11-01，只改展示）：立项向导右侧固定目录；桌面宽度时顶部的步骤条隐藏（同一组按钮，只留右侧一份）。 */
 .wzgrid{display:grid;grid-template-columns:minmax(0,1fr);gap:16px}
 .chain:not(.hm-chain) .step{white-space:nowrap}
+/* 子项目表（2026-11-02 用户确认的效果图 v6）：没有方框，可改的地方用虚线下划线，内容顶端左对齐 */
+.wzsubs td{vertical-align:top;text-align:left}
+html body .wzbody .wzsubs input:not([type=checkbox]):not([type=radio]),html body .wzbody .wzsubs select{border:0;border-bottom:1px dashed var(--mut);border-radius:0;background:transparent;padding:2px 2px 1px;min-height:0;box-shadow:none}
+.wzsubs button[data-pick]{border:0;background:none;padding:0;color:var(--brand);text-decoration:underline;font-weight:600;box-shadow:none}
