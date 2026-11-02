@@ -548,31 +548,17 @@ main.enter .pbar6 i{animation:grow 1s var(--ease) .15s both}@keyframes grow{from
 .wm{position:absolute;inset:0;pointer-events:none;display:grid;grid-template-columns:repeat(3,1fr);grid-auto-rows:1fr;color:rgba(255,255,255,.22);font-size:13px;overflow:hidden}
 .wm span{display:flex;align-items:center;justify-content:center;transform:rotate(-18deg);white-space:nowrap}
 
-/* ---------- logo animation (plays once on load) ---------- */
-.brandsvg{display:block}
-.brandsvg .lg-wl-a,.brandsvg .lg-wr-a{transform-box:view-box;transform-origin:0 0}
-.brandsvg .lg-disc{transform-box:fill-box;transform-origin:50% 50%}
-.brandsvg .lg-body{transform-box:fill-box;transform-origin:50% 100%}
-/* the phoenix is unveiled from its tail up (a clip that rises), while the wings slowly unfold from raised-and-closed to open */
-.brandsvg.play .lg-disc{animation:lgDisc .8s cubic-bezier(.2,.8,.2,1) backwards}
-.brandsvg.play .lg-rain use{animation:lgRain .5s ease-out backwards}
-.brandsvg.play .lg-bird{animation:lgRise 1.5s cubic-bezier(.33,0,.2,1) .2s backwards}
-.brandsvg.play .lg-body{animation:lgLift 1.5s cubic-bezier(.33,0,.2,1) .2s backwards}
-.brandsvg.play .lg-wl-a{animation:lgWl 1.9s cubic-bezier(.3,.1,.2,1) .55s backwards}
-.brandsvg.play .lg-wr-a{animation:lgWr 1.9s cubic-bezier(.3,.1,.2,1) .55s backwards}
-.brandsvg.play .lg-word{animation:lgWord .7s cubic-bezier(.2,.8,.2,1) 1.7s backwards}
-@keyframes lgDisc{from{opacity:0;transform:scale(.8)}}
-@keyframes lgRain{from{opacity:0;transform:translateY(-16px)}}
-@keyframes lgRise{from{clip-path:inset(100% 0 0 0)}to{clip-path:inset(0 0 0 0)}}
-@keyframes lgLift{from{transform:translateY(40px)}}
-@keyframes lgWl{0%{transform:scaleX(.28) rotate(10deg)}100%{transform:none}}
-@keyframes lgWr{0%{transform:scaleX(.28) rotate(-10deg)}100%{transform:none}}
-@keyframes lgWord{from{opacity:0;transform:translateX(-14px)}}
+/* ---------- logo: the phoenix rises from below on hover (the TOTAL 星桐 wordmark stays visible) ---------- */
+.brandsvg{display:block;overflow:visible}
+.brandsvg .pb-rv{transform:translateY(870px);transition:transform 1.5s cubic-bezier(.22,.7,.2,1)}
+.brandsvg .pb-fly{transform:translateY(60px);transition:transform 1.5s cubic-bezier(.22,.7,.2,1)}
+.brandsvg:hover .pb-rv,.brandsvg:focus-visible .pb-rv{transform:translateY(0)}
+.brandsvg:hover .pb-fly,.brandsvg:focus-visible .pb-fly{transform:translateY(0)}
 
 @media (prefers-reduced-motion:reduce){
   *,*::before{transition:none!important}
   .modal,.modal>div,main.enter>*,main.enter .pbar6 i{animation:none!important}
-  .brandsvg.play *{animation:none!important}
+  .brandsvg .pb-rv,.brandsvg .pb-fly{transition:none!important;transform:none!important}
   .recdot:not([hidden])::before{animation:none}
 }
 
