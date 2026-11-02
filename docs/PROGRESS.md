@@ -89,6 +89,15 @@
 - 没测：整套 qa.sh；真人房间的录制路径（没改）；语音在真实 ASR（腾讯云/OpenAI）上的识别效果（测试用的是 mock ASR）；接管语音和聊天的重复文字（研究员同时打字和说话时会出现两条）；录像里屏幕共享的合成画面（只验证了录制就绪，没有人工看成片）。
 - 还要注意：结束访谈（`/end`）时会用聊天重写转写，会清掉之前转写里的语音段；语音段需要在录制就绪后再点一次“转写”。
 
+## 2026-11-02 · 部署 47a3ddf 完成（SW 指令，已在线上核对）
+- 包含：访谈页“帮我起草大纲”“暂时无法回答”修复。原因（隔离库用真实模型设置复现）：约 1/6 的回复括号写错、不是合法 JSON，原来直接报错不重试；第一次写的问题常把两问合在一句，约 85% 被红线拒绝，原来只给 2 次机会。改动：app/moderator/providers.py 新增 ChatFormatError（只在回复不是合法 JSON 时使用）；app/outline_chat.py 遇到 ChatFormatError 重试，尝试次数 2→3，提示词写明“一句话只问一个问题”，指引改为一句话、不超过 60 字；tests/test_outline_chat.py（更新 + 新增 1 项）。
+- 部署前核对：线上 /opt/total-mvp 的 209 个 app 文件 sha256 与 0e61355 一致；无进行中访谈、无未完成录制或合成。
+- 测试：`pytest tests/test_chat_reply_format.py tests/test_outline_chat.py tests/test_recruit_review.py tests/test_service_refusal.py tests/test_moderator_setup.py` 86 项通过。
+- 备份：`total-20261102-092027.db.gz`，异地 COS 上传 HTTP 200（本地备份 198 KB，media 15M）。回滚材料：代码 /opt/rollback-code-0e61355.tgz（不含 deploy/.env、secrets/、数据库）；旧镜像标签 total-app:rollback-0e61355。
+- 部署：git archive 47a3ddf 覆盖 /opt/total-mvp（deploy/.env 未动）；docker compose up -d --build --no-deps app。
+- 检查：容器 healthy；日志无 cannot add/error/traceback；app.doctor 无必须解决的问题；/api/health、/api/public/config、/index.html、/outline.js 本机 200，公网 HTTPS /api/health 200；线上 outline_chat.py 与 47a3ddf 一致。
+- 未测（需用户在网页上确认）：访谈页“帮我起草大纲”不再出现“暂时无法回答”、多数 5–6 秒内出结果；缩短、检查引导性、补追问、只问不改、问“你是什么模型”（应答“我是小星星助手”）正常。若仍失败，看服务器日志对应的失败原因那一行（不含谈话内容）。
+
 ## 2026-11-02 · 部署 0e61355 完成（SW 指令，已在线上核对）
 - 包含：问卷对话“返回的内容格式不正确”修复（app/moderator/providers.py：回复包在代码块或前后有文字时先取出 JSON；回复被输出上限截断时记日志并报“被截断”，不再用同样请求重问；app/recruit_form.py：截断时页面显示单独说明；tests/test_chat_reply_format.py）。
 - 部署前核对：线上 /opt/total-mvp 的 209 个 app 文件 sha256 与 735c505 一致；无进行中访谈、无未完成录制或合成。
