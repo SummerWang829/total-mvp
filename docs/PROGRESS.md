@@ -103,6 +103,15 @@
 - 没测：整套 qa.sh；真人房间的录制路径（没改）；语音在真实 ASR（腾讯云/OpenAI）上的识别效果（测试用的是 mock ASR）；接管语音和聊天的重复文字（研究员同时打字和说话时会出现两条）；录像里屏幕共享的合成画面（只验证了录制就绪，没有人工看成片）。
 - 还要注意：结束访谈（`/end`）时会用聊天重写转写，会清掉之前转写里的语音段；语音段需要在录制就绪后再点一次“转写”。
 
+## 2026-11-02 · 部署 c252b02 完成（SW 指令，已在线上核对）
+- 包含：1e56fe5（候场室放行后显示“主持人已放行”并自动进房；状态请求失败显示“网络不稳定”；观察员和客户在房间看大纲和章节总结，/assist 对其只返回大纲和章节；大纲追问直接显示；点“离开”显示“你已离开”页；团队摄像头、麦克风按钮永远可点，点时才开设备）；c252b02（受访者手机端房间，700px 以内：画面平分或大屏、中间实时字幕、底部便捷输入，回车发送、键盘弹出时贴着键盘；新增 GET /public/join/{token}/captions，只返回文字；POST /public/join/{token}/enter 多返回 one_to_one）。
+- 部署前核对：线上 /opt/total-mvp 的 209 个 app 文件 sha256 与 47a3ddf 一致；无进行中访谈、无未完成录制或合成。
+- 测试：`pytest tests/test_participant_captions.py tests/test_room_assist.py tests/test_ai_room.py tests/test_concept.py` 79 项通过。未跑 tests/e2e_room.py（群组房间 3 处失败待查）。
+- 备份：`total-20261102-100119.db.gz`，异地 COS 上传 HTTP 200。回滚材料：代码 /opt/rollback-code-47a3ddf.tgz（不含 deploy/.env、secrets/、数据库）；旧镜像标签 total-app:rollback-47a3ddf。
+- 部署：git archive c252b02 覆盖 /opt/total-mvp（deploy/.env 未动）；docker compose up -d --build --no-deps app。
+- 检查：容器 healthy；日志无 cannot add/error/traceback；app.doctor 无必须解决的问题；/api/health、/api/public/config、/room.html、/join.html、/ui_room.css 本机 200，公网 HTTPS /api/health 200；线上 routers/public.py 与 c252b02 一致。
+- 未测（需用户在网页上确认）：人工主持一对一，候场室放行后受访者显示“主持人已放行”并自动进房；受访者点“离开”显示“你已离开”页；观察员/客户看大纲和章节、不看说话占比和追问建议，追问直接显示无箭头；团队摄像头和麦克风按钮永远可点；受访者手机端（700px 以内）画面平分或大屏、中间字幕、底部输入框回车发送、键盘弹出时贴着键盘。
+
 ## 2026-11-02 · 部署 47a3ddf 完成（SW 指令，已在线上核对）
 - 包含：访谈页“帮我起草大纲”“暂时无法回答”修复。原因（隔离库用真实模型设置复现）：约 1/6 的回复括号写错、不是合法 JSON，原来直接报错不重试；第一次写的问题常把两问合在一句，约 85% 被红线拒绝，原来只给 2 次机会。改动：app/moderator/providers.py 新增 ChatFormatError（只在回复不是合法 JSON 时使用）；app/outline_chat.py 遇到 ChatFormatError 重试，尝试次数 2→3，提示词写明“一句话只问一个问题”，指引改为一句话、不超过 60 字；tests/test_outline_chat.py（更新 + 新增 1 项）。
 - 部署前核对：线上 /opt/total-mvp 的 209 个 app 文件 sha256 与 0e61355 一致；无进行中访谈、无未完成录制或合成。
