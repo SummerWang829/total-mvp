@@ -162,10 +162,15 @@ class OpenAICompatModeratorChat:
             log.error("moderator model at %s refused the request: HTTP %s (check MODERATOR_API_KEY / MODERATOR_MODEL)", url, response.status_code)
             raise ChatError(f"HTTP {response.status_code}")
         try:
-            return response.json()["choices"][0]["message"]["content"]
+            choice = response.json()["choices"][0]
+            content = choice["message"]["content"]
         except (ValueError, KeyError, IndexError, TypeError) as e:
             log.error("moderator model at %s returned an unexpected response shape", url, exc_info=True)
             raise ChatError("unexpected response shape") from e
+        if choice.get("finish_reason") == "length":  # the reply hit the model's output limit: asking again would cut it the same way
+            log.warning("moderator model reply was cut off at the output limit (%d characters)", len(content or ""))
+            raise ChatError("reply was cut off at the output limit")
+        return content
 
     @staticmethod
     def _parse_json_object(content: str | None) -> dict:
@@ -175,7 +180,7 @@ class OpenAICompatModeratorChat:
             ChatError: empty, not JSON, or JSON that is not an object. The text itself is never logged (participant data).
         """
         try:
-            parsed = json.loads(content or "")
+            parsed = _load_reply(content or "")
         except ValueError as e:
             log.warning("moderator model reply is not JSON (%d characters)", len(content or ""))
             raise ChatError("reply is not JSON") from e
@@ -183,6 +188,16 @@ class OpenAICompatModeratorChat:
             log.warning("moderator model reply is JSON but not an object (%s)", type(parsed).__name__)
             raise ChatError("reply is not a JSON object")
         return parsed
+
+
+def _load_reply(text: str) -> object:
+    """The reply as JSON. A reply with a code fence or a sentence around the object is cut down to the object first.
+
+    Raises:
+        ValueError: no JSON object can be read from the text.
+    """
+    start, end = text.find("{"), text.rfind("}")
+    return json.loads(text[start:end + 1] if 0 <= start < end else text)
 
 
 def request_extras(config: Settings) -> dict:

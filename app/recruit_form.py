@@ -73,6 +73,8 @@ def chat_reason(e: ChatError) -> str:
         return "服务暂时不可用"
     if "Timeout" in s or "timed out" in s.lower():
         return "服务响应超时"
+    if "cut off" in s:
+        return "回复太长，被截断了（可以让它只改其中一部分）"
     if any(m in s for m in FORMAT_ERRORS):
         return "返回的内容格式不正确"
     return "服务暂时无法连接"
