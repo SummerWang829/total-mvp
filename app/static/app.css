@@ -548,17 +548,29 @@ main.enter .pbar6 i{animation:grow 1s var(--ease) .15s both}@keyframes grow{from
 .wm{position:absolute;inset:0;pointer-events:none;display:grid;grid-template-columns:repeat(3,1fr);grid-auto-rows:1fr;color:rgba(255,255,255,.22);font-size:13px;overflow:hidden}
 .wm span{display:flex;align-items:center;justify-content:center;transform:rotate(-18deg);white-space:nowrap}
 
-/* ---------- logo: the phoenix rises from below on hover (the TOTAL 星桐 wordmark stays visible) ---------- */
-.brandsvg{display:block;overflow:visible}
+/* ---------- logo: on hover the phoenix rises first, then the 星桐 TOTAL wordmark comes in. Colours follow the theme. ---------- */
+.brandsvg{display:block;overflow:visible;--lg-ink:#FFFFFF}
+.brandsvg .lg-bg{fill:transparent}
+.brandsvg .pb-ink{fill:var(--lg-ink)}
 .brandsvg .pb-rv{transform:translateY(870px);transition:transform 1.5s cubic-bezier(.22,.7,.2,1)}
 .brandsvg .pb-fly{transform:translateY(60px);transition:transform 1.5s cubic-bezier(.22,.7,.2,1)}
 .brandsvg:hover .pb-rv,.brandsvg:focus-visible .pb-rv{transform:translateY(0)}
 .brandsvg:hover .pb-fly,.brandsvg:focus-visible .pb-fly{transform:translateY(0)}
+@keyframes pbWord{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+.brandsvg:hover .pb-word,.brandsvg:focus-visible .pb-word{animation:pbWord .9s cubic-bezier(.2,.8,.2,1) 1.45s both}
+/* orange theme: orange badge, white phoenix and wordmark */
+html[data-theme="orange"] .brandsvg{--lg-ink:#FFFFFF}
+html[data-theme="orange"] .brandsvg .lg-bg{fill:#C34E01}
+html[data-theme="orange"] .brandsvg .pb-ph{filter:brightness(0) invert(1)}
+/* dark theme: white badge, natural orange phoenix, deep green wordmark */
+html[data-theme="dark"] .brandsvg{--lg-ink:#0B382C}
+html[data-theme="dark"] .brandsvg .lg-bg{fill:#FFFFFF}
 
 @media (prefers-reduced-motion:reduce){
   *,*::before{transition:none!important}
   .modal,.modal>div,main.enter>*,main.enter .pbar6 i{animation:none!important}
   .brandsvg .pb-rv,.brandsvg .pb-fly{transition:none!important;transform:none!important}
+  .brandsvg .pb-word,.brandsvg:hover .pb-word{animation:none!important}
   .recdot:not([hidden])::before{animation:none}
 }
 
