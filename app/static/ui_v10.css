@@ -26,3 +26,7 @@ html[data-theme="dark"] .totop{background:#F4F8F5;color:#0B382C}
 nav.side .me{margin-top:auto}
 .filters .stats{flex:none}.filters .stats button,.filters .project-actions button{white-space:nowrap}
 .projects-page .filters{position:relative;top:1px}
+/* 结项 / 重新打开：固定在右上角，主题切换的右边（用户 2026-11-02 确认） */
+html body #closeproj,html body #reopen{position:fixed;top:11px;right:24px;z-index:50;min-height:34px;padding:0 14px;white-space:nowrap}
+html body:has(#closeproj) .tsw{right:96px}
+html body:has(#reopen) .tsw{right:128px}

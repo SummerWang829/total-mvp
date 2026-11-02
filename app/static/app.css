@@ -561,7 +561,6 @@ main.enter .pbar6 i{animation:grow 1s var(--ease) .15s both}@keyframes grow{from
 /* orange theme: orange badge, white phoenix and wordmark */
 html[data-theme="orange"] .brandsvg{--lg-ink:#FFFFFF}
 html[data-theme="orange"] .brandsvg .lg-bg{fill:transparent}
-html[data-theme="orange"] .brandsvg .pb-ph{filter:brightness(0) invert(1)}
 /* dark theme: deep green badge, natural orange phoenix, white wordmark (same as the default logo) */
 html[data-theme="dark"] .brandsvg{--lg-ink:#FFFFFF}
 html[data-theme="dark"] .brandsvg .lg-bg{fill:transparent}

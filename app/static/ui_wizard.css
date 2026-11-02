@@ -18,5 +18,17 @@ main:has(.chain:not(.hm-chain)) .head h1{font-size:40px;line-height:1.2}
 .chain:not(.hm-chain) .step{white-space:nowrap}
 /* 子项目表（2026-11-02 用户确认的效果图 v6）：没有方框，可改的地方用虚线下划线，内容顶端左对齐 */
 .wzsubs td{vertical-align:top;text-align:left}
-html body .wzbody .wzsubs input:not([type=checkbox]):not([type=radio]),html body .wzbody .wzsubs select{border:0;border-bottom:1px dashed var(--mut);border-radius:0;background:transparent;padding:2px 2px 1px;min-height:0;box-shadow:none}
+html body .wzbody .wzsubs input:not([type=checkbox]):not([type=radio]),html body .wzbody .wzsubs select{border:0;border-bottom:1px dashed var(--mut);border-radius:0;background:transparent;padding:2px 2px 1px 0;min-height:0;box-shadow:none}
 .wzsubs button[data-pick]{border:0;background:none;padding:0;color:var(--brand);text-decoration:underline;font-weight:600;box-shadow:none}
+/* 固定列宽、与抬头左对齐（用户 2026-11-02 确认的效果图） */
+.wzsubs table,.wzfix{table-layout:fixed;width:100%}
+.wzsubs th,.wzsubs td,.wzfix th,.wzfix td,.wzroles th,.wzroles td{text-align:left;vertical-align:top}
+.wzroles .chk.wzbig{justify-content:flex-start;min-width:0}
+/* 研究设计页的建议：四个页签，一次看一块 */
+.sugtabs{display:flex;gap:20px;border-bottom:1px solid var(--line2)}
+.sugtabs span{padding:6px 0;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent}
+.sugtabs span.on{color:var(--ink);border-bottom-color:var(--orange)}
+.sugbody{padding-top:6px}
+.sugrow{display:grid;grid-template-columns:220px 1fr;gap:14px;padding:10px 0;border-bottom:1px solid var(--line2)}
+.sugrow:last-child{border-bottom:0}
+.wzsubs th,.wzsubs td,.wzfix th,.wzfix td,.wzroles th,.wzroles td{padding-left:12px;padding-right:8px}

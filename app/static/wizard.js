@@ -86,9 +86,9 @@ function wzDesignView() {
   const c = WZ.cfg;
   return `<div class="card" style="display:flex;flex-direction:column;gap:10px"><b>各子项目的研究设计</b>
     <p class="sm mut" style="margin:0"></p>
-    <div class="scroll"><table class="tbl"><thead><tr><th>子项目</th><th>研究顺序</th><th>阶段</th><th>舆情</th><th>异步 AI 研究</th></tr></thead><tbody>
+    <div class="scroll"><table class="tbl wzfix"><thead><tr><th style="width:22%">项目</th><th style="width:28%">研究形式</th><th style="width:32%">阶段</th><th style="width:18%">舆情</th></tr></thead><tbody>
     ${c.subs.map((s, i) => `<tr><td><b>S${i + 1}</b> ${esc(s.name)}<div class="sm mut">${esc(s.lang)}</div></td><td>${wzDesignHtml(s.design)}</td>
-      <td>${WZ_DESIGNS[s.design][1].map((m, k) => `<span class="tag nw ${WZ_MCLS[m]}">${k + 1} ${WZ_MNAME[m]}</span>`).join("")}</td><td>${s.listening ? "做" : '<span class="mut">不做</span>'}</td><td>${s.async_ai ? "做" : '<span class="mut">不做</span>'}</td></tr>`).join("")}
+      <td>${WZ_DESIGNS[s.design][1].map((m, k) => `<span class="tag nw ${WZ_MCLS[m]}">${k + 1} ${WZ_MNAME[m]}</span>`).join("")}</td><td>${s.listening ? "做" : '<span class="mut">不做</span>'}</td></tr>`).join("")}
     </tbody></table></div></div>`;
 }
 
@@ -113,31 +113,34 @@ function wzSuggest() {  // step 2: what the AI suggests from the research backgr
   const pill = st === "running" ? `<span class="pill o">生成中…</span>` : st === "error" ? `<span class="pill r">没生成成功</span>` : `<span class="pill">已生成</span>`;
   return `<div class="card" id="wzsug" style="display:flex;flex-direction:column;gap:8px"><div class="row"><b>建议（根据研究背景，后台生成）</b>${pill}</div>
     ${st === "error" ? `<div class="note">${esc(WZ.sugError || "")}。回到第 1 步改一下研究背景再点“下一步”会重新生成。</div>` : ""}
-    ${s ? `<div class="grid"><div class="card"><h3>深访提纲建议</h3>${list(s.depth_topics)}</div><div class="card"><h3>座谈会大纲建议</h3>${list(s.group_topics)}</div>
-      <div class="card"><h3>配额建议</h3><p class="sm" style="margin:6px 0 0">${esc(s.quota_hint)}</p></div><div class="card"><h3>舆情关键词建议</h3><div style="margin-top:6px">${s.listening_keywords.map((k) => `<span class="tag">${esc(k)}</span>`).join("")}</div></div></div>
-    ` : ""}</div>`;
+    ${s ? wzSuggestTabs(s) : ""}</div>`;
+}
+/** The four kinds of suggestion in one card, one tab at a time: 深访提纲 / 座谈会大纲 / 配额 / 舆情关键词. */
+function wzSuggestTabs(s) {
+  const tab = WZ.sugTab || "depth", tabs = [["depth", "深访提纲"], ["group", "座谈会大纲"], ["quota", "配额"], ["kw", "舆情关键词"]];
+  const topics = (a) => a.map((t) => `<div class="sugrow"><b>${esc(t.title)}</b><div class="mut">${t.questions.map((q) => `<div>${esc(q)}</div>`).join("")}</div></div>`).join("");
+  const body = tab === "depth" ? topics(s.depth_topics) : tab === "group" ? topics(s.group_topics)
+    : tab === "quota" ? `<p class="sm" style="margin:0">${esc(s.quota_hint)}</p>` : `<div>${s.listening_keywords.map((k) => `<span class="tag">${esc(k)}</span>`).join(" ")}</div>`;
+  return `<div class="sugtabs" role="tablist">${tabs.map(([k, n]) => `<span role="tab" tabindex="0" class="${tab === k ? "on" : ""}" data-sugtab="${k}" aria-selected="${tab === k}">${n}</span>`).join("")}</div><div class="sugbody">${body}</div>`;
 }
 
 const WZ_CODE = { 中文: "zh", 英语: "en", 马来语: "ms", 泰米尔语: "ta" }, WZ_FMT = { audio: "纯音频", text: "文字访谈", text_voice: "文字+语音转录", video: "视频", video_screen: "视频+屏幕共享" };
-/** Step 1: the project's languages and the interview formats each live method allows. A project that is already published shows (and changes) the live values, the same as the overview page. */
+/** Step 1 of a published project: the languages and the interview formats of each live method, as buttons that open a centred popup; a change is saved at once (the overview page shows the same). */
 function wzLangFmt() {
-  const c = WZ.cfg, L = WZ.live, used = new Set(c.subs.flatMap((s) => WZ_DESIGNS[s.design][1])), methods = L ? Object.keys(L.formats) : ["depth", "group"].filter((m) => used.has(m));
-  const langChip = (l) => L ? `<label class="chk"><input type="checkbox" data-livelang="${WZ_CODE[l]}" ${L.languages.includes(WZ_CODE[l]) ? "checked" : ""}>${l}</label>` : `<label class="chk"><input type="checkbox" data-lang="${l}" ${c.langs[l] ? "checked" : ""}>${l}</label>`;
-  const fmtRow = (m) => { const on = L ? L.formats[m] : (c.fmt && c.fmt[m]) || ["video"];
-    return `<div class="field"><span style="font-size:14px">${m === "depth" ? "深访" : "座谈会"}允许的访谈形式（可多选；没选中的形式，受访者不会看到）</span><div class="row" style="margin-top:6px" role="group" aria-label="${m === "depth" ? "深访" : "座谈会"}允许的访谈形式">${Object.keys(WZ_FMT).map((k) => `<label class="chk"><input type="checkbox" ${L ? `data-livefmt="${m}|${k}"` : `data-fmtc="${m}|${k}"`} ${on.includes(k) ? "checked" : ""}>${WZ_FMT[k]}</label>`).join("")}</div></div>`; };
-  return `<div class="field"><span style="font-size:14px">项目语言（可多选：受访者、同意书、邀请函、问卷可以使用这些语言；项目开始后在“项目总览”里随时加减）</span><div class="row" style="margin-top:6px" role="group" aria-label="项目语言">${WZ_LANGS.map(langChip).join("")}</div></div>${methods.map(fmtRow).join("")}`;
+  const L = WZ.live;
+  return `<div class="row"><button class="s" type="button" data-livepick="lang">语言选择 · 已选 ${L.languages.length}</button>${Object.keys(L.formats).map((m) => `<button class="s" type="button" data-livepick="fmt|${m}">${WZ_MNAME[m]}访谈形式选择 · 已选 ${L.formats[m].length}</button>`).join("")}</div>`;
 }
 /** The languages a sub-project runs in: ticks from the project's languages; the first one ticked is the main one. */
 function wzSubLangs(s) {  // 执行语言: the languages as chips (× removes one) and 选择语言 to change them in a popup
   return `<div aria-label="${esc(s.name)} 的执行语言">${wzMyLangs(s).map((l) => `<span class="tag">${l}<button class="s" type="button" data-unlang="${s.id}|${l}" aria-label="去掉${l}">×</button></span>`).join(" ")}</div>
-    <button class="s" type="button" data-pick="lang|${s.id}" style="margin-top:6px">选择语言</button>`;
+    <button class="s" type="button" data-pick="lang|${s.id}" style="margin-top:6px">增加语言</button>`;
 }
 const wzMyLangs = (s) => (s.langs && s.langs.length ? s.langs : [s.lang]);
 /** 深访形式 of one sub-project: its chips and 选择形式 in a popup; empty when its research order has no 深访. */
 function wzSubFmts(s) {
   if (!WZ_DESIGNS[s.design][1].includes("depth")) return "";
   const codes = (s.fmt && s.fmt.depth) || ["video"];
-  return `${codes.map((k) => `<span class="tag">${WZ_FMT[k]}</span>`).join(" ")}<button class="s" type="button" data-pick="fmt|${s.id}|depth" style="margin-top:4px">选择形式</button>`;
+  return `${codes.map((k) => `<span class="tag">${WZ_FMT[k]}</span>`).join(" ")}<button class="s" type="button" data-pick="fmt|${s.id}|depth" style="margin-top:4px">增加形式</button>`;
 }
 /** A small popup to tick options: search, tick, untick. 完成 keeps at least one; 取消 leaves everything as it was. */
 function wzPick(title, options, picked, onDone) {
@@ -173,10 +176,8 @@ function wzSubs() {
   const c = WZ.cfg, pms = [["", "未指定"], ...WZ.users.filter((u) => ["admin", "researcher", "support", "recruiter"].includes(u.role)).map((u) => [u.id, u.name])];
   const single = c.split === "single";
   return `<div><b>子项目</b>
-    <div class="row" style="margin:6px 0"><label class="chk"><input type="radio" name="split" data-split="country" ${single ? "" : "checked"}>按国家拆成子项目（日本、韩国……各一个）</label>
-    <label class="chk"><input type="radio" name="split" data-split="single" ${single ? "checked" : ""}>只有一个子项目（在里面分组）</label>
-    <span class="sp"></span><button class="s" id="subtpl" type="button">下载 Excel 模板</button><button class="s" id="subimp" type="button">导入表格</button><input type="file" id="subfile" accept=".csv,text/csv" hidden aria-label="导入子项目表格"></div>
-    <div class="scroll wzsubs"><table class="tbl"><thead><tr><th>编号</th><th>${single ? "名称" : "国家（可改名）"}</th><th>执行语言</th><th>责任人</th><th>研究顺序</th><th>深访形式</th><th>访谈时间</th><th>舆情</th><th></th></tr></thead><tbody>
+    <div class="row" style="margin:6px 0"><span class="sp"></span><button class="s" id="subtpl" type="button">下载 Excel 模板</button><button class="s" id="subimp" type="button">导入表格</button><input type="file" id="subfile" accept=".csv,text/csv" hidden aria-label="导入子项目表格"></div>
+    <div class="scroll wzsubs"><table class="tbl"><thead><tr><th style="width:6%">编号</th><th style="width:12%">${single ? "名称" : "国家（可改名）"}</th><th style="width:27%">执行语言</th><th style="width:11%">责任人</th><th style="width:13%">研究形式</th><th style="width:15%">深访形式</th><th style="width:8%">访谈时间</th><th style="width:4%">舆情</th><th style="width:4%"></th></tr></thead><tbody>
     ${c.subs.map((s, i) => `<tr><td><b>S${i + 1}</b></td><td>${wzInp(`data-sub="${s.id}|name" aria-label="名称"`, s.name, 'size="12"')}</td>
       <td>${wzSubLangs(s)}</td>
       <td>${wzSel(`data-sub="${s.id}|pm" aria-label="责任人"`, s.pm, pms, 150)}</td>
@@ -253,7 +254,7 @@ function wzRoles() {
     <div class="row"><label class="field" style="flex-direction:row;align-items:center;gap:8px">添加人员${wzSel('id="memsel" aria-label="选择要添加的人员"', "", [["", addable.length ? "选择一位同事" : "没有可添加的人"], ...addable.map((u) => [u.id, `${u.name}（${roleName(u)}）`])], 260)}</label>
       <button class="s p" id="memadd" type="button" ${addable.length ? "" : "disabled"}>添加</button>
       <span class="mut sm">按列勾选：</span>${names.map((n, j) => en[j] ? `<span class="row" style="gap:4px"><b>${n}</b><button class="lnk" data-col="${j}|1" type="button">全选</button><button class="lnk" data-col="${j}|0" type="button">全不选</button></span>` : "").join("")}</div>
-    <div class="scroll"><table class="tbl"><thead><tr><th>人员</th><th>角色</th>${names.map((n) => `<th>${n}</th>`).join("")}<th>权限预览</th><th></th></tr></thead><tbody>${admins.map((u) => row(u, {}, true)).join("")}${mine.map((u) => row(u, team[u.id], false)).join("")}</tbody></table></div>
+    <div class="scroll"><table class="tbl wzroles"><thead><tr><th>人员</th><th>角色</th>${names.map((n) => `<th>${n}</th>`).join("")}<th>权限预览</th><th></th></tr></thead><tbody>${admins.map((u) => row(u, {}, true)).join("")}${mine.map((u) => row(u, team[u.id], false)).join("")}</tbody></table></div>
     <div class="note">只有主持人可以开麦；观察员和客户在后台，只看到受访者编号。项目经理只处理项目里的人，看不到访谈内容。灰掉的列，是这个项目没有用到的方法。</div>`;
 }
 
@@ -387,6 +388,8 @@ function wzWire() {
   root.addEventListener("change", wzChange);
   root.querySelectorAll("textarea.autosize").forEach(wzAutosize);
   root.onclick = (e) => { const t = e.target.closest("button"); if (t) wzClick(t, e); };
+  const sugTab = (e) => { const t = e.target.closest("[data-sugtab]"); if (t && (e.type === "click" || e.key === "Enter" || e.key === " ")) { e.preventDefault(); WZ.sugTab = t.dataset.sugtab; wzRedraw(); } };
+  root.addEventListener("click", sugTab); root.addEventListener("keydown", sugTab);
 }
 
 /** A text box that is as tall as its text: at least 3 lines, at most 10, and a scrollbar inside the box beyond that. */
@@ -432,12 +435,6 @@ function wzChange(e) {
     if (!t.checked && WZ_LANGS.filter((l) => c.langs[l]).length <= 1) { toast("项目至少要有一种语言", true); return wzRedraw(); }
     c.langs[d.lang] = t.checked; wzFixLangs(); wzSave(); return wzRedraw();
   }
-  if (d.livelang || d.livefmt) {   // a published project: change the live settings (the overview page shows the same)
-    const L = WZ.live, body = {};
-    if (d.livelang) { const next = t.checked ? [...L.languages, d.livelang] : L.languages.filter((x) => x !== d.livelang); body.languages = next; body.default = next.includes(L.default) ? L.default : next[0]; }
-    else { const [m, k] = d.livefmt.split("|"); body.formats = { [m]: t.checked ? [...L.formats[m], k] : L.formats[m].filter((x) => x !== k) }; }
-    return api(`/projects/${WZ.p.id}/languages`, { method: "PUT", body }).then((r) => { WZ.live = r; wzRedraw(); }).catch((e) => { toast(e.message, true); wzRedraw(); });
-  }
   if (d.ip === "on") { c.ip.on = t.checked; return wzSave(); }
   if (t.matches("[data-ipwin]")) { c.ip.win = +t.value; return wzSave(); }
   if (d.n2) { c[d.n2] = wzNum(t.value, d.n2 === "inv" ? 1 : 0); return wzSave(); }
@@ -468,7 +465,13 @@ function wzQCell(spec, t) {
 
 function wzClick(b, e) {
   const c = WZ.cfg, d = b.dataset;
-  if (d.pick) {  // 选择语言 / 选择形式 of one sub-project: the popup, then save
+  if (d.livepick) {  // a published project: the popup, then the live settings are saved at once
+    const L = WZ.live, [kind, m] = d.livepick.split("|");
+    const save = (body) => api(`/projects/${WZ.p.id}/languages`, { method: "PUT", body }).then((r) => { WZ.live = r; wzRedraw(); }).catch((er) => { toast(er.message, true); wzRedraw(); });
+    if (kind === "lang") return wzPick("语言选择", WZ_LANGS.map((l) => [WZ_CODE[l], l]), L.languages, (list) => save({ languages: list, default: list.includes(L.default) ? L.default : list[0] }));
+    return wzPick(`${WZ_MNAME[m]}访谈形式选择`, Object.entries(WZ_FMT), L.formats[m], (list) => save({ formats: { [m]: list } }));
+  }
+  if (d.pick) {  // 增加语言 / 选择形式 of one sub-project: the popup, then save
     const [kind, id, m] = d.pick.split("|"), s = c.subs.find((x) => x.id === id);
     if (kind === "lang") return wzPick("执行语言", WZ_LANGS.map((l) => [l, l]), wzMyLangs(s), (list) => {
       s.langs = WZ_LANGS.filter((l) => list.includes(l)); s.lang = s.langs[0];
