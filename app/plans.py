@@ -13,6 +13,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
+from . import formats
 from . import methods as methods_mod
 
 STATUSES = ("draft", "review", "approved", "published")
@@ -50,11 +51,19 @@ class Sub(BaseModel):
     listening: bool = False  # this sub-project also does social listening (舆情)
     async_ai: bool = False  # ... and asynchronous AI studies (recruiting with the AI moderator means this)
     minutes: int = Field(default=45, ge=5, le=240)  # the interview length planned for this sub-project (访谈时间), 45 when not set
+    fmt: dict[str, list[str]] = Field(default_factory=dict)  # interview formats per live method this sub-project runs ("depth" / "group"); empty = video
 
     @field_validator("design", mode="before")
     @classmethod
     def _legacy(cls, v):
         return LEGACY_DESIGNS.get(v, v)
+
+    @field_validator("fmt")
+    @classmethod
+    def _fmt(cls, v: dict[str, list[str]]) -> dict[str, list[str]]:
+        if set(v) - {"depth", "group"}:
+            raise ValueError("formats are only for depth and group")
+        return {m: formats.clean(codes) or ["video"] for m, codes in v.items()}
 
 
 class Member(BaseModel):
@@ -207,6 +216,22 @@ def default_config(name: str = "") -> dict:
     return cfg.model_dump()
 
 
+def sub_langs(cfg: PlanConfig) -> list[str]:
+    """Every language a sub-project runs in, in the wizard's order: the project's languages once it is published."""
+    used = {x for s in cfg.subs for x in (s.langs or [s.lang])}
+    return [lang for lang in LANG_CHOICES if lang in used]
+
+
+def _derive(cfg: PlanConfig) -> None:
+    """The interview formats follow the sub-projects: per live method, the formats of the sub-projects that run it (video when a sub-project chose none)."""
+    fmt: dict[str, list[str]] = {}
+    for method in ("depth", "group"):
+        users = [s for s in cfg.subs if method in DESIGN_STAGES[s.design][1]]
+        if users:
+            fmt[method] = list(dict.fromkeys(c for s in users for c in (s.fmt.get(method) or ["video"])))
+    cfg.fmt = fmt
+
+
 def validate(raw: dict) -> PlanConfig:
     """Parse and cross-check a config.
 
@@ -237,6 +262,7 @@ def validate(raw: dict) -> PlanConfig:
             for d, vid in zip(quota.dims, r.vs):
                 if vid not in {v.id for v in cfg.vars[d]}:
                     raise ValueError(f"{name}用了不存在的取值")
+    _derive(cfg)
     return cfg
 
 

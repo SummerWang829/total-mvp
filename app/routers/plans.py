@@ -238,7 +238,7 @@ def publish_plan(pid: str, ctx: Ctx = Depends(require_roles(*PLAN_ROLES)), db: S
     project.methods = methods_mod.store(cfg.methods)
     project.retention_days = cfg.retention
     if plan.version == 0:  # the first publish sets the project's languages from the wizard; after that the overview page owns them (adding one needs no new publish)
-        codes = [LANG_CODE[x] for x in plans.LANG_CHOICES if cfg.langs.get(x) and x in LANG_CODE] or [project.language]
+        codes = [LANG_CODE[x] for x in plans.sub_langs(cfg) if x in LANG_CODE] or [project.language]
         main = LANG_CODE.get(cfg.subs[0].lang) if cfg.subs else None
         project.languages, project.language = codes, main if main in codes else codes[0]
         project.formats = formats.of({m: [c for c in v if c in formats.FORMATS] for m, v in (cfg.fmt or {}).items()}, cfg.methods)

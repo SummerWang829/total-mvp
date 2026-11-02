@@ -860,10 +860,19 @@ def languages_section(br, D):
     pg.click("#rtupd"); ok(wait_until(lambda: pg.locator("#rtupd").count() == 0, 8), "[languages] 更新译文 translates again and the notice goes away")
     # the wizard's first step: project languages (several) and the interview formats per method
     draft = call("/projects/draft", {"name": "QA 向导语言"}, adm)["id"]
-    pg.goto(B + f"/#/p/{draft}/wiz"); pg.reload(); pg.wait_for_selector("[data-lang]")
-    ok(pg.locator("[data-lang]").count() == 4 and pg.locator("[data-fmtc^='depth|']").count() == 5, "[languages] wizard step 1 has the four project languages and the five interview formats for 深访")
-    pg.locator("[data-lang='中文']").check(); ok(wait_until(lambda: pg.locator("[data-lang='中文']").is_checked(), 3), "[languages] several project languages can be ticked")
-    pg.locator("[data-fmtc='depth|audio']").check(); ok(wait_until(lambda: pg.locator("[data-fmtc='depth|audio']").is_checked(), 3), "[languages] interview formats can be ticked")
+    # the project languages and formats now sit in each sub-project row: 选择语言 / 选择形式 open a popup
+    pg.goto(B + f"/#/p/{draft}/wiz"); pg.reload(); pg.wait_for_selector("[data-pick^='lang|']")
+    ok(pg.locator("[data-lang]").count() == 0 and pg.locator("[data-fmtc]").count() == 0, "[languages] step 1 no longer has the separate project-language and format blocks")
+    pg.locator("[data-pick^='lang|']").first.click(); pg.wait_for_selector(".wzpick")
+    pg.locator(".wzpick input[value='马来语']").check(); pg.click(".wzpick [data-ok]")
+    ok(wait_until(lambda: "马来语" in pg.locator("div[aria-label$='的执行语言']").first.inner_text(), 3), "[languages] 选择语言 popup: a language is ticked and shows on the sub-project")
+    pg.locator("[data-pick^='fmt|']").first.click(); pg.wait_for_selector(".wzpick")
+    pg.locator(".wzpick input[value='audio']").check(); pg.locator(".wzpick input[value='video']").uncheck(); pg.click(".wzpick [data-ok]")
+    ok(wait_until(lambda: "纯音频" in pg.inner_text("body") and "视频" not in pg.locator("table").first.inner_text(), 3), "[languages] 选择形式 popup: the formats of the depth order are saved")
+    pg.locator("select[data-subx$='|minutes']").first.select_option("custom")
+    ok(wait_until(lambda: pg.locator("input[data-submin]").count() == 1, 3), "[languages] 访谈时间 自定义 opens a box that can be typed in (no jump to 60)")
+    pg.locator("input[data-submin]").first.fill("75"); pg.locator("input[data-submin]").first.dispatch_event("change")
+    ok(wait_until(lambda: pg.locator("input[data-submin]").count() == 1 and pg.locator("input[data-submin]").first.input_value() == "75", 3), "[languages] the typed minutes stay")
     audit_page(pg, "languages wizard/desktop", errs)
     # the project overview: language and format card, and the stage names do not jump anywhere
     pg.goto(B + f"/#/p/{pid}/home"); pg.reload(); pg.wait_for_selector("#hmlang")
