@@ -14,19 +14,5 @@ main:has(.chain:not(.hm-chain)) .head h1{font-size:40px;line-height:1.2}
 #wzprev:not(:disabled){border-style:solid}
 
 /* 效果图改版（2026-11-01，只改展示）：立项向导右侧固定目录；桌面宽度时顶部的步骤条隐藏（同一组按钮，只留右侧一份）。 */
-.wzgrid{display:grid;grid-template-columns:minmax(0,1fr) 220px;gap:16px;align-items:start}
-.wztoc{position:sticky;top:12px;display:flex;flex-direction:column;gap:4px;background:var(--wash);border:1px solid var(--line2);border-radius:14px;padding:14px}
-.wztoc button{display:flex;align-items:center;gap:8px;text-align:left;border:0;border-radius:8px;background:transparent;padding:8px 10px;font-size:14px;color:var(--ink2);cursor:pointer}
-.wztoc button::before{content:attr(data-n);display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;border-radius:999px;border:1px solid var(--line2);font-size:12px;background:#fff}
-.wztoc button.done::before{background:var(--brand);border-color:var(--brand);color:#fff}
-.wztoc button.on{background:var(--brand);color:#fff;font-weight:600}
-.wztoc button.on::before{background:var(--orange);border-color:var(--orange);color:#2A1407}
-.wztoc button:not(.on):hover{background:#fff}
-@media (max-width:1000px){.wzgrid{grid-template-columns:1fr}.wztoc{display:none}}
-.wztoc button{white-space:nowrap}
+.wzgrid{display:grid;grid-template-columns:minmax(0,1fr);gap:16px}
 .chain:not(.hm-chain) .step{white-space:nowrap}
-/* 目录按钮：编号用 ::before 画（和按钮通用的“扫过”底色共用伪元素，这里把它复原成普通的小圆）；悬停时字保持深色 */
-.wztoc button{justify-content:flex-start;gap:10px}
-.wztoc button::before{position:static;inset:auto;transform:none;z-index:auto;transition:none;display:inline-flex;align-items:center;justify-content:center;flex:none;min-width:22px;height:22px;border-radius:999px;border:1px solid var(--line2);background:var(--surface);color:var(--ink2);font-size:12px;font-weight:600}
-.wztoc button:hover:not(.on):not(:disabled){color:var(--ink);background:var(--surface);border-color:transparent}
-.wztoc button.on:hover:not(:disabled){color:#fff}
