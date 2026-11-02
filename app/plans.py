@@ -49,6 +49,7 @@ class Sub(BaseModel):
     design: Literal["fq", "iq", "qi", "i", "f", "q", "fi", "if"] = "iq"
     listening: bool = False  # this sub-project also does social listening (舆情)
     async_ai: bool = False  # ... and asynchronous AI studies (recruiting with the AI moderator means this)
+    minutes: int = Field(default=45, ge=5, le=240)  # the interview length planned for this sub-project (访谈时间), 45 when not set
 
     @field_validator("design", mode="before")
     @classmethod

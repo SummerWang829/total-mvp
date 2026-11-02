@@ -1,0 +1,41 @@
+/* Responsive pass (display only): one 1440px content width, 40px touch areas kept invisible,
+   the people table scrolls inside its card on tablets, and the secondary toolbar actions fold into 更多 below 1100px. */
+
+/* 1. one content width on every page, centred */
+html body main { max-width: 1440px; margin-inline: auto; }
+html body main.projects-page, html body.pgw main { max-width: 1440px; }
+
+/* 2. touch areas: the visible size stays, the clickable area grows to 40px */
+html body button.fi, html body button.xdel, html body button.sqb { position: relative; }
+html body button.fi::after, html body button.xdel::after, html body button.sqb::after {
+  content: ""; position: absolute; inset: -8px;
+}
+html body input.pick { position: relative; }
+html body input.pick::after { content: ""; position: absolute; inset: -10px; }
+html body a.nv { min-height: 40px; }
+html body button#out, html body button#closeproj { min-height: 40px; }
+
+/* 3. the people table: scroll inside the card on tablets, first column stays visible */
+@media (max-width: 900px) {
+  html body .plbox { overflow-x: auto; overflow-y: visible; }
+}
+html body .plbox .ptbl th:first-child, html body .plbox .ptbl td:first-child {
+  position: sticky; left: 0; background: var(--surface); z-index: 1;
+}
+html body .plbox .ptbl th:first-child { z-index: 4; }
+
+/* 4. secondary toolbar actions: inline when wide, behind 更多 below 1100px */
+@media (min-width: 1101px) {
+  html body .more-lab, html body .more-cb { display: none; }
+  html body .mbody { display: contents; }
+}
+@media (max-width: 1100px) {
+  html body .more-cb { display: none; }
+  html body .more-lab {
+    display: inline-flex; align-items: center; min-height: 40px; padding: 0 14px;
+    border: 1px solid var(--line2); border-radius: var(--r-ctl); background: var(--surface);
+    font-weight: 600; cursor: pointer;
+  }
+  html body .mbody { display: none; flex-wrap: wrap; gap: 8px; align-items: center; width: 100%; }
+  html body .more-cb:checked ~ .mbody { display: flex; }
+}

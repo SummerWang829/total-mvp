@@ -2,7 +2,7 @@
 <html lang="zh-CN" data-theme="light"><head><meta charset="utf-8"><script src="/theme.js"></script><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>星桐 TOTAL · 深访</title><link rel="stylesheet" href="/app.css">
 <link rel="stylesheet" href="/editorial.css"><link rel="stylesheet" href="/fonts.css"><link rel="stylesheet" href="/ui_v7.css"><link rel="stylesheet" href="/ui_v8.css"><link rel="stylesheet" href="/ui_rooms.css">
-<link rel="stylesheet" href="/chat.css"><link rel="stylesheet" href="/chatsel.css"><link rel="stylesheet" href="/ui_list.css"><link rel="stylesheet" href="/ui_screening.css"><link rel="stylesheet" href="/ui_outline.css"><link rel="stylesheet" href="/ui_wizard.css"><link rel="stylesheet" href="/ui_overview.css"><link rel="stylesheet" href="/ui_v6.css"><link rel="stylesheet" href="/ui_global.css"><link rel="stylesheet" href="/ui_v9.css"><link rel="stylesheet" href="/ui_v10.css"></head>
+<link rel="stylesheet" href="/chat.css"><link rel="stylesheet" href="/chatsel.css"><link rel="stylesheet" href="/ui_list.css"><link rel="stylesheet" href="/ui_screening.css"><link rel="stylesheet" href="/ui_outline.css"><link rel="stylesheet" href="/ui_wizard.css"><link rel="stylesheet" href="/ui_overview.css"><link rel="stylesheet" href="/ui_v6.css"><link rel="stylesheet" href="/ui_global.css"><link rel="stylesheet" href="/ui_v9.css"><link rel="stylesheet" href="/ui_v10.css"><link rel="stylesheet" href="/ui_responsive.css"></head>
 <body>
 <div id="app"></div>
 <script src="/app.js"></script>
@@ -371,9 +371,9 @@ async function peopleView(p) {
     <div id="ptab-form" ${ptab === "form" ? "" : "hidden"}>${rf.html}</div><div id="ptab-list" ${ptab === "list" ? "" : "hidden"}>
     ${rd.html}
     <div class="card" id="plist"><div class="row rd-tool"><h3 style="margin:0">受访者名单 <span class="sm mut" id="plcount">共 ${parts.length} 人${shown.length !== parts.length ? `，当前显示 ${shown.length}` : ""}</span></h3><span class="sp"></span>
-      <button type="button" id="imp2">导入名单（外部渠道）</button><button type="button" id="np">添加受访者</button><button type="button" id="pcopy"${parts.length ? "" : " disabled"}>复制名单</button>
+      <button type="button" id="imp2">导入名单（外部渠道）</button><button type="button" id="np">添加受访者</button><input type="checkbox" class="more-cb" id="pmore" aria-hidden="true"><label class="more-lab" for="pmore">更多</label><div class="mbody"><button type="button" id="pcopy"${parts.length ? "" : " disabled"}>复制名单</button>
       <span class="rd-menu"><button type="button" id="pexp" aria-haspopup="true" aria-expanded="false"${parts.length ? "" : " disabled"}>导出 ▾</button><div class="rd-pop" id="pexpm" role="menu" hidden>
-        <button type="button" role="menuitem" data-exp="all">全部名单（CSV，含联系方式）</button><button type="button" role="menuitem" data-exp="shown">当前筛选结果（CSV）</button><button type="button" role="menuitem" data-exp="picked">已勾选的人（CSV）</button><button type="button" role="menuitem" data-exp="anon">不含姓名和邮箱（给客户看）</button></div></span></div>
+        <button type="button" role="menuitem" data-exp="all">全部名单（CSV，含联系方式）</button><button type="button" role="menuitem" data-exp="shown">当前筛选结果（CSV）</button><button type="button" role="menuitem" data-exp="picked">已勾选的人（CSV）</button><button type="button" role="menuitem" data-exp="anon">不含姓名和邮箱（给客户看）</button></div></span></div></div>
       <p class="sm mut" style="margin:6px 0 0">名单里有受访者的个人信息，只有研究团队能复制或导出，每次都会记入审计日志；请妥善保管导出的文件。</p>
     ${parts.length ? `<hr class="plhr"><div class="plf" id="pf">${FILTERS.map(msel).join("")}
       <span class="sp"></span>${RC ? "" : `<span class="sm mut" id="selcount">已选 0 人</span><button type="button" id="binv" class="p">批量邀请</button><button type="button" id="bdel" class="warn">批量删除</button>`}<div class="fres" id="fres" style="flex-basis:100%"></div></div>

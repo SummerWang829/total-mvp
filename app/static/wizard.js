@@ -121,7 +121,7 @@ function wzSuggest() {  // step 2: what the AI suggests from the research backgr
 const WZ_CODE = { 中文: "zh", 英语: "en", 马来语: "ms", 泰米尔语: "ta" }, WZ_FMT = { audio: "纯音频", text: "文字访谈", text_voice: "文字+语音转录", video: "视频", video_screen: "视频+屏幕共享" };
 /** Step 1: the project's languages and the interview formats each live method allows. A project that is already published shows (and changes) the live values, the same as the overview page. */
 function wzLangFmt() {
-  const c = WZ.cfg, L = WZ.live, methods = L ? Object.keys(L.formats) : ["depth", ...(c.methods.includes("group") ? ["group"] : [])];
+  const c = WZ.cfg, L = WZ.live, used = new Set(c.subs.flatMap((s) => WZ_DESIGNS[s.design][1])), methods = L ? Object.keys(L.formats) : ["depth", "group"].filter((m) => used.has(m));
   const langChip = (l) => L ? `<label class="chk"><input type="checkbox" data-livelang="${WZ_CODE[l]}" ${L.languages.includes(WZ_CODE[l]) ? "checked" : ""}>${l}</label>` : `<label class="chk"><input type="checkbox" data-lang="${l}" ${c.langs[l] ? "checked" : ""}>${l}</label>`;
   const fmtRow = (m) => { const on = L ? L.formats[m] : (c.fmt && c.fmt[m]) || ["video"];
     return `<div class="field"><span style="font-size:14px">${m === "depth" ? "深访" : "座谈会"}允许的访谈形式（可多选；没选中的形式，受访者不会看到）</span><div class="row" style="margin-top:6px" role="group" aria-label="${m === "depth" ? "深访" : "座谈会"}允许的访谈形式">${Object.keys(WZ_FMT).map((k) => `<label class="chk"><input type="checkbox" ${L ? `data-livefmt="${m}|${k}"` : `data-fmtc="${m}|${k}"`} ${on.includes(k) ? "checked" : ""}>${WZ_FMT[k]}</label>`).join("")}</div></div>`; };
@@ -144,16 +144,23 @@ function wzSubs() {
     <div class="row" style="margin:6px 0"><label class="chk"><input type="radio" name="split" data-split="country" ${single ? "" : "checked"}>按国家拆成子项目（日本、韩国……各一个）</label>
     <label class="chk"><input type="radio" name="split" data-split="single" ${single ? "checked" : ""}>只有一个子项目（在里面分组）</label>
     <span class="sp"></span><button class="s" id="subtpl" type="button">下载 Excel 模板</button><button class="s" id="subimp" type="button">导入表格</button><input type="file" id="subfile" accept=".csv,text/csv" hidden aria-label="导入子项目表格"></div>
-    <div class="scroll"><table class="tbl"><thead><tr><th>编号</th><th>${single ? "名称" : "国家（可改名）"}</th><th>执行语言</th><th>责任人</th><th>研究顺序</th><th>舆情</th><th>异步 AI 研究</th><th></th></tr></thead><tbody>
+    <div class="scroll"><table class="tbl"><thead><tr><th>编号</th><th>${single ? "名称" : "国家（可改名）"}</th><th>执行语言</th><th>责任人</th><th>研究顺序</th><th>访谈时间</th><th>舆情</th><th></th></tr></thead><tbody>
     ${c.subs.map((s, i) => `<tr><td><b>S${i + 1}</b></td><td>${wzInp(`data-sub="${s.id}|name" aria-label="名称"`, s.name, 'size="12"')}</td>
       <td>${wzSubLangs(s)}</td>
       <td>${wzSel(`data-sub="${s.id}|pm" aria-label="责任人"`, s.pm, pms, 150)}</td>
       <td>${wzSel(`data-sub="${s.id}|design" aria-label="研究顺序"`, s.design, Object.keys(WZ_DESIGNS).map((k) => [k, WZ_DESIGNS[k][0]]), 170)}<div class="sm" style="margin-top:4px">${wzDesignHtml(s.design)}</div></td>
+      <td>${wzMinutes(s)}</td>
       <td><label class="chk wzbig"><input type="checkbox" data-subx="${s.id}|listening" ${s.listening ? "checked" : ""} aria-label="${esc(s.name)} 做舆情收集"></label></td>
-      <td><label class="chk wzbig"><input type="checkbox" data-subx="${s.id}|async_ai" ${s.async_ai ? "checked" : ""} aria-label="${esc(s.name)} 做异步 AI 研究"></label></td>
       <td>${c.subs.length > 1 ? `<button class="s" data-subdel="${s.id}" type="button">删除</button>` : ""}</td></tr>`).join("")}</tbody></table></div>
     ${single ? `<div class="note">一个子项目：定量一份问卷，定性按组拆分。</div>` : `<div class="row" style="margin-top:8px"><input id="subnew" placeholder="新增国家，例如：马来西亚" aria-label="新增国家"><button class="s p" id="subadd" type="button">+ 添加子项目</button></div>
-    <div class="note">改名或删除后，配额和执行监控会同步更新。模板按“编号、国家、执行语言、责任人、研究顺序、舆情、异步AI研究”填好后导入。勾了“异步 AI 研究”，招募时选 AI 主持人就是异步 AI 研究。</div>`}</div>`;
+    <div class="note">改名或删除后，配额和执行监控会同步更新。模板按“编号、国家、执行语言、责任人、研究顺序、舆情”填好后导入。</div>`}</div>`;
+}
+
+/** 访谈时间 of one sub-project: 30 / 45 / 60 minutes, or a custom 5–240; 45 when nothing is set. */
+const WZ_MINUTES = [30, 45, 60];
+function wzMinutes(s) {
+  const m = s.minutes || 45, custom = !WZ_MINUTES.includes(m);
+  return `<select data-subx="${s.id}|minutes" aria-label="${esc(s.name)} 访谈时间">${WZ_MINUTES.map((o) => `<option value="${o}" ${!custom && m === o ? "selected" : ""}>${o} 分钟</option>`).join("")}<option value="custom" ${custom ? "selected" : ""}>自定义</option></select>${custom ? `<input type="number" min="5" max="240" data-submin="${s.id}" value="${m}" aria-label="${esc(s.name)} 访谈时长（分钟）" style="width:72px;margin-left:6px">` : ""}`;
 }
 
 const wzCsv = (rows) => "\ufeff" + rows.map((r) => r.map((x) => `"${String(x).replace(/"/g, '""')}"`).join(",")).join("\r\n");
@@ -307,8 +314,8 @@ function wzBody() {
     case 0: return `<div class="grid"><label class="field">主项目名称${wzInp('data-meta="name" aria-label="主项目名称"', WZ.name_edit ?? WZ.plan.name)}</label>
       <label class="field">数据留存期限${wzSel('data-w="retention" aria-label="数据留存期限"', c.retention, WZ_RETENTION.map((d) => [d, `${d} 天${d === 180 ? "（平台上限）" : ""}`]))}<span class="mut" style="font-weight:400">同意书里写明的就是这个期限：项目结项后 ${c.retention} 天自动删除个人数据，洞察结论保留。${WZ.plan.live ? "已发布过的项目只能缩短，不能延长。" : ""}</span></label></div>
       <label class="field">研究背景（选填，只给团队看）<textarea class="autosize" data-meta="brief" rows="3"placeholder="写清这个项目要解决什么问题、做给谁看。">${esc(WZ.brief_edit ?? WZ.plan.brief ?? "")}</textarea></label>
-      ${WZ.live ? "" : wzLangFmt()}
-      ${wzSubs()}`;
+      ${wzSubs()}
+      ${WZ.live ? "" : wzLangFmt()}`;
     case 1: return `${wzSuggest()}${wzDesignView()}<label class="field" style="max-width:360px">研究类型（带出模板）${wzSel('data-w="type"', c.type, Object.keys(WZ_TYPES).map((x) => [x, x]))}</label>
       <div class="note">选“${esc(c.type)}”会预置：${WZ_TYPES[c.type]}。</div>`;
     case 2: return wzRoles();
@@ -372,7 +379,12 @@ function wzChange(e) {
   if (d.w === "pop") { c.pop = t.value; return wzSave(); }
   if (d.split) { wzSplit(d.split); return; }
   if (d.sub) { const [id, f] = d.sub.split("|"), s = c.subs.find((x) => x.id === id); s[f] = t.value; if (f === "name" && !t.value.trim()) s.name = "未命名"; wzSyncCountry(); wzSave(); return wzRedraw(); }
-  if (d.subx) { const [id, f] = d.subx.split("|"); c.subs.find((x) => x.id === id)[f] = t.checked; wzSave(); return wzRedraw(); }
+  if (d.submin) { const s = c.subs.find((x) => x.id === d.submin); s.minutes = Math.min(240, Math.max(5, Math.round(+t.value) || 45)); return wzSave(); }
+  if (d.subx) {
+    const [id, f] = d.subx.split("|"), s = c.subs.find((x) => x.id === id);
+    if (f === "minutes") s.minutes = t.value === "custom" ? 60 : +t.value; else s[f] = t.checked;
+    wzSave(); return wzRedraw();
+  }
   if (d.member) { const [uid, k] = d.member.split("|"), m = c.team.find((x) => x.user_id === uid); if (m) m[k] = t.checked; wzSave(); return; }
   if (t.id === "subfile") { const f = t.files[0]; t.value = ""; if (!f) return; return f.text().then((txt) => { const subs = wzImportSubs(txt); if (c.subs.length > 1 && !confirm(`导入会替换现在的 ${c.subs.length} 个子项目，确定吗？`)) return; c.subs = subs; c.split = subs.length > 1 ? "country" : c.split; wzSyncCountry(); wzSave(); wzRedraw(); toast(`已导入 ${subs.length} 个子项目`); }).catch((er) => toast(er.message, true)); }
   if (d.n) { c.n[d.n] = wzNum(t.value, d.n === "fs" ? 6 : 0); if (d.n === "fs") c.n.fs = Math.min(10, Math.max(3, c.n.fs)); wzSave(); return wzRedraw(); }
