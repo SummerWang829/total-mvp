@@ -39,7 +39,7 @@ async function rdBuild(p, rec) {
   const opened = rdOpenSet();
   const html = `<div class="rd">
     <div class="rd-row rd-top"><div class="card"><h3>问卷发布 ${live ? `<span class="tag ok">发布中</span>` : f.link ? `<span class="tag">已停止</span>` : ""}</h3>${publish}</div>
-      <div class="card"><h3>一眼看数据</h3><div class="rd-kpis">${kpi(k.started, "开始作答")}${kpi(k.finished, "完成甄别（甄别人数）")}${kpi(k.qualified, "合格（问卷）", "ok")}${kpi(k.pass_rate + "%", "通过率（合格 ÷ 完成）", "warn")}${kpi(k.external, "外部名单导入（直接可邀请）")}${kpi(k.usable, `可邀请总数 · 已邀请 ${k.invited} · 完成访谈 ${k.done}`)}</div></div>
+      <div class="card"><h3>一眼看数据</h3><div class="rd-kpis">${kpi(k.started, "开始作答（累计，含已清理）")}${kpi(k.finished, "完成甄别（累计，含已清理）")}${kpi(k.qualified, "合格（累计，含已清理）", "ok")}${kpi(k.pass_rate + "%", "通过率（合格 ÷ 完成）", "warn")}${kpi(k.external, "外部名单导入（直接可邀请）")}${kpi(k.usable, `可邀请总数 · 已邀请 ${k.invited} · 完成访谈 ${k.done}`)}</div></div>
       <div class="card"><h3>配额进度 <button class="lnk" id="quotas" type="button">编辑配额</button></h3><div id="rdquotas">${quotas}</div><div class="rd-legend"><span class="a">正式</span><span class="b">备份（超出目标的部分）</span></div>${rules}</div></div>
     <div class="rd-all"><button type="button" class="s" id="rdall"></button></div>
     ${rdSection("funnel", "漏斗与来源", `漏斗 开始 ${k.started} → 完成 ${k.finished} → 合格 ${k.qualified} → 已邀请 ${k.invited} · 来源 ${d.sources.length ? d.sources.map((x) => `${esc(x.name)} ${x.n}`).join("、") : "暂无"} · 被筛掉 ${d.out_by.reduce((s, x) => s + x.n, 0)} 人`,

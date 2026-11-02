@@ -117,7 +117,7 @@ def build(db: Session, project: Project) -> dict:
         "published": bool(form and form.status == "published"), "has_form": bool(questions),
         "kpi": {"started": started, "finished": finished, "qualified": qualified, "pass_rate": round(qualified * 100 / finished) if finished else 0, "external": external,
                 "usable": len(usable), "invited": sum(p.id in invited_ids for p in usable), "done": sum(p.id in done_ids for p in people)},
-        "funnel": [{"label": "开始作答", "n": started}, {"label": "完成甄别", "n": finished}, {"label": "合格（问卷）", "n": qualified}, {"label": "外部名单", "n": external},
+        "funnel": [{"label": "开始作答（累计，含已清理）", "n": started}, {"label": "完成甄别（累计，含已清理）", "n": finished}, {"label": "合格（累计，含已清理）", "n": qualified}, {"label": "外部名单", "n": external},
                    {"label": "已邀请", "n": sum(p.id in invited_ids for p in usable)}, {"label": "完成访谈", "n": sum(p.id in done_ids for p in people)}],
         "sources": [{"name": k, "n": v} for k, v in sources.most_common()],
         "out_by": out_by,
