@@ -555,16 +555,16 @@ main.enter .pbar6 i{animation:grow 1s var(--ease) .15s both}@keyframes grow{from
 @keyframes pbRise{from{transform:translateY(870px)}to{transform:none}}
 @keyframes pbFly{from{transform:translateY(60px)}to{transform:none}}
 @keyframes pbWord{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
-.brandsvg:hover .pb-rv,.brandsvg:focus-visible .pb-rv{animation:pbRise 1.1s cubic-bezier(.3,0,.25,1) both}
-.brandsvg:hover .pb-fly,.brandsvg:focus-visible .pb-fly{animation:pbFly 1.1s cubic-bezier(.3,0,.25,1) both}
-.brandsvg:hover .pb-word,.brandsvg:focus-visible .pb-word{animation:pbWord .6s cubic-bezier(.2,.8,.2,1) 1s both}
+.brandsvg:hover .pb-rv,.brandsvg:focus-visible .pb-rv{animation:pbRise .8s cubic-bezier(.45,0,.55,1) both}
+.brandsvg:hover .pb-fly,.brandsvg:focus-visible .pb-fly{animation:pbFly .8s cubic-bezier(.45,0,.55,1) both}
+.brandsvg:hover .pb-word,.brandsvg:focus-visible .pb-word{animation:pbWord .5s cubic-bezier(.2,.8,.2,1) .8s both}
 /* orange theme: orange badge, white phoenix and wordmark */
 html[data-theme="orange"] .brandsvg{--lg-ink:#FFFFFF}
-html[data-theme="orange"] .brandsvg .lg-bg{fill:#C34E01;stroke:rgba(255,255,255,.75);stroke-width:40}
+html[data-theme="orange"] .brandsvg .lg-bg{fill:transparent}
 html[data-theme="orange"] .brandsvg .pb-ph{filter:brightness(0) invert(1)}
 /* dark theme: deep green badge, natural orange phoenix, white wordmark (same as the default logo) */
 html[data-theme="dark"] .brandsvg{--lg-ink:#FFFFFF}
-html[data-theme="dark"] .brandsvg .lg-bg{fill:#0B382C;stroke:rgba(255,255,255,.35);stroke-width:40}
+html[data-theme="dark"] .brandsvg .lg-bg{fill:transparent}
 
 @media (prefers-reduced-motion:reduce){
   *,*::before{transition:none!important}
