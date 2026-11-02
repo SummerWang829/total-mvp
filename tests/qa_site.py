@@ -1206,13 +1206,9 @@ def recruit_section(br, D):
     audit_page(pg, "recruiting workspace empty/desktop", errs)
     # draft by talking: the questions, goals and need appear in the outline
     pg.click("[data-chip=draft]"); pg.wait_for_selector("#rfout .rf-q", timeout=15000)
-    ok(pg.locator("#rfout .rf-q").count() >= 5 and "起草" in pg.inner_text("#rfchat") and pg.input_value("#rfgoals").strip() != "" and pg.input_value("#rfneed").strip() != "", "[recruit] saying 帮我起草问卷 fills the outline: questions, research goals and recruiting need")
-    short = pg.evaluate("(() => { const t = document.querySelector('#rfgoals'); return [t.scrollHeight <= t.clientHeight + 1, getComputedStyle(t).overflowY, getComputedStyle(t).resize]; })()")
-    ok(short[0] and short[1] == "hidden" and short[2] == "none", f"[recruit] the goals box fits its text: no scrollbar and no drag handle while the text is short (got {short})")
-    pg.fill("#rfgoals", chr(10).join(f"目标 {k}" for k in range(1, 13))); pg.dispatch_event("#rfgoals", "input")
-    big = pg.evaluate("(() => { const t = document.querySelector('#rfgoals'); const lh = parseFloat(getComputedStyle(t).lineHeight); return [t.offsetHeight < lh * 9, getComputedStyle(t).overflowY]; })()")
-    ok(big[0] and big[1] == "auto", f"[recruit] a long goals text stops at 8 lines and scrolls inside the box (got {big})")
-    pg.fill("#rfgoals", "了解购买决策"); pg.dispatch_event("#rfgoals", "input"); pg.click("body", position={"x": 5, "y": 5})
+    ok(pg.locator("#rfout .rf-q").count() >= 5 and "起草" in pg.inner_text("#rfchat") and pg.locator("#rfgoalsl .rq-bt").count() >= 1 and pg.locator("#rfneedl .rq-bt").count() >= 1, "[recruit] saying 帮我起草问卷 fills the outline: questions, research goals and recruiting need")
+    ok(pg.locator("#rfgoalsl li").count() >= 1 and pg.locator("#rfgoals").count() == 0, "[recruit] the goals are a bullet list, one bullet per goal (no textarea)")
+    pg.locator("#rfgoalsl .rq-bt").first.fill("了解购买决策"); pg.click("body", position={"x": 5, "y": 5})
     ok(pg.locator("#rfout .rq-ic.n").count() >= 1 and pg.locator("#rfout h3", has_text="研究背景").count() == 1, "[recruit] the outline shows the logic of each option (✗ for an ending) and starts with the research background")
     n0 = pg.locator("#rfout .rf-q").count()
     # layout: one-row headers, the mode switch on the left (with the conversation), the workspace runs to the bottom of the window, a divider between the frames
@@ -1262,7 +1258,7 @@ def recruit_section(br, D):
     pg.locator("#rfrun input[type=radio]").first.check(); pg.click("#scrnext")
     ok(wait_until(lambda: pg.is_visible("#rfresult") and "筛掉" in pg.inner_text("#rfresult"), 8), "[recruit] testing the questionnaire: an ending option says the person is screened out")
     audit_page(pg, "recruiting workspace test/desktop", errs)
-    pg.click("[data-seg=outline]"); pg.wait_for_selector("#rfgoals")
+    pg.click("[data-seg=outline]"); pg.wait_for_selector("#rfgoalsl")
     # publish: a link and a QR code
     pg.click("#rfpub"); pg.wait_for_selector("#rdlink", timeout=15000)  # publishing opens the quotas-and-list page, where the link and the QR code live
     link = pg.input_value("#rdlink")

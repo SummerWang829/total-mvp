@@ -54,6 +54,12 @@ class ChatBody(BaseModel):
     goals: list[str] = Field(default_factory=list, max_length=8)
     need: str = Field(default="", max_length=1500)
     use_library: bool = True  # the "参考研究库" tick above the conversation
+    attachments: list["AttachmentIn"] = Field(default_factory=list, max_length=recruit_form.MAX_ATTACH_FILES)  # text read by /api/attachments/extract; sent with this message only, never kept
+
+
+class AttachmentIn(BaseModel):
+    name: str = Field(default="", max_length=200)
+    text: str = Field(default="", max_length=30_000)
 
 
 class IdeaBody(BaseModel):
@@ -392,7 +398,8 @@ def chat_form(pid: str, body: ChatBody, ctx: Ctx = Depends(require_roles(*RECRUI
     quotas = _quotas_of(db, proj)
     try:
         out = recruit_form.chat_turn(chat, body.message, f.chat or [], current.questions, current.goals, current.need, proj.language, proj.brief or "", library,
-                                     recruit_review.stats_context(current.questions, quotas, _stats_of(f), f.tally or {}))
+                                     recruit_review.stats_context(current.questions, quotas, _stats_of(f), f.tally or {}),
+                                     attachments=[(a.name, a.text) for a in body.attachments if a.text.strip()])
     except ChatFatalError as e:
         raise _refused(e) from e
     except recruit_form.ChatUnavailable as e:

@@ -54,3 +54,17 @@ html body.rfmode .app.shfix .work>main{scrollbar-gutter:auto}
 .rq-bub{min-height:36px;border:1px solid var(--line);background:var(--green-soft);color:var(--green);border-radius:999px;padding:8px 12px;font-size:13px;line-height:20px;cursor:pointer}
 .rq-bub:hover:not(:disabled){background:var(--wash)}
 .rq-bub:disabled{opacity:.5;cursor:not-allowed}
+
+/* 第二批（效果图 polish_mockup.html）：拖动时抬起、附件按钮与文件标签 */
+#rfws .rf-q.rq-lift{box-shadow:0 14px 30px rgba(11,56,44,.28);border-color:var(--orange);z-index:5;opacity:.97}
+#rfws .rf-q.rq-lift .rq-grip{cursor:grabbing;color:var(--orange-ink)}
+#rfws .rq-grip:focus-visible{outline:2px solid var(--orange);outline-offset:2px;border-radius:4px}
+#rfws .rf-box textarea{padding-left:46px}
+#rfws .rq-clip{position:absolute;left:8px;bottom:8px;width:36px;height:36px;border:0;border-radius:8px;background:none;color:var(--mut);cursor:pointer;display:grid;place-items:center}
+#rfws .rq-clip:hover{color:var(--ink);background:var(--wash)}
+.rq-files{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 8px}
+.rq-files[hidden]{display:none}
+.rq-file{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--wash);border-radius:999px;padding:4px 4px 4px 12px;font-size:13px;max-width:100%;overflow-wrap:anywhere}
+.rq-file button{min-width:32px;min-height:32px;border:0;background:none;color:var(--mut);cursor:pointer;font-size:16px;line-height:1}
+.rq-ferr{color:var(--risk-ink);font-size:13px;margin-top:6px}
+.rq-ferr[hidden]{display:none}

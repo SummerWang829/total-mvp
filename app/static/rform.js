@@ -4,6 +4,8 @@
    依赖 index.html 里的 api / esc / toast / guard / $ / CONFIG（app.js）和 screen_run.js。 */
 const RF_TYPE = { single: "单选", multi: "多选", text: "文字填空", number: "数字填空" };
 const RF_OP = { lt: "小于", lte: "不大于", gt: "大于", gte: "不小于", eq: "等于" };
+const RF_MAX_FILES = 5;
+const RF_CLIP = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>';
 /** A text box as tall as its text: at least 2 lines, at most 8; beyond that it scrolls inside. */
 function rfAutosize(t) {
   const fit = () => {
@@ -25,6 +27,8 @@ function rfCard(p, form) {
   let showSug = false, changedIds = new Set();   // showSug: the suggestion cards are open in the chat; changedIds: the questions the last change touched ("刚改")
   let useLib = true, fail = null;   // useLib: the "参考研究库" tick; fail: the last turn that did not get an answer { ask, text, fatal } (kept here only, never saved)
   let menu = null;   // the open ⋮ menu of a question ("q:<id>") or an option ("o:<id>:<number>"); one at a time
+  let busy = false, focusGrip = null;   // busy: a moved card is still landing; focusGrip: the handle to focus after a keyboard move
+  let files = [];   // documents read for the next chat message: { name, text, truncated } (kept here only, sent with one message, never saved)
   const RF_KIND = { answer: ["回答", "ans"], suggest: ["建议", "sug"], stat: ["统计", "stat"] };
   const aiOk = () => !f.ai || f.ai.ok;
   const nl = (s) => esc(s).replace(/\n/g, "<br>");
@@ -111,12 +115,12 @@ function rfCard(p, form) {
     sending = true; pending = text; fail = null; $("#rfmsg").value = ""; $("#rfsend").disabled = true; drawChat();
     const before = snap();
     try {
-      const r = await api(`/projects/${p.id}/recruiting/form/chat`, { method: "POST", body: { message: text, questions: Q, goals, need, use_library: useLib } });
+      const r = await api(`/projects/${p.id}/recruiting/form/chat`, { method: "POST", body: { message: text, questions: Q, goals, need, use_library: useLib, attachments: files.map((x) => ({ name: x.name, text: x.text })) } });
       if (r.changed || JSON.stringify(r.goals) !== JSON.stringify(goals) || r.need !== need) { hist.push(before); if (hist.length > 30) hist.shift(); redo = []; }
       changedIds = r.changed ? diffIds(Q, r.questions) : new Set();
       f = { ...f, ...r }; Q = JSON.parse(JSON.stringify(r.questions)); goals = [...(r.goals || [])]; need = r.need || ""; editing = new Set();
     } catch (e) { fail = { ask: text, text: e.message, fatal: e.status === 503 }; if (e.status === 503) f = { ...f, ai: { ...(f.ai || {}), ok: false, reason: e.message } }; }
-    sending = false; pending = ""; const b = $("#rfsend"); if (b) b.disabled = false; syncUndo(); drawChat(); drawRight();
+    sending = false; pending = ""; const b = $("#rfsend"); if (b) b.disabled = false; if (!fail) files = []; syncUndo(); drawChat(); drawRight(); drawFiles();
     return !fail;
   }
   let sel = null;   // the "选中文字 → 修改清单" helper (app/static/chatsel.js)
@@ -133,7 +137,24 @@ ${text}
       send: async ({ text }) => { const box = $("#rfmsg"), draft = box ? box.value : ""; const ok = await send(text); if (box && draft) box.value = draft; return ok; },
     });
   }
-  const ASK = { draft: "帮我起草问卷", goals: "对照研究目标和招募需求，核查问卷是否有未覆盖之处，仅告知结论，暂不修改", neutral: "检查问卷是否存在引导性或带有倾向的措辞，如有，请修改得更为中立" };
+  const drawFiles = () => {   // the documents waiting for the next message, above the input; each can be taken off
+    const row = $("#rfarow"); if (!row) return;
+    row.hidden = !files.length;
+    row.innerHTML = files.map((x, i) => `<span class="rq-file">${esc(x.name)}${x.truncated ? "（超出部分未提供）" : ""}<button type="button" data-rmf="${i}" aria-label="去掉 ${esc(x.name)}">×</button></span>`).join("");
+    row.querySelectorAll("[data-rmf]").forEach((b) => (b.onclick = () => { files.splice(+b.dataset.rmf, 1); drawFiles(); }));
+  };
+  const showFerr = (msg) => { const err = $("#rfferr"); if (!err) return; err.hidden = !msg; err.textContent = msg || ""; };
+  async function attach(file) {   // the file is read on the server into text (PDF, Word, text); images and video are refused there, and the reason is shown
+    if (files.length >= RF_MAX_FILES) return showFerr(`一次最多附 ${RF_MAX_FILES} 个文件`);
+    const form = new FormData(); form.append("file", file);
+    showFerr(`正在读取 ${file.name}…`);
+    try {
+      const r = await fetch("/api/attachments/extract", { method: "POST", headers: { Authorization: "Bearer " + store.get("tt_token") }, body: form });
+      if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.detail || "这个文件读不出来"); }
+      const out = await r.json();
+      files.push({ name: file.name, text: out.text, truncated: out.truncated }); showFerr(""); drawFiles();
+    } catch (e) { showFerr(e.message); }
+  }
   async function stats(kind) {   // 预估通过率 / 定位筛除率较高的题目: worked out on the server from the anonymous counts, no model
     if (sending) return; sending = true; fail = null; pending = kind === "rate" ? "预估通过率" : "定位筛除率较高的题目"; drawChat();
     try { f = { ...f, ...(await api(`/projects/${p.id}/recruiting/form/stats`, { method: "POST", body: { kind } })) }; } catch (e) { fail = { ask: pending, text: e.message, fatal: true }; }
@@ -194,10 +215,10 @@ ${text}
     return !g || g.startsWith("end_") || at < 0 || at > i;
   }));
   const blankQ = () => ({ id: nextId(), type: "single", text: "", required: true, options: blank(), rules: [] });
-  const moveQ = (from, to) => {
+  const moveQ = (from, to) => {   // true when the order changed; a move that would turn a jump backwards is refused, and says so
     const next = [...Q], [m] = next.splice(from, 1); next.splice(to, 0, m);
-    if (!orderOk(next)) return toast("这样换会让某题的跳题指回前面，请先改跳题", true);
-    pushHist(); Q = next; changed();
+    if (!orderOk(next)) { toast("这样换会让某题的跳题指回前面，请先改跳题", true); return false; }
+    pushHist(); Q = next; changed(); return true;
   };
   function menuAct(act, i, j) {   // the ⋮ menus of a question and of an option; the question keeps its id whatever happens to its place
     const q = Q[i]; if (!q) return; menu = null;
@@ -209,20 +230,64 @@ ${text}
     if (act === "above" || act === "below") { const n = blankQ(); Q.splice(act === "above" ? i : i + 1, 0, n); editing.add(n.id); return changed(); }
     if (act === "delete") { editing.delete(q.id); Q.splice(i, 1); changed(); }
   }
-  function dragQ(e, from) {   // press the handle, move up or down, release: the question lands in front of the card under the pointer
+  const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const cardsOf = (list) => [...list.querySelectorAll(":scope > .rf-q[data-qi]")];
+  // the cards that move slide to their new places: measure, change the order, then play the difference back (FLIP)
+  const flipAll = (list, change) => {
+    const els = cardsOf(list), first = new Map(els.map((c) => [c, c.getBoundingClientRect().top]));
+    change();
+    if (reduced()) return;
+    els.forEach((c) => {
+      const d = first.get(c) - c.getBoundingClientRect().top;
+      if (!d) return;
+      c.style.transition = "none"; c.style.transform = `translateY(${d}px)`; void c.offsetHeight;
+      c.style.transition = "transform 200ms cubic-bezier(.2,.8,.2,1)"; c.style.transform = "";
+    });
+  };
+  // the moved card has landed (220 ms): the change is made, or refused and the list drawn back as it was
+  const land = (from, to, keyboard) => {
+    busy = true;
+    setTimeout(() => {
+      busy = false;
+      focusGrip = keyboard ? to : null;
+      if (to === from || !moveQ(from, to)) { focusGrip = null; drawRight(); }
+    }, reduced() ? 0 : 220);
+  };
+  function dragQ(e, grip) {   // press the handle: the card lifts and follows the pointer; the others slide out of its way
+    if (busy) return;
     e.preventDefault();
-    const cards = [...document.querySelectorAll("#rfright .rf-q[data-qi]")];
-    let slot = from;   // the question goes in front of cards[slot]
-    cards[from].classList.add("rq-dragging");
-    const mark = () => cards.forEach((c, k) => c.classList.toggle("rq-drop", k === slot && slot !== from && slot !== from + 1));
-    const move = (ev) => { slot = cards.filter((c) => ev.clientY > c.getBoundingClientRect().top + c.offsetHeight / 2).length; mark(); };
+    const card = grip.closest(".rf-q"), list = card.parentElement, from = cardsOf(list).indexOf(card);
+    const grab = e.clientY - card.getBoundingClientRect().top;
+    card.classList.add("rq-lift"); card.style.transition = "none";
+    const move = (ev) => {
+      const want = ev.clientY - grab, others = cardsOf(list).filter((c) => c !== card);
+      const before = others.find((c) => want + card.offsetHeight / 2 < c.getBoundingClientRect().top + c.offsetHeight / 2) || null;
+      const at = before || (others.length ? others[others.length - 1].nextSibling : null);
+      if (at !== card && at !== card.nextSibling) flipAll(list, () => list.insertBefore(card, at));
+      card.style.transform = "";
+      const natural = card.getBoundingClientRect().top;
+      card.style.transform = `translateY(${want - natural}px) scale(1.01)`;
+    };
     const up = () => {
       removeEventListener("pointermove", move); removeEventListener("pointerup", up);
-      cards.forEach((c) => c.classList.remove("rq-dragging", "rq-drop"));
-      const to = slot > from ? slot - 1 : slot;
-      if (to !== from) moveQ(from, to);
+      card.classList.remove("rq-lift");
+      const to = cardsOf(list).indexOf(card);
+      card.style.transition = reduced() ? "none" : "transform 220ms cubic-bezier(.2,.8,.2,1)";
+      card.style.transform = "";
+      land(from, to, false);
     };
     addEventListener("pointermove", move); addEventListener("pointerup", up);
+  }
+  function keyMove(e, grip) {   // ↑ ↓ on the focused handle: the same motion as dragging
+    if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+    e.preventDefault();
+    if (busy) return;
+    const card = grip.closest(".rf-q"), list = card.parentElement, cards = cardsOf(list), from = cards.indexOf(card), to = from + (e.key === "ArrowUp" ? -1 : 1);
+    if (to < 0 || to >= cards.length) return;
+    const other = cards[to];
+    card.classList.add("rq-lift");
+    flipAll(list, () => list.insertBefore(card, e.key === "ArrowUp" ? other : other.nextSibling));
+    land(from, to, true);
   }
   const qMenu = (q, i) => `<div class="rq-menu" role="menu">
       <button type="button" role="menuitem" data-mact="logic" data-qi="${i}">条件逻辑（跳题）</button><button type="button" role="menuitem" data-mact="copy" data-qi="${i}">复制</button>
@@ -245,7 +310,7 @@ ${text}
     }).join("") + `<button class="rq-add" type="button" data-oadd-view="${q.id}">＋ 添加选项</button>` : "";
     const rules = q.type === "number" ? (q.rules || []).map((r) => `<div class="rq-opt">如果数字${RF_OP[r.op]} ${r.value} ${badge(r.goto)}</div>`).join("") : "";
     return `<div class="rf-q${changedIds.has(q.id) ? " rf-hl" : ""}" data-qid="${q.id}" data-qi="${i}" data-selk="q:${q.id}">
-      <span class="rq-grip" data-grip="${i}" title="按住拖动排序" aria-label="拖动第 ${i + 1} 题">⋮⋮</span>
+      <span class="rq-grip" data-grip="${i}" tabindex="0" role="button" title="按住拖动排序，或用上下方向键移动" aria-label="拖动第 ${i + 1} 题">⋮⋮</span>
       <div class="rq-top"><span class="rq-qn">Q${i + 1}</span><button class="rq-title" type="button" data-edit="${q.id}">${esc(q.text || "（还没写题目）")}</button>${qBadge(q)}<span class="sp"></span>
         <span class="rq-type">${RF_TYPE[q.type]}${q.required ? " · 必答" : ""}</span>
         <button class="rq-more" type="button" data-menu="${qk}" aria-label="题目菜单" aria-expanded="${menu === qk}">⋮</button>${menu === qk ? qMenu(q, i) : ""}</div>
@@ -253,6 +318,8 @@ ${text}
   }
   // 研究背景: one bullet per line of the project's background; the numbering in front of a line is not shown
   const briefLines = () => (f.brief || "").split("\n").map((l) => l.replace(/^\s*(?:\d+\s*[.、)]|[-•·])\s*/, "").trim()).filter(Boolean);
+  const listHtml = (id, lines, label) => `<ul class="rq-bl" id="${id}">${(lines.length ? lines : [""]).map((l) => `<li><span class="rq-bt" contenteditable="true" spellcheck="false" aria-label="${label}">${esc(l)}</span></li>`).join("")}</ul>`;
+  const needLines = () => need.split(/[。；;\n]/).map((x) => x.trim()).filter(Boolean);   // 招募需求 is shown one sentence per bullet (split at 。 ； ;)
   const briefHtml = () => `<ul class="rq-bl" id="rfbrief">${(briefLines().length ? briefLines() : [""]).map((l) => `<li><span class="rq-bt" contenteditable="true" spellcheck="false" aria-label="研究背景的一条">${esc(l)}</span></li>`).join("")}</ul>`;
   const saveBrief = guard(async () => {   // on leaving a bullet: the whole list is saved as the project's 研究背景 (没有变化就不发)
     const text = [...document.querySelectorAll("#rfbrief .rq-bt")].map((e) => e.textContent.trim()).filter(Boolean).join("\n");
@@ -262,9 +329,9 @@ ${text}
   });
   function outline() {
     return `<h3 class="rf-h rq-bold">研究背景</h3>${briefHtml()}
-      <h3 class="rf-h">研究目标</h3><textarea id="rfgoals" class="rf-blk" rows="3" placeholder="每行一条。" aria-label="研究目标">${esc(goals.join("\n"))}</textarea>
-      <h3 class="rf-h">招募需求</h3><textarea id="rfneed" class="rf-blk" rows="2" placeholder="谁、多少人、哪些情况要筛掉。" aria-label="招募需求">${esc(need)}</textarea>
-      <h3 class="rf-h">问卷流程（共 ${Q.length} 题）</h3>${Q.length ? Q.map(qCard).join("") : `<div class="empty"><b>还没有题目</b><span>在左边说“帮我起草问卷”，或点下面的按钮自己加。</span></div>`}
+      <h3 class="rf-h rq-bold">研究目标</h3>${listHtml("rfgoalsl", goals, "研究目标的一条")}
+      <h3 class="rf-h rq-bold">招募需求</h3>${listHtml("rfneedl", needLines(), "招募需求的一条")}
+      <h3 class="rf-h rq-bold">问卷流程（共 ${Q.length} 题）</h3>${Q.length ? Q.map(qCard).join("") : `<div class="empty"><b>还没有题目</b><span>在左边说“帮我起草问卷”，或点下面的按钮自己加。</span></div>`}
       <div class="row"><button class="s" type="button" data-add="single">+ 单选</button><button class="s" type="button" data-add="multi">+ 多选</button><button class="s" type="button" data-add="text">+ 文字填空</button><button class="s" type="button" data-add="number">+ 数字填空</button></div>`;
   }
   const rightHead = () => {
@@ -333,29 +400,35 @@ ${text}
     const cl = $("#rfclose"); if (cl) cl.onclick = guard(async () => { f = { ...f, ...(await api(`/projects/${p.id}/recruiting/form/close`, { method: "POST" })) }; drawRight(); toast("已停止收集"); });
     if (seg === "test") return retest();
     if (seg === "outline" && !isSource()) return drawTrans();
-    [$("#rfgoals"), $("#rfneed")].forEach((box) => { if (box) rfAutosize(box); });
     document.querySelectorAll("[data-exall]").forEach((b) => (b.onclick = () => {   // link every pair of tagged options of this question as mutually exclusive
       const q = Q.find((x) => x.id === b.dataset.exall); if (!q) return; pushHist();
       taggedPairs(q).forEach(([a, c]) => setExcl(q, a, c, true)); changed();
     }));
-    const g = $("#rfgoals"); if (g) g.onchange = () => { pushHist(); goals = g.value.split("\n").map((x) => x.trim()).filter(Boolean).slice(0, 8); save(); };
-    const n = $("#rfneed"); if (n) n.onchange = () => { pushHist(); need = n.value.trim(); save(); };
     document.querySelectorAll("[data-add]").forEach((b) => (b.onclick = () => {
       pushHist(); const type = b.dataset.add, q = { id: nextId(), type, text: "", required: true, options: type === "single" || type === "multi" ? blank() : [], rules: [] };
       Q.push(q); editing.add(q.id); changed();
     }));
     document.querySelectorAll("[data-edit]").forEach((b) => (b.onclick = () => { editing.add(b.dataset.edit); drawRight(); }));
-    const bindBullet = (el) => {   // 研究背景 bullets: Enter adds a line after this one; leaving a bullet saves the list, an empty one is dropped
-      el.onblur = () => { if (!el.textContent.trim() && el.parentElement.parentElement.children.length > 1) el.parentElement.remove(); saveBrief(); };
+    const bindBullet = (el, leave) => {   // a bullet list: Enter adds a line after this one; leaving a bullet saves the list, an empty one is dropped
+      el.onblur = () => { if (!el.textContent.trim() && el.parentElement.parentElement.children.length > 1) el.parentElement.remove(); leave(); };
       el.onkeydown = (e) => {
         if (e.key !== "Enter" || e.isComposing) return;
         e.preventDefault();
         const li = document.createElement("li"), t = document.createElement("span");
-        t.className = "rq-bt"; t.contentEditable = "true"; t.spellcheck = false; li.append(t); el.parentElement.after(li); bindBullet(t); t.focus();
+        t.className = "rq-bt"; t.contentEditable = "true"; t.spellcheck = false; li.append(t); el.parentElement.after(li); bindBullet(t, leave); t.focus();
       };
     };
-    document.querySelectorAll("#rfbrief .rq-bt").forEach(bindBullet);
-    document.querySelectorAll("[data-grip]").forEach((g) => (g.onpointerdown = (e) => dragQ(e, +g.dataset.grip)));
+    const commitList = (kind) => {   // 研究目标: up to 8 goals; 招募需求: its lines; saved with the form, and only when something changed
+      const lines = [...document.querySelectorAll(`#${kind === "goals" ? "rfgoalsl" : "rfneedl"} .rq-bt`)].map((e) => e.textContent.trim()).filter(Boolean);
+      if (kind === "goals") { const next = lines.slice(0, 8); if (JSON.stringify(next) === JSON.stringify(goals)) return; pushHist(); goals = next; }
+      else { if (lines.join("\n") === needLines().join("\n")) return; pushHist(); need = lines.join("\n"); }
+      save();
+    };
+    document.querySelectorAll("#rfbrief .rq-bt").forEach((el) => bindBullet(el, saveBrief));
+    document.querySelectorAll("#rfgoalsl .rq-bt").forEach((el) => bindBullet(el, () => commitList("goals")));
+    document.querySelectorAll("#rfneedl .rq-bt").forEach((el) => bindBullet(el, () => commitList("need")));
+    document.querySelectorAll("[data-grip]").forEach((g) => { g.onpointerdown = (e) => dragQ(e, g); g.onkeydown = (e) => keyMove(e, g); });
+    if (focusGrip !== null) { const gr = document.querySelector(`#rfright [data-grip="${focusGrip}"]`); if (gr) gr.focus(); focusGrip = null; }
     document.querySelectorAll("[data-menu]").forEach((b) => (b.onclick = (e) => { e.stopPropagation(); menu = menu === b.dataset.menu ? null : b.dataset.menu; drawRight(); }));
     document.querySelectorAll("[data-mact]").forEach((b) => (b.onclick = (e) => { e.stopPropagation(); menuAct(b.dataset.mact, +b.dataset.qi, +(b.dataset.oj ?? -1)); }));
     document.querySelectorAll("[data-oadd-view]").forEach((b) => (b.onclick = () => {
@@ -391,7 +464,7 @@ ${text}
       <div class="note">问卷在别的系统里制作和托管，这里只保存链接，点下面的按钮在新窗口里测试；不会嵌进本页面。</div><div class="row"><button class="p" id="rfsave" type="button">保存链接</button>${f.html_url ? `<button class="s" id="rftest" type="button">打开测试窗口</button>` : ""}</div>${f.html_url ? `<code class="rfurl">${esc(f.html_url)}</code>` : ""}</div>`;
     return `<div class="rf-ws${rightOpen ? "" : " rf-collapsed"}" id="rfws"><div class="rf-pane"><div class="rf-hd">${modeSwitch()}<span class="sp"></span><button class="s" type="button" id="rfundo" disabled>撤销</button><button class="s" type="button" id="rfredo" disabled>重做</button><button class="s" type="button" id="rfexp">展开大纲</button></div>
       <div class="rf-ctx" id="rfctx"></div><div class="rf-sc" id="rfchat"></div>
-      <div id="rfsel" hidden></div><div class="rq-bubs" id="rfbub"></div><div class="rf-inp"><div class="rf-box"><textarea id="rfmsg" rows="2" maxlength="2000" placeholder="请输入修改要求或问题，例如“帮我起草问卷”" aria-label="对话输入"></textarea><button class="p rf-send" type="button" id="rfsend" aria-label="发送">↑</button></div></div></div>
+      <div id="rfsel" hidden></div><div class="rq-bubs" id="rfbub"></div><div class="rf-inp"><div class="rq-files" id="rfarow" hidden></div><div class="rf-box"><button class="rq-clip" type="button" id="rfclip" aria-label="附件" title="附件">${RF_CLIP}</button><input type="file" id="rffile" hidden accept=".pdf,.docx,.txt,.md,.csv,image/*,video/*"><textarea id="rfmsg" rows="2" maxlength="2000" placeholder="请输入修改要求或问题，例如“帮我起草问卷”" aria-label="对话输入"></textarea><button class="p rf-send" type="button" id="rfsend" aria-label="发送">↑</button></div><div class="rq-ferr" id="rfferr" role="alert" hidden></div></div></div>
       <div class="rf-split" id="rfsplit" role="separator" aria-orientation="vertical" aria-label="拖动调整对话和大纲的宽度（双击恢复）" tabindex="0"><i></i></div><div class="rf-pane" id="rfright"></div></div>`;
   }
   const modeSwitch = () => `<div class="rf-seg" role="radiogroup" aria-label="问卷来源"><button type="button" role="radio" data-mode="ai" class="${mode === "ai" ? "on" : ""}" aria-checked="${mode === "ai"}">问卷编写</button><button type="button" role="radio" data-mode="html" class="${mode === "html" ? "on" : ""}" aria-checked="${mode === "html"}">导入问卷链接</button></div>`;
@@ -414,6 +487,9 @@ ${text}
     if (window._rfMenuOff) document.removeEventListener("click", window._rfMenuOff);
     window._rfMenuOff = (e) => { if (menu && !e.target.closest("[data-menu], .rq-menu")) { menu = null; drawRight(); } };   // a ⋮ menu closes on a click anywhere else
     document.addEventListener("click", window._rfMenuOff);
+    const clip = $("#rfclip"), fin = $("#rffile");
+    if (clip && fin) { clip.onclick = () => fin.click(); fin.onchange = () => { const f = fin.files[0]; fin.value = ""; if (f) attach(f); }; }
+    drawFiles();
     const m = $("#rfmsg");
     $("#rfsend").onclick = () => send(m.value);
     m.onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(m.value); } };
