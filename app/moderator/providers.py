@@ -51,6 +51,10 @@ class ChatFatalError(ChatError):
         super().__init__(f"HTTP {status_code}")
 
 
+class ChatFormatError(ChatError):
+    """The model answered, but not with one JSON object (a stray bracket, prose around it...): asking again usually gives a good answer."""
+
+
 class _TransientChatError(ChatError):
     """A failure worth retrying: the request never reached the model, timed out, or the server answered 5xx."""
 
@@ -183,10 +187,10 @@ class OpenAICompatModeratorChat:
             parsed = _load_reply(content or "")
         except ValueError as e:
             log.warning("moderator model reply is not JSON (%d characters)", len(content or ""))
-            raise ChatError("reply is not JSON") from e
+            raise ChatFormatError("reply is not JSON") from e
         if not isinstance(parsed, dict):
             log.warning("moderator model reply is JSON but not an object (%s)", type(parsed).__name__)
-            raise ChatError("reply is not a JSON object")
+            raise ChatFormatError("reply is not a JSON object")
         return parsed
 
 

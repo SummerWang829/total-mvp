@@ -122,9 +122,20 @@ def test_suggestions_wait_for_adoption_and_can_be_dismissed(org, cloud):
 
 def test_an_edit_that_is_not_a_usable_outline_is_refused_and_nothing_changes(org, cloud):
     pid = org.project(language="zh")
-    cloud({"reply": "好了", "mode": "edit", "changes": ["x"], "outline": {"topics": []}}, {"reply": "好了", "mode": "edit", "changes": ["x"], "outline": {"topics": []}})
+    cloud({"reply": "好了", "mode": "edit", "changes": ["x"], "outline": {"topics": []}}, {"reply": "好了", "mode": "edit", "changes": ["x"], "outline": {"topics": []}}, {"reply": "好了", "mode": "edit", "changes": ["x"], "outline": {"topics": []}})
     r = say(org, pid, "起草")
     assert r.status_code == 502 and get(org, pid)["text"] == "" and get(org, pid)["chat"] == []
+
+
+def test_a_reply_that_is_not_valid_json_is_asked_for_again(org, cloud):
+    """The model now and then closes a bracket wrongly (about one draft in six): that is asked again instead of shown as a failure."""
+    from app.moderator.providers import ChatFormatError
+    pid = org.project(language="zh")
+    fake = cloud(ChatFormatError("reply is not JSON"), {"reply": "你好", "mode": "answer"})
+    r = say(org, pid, "你好")
+    assert r.status_code == 200 and r.json()["chat"][-1]["text"] == "你好" and len(fake.calls) == 2
+    cloud(ChatFormatError("reply is not JSON"), ChatFormatError("reply is not JSON"), ChatFormatError("reply is not JSON"))
+    assert say(org, pid, "再来").status_code == 502  # three bad replies in a row are still reported
 
 
 def test_the_model_service_refusing_is_reported_not_hidden(org, cloud):

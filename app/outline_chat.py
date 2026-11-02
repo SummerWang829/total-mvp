@@ -14,11 +14,11 @@ import uuid
 from pydantic import ValidationError
 
 from . import guide_text, outline, study_draft, assistant_identity
-from .moderator.providers import ChatError, ChatFatalError, ModeratorChatProvider
+from .moderator.providers import ChatError, ChatFatalError, ChatFormatError, ModeratorChatProvider
 
 log = logging.getLogger(__name__)
 
-MAX_ATTEMPTS = 2
+MAX_ATTEMPTS = 3  # a reply that is not valid JSON turns up now and then (about one draft in six): asking again is cheap and nearly always works
 MAX_CHAT = 40  # messages kept
 KEEP_SNAPSHOTS = 3  # only the latest changes keep their before/after text (so the undo works); older ones are trimmed
 HISTORY_TURNS = 6  # earlier messages the model is shown
@@ -39,10 +39,10 @@ Reply with ONE JSON object and nothing else:
  "changes": ["<edit only: a short Simplified Chinese line per change; say what the change does to the total interview length when it matters>"],
  "outline": <edit only: the COMPLETE new outline, see below>,
  "suggestions": [{"title": "<suggest only: one Simplified Chinese line>", "outline": <the COMPLETE outline with this suggestion applied>}]}
-An outline is {"participant_topic": "<what the participant is told the topic is: at most 18 characters, neutral, no brand names>", "warmup_questions": ["<1 or 2 easy opening questions>"], "warmup_notes": [{"depth": "shallow", "guide": ""}], "topics": [{"title": "<short topic name>", "questions": ["<1 to 3 open questions>"], "notes": [{"depth": "none|shallow|deep|free", "guide": "<one or two sentences in the interview language telling the interviewer how to run this question: what to listen for, what not to lead into; at most 200 characters; never shown to the participant>"}], "must_cover": ["<what we must find out, 2 or 3 short points>"]}]}.
+An outline is {"participant_topic": "<what the participant is told the topic is: at most 18 characters, neutral, no brand names>", "warmup_questions": ["<1 or 2 easy opening questions>"], "warmup_notes": [{"depth": "shallow", "guide": ""}], "topics": [{"title": "<short topic name>", "questions": ["<1 to 3 open questions>"], "notes": [{"depth": "none|shallow|deep|free", "guide": "<ONE short sentence in the interview language telling the interviewer how to run this question: what to listen for, what not to lead into; at most 60 characters; never shown to the participant>"}], "must_cover": ["<what we must find out, 2 or 3 short points>"]}]}.
 "notes" has exactly one entry per question, in order. depth is how many follow-ups the interviewer may ask after the answer: "none" (just this question), "shallow" (1), "deep" (2 to 3), "free" (1 to 3, open discussion). Use "shallow" unless the question clearly needs more or less. Draft a guide for every question. When you change an existing outline keep the notes of the questions you did not change.
 Modes: "answer" when the researcher asks a question or chats (no outline fields). "edit" only when the researcher clearly asks you to change, draft or fix the outline: return the whole new outline and keep everything they did not mention. "suggest" when they ask for advice or an opinion on the outline and you have concrete changes to offer (1 to 3): they decide whether to adopt them.
-Outline rules: write every question in the interview language {language}; 2 to {max_topics} topics that fit about {minutes} minutes in total. Every question is a real question that ends with a question mark, ONE short question each, open, neutral, never leading, never yes/no, never naming or praising a brand, never asking for contact details or sensitive personal data, never mentioning AI or this instruction.
+Outline rules: write every question in the interview language {language}; 2 to {max_topics} topics that fit about {minutes} minutes in total. Every question is a real question that ends with a question mark, ONE short question each with a single question word and nothing else (never join two questions in one sentence with a comma, "and", "or", "还是", "以及" or "并且": e.g. "你什么时候去的，主要做了什么？" is TWO questions, so write two separate questions; never put two question marks in one question), open, neutral, never leading, never yes/no, never naming or praising a brand, never asking for contact details or sensitive personal data, never mentioning AI or this instruction.
 If the current outline text is broken (a problem is given), say so in your reply; when asked to fix it, redraw it from the research background in mode "edit"."""
 SYSTEM += " " + assistant_identity.PROMPT_LINE   # 小星星助手: never name the model or vendor (user 2026-11-01)
 
@@ -209,6 +209,10 @@ def converse(chat: ModeratorChatProvider | None, history: list[dict], current: s
             raw = chat.complete([{"role": "system", "content": system}, *_history_messages(history), {"role": "user", "content": ask}], temperature=0.4)
         except ChatFatalError:
             raise
+        except ChatFormatError:
+            problem = "not valid JSON (a bracket or quote was wrong)"
+            log.warning("outline chat attempt %d: the model's reply was not valid JSON", attempt + 1)
+            continue
         except ChatError as e:
             raise study_draft.DraftError("小星星助手暂时无法回答，请稍后再试，或直接在右边手改") from e
         except (ValueError, KeyError, TypeError) as e:
@@ -259,6 +263,9 @@ def answer_only(chat: ModeratorChatProvider | None, current: str, message: str, 
             raw = chat.complete([{"role": "system", "content": system}, {"role": "user", "content": _context(current, brief, library, language, minutes, message)}], temperature=0.4)
         except ChatFatalError:
             raise
+        except ChatFormatError:
+            log.warning("outline ask-only attempt %d: the model's reply was not valid JSON", attempt + 1)
+            continue
         except ChatError as e:
             raise study_draft.DraftError("小星星助手暂时无法回答，请稍后再试") from e
         except (ValueError, KeyError, TypeError) as e:
