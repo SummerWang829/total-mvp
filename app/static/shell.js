@@ -45,7 +45,7 @@ function shNavStage(p, active) {
   const a = (href, label, on, cls = "", attrs = "") => `<a class="nv ${cls}" href="#${href}" ${on ? 'aria-current="page"' : ""} ${attrs}>${label}</a>`;
   let h = `<div class="sec">研究阶段 · ${shDesignName(p)}</div>`;
   kinds.forEach((k, i) => {
-    const c = "c" + (i + 1), head = `<span class="sic">${i + 1}</span><span>${SH_KIND[k]}</span>`;
+    const c = "c" + (i + 1), head = `<span class="sic k-${k}" data-n="${i + 1}">${i + 1}</span><span>${SH_KIND[k]}</span>`;
     if (k === "quant") { h += M.includes("quant") ? a(`/p/${p.id}/quant`, head, active === "quant", `stg ${c}`) : `<div class="stghead ${c} off">${head}</div>`; return; }
     if (!M.includes(k)) { h += `<div class="stghead ${c} off">${head}</div>`; return; }
     const on = hub === "ql" && active !== "studies" && (qm && kinds.includes(qm) ? qm === k : k === firstQual);  // no choice made yet: the first interview method
@@ -72,7 +72,7 @@ function shCtx(p, active, extraOnly) {
   const cur = hub === "qt" ? "quant" : hub === "ql" ? (qm && kinds.includes(qm) ? qm : kinds.find((k) => k !== "quant")) : "", idxOn = kinds.indexOf(cur);
   const close = STAFF() && !shSetup(p) ? (p.closed_at ? `<button class="s" id="reopen">重新打开</button>` : `<button class="s" id="closeproj" title="从结项那天起 ${p.retention_days} 天，受访者数据会自动删除">结项</button>`) : "";
   const sel = subs.length > 1 && !shSetup(p) ? `<label class="ctx-sub"><span>子项目</span><select id="subsel" aria-label="切换子项目"><option value="all" ${sub ? "" : "selected"}>总项目（全部 ${subs.length} 个）</option>${subs.map((s, i) => `<option value="${s.id}" ${sub && sub.id === s.id ? "selected" : ""}>S${i + 1} ${esc(s.name)}</option>`).join("")}</select></label>` : "";
-  const track = shSetup(p) ? "" : `<div class="track"><span class="track-cap">${shDesignName(p)}</span><ol aria-label="研究路径">${kinds.map((k, i) => `<li class="${idxOn >= 0 && i < idxOn ? "done" : ""} ${i === idxOn ? "on" : ""}" ${i === idxOn ? 'aria-current="step"' : ""}><i>${idxOn >= 0 && i < idxOn ? "✓" : i + 1}</i>${SH_KIND[k]}</li>`).join("")}</ol></div>`;
+  const track = shSetup(p) ? "" : `<div class="track"><ol aria-label="研究路径">${kinds.map((k, i) => `<li class="${idxOn >= 0 && i < idxOn ? "done" : ""} ${i === idxOn ? "on" : ""}" ${i === idxOn ? 'aria-current="step"' : ""}><i>${idxOn >= 0 && i < idxOn ? "✓" : i + 1}</i>${SH_KIND[k]}</li>`).join("")}</ol></div>`;
   if (extraOnly) return close;
   return `<div class="ctx"><div class="ctx-row"><span class="ctx-no">${shNumber(p)}</span><span class="ctx-name">${esc(p.name)}</span><span class="pill ${stCls}">${stLabel}</span>${sel}${track}<span class="sp"></span>${shTabbed(p, active) ? "" : close}</div></div>`;
   // (with a tab row, the access modes and the close button live at the right end of that row: see shTabs)
