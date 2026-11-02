@@ -186,6 +186,16 @@
 - 效果图：qa_shots/ai_bubble_preview.html（不提交，嵌入了凤凰 SVG，约 3 MB）。
 - 测试：node 语法检查 room.html 内联脚本通过；pytest tests/test_ai_room.py 29 项通过；独立测试页截图确认泡泡中间没有方框、凤凰正常显示。未在真实房间里跑过 AI 主持场次，也未跑 e2e。
 
+## 2026-11-02 · 部署 c6dd626 完成（SW 指令，已在线上核对）
+- 包含：12dbf09（“结项”红底白字，已结项的“重新打开”灰底白字，只改 ui_v10.css）；4e91317 / f10fc16（访谈页大纲题目卡片、拖动排序、⋮ 菜单复制/上方添加/下方添加/删除、环节标题、建议气泡；/outline/edit 新增 insert、dup、move）；5c50f98（AI 后台第 2 步：14 个非主持人 AI 功能的提示词可存版本、上线、回到内置；内置提示词是默认值，没有上线版本或读取失败时用内置；新表 ai_prompt_version 由启动时 create_all 自动创建）；c6dd626（招募问卷页题目卡片、拖动排序、跳题回指会被拒绝、✓/✗ 标记、⋮ 菜单、研究背景可编辑圆点列表、建议气泡）。
+- 风险：上线的提示词对本公司所有人立刻生效；回退用“回到内置”即可。
+- 部署前核对：线上 226 个 app 文件与 1e2935d 一致；无进行中访谈、无未完成录制或合成、无已排期访谈。
+- 测试：pytest tests/test_ai_prompts.py tests/test_ai_console.py tests/test_outline_followups.py tests/test_outline_chat.py tests/test_recruit_review.py tests/test_chat_reply_format.py tests/test_moderator_setup.py tests/test_plans.py tests/test_plan_derive.py 132 项通过。
+- 备份：`total-20261102-121745.db.gz`，异地 COS 上传 HTTP 200（59 张表）。回滚材料：代码 /opt/rollback-code-1e2935d.tgz；旧镜像标签 total-app:rollback-1e2935d。
+- 部署：git archive c6dd626 覆盖 /opt/total-mvp（deploy/.env 未动）；docker compose up -d --build --no-deps app。
+- 检查：容器 healthy；日志无 cannot add/error/traceback；app.doctor 无必须解决的问题；数据库里有 ai_prompt_version 表（只看表名）；/api/health、/api/public/config、/index.html、/outline.js、/rform.js、/ai_console.js、/ui_v10.css 本机 200，公网 HTTPS /api/health 200。
+- 未测（需用户强刷缓存后在网页上确认）：项目页“结项”红底白字、已结项“重新打开”灰底白字；访谈页大纲卡片拖动、⋮ 菜单、建议气泡；招募问卷页卡片拖动、✓/✗、⋮ 菜单、研究背景圆点列表、建议气泡；AI 后台提示词页 14 个功能，保存草稿不影响线上，上线后试用，再“回到内置”。
+
 ## 2026-11-02 · 部署 1e2935d 完成（SW 指令，已在线上核对）
 - 包含：fa6ccd2（项目页与立项向导八处调整，只改前端）；db4ac4f（凤凰 logo 高清化，logo_phoenix.svg 由 800KB 缩到 16KB，橙色主题也用橙色凤凰，部署后需用户强刷缓存）；e2d80b3 / 1e2935d（AI 后台第 1 步，只读：管理员左栏“设置”下“AI 后台”，功能总览与调用监控；新表 ai_call_log 由启动时 create_all 自动创建，只记公司、功能、提示词版本、模型别名、耗时、状态、错误类别、时间，不记任何人说的话；接口 GET /api/ai-console/overview 仅管理员）。
 - 部署前核对：线上 221 个 app 文件与 48207d2 一致；无进行中访谈、无未完成录制或合成、无已排期访谈。
