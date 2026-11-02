@@ -131,6 +131,16 @@
 - 效果图：qa_shots/ai_bubble_preview.html（不提交，嵌入了凤凰 SVG，约 3 MB）。
 - 测试：node 语法检查 room.html 内联脚本通过；pytest tests/test_ai_room.py 29 项通过；独立测试页截图确认泡泡中间没有方框、凤凰正常显示。未在真实房间里跑过 AI 主持场次，也未跑 e2e。
 
+## 2026-11-02 · 部署 48207d2 完成（方案 A：界面和 v010 一起上线）
+- 包含：悄悄话让 AI 提问（新增 app/moderator/prompts/v010.json，CURRENT_PROMPT_VERSION=v010；有悄悄话时 AI 这一轮问题围绕第一条悄悄话，中立、一个问题、不照念）；AI 主持的受访者手机页布局（头像卡片和我的画面在上，对话在中间，回答框在底部，键盘弹出时跟随）。旧版 v009 保留，设 MODERATOR_PROMPT_VERSION=v009 可回退。
+- 风险：v010 只是候选版，完整红线评估还没跑；用户选择 A 后直接上线。若需回退，在 deploy/.env 追加 MODERATOR_PROMPT_VERSION=v009 后重建 app，或切回镜像 total-app:rollback-5a51cb5。
+- 部署前核对：线上 220 个 app 文件与 5a51cb5 一致；无进行中访谈、无未完成录制或合成。
+- 测试：pytest tests/test_moderator_setup.py tests/test_ai_room.py tests/test_moderator_engine.py tests/test_moderator_guardrails.py 458 项通过。未跑 e2e。
+- 备份：`total-20261102-104831.db.gz`，异地 COS 上传 HTTP 200。回滚材料：代码 /opt/rollback-code-5a51cb5.tgz；旧镜像标签 total-app:rollback-5a51cb5。
+- 部署：git archive 48207d2 覆盖 /opt/total-mvp（deploy/.env 未动）；docker compose up -d --build --no-deps app。
+- 检查：容器 healthy；日志无 cannot add/error/traceback；app.doctor 无必须解决的问题；容器内 CURRENT_PROMPT_VERSION=v010；/api/health、/api/public/config、/room.html、/ui_room.css 本机 200，公网 HTTPS /api/health 200；线上 room.html 与 48207d2 一致。
+- 未测（需用户在网页上确认）：研究员发悄悄话后 AI 下一个问题围绕该悄悄话、不照念原话；AI 主持的受访者手机页布局与键盘跟随；AI 房间管理员页和受访者页不再“正在连接…”。
+
 ## 2026-11-02 · 紧急部署 5a51cb5 完成（线上 AI 主持房间卡在“正在连接…”）
 - 原因：b472372（头像改动）的 room.html 模板里引用了未定义变量 tag_part，AI 房间一建面板就报错、启动中断。这是我的改动引入的问题，语法检查没有查出来，我也没有在真实页面里运行过 AI 房间。
 - 修复 5a51cb5：去掉 tag_part，手机端受访者的一行代码移出 if/else 链（AI 主持和座谈会的受访者不再误走一对一流程）。2bdc296 同批带上：甄别设定名单看板“开始作答/完成甄别/合格”标“累计（含已清理）”，数字和算法不变。
