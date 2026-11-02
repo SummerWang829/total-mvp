@@ -297,12 +297,12 @@ async function homeView(p) {
         <p class="sm mut" style="margin:14px 0 0">受访者 ${s.participants} 人 · 进行中 ${s.live} 场 · 待开始 ${s.upcoming} 场${s.next_at ? ` · 下一场 ${when(s.next_at)}` : ""}</p></div>
       <div class="card next"><div class="hero-k">下一步</div><p id="nextstep">${esc(o.next.text)}</p><div><a class="btn p" href="#/p/${p.id}/${o.next.page}">${PAGE_NAME[o.next.page]}</a></div></div>
     </div>` : ""}
-    <div class="card"><h2>最近动态</h2>${o.activity.length ? `<ul class="feed">${o.activity.map((a) => `<li><time>${when(a.at.replace(/Z$/, ""))}</time><span><b>${esc(a.who)}</b> ${esc(a.what)}${a.session ? ` <span class="mut">· ${esc(a.session)}</span>` : ""}</span></li>`).join("")}</ul>`
-      : `<p class="mut" style="margin:0">还没有动态。添加受访者、发出邀请后，这里会按时间列出每一步。</p>`}</div>`, { active: "home", p });
+    <details class="card feedbox"><summary><h2 style="display:inline">最近动态</h2> <span class="mut sm">（${o.activity.length} 条，点开查看）</span></summary>${o.activity.length ? `<ul class="feed">${o.activity.map((a) => `<li><time>${when(a.at.replace(/Z$/, ""))}</time><span><b>${esc(a.who)}</b> ${esc(a.what)}${a.session ? ` <span class="mut">· ${esc(a.session)}</span>` : ""}</span></li>`).join("")}</ul>`
+      : `<p class="mut" style="margin:0">还没有动态。添加受访者、发出邀请后，这里会按时间列出每一步。</p>`}</details>`, { active: "home", p });
   app.querySelector("main").classList.add("ovx");  // visual v6 (ui_v6.css): scoped to this page only
   if (h) {
     const main = app.querySelector("main");
-    const band = `<section class="overview-band"><p>${esc(p.market || "")} · ${esc(langNames(p))}</p><h1>${esc(p.name)}</h1><div class="overview-metrics"><div><b>${s.done} / ${s.sessions}</b><span>访谈已完成</span></div><div><b>${s.ended ? Math.round(s.transcribed * 100 / s.ended) : 0}%</b><span>已结束访谈的转写率</span></div><div><b>${s.upcoming}</b><span>待开始场次</span></div><div><b>${s.approved}</b><span>已确认洞察</span></div></div><a class="band-go" href="#/p/${p.id}/rooms">进入直播间</a></section>`;
+    const band = `<section class="overview-band"><p>${esc(p.market || "")} · ${esc(langNames(p))}</p><h1>${esc(p.name)}</h1><div class="overview-metrics"><div><b>${s.done} / ${s.sessions}</b><span>访谈已完成</span></div><div><b>${s.ended ? Math.round(s.transcribed * 100 / s.ended) : 0}%</b><span>已结束访谈的转写率</span></div><div><b>${s.upcoming}</b><span>待开始场次</span></div><div><b>${s.approved}</b><span>已确认洞察</span></div></div></section>`;
     const head = main.querySelector(".head");
     if (head) head.insertAdjacentHTML("afterend", band); else main.insertAdjacentHTML("afterbegin", band);
     h.wire();

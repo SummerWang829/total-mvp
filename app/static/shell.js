@@ -70,14 +70,11 @@ function shNav(p, active) {
 function shCtx(p, active, extraOnly) {
   const [stLabel, stCls] = shStatus(p), hub = shHubOf(active), subs = (p.setup && p.setup.subs) || [], sub = shSub(p), kinds = shKinds(p), qm = shQmode();
   const cur = hub === "qt" ? "quant" : hub === "ql" ? (qm && kinds.includes(qm) ? qm : kinds.find((k) => k !== "quant")) : "", idxOn = kinds.indexOf(cur);
-  const modes = [["定量", "quant"], ["深访", "depth"], ["座谈会", "group"], ["舆情", "listening"]].filter(([, m]) => (p.methods || []).includes(m));
-  const hi = { quant: ["quant"], listening: ["listening"], pool: [], home: [], monitor: [] }[active] || (hub === "ql" ? (qm === "group" ? ["group"] : qm === "depth" ? ["depth"] : ["depth", "group"]) : []);
   const close = STAFF() && !shSetup(p) ? (p.closed_at ? `<button class="s" id="reopen">重新打开</button>` : `<button class="s" id="closeproj" title="从结项那天起 ${p.retention_days} 天，受访者数据会自动删除">结项</button>`) : "";
   const sel = subs.length > 1 && !shSetup(p) ? `<label class="ctx-sub"><span>子项目</span><select id="subsel" aria-label="切换子项目"><option value="all" ${sub ? "" : "selected"}>总项目（全部 ${subs.length} 个）</option>${subs.map((s, i) => `<option value="${s.id}" ${sub && sub.id === s.id ? "selected" : ""}>S${i + 1} ${esc(s.name)}</option>`).join("")}</select></label>` : "";
   const track = shSetup(p) ? "" : `<div class="track"><span class="track-cap">${shDesignName(p)}</span><ol aria-label="研究路径">${kinds.map((k, i) => `<li class="${idxOn >= 0 && i < idxOn ? "done" : ""} ${i === idxOn ? "on" : ""}" ${i === idxOn ? 'aria-current="step"' : ""}><i>${idxOn >= 0 && i < idxOn ? "✓" : i + 1}</i>${SH_KIND[k]}</li>`).join("")}</ol></div>`;
-  const modesHtml = shSetup(p) ? "" : `<div class="ctx-modes" aria-label="访问方式">${modes.map(([n, m]) => `<span class="${hi.includes(m) ? "on" : ""}">${n}</span>`).join("")}</div>`;
-  if (extraOnly) return modesHtml + close;
-  return `<div class="ctx"><div class="ctx-row"><span class="ctx-no">${shNumber(p)}</span><span class="ctx-name">${esc(p.name)}</span><span class="pill ${stCls}">${stLabel}</span>${sel}${track}<span class="sp"></span>${shTabbed(p, active) ? "" : modesHtml + close}</div></div>`;
+  if (extraOnly) return close;
+  return `<div class="ctx"><div class="ctx-row"><span class="ctx-no">${shNumber(p)}</span><span class="ctx-name">${esc(p.name)}</span><span class="pill ${stCls}">${stLabel}</span>${sel}${track}<span class="sp"></span>${shTabbed(p, active) ? "" : close}</div></div>`;
   // (with a tab row, the access modes and the close button live at the right end of that row: see shTabs)
 }
 
