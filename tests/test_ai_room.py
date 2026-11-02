@@ -4,7 +4,7 @@ import pytest
 
 from app import ai_room
 from app.db import SessionLocal
-from app.models import ChatMessage, TranscriptSegment
+from app.models import AiSession, ChatMessage, Project, TranscriptSegment
 from conftest import Org, H
 
 
@@ -76,6 +76,28 @@ def test_it_cannot_start_before_the_interview_is_live(org):
 def test_a_guide_that_is_not_valid_is_refused_with_a_reason(org):
     itv = _walk_into_the_room(org)
     r = _start(org, itv, guide={"topics": []})
+    assert r.status_code == 422 and "提纲" in r.json()["detail"]
+
+
+def test_start_uses_the_projects_own_outline_and_the_demo_only_when_there_is_none(org):
+    itv = _walk_into_the_room(org)
+    own = f"goal: learn how people buy coffee\nlanguage: {itv['language']}\nminutes: 45\n## warmup\n- ownfirstquestion?\n## topic: buying\n- what did you last buy?\n"
+    with SessionLocal() as db:
+        db.get(Project, itv["project_id"]).outline_text = own
+        db.commit()
+    assert _start(org, itv).status_code == 200
+    with SessionLocal() as db:
+        sess = db.query(AiSession).filter_by(interview_id=itv["id"]).one()
+        assert "ownfirstquestion" in sess.guide_json
+
+
+def test_a_project_outline_that_breaks_a_red_line_is_refused_not_replaced_by_the_demo(org):
+    itv = _walk_into_the_room(org)
+    bad = f"goal: learn how people buy coffee\nlanguage: {itv['language']}\nminutes: 45\n## warmup\n- ownfirstquestion?\n## topic: buying\n- what did you last buy and why?\n"
+    with SessionLocal() as db:
+        db.get(Project, itv["project_id"]).outline_text = bad
+        db.commit()
+    r = _start(org, itv)
     assert r.status_code == 422 and "提纲" in r.json()["detail"]
 
 

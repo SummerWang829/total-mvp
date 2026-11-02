@@ -410,7 +410,7 @@ function buildAiPanel() {  // the team's side: status, alert, controls, the whis
   const ctl = role === "moderator", take = !!S.can_takeover, q4 = Q4.on;
   const controls = `<h3>AI 主持</h3><div class="wst" id="aist" role="status"></div>
     <div class="alertbox" id="aalert" role="alert" hidden><span></span>${take ? `<button type="button" id="a-ack">我知道了</button>` : ""}</div>
-    ${ctl ? `<details class="gbox" id="gbox"><summary>访谈提纲（不上传就用示范提纲）</summary>
+    ${ctl ? `<details class="gbox" id="gbox"><summary>访谈提纲（不上传就用项目大纲）</summary>
       <label for="gfile">上传 .txt 提纲，或直接粘贴到下面</label><input type="file" id="gfile" accept=".txt,text/plain">
       <textarea id="gtext" rows="6" maxlength="20000" aria-label="访谈提纲"></textarea>
       <div class="row"><button id="gcheck" type="button">检查提纲</button></div><p class="sm" id="gnote" role="status"></p></details>
@@ -434,7 +434,7 @@ function buildAiPanel() {  // the team's side: status, alert, controls, the whis
     $id("gfile").onchange = guard(async (e) => { const f = e.target.files[0]; if (f) { $id("gtext").value = (await f.text()).slice(0, 20000); guide = null; note("已读入，请点“检查提纲”。"); } });
     $id("gtext").oninput = () => { guide = null; };
     $id("gcheck").onclick = guard(async () => {
-      const text = $id("gtext").value.trim(); if (!text) { guide = null; return note("没有内容：将使用示范提纲。"); }
+      const text = $id("gtext").value.trim(); if (!text) { guide = null; return note("没有内容：将使用项目大纲。"); }
       try {
         const r = await call("guide/check", { text }); guide = r.guide;
         const miss = r.missing_stimuli.length ? `；这些素材还没装进这场访谈，AI 问到时不会自动展示：${r.missing_stimuli.join("、")}` : "";

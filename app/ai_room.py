@@ -16,8 +16,8 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from .audit import audit
-from . import content_rules, screener, signals
-from .models import AiSession, ChatMessage, SegmentCode, Interview, Reaction, RoomState, Stimulus, TranscriptSegment, utcnow
+from . import content_rules, guide_text, outline_versions, screener, signals
+from .models import AiSession, ChatMessage, SegmentCode, Interview, Project, Reaction, RoomState, Stimulus, TranscriptSegment, utcnow
 from .moderator.compliance import ai_moderation_blocker
 from .moderator.constants import AlertLevel, ModerationMode, Phase
 from .moderator.engine import EngineStateError, ModeratorEngine
@@ -95,6 +95,41 @@ def demo_guide(language: str) -> InterviewGuide:
     if not name:
         raise AiRoomError(409, "这个语言还没有演示提纲，请上传项目提纲后再启动 AI 主持")
     return InterviewGuide.model_validate(json.loads((GUIDE_DIR / f"{name}.json").read_text(encoding="utf-8")))
+
+
+def project_guide(db: Session, itv: Interview) -> InterviewGuide | None:
+    """The project's own outline in this interview's language and format, or None when that version is empty.
+
+    Raises:
+        AiRoomError: the outline cannot be read as a guide; the message says what to fix.
+    """
+    proj = db.get(Project, itv.project_id)
+    if proj is None:
+        return None
+    family = next((f for f, codes in outline_versions.FAMILIES.items() if itv.format in codes), "live")
+    key = outline_versions.key_of(itv.language, family)
+    text = outline_versions.text_of(proj, key) if key in outline_versions.keys_of(proj) else ""
+    if not text.strip():
+        return None
+    try:
+        g = guide_text.parse_guide_text(text)
+    except guide_text.GuideTextError as e:
+        raise AiRoomError(422, str(e)) from e
+    g["language"], g["duration_min"] = itv.language, float(itv.duration_min)
+    try:
+        return InterviewGuide.model_validate(g)
+    except ValueError as e:
+        raise AiRoomError(422, f"项目提纲不合格：{str(e)[:200]}") from e
+
+
+def _guide_for(db: Session, itv: Interview, guide: dict | None) -> tuple[InterviewGuide, bool]:
+    """The guide the AI uses, and whether it is the demo one: the guide staff checked in the room, else the project's own outline, else the demo."""
+    if guide:
+        return InterviewGuide.model_validate(guide), False
+    own = project_guide(db, itv)
+    if own is not None:
+        return own, False
+    return demo_guide(itv.language), True
 
 
 def _session(db: Session, interview_id: str) -> AiSession | None:
@@ -180,7 +215,7 @@ def start(db: Session, itv: Interview, guide: dict | None, actor: str) -> AiSess
     Args:
         db: database session (committed by the caller).
         itv: an AI-moderated, live interview.
-        guide: the project's discussion guide as JSON, or None for the demo guide of the interview's language.
+        guide: the guide staff checked in the room as JSON, or None to use the project's own outline (the demo guide only when the project has none).
         actor: who started it (for the audit log).
 
     Raises:
@@ -195,18 +230,21 @@ def start(db: Session, itv: Interview, guide: dict | None, actor: str) -> AiSess
     if why := ai_moderation_blocker():
         raise AiRoomError(409, why)
     try:
-        the_guide = InterviewGuide.model_validate(guide) if guide else demo_guide(itv.language)
+        the_guide, is_demo = _guide_for(db, itv, guide)
     except ValueError as e:
         raise AiRoomError(422, f"提纲不合格：{str(e)[:200]}") from e
-    engine = ModeratorEngine(the_guide, _chat_model(), profile=screener.profile_lines(db, itv.participant_id),
-                             background_memory=True, clock=ActiveClock() if itv.kind == ASYNC_KIND else None,
-                             written=itv.kind == ASYNC_KIND)  # facts and the summary are read while the participant waits for nothing
+    try:
+        engine = ModeratorEngine(the_guide, _chat_model(), profile=screener.profile_lines(db, itv.participant_id),
+                                 background_memory=True, clock=ActiveClock() if itv.kind == ASYNC_KIND else None,
+                                 written=itv.kind == ASYNC_KIND)  # facts and the summary are read while the participant waits for nothing
+    except ValueError as e:  # a prepared question breaks a red line: the engine refuses to start with it
+        raise AiRoomError(422, f"提纲不合格：{str(e)[:200]}") from e
     sess = AiSession(interview_id=itv.id, org_id=itv.org_id, guide_json=the_guide.model_dump_json())
     db.add(sess)
     with _lock(itv.id):
         _ENGINES[itv.id] = engine
         _apply_payload(db, itv, sess, engine, engine.open())
-    audit(db, itv.org_id, actor, "ai.start", itv.id, demo_guide=guide is None)
+    audit(db, itv.org_id, actor, "ai.start", itv.id, demo_guide=is_demo)
     return sess
 
 
