@@ -410,7 +410,7 @@ const whoLabel = (s) => (role === "participant" ? { ai: T.aiName, moderator: T.m
 const AIF = { timer: 0 };
 // the small bubbles that rise from the bottom while the AI speaks: [left %, width %, delay s, drift px, duration s]
 const AI_KIDS = [[16, 7, 0, -14, 3.2], [40, 11, 0.9, 10, 4], [62, 6, 1.8, -6, 4.8], [12, 5, 2.6, 8, 3.2], [70, 9, 3.4, -12, 4], [50, 6, 4.2, 4, 4.8]];
-const aiFace = (name) => `<span class="aiface" role="img" aria-label="${name}"><span class="aibody"><span class="abub"><img src="/logo_phoenix.svg" alt=""></span><span class="akids" aria-hidden="true">${AI_KIDS.map(([l, w, dl, x, d]) => `<span class="akid" style="left:${l}%;width:${w}%;--dl:${dl}s;--x:${x}px;--d:${d}s"></span>`).join("")}</span></span>${tag_part}`;
+const aiFace = (name) => `<span class="aiface" role="img" aria-label="${name}"><span class="aibody"><span class="abub"><img src="/logo_phoenix.svg" alt=""></span><span class="akids" aria-hidden="true">${AI_KIDS.map(([l, w, dl, x, d]) => `<span class="akid" style="left:${l}%;width:${w}%;--dl:${dl}s;--x:${x}px;--d:${d}s"></span>`).join("")}</span></span><i class="aitag" role="status"><u aria-hidden="true"></u><u aria-hidden="true"></u><u aria-hidden="true"></u>${role === "participant" ? (T.aiSpeaking || "AI is speaking…") : "AI 正在发言…"}</i></span>`;
 function aiSpeak(text) {
   document.querySelectorAll(".aiface").forEach((f) => f.classList.add("talking"));
   clearTimeout(AIF.timer);
@@ -1182,9 +1182,9 @@ async function start() {
   document.body.classList.toggle("role-one-to-one", S.kind !== "group" && S.moderation !== "ai");
   if (role === "participant") { $id("q4").remove(); $id("brpop").remove(); }   // the team's four columns are not even in the participant's page
   if (role === "participant") { T = I18N[S.language] || I18N.en; document.documentElement.lang = S.language || "en"; document.body.classList.add("solo"); themeLabel(); }
-  if (role === "participant" && S.moderation !== "ai" && S.one_to_one) buildPhoneRoom();   // on a phone only: CSS keeps these parts hidden on a computer
   else if (S.kind !== "group") buildQ4();   // the four-column room
   else { $id("lpan").hidden = false; $id("rpan").hidden = false; }
+  if (role === "participant" && S.moderation !== "ai" && S.one_to_one) buildPhoneRoom();   // on a phone only: CSS keeps these parts hidden on a computer
   if (role === "moderator") {  // who is in the room (nobody has to let the participant in)
     $id("wbox").hidden = false;
     loadPretask();  // show the participant's pre-interview answers (both human and AI moderation)

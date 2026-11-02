@@ -20,6 +20,13 @@
 - 测试：`tests/test_recruit_dashboard.py`、`tests/test_recruit_tiers.py` 共 18 项通过。没测：页面上标签换行情况（未做截图检查）、`qa_site` 的 recruit/tabs 小节。
 - 备份：`backup/before-dash-cumulative-labels`（= `b472372`，已确认远端）。
 
+## 2026-11-02 · AI 主持房间一直“正在连接…”、底部按钮消失、启动 AI 主持没反应：原因和修复（用户报告）
+- 原因 1（主因）：提交 `b472372`（AI 主持人新头像）把 `aiFace()` 模板末尾写成了没有定义的 `${tag_part}`，漏掉“AI 正在发言…”标签。AI 房间一建面板就调用它，页面脚本立刻报 `tag_part is not defined`，`start()` 中断：底部按钮没创建、状态轮询没启动、一直“正在连接…”，管理员和受访者页都受影响。修复：换回标签并闭合外层标签。
+- 原因 2（我引入的，受访者页）：手机端那行 `buildPhoneRoom()` 插在受访者的 `if … else if …` 链中间，让 AI 主持/座谈会的受访者误走 `buildQ4()`（四列已被删），同样中断。修复：把那一行放到链后面。
+- 测试：`qa_site.py` 的 `ai_room_section` 151 项通过（管理员、受访者、深浅主题、手机/电脑）；`phone_room_section` 27 项通过；`concept_room_section` 153 通过、6 项是已知的手机宽度问题（主持人/观察员房间的“平分/大屏”按钮 26px 高、观察员打点按钮）。
+- 没测：真实视频服务连接（`tests/e2e_room.py`）；真实 AI 模型对话。
+- 教训：改 `room.html` 后要跑 `ai_room_section` 和 `concept_room_section`，不只跑自己的小节。
+
 ## 2026-11-02 · 受访者手机端房间（一对一真人主持）：画面平分/大屏、实时字幕、便捷输入（用户确认效果图 v2，待部署）
 - 手机宽度（≤700px）下的受访者页：标题行右侧是麦克风、摄像头、表情、离开；其下一行是“深绿主题”和“平分/大屏”（大屏里点小窗互换）；上方主持人和我的画面；中间实时字幕（两位说话人的文字，我说的用浅橙底标出）；最下方输入框，橙色发送键（没写字变灰，回车发送，发送后键盘不收起）；键盘弹出时画面缩成一条、输入框贴着键盘（`visualViewport`）。画面模式存在这部手机的 `localStorage`（`room_vm_p`），和主持人、观察员互不影响。电脑端不变；座谈会和 AI 主持的受访者页不变。
 - 后端：新增 `GET /public/join/{token}/captions`（受访者读字幕，只有 seq/说话人/文字/时间，不含翻译和提示；进房、已同意、访谈进行中才可读；座谈会 404）；`POST /public/join/{token}/enter` 多返回 `one_to_one`。输入的文字走原来的 `POST /public/join/{token}/captions`，成为受访者的一句话，和语音识别字幕一样进转写。无新增数据库列。
