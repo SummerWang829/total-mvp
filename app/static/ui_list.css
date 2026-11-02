@@ -2,3 +2,15 @@
 .msb.cap .ms-value:empty{display:none}
 /* 内容区自己滚动后（外壳固定了项目条和页签），名单标题与筛选框直接贴在内容区顶部 */
 #plist{top:0}
+/* 名单表头：每个可筛选的列都是实线胶囊，高度一致，显示在它所筛选的那一列正上方；“编号”和“数据清理”保持纯文字 */
+.ptbl thead th{padding:8px 5px;vertical-align:middle}
+.ptbl th .msel{display:block;width:100%}
+.ptbl th .msb.cap{width:100%;min-width:0;height:30px;padding:0 22px 0 9px;font-size:12px;border-radius:15px;justify-content:flex-start;gap:4px;border:1px solid var(--line2)}
+.ptbl th .msb.cap .ms-value{max-width:none;flex:1;min-width:0;text-align:left}
+.ptbl th .msb.cap::after{right:8px}
+.ptbl th .msb.cap.on{border-color:var(--orange)}
+.ptbl th .msm{position:fixed;z-index:60}
+/* the header keeps its place above the rows without its own stacking layer, so an open filter menu can paint over the card */
+html body .plbox .ptbl thead th{z-index:auto}
+/* the header cell whose menu is open rises above the sticky list title, so the menu is never covered */
+html body .plbox .ptbl thead th:has(.msm:not([hidden])){z-index:70}
