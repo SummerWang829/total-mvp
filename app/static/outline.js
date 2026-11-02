@@ -18,7 +18,7 @@ async function outlineView(p) {
   if (stale(my)) return;
   V = S.v;
   let seg = sessionStorage.getItem("ol_seg") || "outline", sending = false, pending = "", editing = "", qmenu = "", viewer = "host", step = 0, pop = "", L = new Set(), F = new Set(), opened = new Set(), batch = false, picked = new Set(), autoPend = new Set(), autoFail = new Set();
-  let dragKey = "";
+  let files = [], reading = false;   // 附件：已读出文字的文件 {name, text, chars, truncated}
   if (!["outline", "settings", "test"].includes(seg)) seg = "outline";
   let useLib = sessionStorage.getItem("ol_lib") !== "0";
   const stat = (t) => { const s = $("#olstat"); if (s) s.textContent = t; };
@@ -86,6 +86,22 @@ async function outlineView(p) {
     const chips = S.summary ? ["给每个核心问题补追问", "检查有没有引导性问题", "缩短到 30 分钟"] : ["帮我起草大纲"];
     return `<div class="ol-sl">建议</div>${chips.map((c) => `<button class="ol-sb" type="button" data-chip="${esc(c)}">${esc(c)}</button>`).join("")}`;
   };
+  const MAX_MATERIAL = 30000, MAX_FILES = 3;
+  const filesHtml = () => files.map((f, i) => `<span class="ol-fl" title="${esc(f.name)}"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#olclip"/></svg><span>${esc(f.name)}${f.truncated ? "（太长，只读了前面一部分）" : ""}</span><button type="button" data-fx="${i}" aria-label="去掉这个文件">×</button></span>`).join("") + (reading ? `<span class="ol-fl mut">正在读文件…</span>` : "");
+  const drawFiles = () => { const b = $("#olfiles"); if (!b) return; b.innerHTML = filesHtml(); b.querySelectorAll("[data-fx]").forEach((x) => (x.onclick = () => { files.splice(+x.dataset.fx, 1); drawFiles(); })); };
+  const addFile = async (file) => {
+    if (files.length >= MAX_FILES) return toast(`一次最多带 ${MAX_FILES} 个文件`, true);
+    reading = true; drawFiles();
+    try {
+      const fd = new FormData(); fd.append("file", file);
+      const r = await fetch("/api/attachments/extract", { method: "POST", headers: { Authorization: "Bearer " + store.get("tt_token") }, body: fd });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(typeof d.detail === "string" ? d.detail : "这个文件读不了");
+      files.push({ name: file.name, text: d.text, chars: d.chars, truncated: !!d.truncated });
+    } catch (e) { toast(e.message, true); }
+    reading = false; drawFiles();
+  };
+  const materialText = () => files.map((f) => `【文件：${f.name}】\n${f.text}`).join("\n\n").slice(0, MAX_MATERIAL);
   const fixMessage = () => `请帮我修好大纲文字里的这个问题：${S.problem}。如果修不了，就按研究背景重新整理一份大纲。`.slice(0, 900);
   const drawChat = () => {
     const c = $("#olchat"); if (!c) return;
@@ -103,7 +119,7 @@ async function outlineView(p) {
     text = (text || "").trim(); if (!text || sending) return false;
     let done = true;
     sending = true; pending = text; $("#olmsg").value = ""; $("#olsend").disabled = true; drawChat();
-    try { take(await api(`/projects/${p.id}/outline/chat`, { method: "POST", body: { message: text, use_library: useLib, v: V } })); }
+    try { take(await api(`/projects/${p.id}/outline/chat`, { method: "POST", body: { message: text, use_library: useLib, v: V, material: materialText() } })); files = []; drawFiles(); }
     catch (e) { done = false; S = { ...S, chat: [...S.chat, { role: "user", text }, { role: "ai", kind: "answer", text: "没有成功：" + e.message, changes: [], suggestions: [] }] }; toast(e.message, true); }
     sending = false; pending = ""; const b = $("#olsend"); if (b) b.disabled = false; drawChat(); drawRight(); autoGen();
     return done;
@@ -153,8 +169,8 @@ async function outlineView(p) {
       : `<span class="ol-pn">环节 ${pi + 1}</span><b>${kindName ? kindName + "：" : ""}${esc(part.title)}</b><span class="sp"></span><span class="sm mut">${real} 题${live ? ` · 约 ${mins} 分钟` : ""}</span>${part.kind === "topic" ? `<button class="s" type="button" data-rn="${tkey}">改名</button>` : ""}<button class="s" type="button" data-dp="${part.kind}:${part.ref}" aria-label="删除这一段">删除这一段</button>`;
     const covers = S.lang === "zh" ? "" : part.questions.map((q, qi) => (q.cover ? `<div class="rf-o mut">· ${esc(q.text)}${refOf(pi, qi)}</div>` : "")).join("");
     return `<div class="rf-q" data-part="${part.kind}:${part.ref}" data-n="${real}"><div class="row">${title}</div>${covers}${part.questions.map((q, qi) => questionRow(part, q, qi, q.cover ? "" : "Q" + (++k), pi)).join("")}
-      ${editing === `add:${part.kind}:${part.ref}` ? `<div class="row" style="margin:4px 0"><input class="olq" data-add-key="${part.kind}:${part.ref}" maxlength="300" placeholder="新问题（一句话，以问号结尾）" aria-label="新问题" style="flex:1;min-width:160px"><button class="p" type="button" data-addok="${part.kind}:${part.ref}">添加</button><button class="s" type="button" data-no="1">取消</button></div>`
-        : `<div><button class="s" type="button" data-add="${part.kind}:${part.ref}">＋ 添加问题</button></div>`}</div>`;
+      ${editing === `add:${part.kind}:${part.ref}` ? `<div class="row" data-addrow style="margin:4px 0"><input class="olq" data-add-key="${part.kind}:${part.ref}" maxlength="300" placeholder="新问题（一句话，以问号结尾）" aria-label="新问题" style="flex:1;min-width:160px"><button class="p" type="button" data-addok="${part.kind}:${part.ref}">添加</button><button class="s" type="button" data-no="1">取消</button></div>`
+        : `<div data-addrow><button class="s" type="button" data-add="${part.kind}:${part.ref}">＋ 添加问题</button></div>`}</div>`;
   };
   const famRow = () => {   // 访谈形式：语音/视频和文字访谈各有一份大纲，点一下切换（还没有的先生成）
     if (S.families.length < 2) return "";
@@ -228,39 +244,59 @@ async function outlineView(p) {
     r.innerHTML = rightHead() + `<div class="rf-sc" id="olout"><div class="rf-col"><div id="olnotes">${notes()}</div>${body}</div></div>`;
     $("#olout").scrollTop = keep; wireRight();
   }
-  const moveTo = (from, to) => { const [kind, ref, idx] = from.split(":"); edit({ op: "move", kind, ref: +ref, index: +idx, value: to }); };
-  function wireDrag() {   // 拖动手柄：按住拖到别的问题前后（也可以放进别的环节），松手保存；手柄上按上下方向键一格一格挪
-    const cards = [...document.querySelectorAll("[data-card]")], clear = () => document.querySelectorAll(".ol-dbefore, .ol-dafter, .ol-dend").forEach((x) => x.classList.remove("ol-dbefore", "ol-dafter", "ol-dend"));
+  const moveTo = async (from, to) => { const [kind, ref, idx] = from.split(":"); await edit({ op: "move", kind, ref: +ref, index: +idx, value: to }); drawRight(); };   // 失败时 edit 只弹提示，这里再画一遍，让卡片回到原位
+  const calm = () => matchMedia("(prefers-reduced-motion: reduce)").matches;   // 系统“减少动态效果”：只瞬间换位
+  const slide = (c) => { const m = /matrix\(.*,\s*([-\d.]+)\)$/.exec(getComputedStyle(c).transform); return m ? +m[1] : 0; };
+  const restTop = (c) => c.getBoundingClientRect().top - slide(c);   // 卡片“不算滑动动画”时的位置，判断落点不会被让位动画带偏
+  const flip = (els, change) => {   // FLIP：先记下每张卡片的位置，改完顺序后让它们从旧位置滑到新位置（200ms）
+    const first = new Map(els.map((c) => [c, restTop(c)]));
+    change();
+    if (calm()) return;
+    els.forEach((c) => { const d = first.get(c) - restTop(c); if (!d) return; c.style.transition = "none"; c.style.transform = `translateY(${d}px)`; c.getBoundingClientRect(); c.style.transition = "transform .2s cubic-bezier(.2,.8,.2,1)"; c.style.transform = ""; });
+  };
+  function startDrag(grip, e0) {   // 按住手柄：卡片抬起跟着鼠标走，别的卡片顺滑让位，松手后缓缓落下再保存
+    const card = grip.closest("[data-card]"), from = card.dataset.card, scroller = $("#olout"), grab = e0.clientY - card.getBoundingClientRect().top;
+    let y = e0.clientY, timer = 0;
+    card.classList.add("ol-lift"); card.classList.remove("ol-settle");
+    const place = () => {
+      const others = [...document.querySelectorAll("#olout [data-card]")].filter((c) => c !== card);
+      card.style.transition = "none"; card.style.transform = "";
+      const top = y - grab, mid = top + card.offsetHeight / 2;
+      let before = others.find((c) => mid < restTop(c) + c.offsetHeight / 2) || null, box, target;
+      if (before) {
+        box = before.closest("[data-part]");
+        const prev = box.previousElementSibling;
+        if (before === box.querySelector("[data-card]") && prev && prev.matches("[data-part]") && mid < restTop(before)) box = prev, before = null;   // 还在下一环节的第一题上面：放在上一环节最后
+      } else box = [...document.querySelectorAll("#olout [data-part]")].pop();
+      target = before || box.querySelector("[data-addrow]");
+      if (card.nextElementSibling !== target || card.parentElement !== box) flip(others, () => box.insertBefore(card, target));
+      card.style.transform = `translateY(${top - card.getBoundingClientRect().top}px)`;
+    };
+    const move = (e) => { y = e.clientY; place(); };
+    const edge = () => { const r = scroller.getBoundingClientRect(); if (y < r.top + 40) scroller.scrollTop -= 12; else if (y > r.bottom - 40) scroller.scrollTop += 12; else return; place(); };
+    const stop = (cancel) => {
+      removeEventListener("pointermove", move); removeEventListener("pointerup", up); removeEventListener("pointercancel", cancelled); clearInterval(timer);
+      const box = card.closest("[data-part]"), [dk, dr] = box.dataset.part.split(":"), [fk, fr, fi] = from.split(":"), idx = [...box.querySelectorAll("[data-card]")].indexOf(card);
+      const same = fk === dk && fr === dr, unchanged = cancel || (same && idx === +fi);
+      card.classList.remove("ol-lift"); card.classList.add("ol-settle"); card.style.transition = ""; card.style.transform = "";   // 缓缓落到位（220ms）
+      setTimeout(() => { card.classList.remove("ol-settle"); if (unchanged) { if (cancel || !same) drawRight(); return; } moveTo(from, `${dk}:${dr}:${same && idx > +fi ? idx + 1 : idx}`); }, calm() ? 0 : 230);
+    };
+    const up = () => stop(false), cancelled = () => stop(true);
+    addEventListener("pointermove", move); addEventListener("pointerup", up); addEventListener("pointercancel", cancelled);
+    timer = setInterval(edge, 16); place();
+  }
+  function wireDrag() {   // 拖动手柄；手柄上按上下方向键一格一格挪（动效一样）
     document.querySelectorAll("[data-grip]").forEach((g) => {
-      const card = g.closest("[data-card]");
-      g.onmousedown = () => { card.draggable = true; };
-      g.onmouseup = () => { card.draggable = false; };
+      g.onpointerdown = (e) => { if (e.button) return; e.preventDefault(); startDrag(g, e); };
       g.onkeydown = (e) => {
         if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
         e.preventDefault();
-        const [kind, ref, idx] = g.dataset.grip.split(":"), n = +document.querySelector(`[data-part="${kind}:${ref}"]`).dataset.n, i = +idx;
-        const pos = e.key === "ArrowUp" ? i - 1 : i + 2;
+        const [kind, ref, idx] = g.dataset.grip.split(":"), n = +document.querySelector(`[data-part="${kind}:${ref}"]`).dataset.n, i = +idx, up = e.key === "ArrowUp";
+        const pos = up ? i - 1 : i + 2;
         if (pos < 0 || pos > n) return;
-        moveTo(g.dataset.grip, `${kind}:${ref}:${pos}`);
-      };
-    });
-    cards.forEach((c) => {
-      c.ondragstart = (e) => { dragKey = c.dataset.card; e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", dragKey); c.classList.add("ol-dragging"); };
-      c.ondragend = () => { dragKey = ""; c.draggable = false; c.classList.remove("ol-dragging"); clear(); };
-    });
-    document.querySelectorAll("[data-part]").forEach((box) => {
-      const where = (e) => {   // 放在哪：鼠标在哪张卡片的上半/下半，或者环节最后
-        const over = e.target.closest("[data-card]"), [kind, ref] = box.dataset.part.split(":");
-        if (!over || over.closest("[data-part]") !== box) return { el: box, pos: +box.dataset.n, cls: "ol-dend", kind, ref };
-        const r = over.getBoundingClientRect(), after = e.clientY > r.top + r.height / 2, qi = over.dataset.card.split(":")[2];
-        return { el: over, pos: +qi + (after ? 1 : 0), cls: after ? "ol-dafter" : "ol-dbefore", kind, ref };
-      };
-      box.ondragover = (e) => { if (!dragKey) return; e.preventDefault(); e.dataTransfer.dropEffect = "move"; clear(); const w = where(e); w.el.classList.add(w.cls); };
-      box.ondrop = (e) => {
-        if (!dragKey) return; e.preventDefault(); const w = where(e), from = dragKey; clear(); dragKey = "";
-        const [fk, fr, fi] = from.split(":");
-        if (fk === w.kind && fr === w.ref && (w.pos === +fi || w.pos === +fi + 1)) return;   // 放回原处
-        moveTo(from, `${w.kind}:${w.ref}:${w.pos}`);
+        const card = g.closest("[data-card]"), sib = up ? card.previousElementSibling : card.nextElementSibling;
+        if (sib && sib.matches("[data-card]")) flip([card, sib], () => card.parentNode.insertBefore(up ? card : sib, up ? sib : card));
+        setTimeout(async () => { await moveTo(g.dataset.grip, `${kind}:${ref}:${pos}`); const again = document.querySelector(`[data-grip="${kind}:${ref}:${up ? i - 1 : i + 1}"]`); if (again) again.focus(); }, calm() ? 0 : 210);
       };
     });
   }
@@ -338,14 +374,17 @@ async function outlineView(p) {
   /* ---------- the whole page ---------- */
   shell(`<div class="rf-seg" id="olseg" role="tablist" aria-label="大纲视图" data-subrow></div><div class="rf" style="padding:0"><div class="rf-ws" id="olws"><div class="rf-pane"><div class="rf-hd ol-hd"><div class="ol-ctx" id="olctx"></div><span class="sp"></span><label class="chk"><input type="checkbox" id="ollib" ${useLib ? "checked" : ""}>参考研究库</label></div>
       <div class="rf-sc" id="olchat"></div>
-      <div id="olsel" hidden></div><div class="ol-sug" id="olsug"></div><div class="rf-inp"><div class="rf-box"><textarea id="olmsg" rows="2" maxlength="1000" placeholder="说说你想怎么改，或者直接问我问题……" aria-label="对话输入"></textarea><button class="p rf-send" type="button" id="olsend" aria-label="发送">↑</button></div></div></div>
+      <div id="olsel" hidden></div><div class="ol-sug" id="olsug"></div><div class="ol-files" id="olfiles"></div><div class="rf-inp"><div class="rf-box"><textarea id="olmsg" rows="2" maxlength="1000" placeholder="说说你想怎么改，或者直接问我问题……" aria-label="对话输入"></textarea><button class="ol-att" type="button" id="olatt" aria-label="添加附件（PDF、Word、文字文件）" title="添加附件"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#olclip"/></svg></button><input type="file" id="olfile" hidden accept=".pdf,.docx,.txt,.md,.csv,.png,.jpg,.jpeg,.webp,.mp4,.mov"><button class="p rf-send" type="button" id="olsend" aria-label="发送">↑</button></div></div></div>
       <div class="rf-split" id="olsplit" role="separator" aria-orientation="vertical" aria-label="拖动调整对话和大纲的宽度（双击恢复）" tabindex="0"><i></i></div><div class="rf-pane" id="olright"></div></div></div>`, { active: "outline", p });
   document.body.classList.add("rfmode", "pgw");
+  if (!document.getElementById("olclip")) document.body.insertAdjacentHTML("beforeend", `<svg width="0" height="0" style="position:absolute" aria-hidden="true"><symbol id="olclip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21.4 11.1l-9.2 9.2a5 5 0 0 1-7.1-7.1l9.2-9.2a3.3 3.3 0 0 1 4.7 4.7l-9.2 9.2a1.7 1.7 0 0 1-2.4-2.4l8.5-8.5"/></symbol></svg>`);
   const ws = $("#olws"), fit = () => { if (ws && ws.offsetParent) ws.style.height = Math.max(380, innerHeight - ws.getBoundingClientRect().top - 18) + "px"; };
   fit(); pageOn("fit", window, "resize", fit);
   resetSync(); drawChat(); drawRight(); wireSel(); autoGen();
   const m = $("#olmsg");
   $("#olsend").onclick = () => send(m.value);
+  $("#olatt").onclick = () => $("#olfile").click();
+  $("#olfile").onchange = (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) addFile(f); };
   m.onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(m.value); } };
   $("#ollib").onchange = (e) => { useLib = e.target.checked; sessionStorage.setItem("ol_lib", useLib ? "1" : "0"); const x = $("#olctx"); if (x) x.innerHTML = ctxHtml(); };
   const key = "ol_left_pct", setRatio = (pct) => ws.style.setProperty("--rfl", Math.min(60, Math.max(30, pct)) + "%");

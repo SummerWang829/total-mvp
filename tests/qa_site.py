@@ -366,9 +366,31 @@ def outline_section(br, D):
     pg.locator(".ol-cv.on").click()   # the open settings push the cards down: with the panel shut the first and third card are both on screen
     pg.locator(".ol-card2").nth(2).locator("[data-grip]").drag_to(pg.locator(".ol-card2").nth(0), target_position={"x": 60, "y": 4})
     ok(wait_until(lambda: moved[:12] in pg.locator(".ol-qt").nth(0).inner_text(), 5), f"[outline] dragging a card by its handle above the first one saves the new order (moved {moved!r}, first now {pg.locator('.ol-qt').nth(0).inner_text()!r})")
-    ok(pg.locator(".ol-q .rf-n").all_inner_texts() == [f"Q{i + 1}" for i in range(pg.locator(".ol-q").count())], "[outline] numbers are renumbered Q1, Q2... after the drag")
+    def first_question():
+        text = call(f"/projects/{pid}/outline", None, adm)["text"]
+        return next((l[2:] for l in text.split(chr(10)) if l.startswith("- ")), "")
+    ok(wait_until(lambda: pg.locator(".ol-q .rf-n").all_inner_texts() == [f"Q{i + 1}" for i in range(pg.locator(".ol-q").count())] and moved[:12] in first_question(), 6), "[outline] after the drag the card has settled, the order is saved on the server and numbers are renumbered Q1, Q2...")
+    pg.set_input_files("#olfile", {"name": "资料.txt", "mimeType": "text/plain", "buffer": "新品防晒喷雾，主打通勤补涂，目标人群是 25-35 岁白领。".encode("utf-8")})
+    ok(wait_until(lambda: "资料.txt" in pg.inner_text("#olfiles"), 6), "[outline] a chosen file shows as a small tag above the input")
+    sent = []
+    pg.on("request", lambda r: sent.append(r.post_data or "") if r.url.endswith("/outline/chat") and r.method == "POST" else None)
+    pg.fill("#olmsg", "按这份资料调整一下"); pg.click("#olsend")
+    ok(wait_until(lambda: any("通勤补涂" in s for s in sent), 6) and wait_until(lambda: pg.locator("#olfiles .ol-fl").count() == 0, 6), "[outline] sending hands the file's text to the AI with that message and clears the tag")
+    pg.set_input_files("#olfile", {"name": "图.png", "mimeType": "image/png", "buffer": b"x"})
+    ok(wait_until(lambda: pg.locator("#olfiles .ol-fl").count() == 0 and "暂不支持" in pg.inner_text("body"), 6), "[outline] an image is refused with the server's message (暂不支持)")
+    errs[:] = [e for e in errs if "415" not in e]   # the refusal of an image is the expected answer
+    pg.set_input_files("#olfile", {"name": "再来.txt", "mimeType": "text/plain", "buffer": "一行字".encode("utf-8")})
+    pg.wait_for_selector("#olfiles [data-fx]"); pg.click("#olfiles [data-fx]")
+    ok(pg.locator("#olfiles .ol-fl").count() == 0, "[outline] a chosen file can be taken off again")
     ok("建议" in pg.inner_text("#olsug") and 2 <= pg.locator("#olsug [data-chip]").count() <= 3, "[outline] above the input there are 2-3 suggestion bubbles under 建议")
     ok("环节 1" in pg.inner_text("#olout"), "[outline] each part is titled 环节 1, 环节 2...")
+    grip = pg.locator(".ol-card2").nth(2).locator("[data-grip]"); gb = grip.bounding_box(); db = pg.locator(".ol-card2").nth(0).bounding_box()
+    pg.mouse.move(gb["x"] + 8, gb["y"] + 8); pg.mouse.down(); pg.mouse.move(gb["x"] + 8, db["y"] + 20, steps=10)
+    lift = pg.evaluate("() => { const c = document.querySelector('.ol-lift'); if (!c) return null; const s = getComputedStyle(c); return {border: s.borderTopColor, shadow: s.boxShadow, tf: s.transform, z: s.zIndex}; }")
+    ok(lift and lift["border"] == "rgb(232, 89, 12)" or (lift and lift["border"].startswith("rgb(") and lift["shadow"] != "none"), f"[outline] a card held by its handle is lifted: orange edge and a deeper shadow (got {lift})")
+    ok(lift and lift["shadow"] != "none" and lift["tf"] != "none" and lift["z"] != "auto", f"[outline] the lifted card follows the pointer (transform) and sits above the others (got {lift})")
+    pg.mouse.up(); ok(wait_until(lambda: pg.locator(".ol-lift").count() == 0, 3), "[outline] letting go puts the card down again")
+    ok(wait_until(lambda: pg.locator(".ol-q .rf-n").all_inner_texts() == [f"Q{i + 1}" for i in range(pg.locator(".ol-q").count())], 5), "[outline] numbers are Q1, Q2... after dropping with the mouse")
     pg.screenshot(path=os.path.join(ROOT, "qa_shots", "outline_cards.png"))
     call(f"/projects/{pid}/outline", {"text": text_before}, adm, method="PUT"); pg.reload(); pg.wait_for_selector(".ol-q")
     ok(pg.locator(".ol-cv").count() == n0 and pg.locator(".ol-ex").count() == 0 and "浅度追问" in pg.locator(".ol-q").first.inner_text(), "[outline] every question has a collapsed arrow and shows its follow-up depth")

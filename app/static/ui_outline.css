@@ -31,7 +31,6 @@
 #olws .ol-card2:first-of-type{border-top:1px solid var(--line)}
 #olws .ol-card2.ol-new{background:var(--green-soft);border-radius:12px;padding-left:34px;padding-right:14px}
 #olws .ol-card2.ol-chd{background:var(--orange-soft);border-radius:12px;padding-left:34px;padding-right:14px}
-#olws .ol-card2.ol-dragging{opacity:.45}
 #olws .ol-grip{position:absolute;left:6px;top:10px;width:24px;min-height:28px;padding:0;border:0;background:none;color:var(--ink2);font-size:16px;letter-spacing:-3px;line-height:1;cursor:grab;touch-action:none}
 #olws .ol-grip:hover{color:var(--ink2);background:none}
 #olws .ol-top{display:flex;align-items:flex-start;gap:8px;position:relative}
@@ -60,3 +59,22 @@
 #olws .ol-sb::after{content:"›";flex:none;font-size:18px}
 #olws .ol-sb:hover:not(:disabled){border-color:var(--brand);background:var(--green-soft);color:var(--brand)}
 @media (max-width:900px){#olws .ol-grip,#olws .ol-mn{width:36px;min-height:36px}#olws .ol-card2{padding-left:44px}}
+
+/* 拖动手柄的动效：抬起（阴影加深、描橙边）→ 别的卡片让位 → 松手缓缓落下 */
+#olws .ol-card2.ol-lift{position:relative;z-index:8;pointer-events:none;border-color:var(--orange);box-shadow:0 14px 30px rgba(11,56,44,.24);cursor:grabbing;transition:box-shadow .15s,border-color .15s}
+#olws .ol-card2.ol-settle{transition:transform .22s cubic-bezier(.2,.8,.2,1),box-shadow .22s,border-color .22s}
+#olws .ol-grip{touch-action:none;user-select:none}
+@media (prefers-reduced-motion:reduce){#olws .ol-card2,#olws .ol-card2.ol-lift,#olws .ol-card2.ol-settle{transition:none!important}}
+/* 附件按钮和选好的文件 */
+#olws .rf-box textarea{padding-right:84px}
+#olws .ol-att{position:absolute;right:46px;bottom:8px;width:32px;min-height:32px;height:32px;padding:0;border:0;border-radius:50%;background:none;color:var(--ink2);box-shadow:none;display:grid;place-items:center}
+#olws .ol-att svg{width:20px;height:20px}
+#olws .ol-att:hover:not(:disabled){background:var(--wash);color:var(--ink)}
+#olws .ol-files{flex:none;padding:6px 12px 0;display:flex;flex-wrap:wrap;gap:6px}
+#olws .ol-files:empty{display:none}
+#olws .ol-fl{display:inline-flex;align-items:center;gap:6px;max-width:100%;padding:2px 4px 2px 10px;border:1px solid var(--line);border-radius:999px;background:var(--wash);font-size:13px}
+#olws .ol-fl svg{width:15px;height:15px;flex:none}
+#olws .ol-fl>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#olws .ol-fl button{width:22px;min-height:22px;height:22px;padding:0;border:0;border-radius:50%;background:none;color:var(--ink2);font-size:16px;line-height:1;box-shadow:none}
+#olws .ol-fl button:hover:not(:disabled){background:var(--line);color:var(--ink)}
+@media (max-width:900px){#olws .ol-att{width:36px;min-height:36px;height:36px}#olws .ol-fl button{width:36px;min-height:36px;height:36px}}

@@ -47,6 +47,7 @@ class BatchBody(BaseModel):
 class ChatBody(BaseModel):
     message: str = Field(min_length=1, max_length=4000)  # a message built from several selected passages is long
     use_library: bool = True
+    material: str = Field(default="", max_length=30500)  # text read from an attached file (POST /api/attachments/extract): given to the AI with this one message, never stored or logged
     ask_only: bool = False  # answer only: change nothing, keep nothing (a question about one selected passage)
     v: str | None = Field(default=None, max_length=20)
 
@@ -256,7 +257,7 @@ def chat_outline(pid: str, body: ChatBody, ctx: Ctx = Depends(require_roles(*STA
     history, message = outline_chat.load(proj.outline_chat), body.message.strip()
     if body.ask_only:
         try:
-            reply = outline_chat.answer_only(chat, text, message, background, library, lang, minutes)
+            reply = outline_chat.answer_only(chat, text, message, background, library, lang, minutes, body.material)
         except ChatFatalError as e:
             raise HTTPException(502, f"小星星助手暂时不可用：{e.reason}") from e
         except DraftError as e:
@@ -265,7 +266,7 @@ def chat_outline(pid: str, body: ChatBody, ctx: Ctx = Depends(require_roles(*STA
         db.commit()
         return {"reply": reply}
     try:
-        result = outline_chat.converse(chat, history, text, message, background, library, lang, minutes)
+        result = outline_chat.converse(chat, history, text, message, background, library, lang, minutes, body.material)
     except ChatFatalError as e:
         raise HTTPException(502, f"小星星助手暂时不可用：{e.reason}") from e
     except DraftError as e:
