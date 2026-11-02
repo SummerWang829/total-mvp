@@ -28,6 +28,15 @@
 - 没测：整套 qa.sh；真人房间的录制路径（没改）；语音在真实 ASR（腾讯云/OpenAI）上的识别效果（测试用的是 mock ASR）；接管语音和聊天的重复文字（研究员同时打字和说话时会出现两条）；录像里屏幕共享的合成画面（只验证了录制就绪，没有人工看成片）。
 - 还要注意：结束访谈（`/end`）时会用聊天重写转写，会清掉之前转写里的语音段；语音段需要在录制就绪后再点一次“转写”。
 
+## 2026-11-02 · 部署 d21a9fb（响应式修复 + 立项向导第 1 步调整）
+- 部署前：本地 pull 到 d21a9fb；`test_plans`、`test_project_languages`、`test_formats` 32 通过；线上一个旧 AI 访谈（深访 · Q-006，闲置约 1.5 小时）由用户确认结束；线上无进行中访谈、无录制/合成任务。
+- 备份：`backup.sh` 生成 total-20261102-043439.db.gz，异地（COS）上传成功。
+- 回滚材料：旧代码打包 /opt/rollback-code-05df525.tgz（不含 .env、secrets）；旧镜像标签 total-app:rollback-05df525。
+- 部署：git archive d21a9fb 解到 /opt/total-mvp（.env 未动，38 行）；`docker compose up -d --build --no-deps app`。无新依赖、无新表、无新列。
+- 检查：app healthy；/api/health、/api/public/config、/index.html、/ui_responsive.css、/wizard.js 均 200；日志无 cannot add/error/traceback；doctor 无必须解决的问题，告警配置仍在。
+- 未测：网页端宽屏居中、名单页窄屏滚动、人员页“更多”、立项向导第 1 步的变化（需要用户登录后检查）；手机端不在本次范围。
+- 回滚方法（如需）：解开 /opt/rollback-code-05df525.tgz 到 /opt/total-mvp，并用 total-app:rollback-05df525 重新 up app。
+
 ## 2026-11-01 · EdgeOne 证书进行中（待签发）
 - 当前：deepresearch.morningstarsystem.tech 已在腾讯云申请免费证书（自动 DNS 验证，已自动在 DNSPod 添加 `_dnsauth.deepresearch` TXT 记录）。证书 ID c2DpEJf2，等待签发。
 - 之前 EdgeOne 自动签证书失败（原因：域名未 CNAME 到 EdgeOne）。
