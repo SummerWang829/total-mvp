@@ -131,3 +131,25 @@ body.pphone.pm-kb .rbody>section,body.pphone.pm-kb .rbody>section.pv-bigsec{heig
 body.pphone.pm-kb #pm-top,body.pphone.pm-kb .rmsg{display:none}
 body.pphone.pm-kb #pm-in{margin-bottom:8px}
 }
+
+/* 受访者手机端 · AI 主持：AI 头像和我的画面并排在上面，中间是对话，最下面是回答框（样子和真人主持的手机页一致） */
+@media (max-width:700px){
+body.pphone-ai #grid>.aihost{display:flex!important;align-items:center;justify-content:center;padding:0!important;background:#0B382C}
+body.pphone-ai .aihost .aiface{width:min(80%,104px)}
+body.pphone-ai #chatbox{display:flex!important;flex:1 1 auto;min-height:0;flex-direction:column;gap:6px;margin:10px 12px 0!important;padding:10px 12px;width:auto!important;max-width:none!important;align-self:auto;background:#0B382C;border-radius:16px;color:#E8F2EC}
+body.pphone-ai #chatbox>h3{margin:0;flex:none;font-size:13px;color:#FFD9B8;font-weight:600}
+body.pphone-ai #clog{flex:1;min-height:0;max-height:none!important;overflow-y:auto;-webkit-overflow-scrolling:touch}
+body.pphone-ai #clog .m{background:rgba(255,255,255,.08);color:#E8F2EC;border-radius:10px;padding:7px 10px;font-size:14px;line-height:1.45;overflow-wrap:anywhere}
+body.pphone-ai #clog .m.me{background:rgba(255,106,0,.18)}
+body.pphone-ai #clog .m .who{display:block;color:#A9C2B5;font-size:12px}
+body.pphone-ai #cnote{flex:none;margin:0;font-size:12px;color:#A9C2B5}
+body.pphone-ai #cnote:empty{display:none}
+body.pphone-ai #cform{display:flex!important;flex:none;flex-direction:row!important;flex-wrap:nowrap!important;align-items:flex-end;gap:8px;margin:10px 12px 12px!important;padding:8px 8px 8px 14px!important;width:auto!important;max-width:none!important;background:#fff;border:1px solid #DCE5DF;border-radius:18px;box-shadow:0 2px 8px rgba(23,59,47,.06)}
+body.pphone-ai #cform:focus-within{border-color:#FF6A00}
+body.pphone-ai #cin{flex:1 1 0!important;min-width:0;width:auto!important;min-height:40px;height:40px;max-height:96px;resize:none;border:0!important;outline:0;background:transparent!important;box-shadow:none!important;color:#173B2F;font-size:16px;line-height:1.4;padding:8px 0!important;margin:0!important}
+body.pphone-ai #cform .ctools{display:flex;flex:none;align-items:center;gap:8px;margin:0!important;padding:0!important;width:auto!important}
+body.pphone-ai #cform .ccount,body.pphone-ai #cform .sp{display:none}
+body.t-dark.pphone-ai #cform{background:#15271F;border-color:#345044}
+body.t-dark.pphone-ai #cin{color:#E8EFEA}
+body.pphone-ai.pm-kb #grid>.aihost .aiface{width:48px}
+}

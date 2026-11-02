@@ -334,7 +334,7 @@ async function pmPoll() {
   Object.entries(d.partial || {}).forEach(([sp, txt]) => { const el = line(sp, txt, null); el.classList.add("pm-partial"); log.appendChild(el); });
   if (near || d.lines.length) log.scrollTop = log.scrollHeight;
 }
-function buildPhoneRoom() {
+function buildPhoneRoom(ai) {   // ai: the AI-moderated interview, whose conversation and answer box already exist (buildParticipantChat)
   const t = PMT[S.language] || PMT.en, body = document.querySelector(".rbody"), head = document.querySelector(".rhead");
   document.body.classList.add("pphone");
   try { Object.assign(PM, JSON.parse(localStorage.getItem("room_vm_p") || "{}")); } catch {}   // this phone's own picture mode: never shared with the moderator's or observer's screen
@@ -344,7 +344,7 @@ function buildPhoneRoom() {
   const form = document.createElement("form"); form.id = "pm-in"; form.className = "empty";
   form.innerHTML = `<textarea id="pm-ta" rows="1" maxlength="500" enterkeyhint="send" placeholder="${esc(T.chatPh)}" aria-label="${esc(T.chatPh)}"></textarea><button type="button" class="emo" id="pm-emo" aria-haspopup="true" aria-label="${esc(T.rxInsert)}">😊</button><button type="submit" id="pm-send" aria-label="${esc(T.send)}">↑</button>`;
   const top = document.createElement("div"); top.id = "pm-top"; top.appendChild(vm);   // one row: the colour switch on the left, the picture switch on the right
-  body.before(top); body.after(caps, form);
+  body.before(top); if (!ai) body.after(caps, form);
   const apply = () => {
     const g = $id("grid"); g.classList.toggle("pv-big", PM.mode === "big"); g.classList.toggle("pv-swap", PM.mode === "big" && PM.swap); g.parentElement.classList.toggle("pv-bigsec", PM.mode === "big");
     vm.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.m === PM.mode)));
@@ -357,6 +357,7 @@ function buildPhoneRoom() {
   const theme = $id("theme");
   const place = () => { if (mq.matches) { head.appendChild(bar); top.prepend(theme); } else { document.body.appendChild(bar); head.appendChild(theme); } };   // the microphone, camera and leave buttons sit on the title row of a phone
   mq.addEventListener("change", place); place();
+  if (!ai) {
   const ta = $id("pm-ta");
   const grow = () => { form.classList.toggle("empty", !ta.value.trim()); ta.style.height = "auto"; ta.style.height = Math.min(96, ta.scrollHeight) + "px"; };
   ta.oninput = grow; setInterval(() => form.classList.toggle("empty", !ta.value.trim()), 300);
@@ -373,12 +374,24 @@ function buildPhoneRoom() {
     } catch { toast(T.chatErr, true); }
     PM.busy = false; ta.focus();   // the keyboard stays open for the next sentence
   };
+  }
   if (window.visualViewport) {   // the keyboard: the page follows the visible area, so the input and the send button sit right above the keys
     const vv = window.visualViewport;
     const fit = () => { document.documentElement.style.setProperty("--vvh", `${vv.height}px`); const kb = vv.height < window.innerHeight * 0.75; document.body.classList.toggle("pm-kb", kb); if (kb) window.scrollTo(0, 0); };
     vv.addEventListener("resize", fit); vv.addEventListener("scroll", fit); fit();
   }
-  setInterval(pmPoll, 1500);
+  if (ai) phoneAiChat(); else setInterval(pmPoll, 1500);
+}
+function phoneAiChat() {   // the AI interview on a phone: the AI card sits beside my picture on top, the conversation in the middle, my answer box at the bottom
+  const chat = $id("chatbox"), form = $id("cform"), head = chat.querySelector(".aihead"), body = document.querySelector(".rbody"), mq = matchMedia("(max-width:700px)"), cin = $id("cin");
+  document.body.classList.add("pphone-ai");
+  const place = () => {
+    const phone = mq.matches; head.classList.toggle("tile", phone); head.classList.toggle("aihost", phone);
+    if (phone) { grid.prepend(head); body.after(chat, form); } else { chat.prepend(head); chat.appendChild(form); grid.parentNode.appendChild(chat); }
+  };
+  mq.addEventListener("change", place); place();
+  cin.addEventListener("input", () => { cin.style.height = "auto"; cin.style.height = Math.min(96, cin.scrollHeight) + "px"; });
+  setInterval(() => { if (!cin.value) cin.style.height = ""; }, 500);
 }
 function showLeft() {  // leaving is an end state: a clear page with the next step, never a half-working room
   const card = document.createElement("div");
@@ -1191,7 +1204,7 @@ async function start() {
   }
   if (S.moderation === "ai") {
     C.on = true;
-    if (role === "participant") buildParticipantChat(); else buildAiPanel();
+    if (role === "participant") { buildParticipantChat(); buildPhoneRoom(true); } else buildAiPanel();
   } else if (role !== "participant" && Q4.on) {
     if (role === "moderator") loadPlan();  // the concept-test script and materials, when there are any (the panels were built with the four columns)
   } else if (role !== "participant") {
@@ -1231,8 +1244,8 @@ async function start() {
 
   if (!S.url) {  // no video server configured: show what this token would be allowed to do, so permissions can still be checked
     const claims = JSON.parse(atob(S.token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
-    (Q4.on ? $id("c2t") : grid).innerHTML = `<div style="grid-column:1/-1;overflow:auto;max-height:100%;padding:12px 14px;color:#CFE3DA;background:#15271F;border-radius:14px"><p><b>开发模式：</b>未配置 LIVEKIT_URL，没有视频。下面是这个令牌的实际权限（${role === "participant" ? "受访者" : { moderator: "主持人", observer: "观察员" }[role]}）。</p>
-      <pre id="claims" style="background:#1b2a24;padding:12px;border-radius:10px;overflow:auto">${esc(JSON.stringify({ room: claims.video.room, ...claims.video }, null, 2))}</pre></div>`;
+    (Q4.on ? $id("c2t") : grid).insertAdjacentHTML("beforeend", `<div style="grid-column:1/-1;overflow:auto;max-height:100%;padding:12px 14px;color:#CFE3DA;background:#15271F;border-radius:14px"><p><b>开发模式：</b>未配置 LIVEKIT_URL，没有视频。下面是这个令牌的实际权限（${role === "participant" ? "受访者" : { moderator: "主持人", observer: "观察员" }[role]}）。</p>
+      <pre id="claims" style="background:#1b2a24;padding:12px;border-radius:10px;overflow:auto">${esc(JSON.stringify({ room: claims.video.room, ...claims.video }, null, 2))}</pre></div>`);
     poll(); setInterval(poll, 2000); setInterval(tick, 500);
     return;
   }

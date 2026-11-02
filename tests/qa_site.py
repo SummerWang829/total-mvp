@@ -2011,6 +2011,12 @@ def ai_room_section(br, D):
                 if theme is None: pg.screenshot(path=os.path.join(ROOT, "qa_shots", "ai_room_participant_emoji_1280.png"))
                 pg.keyboard.press("Escape"); ok(pg.locator(".empanel").count() == 0, f"[ai room participant {tag}] Escape closes the emoji panel")
                 pg.fill("#cin", "")
+            if vp == "phone":   # the confirmed phone layout: pictures on top, the conversation in the middle, the answer box at the bottom, the buttons on the title row
+                ok(pg.evaluate("document.body.classList.contains('pphone-ai')"), f"[ai room participant {tag}] the phone layout is on")
+                ok(pg.evaluate("document.querySelector('.rhead').contains(document.getElementById('b-leave'))"), f"[ai room participant {tag}] the microphone, camera and leave buttons sit on the title row")
+                ok(pg.locator("#grid > .aihost .aiface").count() == 1, f"[ai room participant {tag}] the AI card is in the picture row")
+                ok(pg.evaluate("(() => { const g = document.getElementById('grid').getBoundingClientRect(), c = document.getElementById('chatbox').getBoundingClientRect(), f = document.getElementById('cform').getBoundingClientRect(); return g.bottom <= c.top + 1 && c.bottom <= f.top + 1 && f.bottom <= innerHeight + 1; })()"), f"[ai room participant {tag}] pictures, conversation and answer box are stacked top to bottom inside the screen")
+                ok(pg.is_visible("#pm-vm") and pg.locator("#pm-vm [data-m=big]").count() == 1, f"[ai room participant {tag}] the split / big switch is there")
             audit_page(pg, f"ai room participant/{tag}", errs)
             if theme is None and vp == "phone":
                 pg.screenshot(path=os.path.join(ROOT, "qa_shots", "ai_room_participant_390.png"), full_page=True)
