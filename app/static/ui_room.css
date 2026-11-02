@@ -65,3 +65,10 @@ body.q4mode.has-admit .q4{height:calc(100vh - 232px)}
 /* 深色主题：大纲进度条的文字和轨道要用深色上的浅色，不能沿用浅色主题的变量 */
 body.t-dark .q4 .qbar{color:#D2E2D8;background:transparent}
 body.t-dark .q4 .qbar>div{background:#24413A}
+
+/* 离开以后的结束页：盖住整个房间，说清楚现在可以做什么 */
+.leftcard{position:fixed;inset:0;z-index:60;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:24px;background:#FFF6EE;color:#173B2F;text-align:center}
+.leftcard h2{font-size:20px;margin:0}
+.leftcard p{margin:0;color:#566E62;max-width:360px}
+body.t-dark .leftcard{background:#0B1D16;color:#E8EFEA}
+body.t-dark .leftcard p{color:#A9C2B5}

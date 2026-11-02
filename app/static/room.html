@@ -304,6 +304,28 @@ function qTime() {   // used / planned time and the chapter being asked, from th
   el.textContent = `已用 ${f(ms)} / ${String(P.planned).padStart(2, "0")}:00 · ${P.name} ${left < 0 ? "超时 " : "剩 "}${f(left)}`;
 }
 function tick() { updatePlanTimer(); qTime(); if (recStart) { const s = Math.floor((performance.now() - recStart.at) / 1000); $id("recdot").textContent = `${T.rec} ${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`; } }
+async function openTeamTrack(kind) {   // the team may always turn its camera or microphone on, whatever format the participant chose; if the try at entry failed, try again now
+  if (role === "participant" || !room || !window.LivekitClient) return false;
+  try {
+    const track = kind === "video" ? await LivekitClient.createLocalVideoTrack({ resolution: { width: 640, height: 360, frameRate: 25 } }) : await LivekitClient.createLocalAudioTrack();
+    await room.localParticipant.publishTrack(track);
+    localTracks.push(track);
+    if (kind === "video") { camTrack = track; const me = $id("t_me"); if (me) setTileVideo(me, track); }
+    else { micTrack = track; capStart(); }
+    return true;
+  } catch (e) {
+    toast(kind === "video" ? "摄像头没有打开：请在浏览器地址栏允许使用摄像头，并关闭正在占用它的程序或页面" : "麦克风没有打开：请在浏览器地址栏允许使用麦克风，并关闭正在占用它的程序或页面", true);
+    return false;
+  }
+}
+function showLeft() {  // leaving is an end state: a clear page with the next step, never a half-working room
+  const card = document.createElement("div");
+  card.className = "leftcard"; card.setAttribute("role", "status");
+  card.innerHTML = role === "participant"
+    ? `<h2>${esc(T.left)}</h2><p>${esc(T.leftBack)}</p>`
+    : `<h2>你已离开访谈</h2><p>画面和录制已停止。</p><a class="btn" href="/#/i/${iid}">回到访谈页</a>`;
+  document.body.appendChild(card);
+}
 function finish() {
   ended = true; stopRecorder(); capStop(); localTracks.forEach((t) => { try { t.stop(); } catch {} }); if (room) room.disconnect();
   $id("recdot").hidden = true; bar.querySelectorAll("button").forEach((b) => (b.disabled = true));
@@ -980,7 +1002,7 @@ async function loadPretask() {  // the participant's pre-interview answers, for 
 }
 
 // ---------------- the four-column moderator room: outline and pace, captions, follow-ups, chapter summaries (rules in app/room_assist.py) ----------------
-const Q4 = { on: false, asked: new Set(), later: new Set(), timer: null, open: new Set(), lastAssist: null, plan: null };
+const Q4 = { on: false, asked: new Set(), later: new Set(), timer: null, lastAssist: null, plan: null };
 const askedKey = () => "tt_asked_" + iid;
 function loadAsked() { try { Q4.asked = new Set(JSON.parse(localStorage.getItem(askedKey()) || "[]")); } catch { Q4.asked = new Set(); } }
 function saveAsked2() { try { localStorage.setItem(askedKey(), JSON.stringify([...Q4.asked].slice(-60))); } catch {} }
@@ -1019,7 +1041,6 @@ function buildQ4() {
   const pb = $id("prebox"), plb = $id("planbox"); [pb, plb].forEach((b) => { if (b) $id("c1o").appendChild(b); });
   const stim = $id("stim"); if (stim) { if (role === "observer") qc1.insertBefore(stim, $id("c1o")); else $id("c1o").insertBefore(stim, $id("olbody")); }   // the material on the participant's screen, small, above the outline   // the pre-interview answers and the concept-test script, when there are any
   $id("psend").title = role === "moderator" ? "加入待追问" : "发给主持人"; qqInit(); chatBox($id("pin"), $id("pform"), $id("psend"), () => QQ.items.length); addEmoji($id("pin"));
-  $id("olbody").addEventListener("click", (e) => { const x = e.target.closest(".qx"); if (!x) return; const k = x.dataset.qi; Q4.open.has(k) ? Q4.open.delete(k) : Q4.open.add(k); renderAssist(Q4.lastAssist); });
   if (role === "moderator") {   // the waiting area: let the participant in, once
     $id("b-admit").onclick = guard(async () => { await api(`/interviews/${iid}/admit`, { method: "POST" }); toast("已放行"); poll(); });
   }
@@ -1030,8 +1051,8 @@ function buildQ4() {
   });
   pollCaps(); pollProbes(); setInterval(pollCaps, 1000); setInterval(pollProbes, 4000);
   addReactionFeed($id("c3"));
-  if (role === "moderator") { pollAssist(); Q4.timer = setInterval(pollAssist, 3000); }
-  else { $id("olbody").innerHTML = `<p>大纲进度只给主持人看。</p>`; $id("talk").innerHTML = `<p>说话占比目前仅主持人可见。</p>`; $id("chap").innerHTML = `<p>章节要点目前仅主持人可见。</p>`; $id("sugg").innerHTML = ""; $id("sugh").hidden = true; }
+  if (role !== "participant") { pollAssist(); Q4.timer = setInterval(pollAssist, 3000); }
+  if (role !== "moderator") { $id("talk").innerHTML = `<p>说话占比目前仅主持人可见。</p>`; $id("sugg").innerHTML = ""; $id("sugh").hidden = true; }
 }
 function videoMode() {   // two pictures side by side, or one big with the other as a small window; click a picture to make it the big one, click the small window to swap
   const row = $id("qrow"); if (!row) return;
@@ -1055,10 +1076,11 @@ function renderAssist(d) {
     const o = d.outline; $id("olcount").textContent = `已覆盖 ${o.covered} / ${o.total}`;
     let n = -1, upto = 0; Q4.plan = null;
     $id("olbody").innerHTML = o.parts.map((p) => { upto += p.minutes; return p.questions.map((q, qi) => { n++; const cur = n === o.current; if (cur) Q4.plan = { planned: d.planned_min, name: p.title, endMs: upto * 60000 };
-      const open = Q4.open.has(String(n)), guide = (q.guide || "").trim();
-      return `<div class="qo ${q.covered ? "dn" : ""}${cur ? " now" : ""}"><i></i><span>${esc(q.text)}${qi === 0 ? `<small>${esc(p.title)} · 预算 ${p.minutes} 分钟</small>` : ""}</span><button type="button" class="qx" data-qi="${n}" aria-expanded="${open}" aria-label="${open ? "收起" : "展开"}这题的追问点">›</button>${open ? `<div class="qd"><small>追问点 · ${QD[q.depth] || QD.shallow}</small>${guide ? esc(guide) : `<span class="mut">没有写访谈指引</span>`}</div>` : ""}</div>`; }).join(""); }).join("")
+      const guide = (q.guide || "").trim(), fu = q.depth && q.depth !== "none" || guide;   // a question with follow-ups shows them at once, no arrow to open
+      return `<div class="qo ${q.covered ? "dn" : ""}${cur ? " now" : ""}"><i></i><span>${esc(q.text)}${qi === 0 ? `<small>${esc(p.title)} · 预算 ${p.minutes} 分钟</small>` : ""}${fu ? `<small class="qfu">追问 · ${QD[q.depth] || QD.shallow}${guide ? `：${esc(guide)}` : ""}</small>` : ""}</span></div>`; }).join(""); }).join("")
       + (d.pacing && d.pacing.used_pct != null ? olBar("进度", d.pacing.covered_pct, "#1F6B54") + olBar("时间", d.pacing.used_pct, "#EF9F27") : "");
   }
+  if (d.talk) {   // who talks and the follow-up hints are for the team only (the client gets the outline and the chapters)
   const t = d.talk, p = d.pacing;
   $id("talk").innerHTML = t.moderator_pct == null ? `<p>${last && last.status === "live" ? "说得还不够多，稍后显示" : "访谈开始后显示"}</p>`
     : `<div class="qbar"><span>主持 ${t.moderator_pct}%</span><div><i style="width:${t.moderator_pct}%;background:#9FC9B8"></i><i style="width:${t.participant_pct}%;background:#1F6B54"></i></div><span>受访 ${t.participant_pct}%</span></div>${t.advice ? `<div class="qwarn">${esc(t.advice)}</div>` : ""}`;
@@ -1073,12 +1095,13 @@ function renderAssist(d) {
     el.querySelector("[data-later]").onclick = () => { Q4.later.add(k); renderAssist(d); };
     el.querySelector("[data-no]").onclick = () => { Q4.asked.add(k); saveAsked2(); pollAssist(); };
   });
+  }
   $id("chapnote").textContent = d.chapters && d.chapters.length ? `${d.chapters.length} 章已问完` : "";
   $id("chap").innerHTML = d.chapters && d.chapters.length ? d.chapters.map((c) => `<div style="margin:0 0 10px"><b>${esc(c.title)}</b>${c.points.map((x) => `<div class="qq">“${esc(x.text)}” <small>${mmss(x.at_ms)}</small></div>`).join("")}${c.unexpanded.length ? `<div class="qwarn">没展开：${c.unexpanded.map((u) => `“${esc(u)}”`).join("、")}</div>` : ""}</div>`).join("")
     : `<p>每章问完后，这里出本章要点（受访者的原话）和没展开的地方。</p>`;
 }
 async function pollAssist() {
-  if (!Q4.on || ended || role !== "moderator") return;
+  if (!Q4.on || ended || role === "participant") return;
   try { renderAssist(await api(`/interviews/${iid}/assist?asked=${encodeURIComponent([...Q4.asked].slice(-40).join(","))}`)); } catch {}
 }
 
@@ -1124,8 +1147,8 @@ async function start() {
   }
   if (role !== "observer" && !S.view_only) {
     // the team starts with microphone and camera off and the button says what a press does: 打开 / 关闭; the respondent keeps the old labels
-    addBtn("b-mic", role === "participant" ? T.mic : "打开麦克风", async (b) => { if (!micTrack) return; const on = (micTrack.mediaStreamTrack.enabled = !micTrack.mediaStreamTrack.enabled); b.textContent = role === "participant" ? (on ? T.mic : T.micOff) : (on ? "关闭麦克风" : "打开麦克风"); b.setAttribute("aria-pressed", String(!on)); });
-    addBtn("b-cam", role === "participant" ? T.cam : "打开摄像头", async (b) => { if (!camTrack) return; const on = (camTrack.mediaStreamTrack.enabled = !camTrack.mediaStreamTrack.enabled); b.textContent = role === "participant" ? (on ? T.cam : T.camOff) : (on ? "关闭摄像头" : "打开摄像头"); b.setAttribute("aria-pressed", String(!on)); const o = $id("t_me")?.querySelector(".off"); if (o) { o.hidden = on; o.textContent = T.camOff; } });
+    addBtn("b-mic", role === "participant" ? T.mic : "打开麦克风", async (b) => { let fresh = false; if (!micTrack) { if (!(await openTeamTrack("audio"))) return; fresh = true; } const on = fresh || (micTrack.mediaStreamTrack.enabled = !micTrack.mediaStreamTrack.enabled); b.textContent = role === "participant" ? (on ? T.mic : T.micOff) : (on ? "关闭麦克风" : "打开麦克风"); b.setAttribute("aria-pressed", String(!on)); });
+    addBtn("b-cam", role === "participant" ? T.cam : "打开摄像头", async (b) => { let fresh = false; if (!camTrack) { if (!(await openTeamTrack("video"))) return; fresh = true; } const on = fresh || (camTrack.mediaStreamTrack.enabled = !camTrack.mediaStreamTrack.enabled); b.textContent = role === "participant" ? (on ? T.cam : T.camOff) : (on ? "关闭摄像头" : "打开摄像头"); b.setAttribute("aria-pressed", String(!on)); const o = $id("t_me")?.querySelector(".off"); if (o) { o.hidden = on; o.textContent = T.camOff; } });
   }
   if (role === "participant") buildReactionButton();
   if (Q4.on) {   // the team's private chat: a small button that opens it over the page
@@ -1133,9 +1156,10 @@ async function start() {
     addBtn("b-chat", "后台聊天", () => { $id("brpop").hidden = !$id("brpop").hidden; });
   }
   addBtn("b-leave", T.leave, async () => {
-    stopRecorder(); await R.q; localTracks.forEach((t) => { try { t.stop(); } catch {} }); if (room) room.disconnect(); ended = true;
+    ended = true;   // first, so the "connection lost" message of the disconnect below is never shown
+    stopRecorder(); await R.q; localTracks.forEach((t) => { try { t.stop(); } catch {} }); if (room) room.disconnect();
     if (inviteT) fetch(`/api/public/join/${encodeURIComponent(inviteT)}/leave`, { method: "POST" }).catch(() => {});  // coming back needs nobody's permission
-    msg(role === "participant" ? `${esc(T.left)} ${esc(T.leftBack)}` : "你已离开。"); bar.querySelectorAll("button").forEach((b) => (b.disabled = true));
+    showLeft();
   }, "bad");
   $id("b-mic")?.setAttribute("aria-pressed", "false"); $id("b-cam")?.setAttribute("aria-pressed", "false");
   if (role === "moderator") ["b-rec", "b-stop"].forEach((i) => ($id(i).disabled = true));
@@ -1173,7 +1197,7 @@ async function start() {
       for (const t of localTracks) await room.localParticipant.publishTrack(t);
       const me = tile("me", T.you); me.id = "t_me"; me.classList.add("me");
       if (camTrack) setTileVideo(me, camTrack);
-      if (!camTrack) $id("b-cam")?.setAttribute("disabled", "");
+      if (!camTrack && role === "participant") $id("b-cam")?.setAttribute("disabled", "");   // the team's button stays usable: it tries the camera again when pressed
       capStart();  // live captions of this browser's own microphone (off in AI mode, where the chat is the text)
     }
   } catch (e) { msg(`<b>${esc(T.cantEnter)}：</b>${esc(e.message)}`); }

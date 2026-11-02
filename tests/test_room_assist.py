@@ -70,7 +70,9 @@ def test_endpoint_needs_a_team_role_and_reads_the_project_outline(org):
     assert d["has_outline"] and d["outline"]["covered"] == 1 and d["outline"]["total"] == 2 and d["outline"]["current"] == 1 and d["probes"]
     qs = [q for p in d["outline"]["parts"] for q in p["questions"]]
     assert all(q["depth"] in ("none", "shallow", "deep", "free") and "guide" in q for q in qs)   # the room can open a question to show its follow-up points
-    assert org.c.get(f"/api/interviews/{itv['id']}/assist", headers=org.h("observer")).status_code == 403
+    obs = org.c.get(f"/api/interviews/{itv['id']}/assist", headers=org.h("observer"))
+    assert obs.status_code == 200 and obs.json()["outline"]["total"] == 2 and "chapters" in obs.json()   # the client sees the outline and the chapters
+    assert "talk" not in obs.json() and "probes" not in obs.json() and "pacing" not in obs.json()   # never who talks or the follow-up hints
 
 
 def db_org(db, iid):

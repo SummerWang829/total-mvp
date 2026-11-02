@@ -208,7 +208,8 @@ def test_the_rooms_panels_read_the_ai_chat_when_there_are_no_captions(room):
         _say(org, itv, f"我平时在网上买护肤品，因为方便，也因为有评价可以参考，价格也比商场便宜很多（第 {i} 次）。")
     d = org.c.get(f"/api/interviews/{itv['id']}/assist", headers=org.h("researcher")).json()
     assert d["talk"]["moderator_pct"] is not None and d["talk"]["participant_pct"] is not None   # who said how much comes from the conversation
-    assert org.c.get(f"/api/interviews/{itv['id']}/assist", headers=org.h("observer")).status_code == 403
+    obs = org.c.get(f"/api/interviews/{itv['id']}/assist", headers=org.h("observer")).json()
+    assert "talk" not in obs and "probes" not in obs   # the client never sees who talks how much
 
 
 def test_handing_back_takes_staff_publishing_rights_away_in_the_video_room(monkeypatch):

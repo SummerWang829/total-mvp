@@ -10,6 +10,8 @@ from ..models import CaptionLine, ChatMessage, Project
 
 router = APIRouter(prefix="/api", tags=["room"])
 OPERATE = ("admin", "researcher", "support", "moderator")
+VIEWERS = ("observer", "viewer")  # the client sees the outline and the chapter summaries, never who talks or the follow-up hints
+VIEWER_KEYS = ("has_outline", "planned_min", "outline", "chapters")
 MAX_ASKED = 40
 
 
@@ -20,7 +22,7 @@ def _ai_lines(db: Session, itv) -> list[dict]:
 
 
 @router.get("/interviews/{iid}/assist")
-def assist(iid: str, asked: str = Query("", max_length=1200), ctx: Ctx = Depends(require_roles(*OPERATE)), db: Session = Depends(get_db)):
+def assist(iid: str, asked: str = Query("", max_length=1200), ctx: Ctx = Depends(require_roles(*OPERATE, *VIEWERS)), db: Session = Depends(get_db)):
     """Everything the room's panels need in one call. `asked` lists the hint keys already used or dismissed (comma separated) so they are not offered again."""
     itv = visible_interview(db, ctx, iid)
     proj = db.get(Project, itv.project_id)
@@ -39,4 +41,6 @@ def assist(iid: str, asked: str = Query("", max_length=1200), ctx: Ctx = Depends
                           "covered": cov["covered"], "total": cov["total"], "current": cov["current"]}
         out["pacing"] = room_assist.pacing(cov, concept.at_ms(itv) if itv.status == "live" else None, planned)
         out["chapters"] = room_assist.chapter_summaries(summary, lines, cov)
+    if ctx.user.role in VIEWERS:
+        return {k: out[k] for k in VIEWER_KEYS if k in out}
     return out
