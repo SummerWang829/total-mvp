@@ -43,6 +43,12 @@
 - 没测：整套 qa.sh；真人房间的录制路径（没改）；语音在真实 ASR（腾讯云/OpenAI）上的识别效果（测试用的是 mock ASR）；接管语音和聊天的重复文字（研究员同时打字和说话时会出现两条）；录像里屏幕共享的合成画面（只验证了录制就绪，没有人工看成片）。
 - 还要注意：结束访谈（`/end`）时会用聊天重写转写，会清掉之前转写里的语音段；语音段需要在录制就绪后再点一次“转写”。
 
+## 2026-11-02 · 部署 9626047 完成（用户明确同意）
+- 备份 total-20261102-070710 已异地上传；旧代码打包 /opt/rollback-code-before-5df769e.tgz；旧镜像 total-app:rollback-before-5df769e。
+- git archive 9626047 覆盖 /opt/total-mvp（.env 38 行未动）；docker compose up -d --build --no-deps app。
+- 检查：日志无 cannot add/error/traceback；doctor 无必须解决的问题；/api/health、/api/public/config、/index.html、/room.html、/logo.js、/ui_responsive.css、/ui_list.css、/rform.js、/logo_phoenix.svg 均 200。
+- 未测：网页端宽屏、名单页、问卷页、直播间、放行、logo 的人工检查（待用户登录后确认）；手机端不在范围内。
+
 ## 2026-11-02 · 部署 9626047 待用户明确同意（未执行覆盖）
 - 本地 pull 到 9626047；tests/test_concept.py、tests/test_signals.py 110 项通过。
 - 服务器：无进行中访谈、无录制；备份 total-20261102-070710 已异地上传。
