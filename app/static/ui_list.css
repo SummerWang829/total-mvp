@@ -14,3 +14,9 @@
 html body .plbox .ptbl thead th{z-index:auto}
 /* the header cell whose menu is open rises above the sticky list title, so the menu is never covered */
 html body .plbox .ptbl thead th:has(.msm:not([hidden])){z-index:70}
+/* 名单标题行：所有按钮同一高度，整行不换行（批量邀请、批量删除在导出右侧） */
+#plist .rd-tool{flex-wrap:nowrap}
+#plist .rd-tool button{height:34px;min-width:0;padding:0 14px;white-space:nowrap}
+#plist #selcount{white-space:nowrap}
+#plist .fres{margin-top:10px}
+#plist .fres:empty{display:none}
