@@ -216,6 +216,16 @@
 - 效果图：qa_shots/ai_bubble_preview.html（不提交，嵌入了凤凰 SVG，约 3 MB）。
 - 测试：node 语法检查 room.html 内联脚本通过；pytest tests/test_ai_room.py 29 项通过；独立测试页截图确认泡泡中间没有方框、凤凰正常显示。未在真实房间里跑过 AI 主持场次，也未跑 e2e。
 
+## 2026-11-02 · 部署 c3caa55 完成（SW 指令，已在线上核对）
+- 包含：1a2b2cb（对话附件：PDF / Word / 文字文件读成文字给 AI，不保存、不写日志，图片和视频暂不支持，新依赖 pypdf>=4.0）；0b712a1 / 17c5753（左侧导航线条图标 app/static/ui_icons.css，阶段数字小徽章，“退出”悬停显示用户名、账号类型、公司，项目条去掉“先深访，后定量”）；583c89e / 282c45d（访谈页拖动动效，对话附件）；c3caa55（招募问卷拖动动效，研究目标与招募需求改圆点列表，“问卷流程”加粗，对话附件）。
+- 部署前核对：线上 227 个 app 文件与 c6dd626 一致；无进行中访谈、无未完成录制或合成、无已排期访谈。
+- 测试：本机 pip install -r requirements.txt 后，pytest 12 个文件 156 项通过。
+- 备份：`total-20261102-130023.db.gz`，异地 COS 上传 HTTP 200（60 张表）。回滚材料：代码 /opt/rollback-code-c6dd626.tgz；旧镜像标签 total-app:rollback-c6dd626。
+- 部署：git archive c3caa55 覆盖 /opt/total-mvp（deploy/.env 未动）；docker compose up -d --build --no-deps app（重建镜像，安装 pypdf）。
+- 检查：容器 healthy；日志无 cannot add/error/traceback；容器内 import pypdf 成功（6.21.4）；app.doctor 无必须解决的问题；/api/health、/api/public/config、/index.html、/ui_icons.css、/outline.js、/rform.js 本机 200，公网 HTTPS /api/health 200。
+- 公司名：线上 orgs 表只有一条（id 21ac98401265462cbb4b216e1f52543e，名称 Admin）。尚未改名为“甲业科技”，等用户确认这条是自己的公司。
+- 未测（需用户强刷缓存后在网页上确认）：左侧导航线条图标和阶段小徽章；鼠标移到“退出”显示用户名、账号类型、公司，悬停橙底白字；项目顶部没有“先深访，后定量”；访谈页和招募问卷页拖动动效；招募问卷页研究目标/招募需求圆点列表、“问卷流程”加粗；两个对话框的附件按钮（PDF/Word/txt 是否被 AI 使用，图片/视频显示“暂不支持”）。
+
 ## 2026-11-02 · 部署 c6dd626 完成（SW 指令，已在线上核对）
 - 包含：12dbf09（“结项”红底白字，已结项的“重新打开”灰底白字，只改 ui_v10.css）；4e91317 / f10fc16（访谈页大纲题目卡片、拖动排序、⋮ 菜单复制/上方添加/下方添加/删除、环节标题、建议气泡；/outline/edit 新增 insert、dup、move）；5c50f98（AI 后台第 2 步：14 个非主持人 AI 功能的提示词可存版本、上线、回到内置；内置提示词是默认值，没有上线版本或读取失败时用内置；新表 ai_prompt_version 由启动时 create_all 自动创建）；c6dd626（招募问卷页题目卡片、拖动排序、跳题回指会被拒绝、✓/✗ 标记、⋮ 菜单、研究背景可编辑圆点列表、建议气泡）。
 - 风险：上线的提示词对本公司所有人立刻生效；回退用“回到内置”即可。
