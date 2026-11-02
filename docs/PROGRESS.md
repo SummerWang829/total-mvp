@@ -122,6 +122,16 @@
 - 效果图：qa_shots/ai_bubble_preview.html（不提交，嵌入了凤凰 SVG，约 3 MB）。
 - 测试：node 语法检查 room.html 内联脚本通过；pytest tests/test_ai_room.py 29 项通过；独立测试页截图确认泡泡中间没有方框、凤凰正常显示。未在真实房间里跑过 AI 主持场次，也未跑 e2e。
 
+## 2026-11-02 · 紧急部署 5a51cb5 完成（线上 AI 主持房间卡在“正在连接…”）
+- 原因：b472372（头像改动）的 room.html 模板里引用了未定义变量 tag_part，AI 房间一建面板就报错、启动中断。这是我的改动引入的问题，语法检查没有查出来，我也没有在真实页面里运行过 AI 房间。
+- 修复 5a51cb5：去掉 tag_part，手机端受访者的一行代码移出 if/else 链（AI 主持和座谈会的受访者不再误走一对一流程）。2bdc296 同批带上：甄别设定名单看板“开始作答/完成甄别/合格”标“累计（含已清理）”，数字和算法不变。
+- 测试：pytest tests/test_ai_room.py tests/test_recruit_dashboard.py 37 项通过；node 运行头像模板（主持人、受访者两种角色）无未定义变量；room.html 搜不到 tag_part。
+- 部署前核对：线上 209 个 app 文件与 b472372 一致。当时有一场 AI 主持访谈 scheduled 且已有 1 位受访者在 10:11 进房；用户确认现在部署。
+- 备份：`total-20261102-102535.db.gz`，异地 COS 上传 HTTP 200。回滚材料：代码 /opt/rollback-code-b472372.tgz；旧镜像标签 total-app:rollback-b472372。
+- 部署：git archive 5a51cb5 覆盖 /opt/total-mvp（deploy/.env 未动）；docker compose up -d --build --no-deps app。
+- 检查：容器 healthy；日志无 cannot add/error/traceback；app.doctor 无必须解决的问题；/api/health、/api/public/config、/room.html、/rdash.js 本机 200，公网 HTTPS /api/health 200；线上 room.html 与 5a51cb5 一致。
+- 未测（需用户在网页上确认）：AI 主持场次管理员页和受访者页不再一直“正在连接…”，底部按钮条有内容，点“启动 AI 主持”能启动，AI 卡片显示头像和“AI 正在发言…”；人工主持一对一、座谈会受访者正常进房；名单看板三项带“累计（含已清理）”。
+
 ## 2026-11-02 · 部署 b472372 完成（用户要求部署，已在线上核对）
 - 部署前核对：线上 209 个 app 文件 sha256 与 c252b02 一致；无进行中访谈、无未完成录制或合成。
 - 备份：`total-20261102-100956.db.gz`，异地 COS 上传 HTTP 200。回滚材料：代码 /opt/rollback-code-c252b02.tgz（不含 deploy/.env、secrets/、数据库）；旧镜像标签 total-app:rollback-c252b02。
