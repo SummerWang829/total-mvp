@@ -1,0 +1,62 @@
+/* 用户 2026-11-02 确认的版面调整：① 顶部三层合并成一条（项目、页签、小页签在同一行，不特别上色，沿用主题底色）；
+   ② 页面大标题和顶栏标题重复时不再显示大标题；③ 审计日志翻页；④ 子项目表每格第一行对齐、标签和按钮同一行。 */
+
+/* ---- 顶栏合并（桌面，已进入项目的页面）：项目条 | 页签 | 小页签 排成一行，高 56；宽度不够一行放下时（小于 1400）小页签回到第二行，也只有一条 44 的细行 ---- */
+@media (min-width: 1400px) {
+  .app.shfix .work { display: grid; grid-template-columns: auto auto minmax(0, 1fr); grid-template-rows: 56px minmax(0, 1fr); background-image: linear-gradient(var(--line2), var(--line2)); background-size: 100% 1px; background-position: 0 55px; background-repeat: no-repeat; }
+  .app.shfix .work > .ctx { grid-column: 1; grid-row: 1; height: 56px; min-height: 56px; max-width: 34vw; margin: 0; padding: 0 0 0 var(--gx); border: 0; background: transparent; display: flex; align-items: center; backdrop-filter: none; }
+  .app.shfix .work > .ctx .ctx-row { flex-wrap: nowrap; min-height: 0; padding-right: 0; gap: 10px; min-width: 0; }
+  .app.shfix .work > .ctx .ctx-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px; }
+  .app.shfix .work > .ctx .track, .app.shfix .work > .ctx .sp, .app.shfix .work > .ctx .ctx-sub > span { display: none; }
+  .app.shfix .work > .hubtabs.pin { grid-column: 2; grid-row: 1; height: 56px; margin: 0; padding: 0 8px 0 28px; border: 0; background: transparent; align-items: flex-end; }
+  .app.shfix .hubtabs.pin a { height: 56px; margin-bottom: 0; }
+  .app.shfix .work > .subrow { grid-column: 3; grid-row: 1; height: 56px; padding: 0 250px 0 20px; border: 0; background: transparent; min-width: 0; }
+  .app.shfix .work > .subrow > .hubtabs.sub, .app.shfix .work > .subrow > .hubtabs.sub a { height: 56px; }
+  .app.shfix .work > .subrow:has(> *) { position: relative; }
+  .app.shfix .work > .subrow:has(> *)::before { content: ""; position: absolute; left: 0; top: 18px; bottom: 18px; width: 1px; background: var(--line2); }
+  .app.shfix .work > main { grid-column: 1 / -1; grid-row: 2; }
+}
+@media (min-width: 821px) and (max-width: 1399px) {
+  .app.shfix .work { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: 56px auto minmax(0, 1fr); background-image: linear-gradient(var(--line2), var(--line2)); background-size: 100% 1px; background-position: 0 55px; background-repeat: no-repeat; }
+  .app.shfix .work > .ctx { grid-column: 1; grid-row: 1; height: 56px; min-height: 56px; max-width: 40vw; margin: 0; padding: 0 0 0 var(--gx); border: 0; background: transparent; display: flex; align-items: center; }
+  .app.shfix .work > .ctx .ctx-row { flex-wrap: nowrap; min-height: 0; padding-right: 0; gap: 10px; min-width: 0; }
+  .app.shfix .work > .ctx .ctx-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 160px; }
+  .app.shfix .work > .ctx .track, .app.shfix .work > .ctx .sp, .app.shfix .work > .ctx .ctx-sub > span { display: none; }
+  .app.shfix .work > .hubtabs.pin { grid-column: 2; grid-row: 1; height: 56px; margin: 0; padding: 0 250px 0 20px; border: 0; background: transparent; align-items: flex-end; }
+  .app.shfix .hubtabs.pin a { height: 56px; margin-bottom: 0; }
+  .app.shfix .work > .subrow { grid-column: 1 / -1; grid-row: 2; height: 44px; border-bottom: 1px solid var(--line2); }
+  .app.shfix .work > .subrow:not(:has(> *)) { display: none; }
+  .app.shfix .work > .subrow > .hubtabs.sub, .app.shfix .work > .subrow > .hubtabs.sub a { height: 44px; }
+  .app.shfix .work > main { grid-column: 1 / -1; grid-row: 3; }
+}
+
+/* ---- 页面大标题和顶栏标题一样时：只留顶栏那个（按钮和一行隐私说明保留） ---- */
+main > .head.dup2 h1 { display: none; }
+main > .head.dup2 { margin: 0 0 12px; align-items: center; min-height: 0; }
+main > .head.dup2 .lead { margin: 0; font-size: 13px; color: var(--muted); }
+main > .head.dup2:not(:has(button, a, .lead)) { display: none; }
+
+/* ---- 审计日志翻页 ---- */
+.pager { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: flex-end; margin-top: 10px; }
+.pager button.s { min-width: 34px; height: 32px; min-height: 32px; padding: 0 10px; }
+.pager button.s.on { background: var(--brand); border-color: var(--brand); color: #fff; font-weight: 700; }
+.pager button.s:disabled { opacity: .45; }
+
+/* ---- 子项目表：标签和“增加”按钮同一行；每格第一行同一条顶线、同一个行高，与抬头左对齐 ---- */
+.wzchips { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: flex-start; }
+.wzchips .mut { line-height: 24px; }
+.wzsubs td, .wzfix td { line-height: 24px; padding-top: 14px; }
+.wzsubs td > *:first-child, .wzfix td > *:first-child { margin-top: 0; }
+.wzsubs .tag, .wzfix .tag { height: 24px; line-height: 22px; margin: 0; align-items: center; }
+.wzsubs .tag > button.s { height: 20px; min-height: 0; padding: 0 4px; margin-left: 2px; line-height: 1; }
+.wzsubs .wzchips > button[data-pick] { height: 24px; min-height: 0; line-height: 24px; }
+.wzsubs input:not([type=checkbox]), .wzsubs select { height: 24px; min-height: 0; line-height: 24px; }
+.wzsubs td input[type=checkbox] { margin: 4px 0 0; }
+
+/* ---- 顶栏里所有文字：同一字号（15px）、同一条水平中线（用户 2026-11-02 要求）；当前页签只加粗、不放大 ---- */
+@media (min-width: 821px) {
+  .app.shfix .work > .ctx .ctx-row { height: 56px; align-items: center; }
+  .app.shfix .work > .ctx .ctx-no, .app.shfix .work > .ctx .ctx-name, .app.shfix .work > .ctx .pill, .app.shfix .work > .ctx .ctx-sub select { font-size: 15px; line-height: 24px; }
+  .app.shfix .hubtabs.pin a, .app.shfix .hubtabs.pin a.on, .app.shfix .subrow .hubtabs.sub a, .app.shfix .subrow .rf-seg button, .app.shfix .subrow .rmtabs .rmt { font-size: 15px; }
+  .app.shfix .hubtabs.pin a::after { font-size: 15px; }
+}

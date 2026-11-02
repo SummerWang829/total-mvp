@@ -127,20 +127,22 @@ function wzSuggestTabs(s) {
 const WZ_CODE = { 中文: "zh", 英语: "en", 马来语: "ms", 泰米尔语: "ta" }, WZ_FMT = { audio: "纯音频", text: "文字访谈", text_voice: "文字+语音转录", video: "视频", video_screen: "视频+屏幕共享" };
 /** Step 1 of a published project: the languages and the interview formats of each live method, as buttons that open a centred popup; a change is saved at once (the overview page shows the same). */
 function wzLangFmt() {
-  const L = WZ.live;
-  return `<div class="row"><button class="s" type="button" data-livepick="lang">语言选择 · 已选 ${L.languages.length}</button>${Object.keys(L.formats).map((m) => `<button class="s" type="button" data-livepick="fmt|${m}">${WZ_MNAME[m]}访谈形式选择 · 已选 ${L.formats[m].length}</button>`).join("")}</div>`;
+  const L = WZ.live, name = Object.fromEntries(Object.entries(WZ_CODE).map(([n, c]) => [c, n]));
+  const chip = (txt, attr) => `<span class="tag">${esc(txt)}<button class="s" type="button" ${attr} aria-label="去掉${esc(txt)}">×</button></span>`;
+  const fmtRows = Object.keys(L.formats).map((m) => `<div class="wzchips"><span class="mut">${WZ_MNAME[m]}形式：</span>${L.formats[m].map((k) => chip(WZ_FMT[k] || k, `data-livefmtx="${m}|${k}"`)).join("")}</div>`).join("");
+  return `<div class="row"><button class="s" type="button" data-livepick="lang">语言选择 · 已选 ${L.languages.length}</button>${Object.keys(L.formats).map((m) => `<button class="s" type="button" data-livepick="fmt|${m}">${WZ_MNAME[m]}访谈形式选择 · 已选 ${L.formats[m].length}</button>`).join("")}</div>
+    <div class="wzchips" style="margin-top:8px"><span class="mut">语言：</span>${L.languages.map((c) => chip(name[c] || c, `data-livelangx="${c}"`)).join("")}</div>${fmtRows}`;
 }
 /** The languages a sub-project runs in: ticks from the project's languages; the first one ticked is the main one. */
 function wzSubLangs(s) {  // 执行语言: the languages as chips (× removes one) and 选择语言 to change them in a popup
-  return `<div aria-label="${esc(s.name)} 的执行语言">${wzMyLangs(s).map((l) => `<span class="tag">${l}<button class="s" type="button" data-unlang="${s.id}|${l}" aria-label="去掉${l}">×</button></span>`).join(" ")}</div>
-    <button class="s" type="button" data-pick="lang|${s.id}" style="margin-top:6px">增加语言</button>`;
+  return `<div class="wzchips" aria-label="${esc(s.name)} 的执行语言">${wzMyLangs(s).map((l) => `<span class="tag">${l}<button class="s" type="button" data-unlang="${s.id}|${l}" aria-label="去掉${l}">×</button></span>`).join("")}<button class="s" type="button" data-pick="lang|${s.id}">增加语言</button></div>`;
 }
 const wzMyLangs = (s) => (s.langs && s.langs.length ? s.langs : [s.lang]);
 /** 深访形式 of one sub-project: its chips and 选择形式 in a popup; empty when its research order has no 深访. */
 function wzSubFmts(s) {
   if (!WZ_DESIGNS[s.design][1].includes("depth")) return "";
   const codes = (s.fmt && s.fmt.depth) || ["video"];
-  return `${codes.map((k) => `<span class="tag">${WZ_FMT[k]}</span>`).join(" ")}<button class="s" type="button" data-pick="fmt|${s.id}|depth" style="margin-top:4px">增加形式</button>`;
+  return `<div class="wzchips">${codes.map((k) => `<span class="tag">${WZ_FMT[k]}</span>`).join("")}<button class="s" type="button" data-pick="fmt|${s.id}|depth">增加形式</button></div>`;
 }
 /** A small popup to tick options: search, tick, untick. 完成 keeps at least one; 取消 leaves everything as it was. */
 function wzPick(title, options, picked, onDone) {
@@ -465,6 +467,17 @@ function wzQCell(spec, t) {
 
 function wzClick(b, e) {
   const c = WZ.cfg, d = b.dataset;
+  if (d.livelangx || d.livefmtx) {  // × on a chosen language / format of a published project
+    const L = WZ.live, save = (body) => api(`/projects/${WZ.p.id}/languages`, { method: "PUT", body }).then((r) => { WZ.live = r; wzRedraw(); }).catch((er) => { toast(er.message, true); wzRedraw(); });
+    if (d.livelangx) {
+      const next = L.languages.filter((x) => x !== d.livelangx);
+      if (!next.length) return toast("项目至少要有一种语言", true);
+      return save({ languages: next, default: next.includes(L.default) ? L.default : next[0] });
+    }
+    const [m, k] = d.livefmtx.split("|"), next = L.formats[m].filter((x) => x !== k);
+    if (!next.length) return toast("每个方法至少要允许一种访谈形式", true);
+    return save({ formats: { [m]: next } });
+  }
   if (d.livepick) {  // a published project: the popup, then the live settings are saved at once
     const L = WZ.live, [kind, m] = d.livepick.split("|");
     const save = (body) => api(`/projects/${WZ.p.id}/languages`, { method: "PUT", body }).then((r) => { WZ.live = r; wzRedraw(); }).catch((er) => { toast(er.message, true); wzRedraw(); });

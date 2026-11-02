@@ -42,7 +42,7 @@ try:
             pg.hover("#out"); pg.wait_for_timeout(900)
             t = pg.evaluate("() => { const c = document.querySelector('.mecard'); const s = getComputedStyle(c); return { shown: s.display !== 'none', text: c.innerText }; }")
             say(t["shown"] and "管理员" in t["text"], f"{theme}: hover card shows {t['text']!r}")
-            pg.screenshot(path=str(ROOT / "qa_shots" / f"icons_{theme}.png"), clip={"x": 0, "y": 0, "width": 700, "height": 800}); box = pg.evaluate("() => { const r = document.querySelector('.mecard').getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height), innerHeight]; }"); say(box[0] >= 90 and box[1] >= 0 and box[1] + box[3] <= box[4], f"{theme}: hover card is inside the window {box}")
+            pg.screenshot(path=str(ROOT / "qa_shots" / f"icons_{theme}.png"), clip={"x": 0, "y": 0, "width": 700, "height": 800}); box = pg.evaluate("() => { const r = document.querySelector('.mecard').getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height), innerHeight]; }"); say(box[0] >= 0 and box[0] + box[2] <= 90 and box[1] >= 0 and box[1] + box[3] <= box[4], f"{theme}: hover card stays inside the narrow sidebar {box}")
             say(not errs, f"{theme}: no page errors {errs[:1]}")
             ctx.close()
         br.close()

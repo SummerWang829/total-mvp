@@ -29,10 +29,10 @@ nav.side .sic.k-quant{--ico:url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w
 nav.side #out{display:inline-flex;align-items:center;justify-content:center;gap:6px}
 nav.side #out::after{content:"";order:-1;position:static;width:16px;height:16px;background:currentColor;-webkit-mask:url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke='black'%20stroke-width='1.7'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Cpath%20d='M9.5%204h-3A2.5%202.5%200%200%200%204%206.5v11A2.5%202.5%200%200%200%206.5%2020h3'/%3E%3Cpath%20d='M15%208l4%204-4%204M19%2012H9.5'/%3E%3C/svg%3E") center/contain no-repeat;mask:url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke='black'%20stroke-width='1.7'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Cpath%20d='M9.5%204h-3A2.5%202.5%200%200%200%204%206.5v11A2.5%202.5%200%200%200%206.5%2020h3'/%3E%3Cpath%20d='M15%208l4%204-4%204M19%2012H9.5'/%3E%3C/svg%3E") center/contain no-repeat}
 
-/* 鼠标移到“退出”上：显示名称、账号类型和公司 */
+/* 鼠标移到“退出”上（只在窄导航里）：小卡片放在“退出”正上方，不超出左侧栏；宽导航里公司和用户已经写在底部，不再弹卡片 */
 nav.side .me{position:relative}
-nav.side .mecard{display:none;position:fixed;left:100px;bottom:16px;width:230px;padding:12px 14px;background:var(--surface,#fff);color:var(--ink,#0B2E25);border:1px solid var(--line2,#C9D4CD);border-radius:12px;box-shadow:0 10px 26px rgba(11,56,44,.22);z-index:60;font-size:13px;line-height:1.6}
-nav.side .mecard b{display:block;color:var(--ink,#0B2E25);font-size:15px}nav.side .mecard i{display:block;font-style:normal;color:var(--muted,#51675D);font-size:12px}nav.side .mecard em{display:block;margin-top:6px;padding-top:6px;border-top:1px solid var(--line2,#E2E8E4);font-style:normal;font-weight:600}
-nav.side .me:hover .mecard,nav.side .me:focus-within .mecard{display:block}
+nav.side .mecard{display:none;position:absolute;left:0;right:0;bottom:calc(100% + 8px);padding:8px;background:var(--surface,#fff);color:var(--ink,#0B2E25);border:1px solid var(--line2,#C9D4CD);border-radius:10px;box-shadow:0 8px 20px rgba(11,56,44,.25);z-index:60;font-size:12px;line-height:1.5;word-break:break-all;text-align:left}
+nav.side .mecard b{display:block;color:var(--ink,#0B2E25);font-size:13px}nav.side .mecard i{display:block;font-style:normal;color:var(--muted,#51675D)}nav.side .mecard em{display:block;margin-top:4px;padding-top:4px;border-top:1px solid var(--line2,#E2E8E4);font-style:normal;font-weight:600}
+.app.rail nav.side .me:hover .mecard,.app.rail nav.side .me:focus-within .mecard{display:block}
 /* 退出悬停：橙底白字（深色主题里原来是深色字压在深色底上，看不见） */
 nav.side .me #out:hover:not(:disabled){background:var(--orange,#E8590C);border-color:var(--orange,#E8590C);color:#fff}

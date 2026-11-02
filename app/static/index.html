@@ -2,7 +2,7 @@
 <html lang="zh-CN" data-theme="light"><head><meta charset="utf-8"><script src="/theme.js"></script><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>星桐 TOTAL · 深访</title><link rel="stylesheet" href="/app.css">
 <link rel="stylesheet" href="/editorial.css"><link rel="stylesheet" href="/fonts.css"><link rel="stylesheet" href="/ui_v7.css"><link rel="stylesheet" href="/ui_v8.css"><link rel="stylesheet" href="/ui_rooms.css">
-<link rel="stylesheet" href="/chat.css"><link rel="stylesheet" href="/chatsel.css"><link rel="stylesheet" href="/ui_list.css"><link rel="stylesheet" href="/ui_screening.css"><link rel="stylesheet" href="/ui_outline.css"><link rel="stylesheet" href="/ui_wizard.css"><link rel="stylesheet" href="/ui_overview.css"><link rel="stylesheet" href="/ui_ai.css"><link rel="stylesheet" href="/ui_v6.css"><link rel="stylesheet" href="/ui_global.css"><link rel="stylesheet" href="/ui_v9.css"><link rel="stylesheet" href="/ui_v10.css"><link rel="stylesheet" href="/ui_responsive.css"><link rel="stylesheet" href="/ui_icons.css"></head>
+<link rel="stylesheet" href="/chat.css"><link rel="stylesheet" href="/chatsel.css"><link rel="stylesheet" href="/ui_list.css"><link rel="stylesheet" href="/ui_screening.css"><link rel="stylesheet" href="/ui_outline.css"><link rel="stylesheet" href="/ui_wizard.css"><link rel="stylesheet" href="/ui_overview.css"><link rel="stylesheet" href="/ui_ai.css"><link rel="stylesheet" href="/ui_v6.css"><link rel="stylesheet" href="/ui_global.css"><link rel="stylesheet" href="/ui_v9.css"><link rel="stylesheet" href="/ui_v10.css"><link rel="stylesheet" href="/ui_responsive.css"><link rel="stylesheet" href="/ui_icons.css"><link rel="stylesheet" href="/ui_layout.css"></head>
 <body>
 <div id="app"></div>
 <script src="/app.js"></script>
@@ -55,7 +55,7 @@ function navHtml(active, p) {
     }
   }
   if (ME.role === "admin") h += `<div class="sec">设置</div>${a("/team", "团队", "team", "◎")}${a("/retention", "数据保留", "retention", "⌛")}${a("/audit", "审计日志", "audit", "≡")}${a("/ai", "AI 后台", "ai", "✦")}${DEMO_ORG ? a("/demo", "演示数据", "demo", "↺") : ""}`;
-  h += (window.TT_THEME ? TT_THEME.html() : "") + `<div class="me"><span>${esc(ME.org_name)}<br><b>${esc(ME.name)}</b> · ${ROLE[ME.role]}</span><button id="out">退出</button><div class="mecard" role="note"><b>${esc(ME.name)}</b><i>账号类型：${ROLE[ME.role]}</i><em>${esc(ME.org_name)}</em></div></div>`;
+  h += (window.TT_THEME ? TT_THEME.html() : "") + `<div class="me"><span>${esc(ME.org_name)}<br><b>${esc(ME.name)}</b> · ${ROLE[ME.role]}</span><button id="out">退出</button><div class="mecard" role="note"><b>${esc(ME.name)}</b><i>${ROLE[ME.role]}</i><em>${esc(ME.org_name)}</em></div></div>`;
   return h;
 }
 
@@ -72,6 +72,8 @@ function shell(inner, { active, p, title } = {}) {
   labelTables();
   const hd = app.querySelector("main.hubpage > .head"), h1 = hd && hd.querySelector("h1"), tabOn = app.querySelector(".hubtabs a.on");
   if (h1 && tabOn) { const a = h1.textContent.trim(), b = tabOn.textContent.trim(); if (a === b || a === "项目" + b) hd.classList.add("dup"); }  // a title that only repeats the tab's name is dropped; a page with its own title keeps it
+  const hd2 = app.querySelector("main > .head"), h1b = hd2 && hd2.querySelector("h1"), pn = app.querySelector(".top .pname");
+  if (h1b && pn && pn.textContent.trim() === h1b.textContent.trim()) hd2.classList.add("dup2");  // a page whose big title only repeats the title in the top bar: the big one is dropped (its buttons and any promise line stay)
   if (proj) shWire(p);
   if (!window._brandShown) { window._brandShown = true; brandPlay(); }
   $("#out").onclick = () => { store.del("tt_token"); ME = null; PROJECTS = null; DEMO_ORG = false; location.hash = "#/login"; render(); };
@@ -1458,20 +1460,23 @@ async function auditView() {
       <label class="f" style="margin:0;flex:1 1 130px"><span>操作者包含</span><input name="actor" maxlength="80"></label>
       <label class="f" style="margin:0"><span>从</span><input name="since" type="date"></label><label class="f" style="margin:0"><span>到</span><input name="until" type="date"></label><button class="p">筛选</button></form>
     <div class="card scroll" style="padding:6px 10px"><table class="tbl rc"><thead><tr><th>时间</th><th>动作</th><th>操作者</th><th>详情</th></tr></thead><tbody id="arows"></tbody></table></div>
-    <div class="row" style="margin-top:10px"><button id="amore" hidden>再看更多</button><span class="sm mut" id="acount" role="status"></span></div>`, { active: "audit", title: "审计日志" });
-  const PAGE = 100; let offset = 0;
+    <div class="pager" id="apg" role="navigation" aria-label="翻页"></div>`, { active: "audit", title: "审计日志" });
+  const PAGE = 15; let page = 0, total = 0;
   const qs = (extra = {}) => new URLSearchParams(Object.fromEntries(Object.entries({ ...F, ...extra }).filter(([, v]) => v !== "" && v !== undefined)));
   const row = (r) => `<tr><td class="mut" style="white-space:nowrap" data-l="时间">${esc(new Date(r.at + "Z").toLocaleString())}</td><td data-l="动作">${esc(r.action)}</td><td class="mut code" data-l="操作者">${esc(r.actor)}</td><td class="mut code" data-l="详情">${esc(JSON.stringify(r.meta))}</td></tr>`;
+  const pageList = (n) => { const s = new Set([0, n - 1, page - 1, page, page + 1].filter((x) => x >= 0 && x < n)); const out = []; let prev = -1; [...s].sort((x, y) => x - y).forEach((x) => { if (x - prev > 1) out.push("…"); out.push(x); prev = x; }); return out; };
+  const drawPager = () => {
+    const n = Math.max(1, Math.ceil(total / PAGE));
+    $("#apg").innerHTML = total ? `<span class="sm mut" id="acount" role="status">共 ${total} 条</span><button class="s" data-pg="${page - 1}" ${page ? "" : "disabled"}>上一页</button>${pageList(n).map((x) => (x === "…" ? `<span class="mut">…</span>` : `<button class="s ${x === page ? "on" : ""}" data-pg="${x}" ${x === page ? 'aria-current="page"' : ""}>${x + 1}</button>`)).join("")}<button class="s" data-pg="${page + 1}" ${page < n - 1 ? "" : "disabled"}>下一页</button>` : `<span class="sm mut" id="acount" role="status">没有符合条件的记录</span>`;
+  };
   const load = guard(async (reset) => {
-    if (reset) { offset = 0; $("#arows").innerHTML = ""; }
-    const rows = await api(`/audit?${qs({ limit: PAGE, offset })}`);
-    $("#arows").insertAdjacentHTML("beforeend", rows.map(row).join(""));
-    offset += rows.length;
-    $("#amore").hidden = rows.length < PAGE;
-    $("#acount").textContent = offset ? `已显示 ${offset} 条` : "没有符合条件的记录";
+    if (reset) { page = 0; total = (await api(`/audit/count?${qs()}`)).total; }
+    const rows = await api(`/audit?${qs({ limit: PAGE, offset: page * PAGE })}`);
+    $("#arows").innerHTML = rows.map(row).join("");
+    drawPager();
   });
   $("#af").onsubmit = (e) => { e.preventDefault(); Object.assign(F, Object.fromEntries(new FormData(e.target))); load(true); };
-  $("#amore").onclick = () => load(false);
+  $("#apg").onclick = (e) => { const b = e.target.closest("[data-pg]"); if (b && !b.disabled) { page = +b.dataset.pg; load(false); } };
   $("#aexp").onclick = guard(async () => {
     const r = await fetch(`/api/audit/export?${qs()}`, { headers: { Authorization: "Bearer " + store.get("tt_token") } });
     if (!r.ok) throw new Error("导出失败，请稍后再试");

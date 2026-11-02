@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
 from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from .. import formats, insights_overview as insights_overview_mod, interview_answers, interview_facts, respondent_table, ai_room, concept, content_rules, export, groups, invites, jobs, participant_code, pretask, scheduling
@@ -1100,6 +1100,12 @@ def audit_log(limit: int = 100, offset: int = 0, action: str = "", actor: str = 
     """The audit trail (admins only), newest first. Narrow it by action prefix, actor, and dates; page with offset."""
     rows = db.scalars(_audit_query(ctx, action, actor, since, until).offset(max(offset, 0)).limit(min(max(limit, 1), 500)))
     return [{"at": r.at.isoformat(), "actor": r.actor, "action": r.action, "target": r.target, "meta": r.meta} for r in rows]
+
+
+@router.get("/audit/count")
+def audit_count(action: str = "", actor: str = "", since: str = "", until: str = "", ctx: Ctx = Depends(require_roles("admin")), db: Session = Depends(get_db)):
+    """How many audit rows match the same filter (for the page numbers)."""
+    return {"total": db.scalar(select(func.count()).select_from(_audit_query(ctx, action, actor, since, until).order_by(None).subquery())) or 0}
 
 
 @router.get("/audit/export")
