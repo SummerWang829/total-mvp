@@ -12,7 +12,7 @@
 
 
 
-## 2026-11-02 · AI 主持启动时使用项目自己的大纲（用户确认，未部署）
+## 2026-11-02 · AI 主持启动时使用项目自己的大纲（用户确认，已部署 c2b3633）
 - 改动：启动 AI 主持时，没有在房间里上传提纲的，先用项目大纲（该场访谈语言 + 语音/视频或文字家族的版本），项目没有才用示范提纲（`app/ai_room.py` 的 `project_guide`、`_guide_for`）。房间里上传并检查过的提纲仍然优先。
 - 大纲有格式错误或不过红线时直接报错（422），不偷偷换成示范提纲。
 - 页面文字：“不上传就用项目大纲”（`room.html`）。
@@ -52,6 +52,14 @@
 - 测试：`tests/test_ai_voice.py` 2 通过（接管语音进转写、不接管时只有聊天）；`pytest tests/test_ai_voice.py tests/test_ai_room.py tests/test_pipeline.py tests/test_groups.py` 62 通过；`E2E_ONLY=ai` 真实视频 13 项通过（新增：接管时开录制 → 录制就绪 → 转写里有 moderator 语音段）；`QA_EARLY=ai_room_section` 151 通过。
 - 没测：整套 qa.sh；真人房间的录制路径（没改）；语音在真实 ASR（腾讯云/OpenAI）上的识别效果（测试用的是 mock ASR）；接管语音和聊天的重复文字（研究员同时打字和说话时会出现两条）；录像里屏幕共享的合成画面（只验证了录制就绪，没有人工看成片）。
 - 还要注意：结束访谈（`/end`）时会用聊天重写转写，会清掉之前转写里的语音段；语音段需要在录制就绪后再点一次“转写”。
+
+## 2026-11-02 · 部署 c2b3633 完成（SW 指令，已在线上核对）
+- 部署前核对：线上 /opt/total-mvp 的 209 个 app 文件 sha256 与 9626047 一致；无进行中访谈、无录制或合成任务。
+- 测试：本机 `pytest tests/test_ai_room.py` 29 项通过。
+- 备份：`total-20261102-073211.db.gz`，异地 COS 上传 HTTP 200。回滚材料：代码 /opt/rollback-code-9626047.tgz（不含 deploy/.env、secrets/、数据库）；旧镜像标签 total-app:rollback-9626047。
+- 部署：git archive c2b3633 覆盖 /opt/total-mvp（deploy/.env 未动）；docker compose up -d --build --no-deps app。
+- 检查：容器 healthy；日志无 cannot add/error/traceback；app.doctor 无必须解决的问题；/api/health、/api/public/config、/room.html、/rform.js 本机和公网 HTTPS 均 200；线上 ai_room.py 与 c2b3633 一致。
+- 未测（需用户在网页上确认）：新建 AI 主持场次、项目大纲作为首句和左侧大纲、房间标题“访谈提纲（不上传就用项目大纲）”、无大纲时仍用示范提纲不报错。
 
 ## 2026-11-02 · 部署 9626047 完成（用户明确同意）
 - 备份 total-20261102-070710 已异地上传；旧代码打包 /opt/rollback-code-before-5df769e.tgz；旧镜像 total-app:rollback-before-5df769e。
