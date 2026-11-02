@@ -15,6 +15,7 @@ from urllib.parse import urlparse
 import httpx
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
+from ..ai_calls import logged
 from ..config import Settings, settings
 from .compliance import moderator_runs_locally
 from .constants import (CHAT_COMPLETIONS_PATH, HTTP_KEEPALIVE_EXPIRY_S, CHAT_DEFAULT_TEMPERATURE, CHAT_RETRY_ATTEMPTS, CHAT_RETRY_FIRST_WAIT_S,
@@ -122,6 +123,7 @@ class OpenAICompatModeratorChat:
         self._client = httpx.Client(timeout=config.moderator_timeout_s, trust_env=config.moderator_use_system_proxy,
                                     limits=httpx.Limits(keepalive_expiry=HTTP_KEEPALIVE_EXPIRY_S))
 
+    @logged(lambda self: "本地模型" if moderator_runs_locally(self.config) else "云端模型")
     def complete(self, messages: list[ChatMessage], temperature: float = CHAT_DEFAULT_TEMPERATURE, seed: int | None = None) -> dict:
         """See ModeratorChatProvider.complete. Transient failures are retried with exponential backoff.
 

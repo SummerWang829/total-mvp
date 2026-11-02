@@ -1829,8 +1829,59 @@ def reel_section(br, D):
     ctx.close()
 
 
+QA_DB = ""   # the throw-away database of this run (set in main): a few sections write rows no page can create
+
+
+def ai_console_section(br, D):
+    """AI 后台 (admin only): the entry in the wide left menu, 功能总览 lists all features with numbers from the call log, 调用监控 shows errors by category; nobody else sees it."""
+    import sqlite3
+    adm = D["tok"]["admin"]
+    con = sqlite3.connect(QA_DB)
+    org = con.execute("select id from orgs where name like 'Acme%'").fetchone()[0]
+    now = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime())
+    for i, (feat, ms, st, err) in enumerate((("outline.chat", 5400, "ok", ""), ("outline.chat", 6100, "error", "格式错误"), ("recruit.chat", 2100, "ok", ""), ("moderator.speak", 2700, "ok", ""), ("moderator.speak", 61000, "error", "超时"))):
+        con.execute("insert into ai_call_log (id, org_id, feature, prompt_version, model, duration_ms, status, error_type, at) values (?,?,?,?,?,?,?,?,?)",
+                    (f"qa{i}".ljust(32, "0"), org, feat, "v010" if feat.startswith("mod") else "代码内置", "云端模型", ms, st, err, now))
+    con.commit(); con.close()
+    ctx, pg, errs = new_page(br, 1440, h=900, token=adm)
+    pg.goto(B + "/#/projects"); pg.wait_for_selector(".card")
+    ok(pg.locator("nav.side a", has_text="AI 后台").count() == 1 and pg.locator("nav.side .sec", has_text="设置").count() == 1, "[ai-console] 'AI 后台' is in the wide left menu under 设置, beside 团队 / 数据保留 / 审计日志")
+    pg.locator("nav.side a", has_text="AI 后台").click(); pg.wait_for_selector("#aipanel table")
+    rows = pg.locator("#aipanel tbody tr")
+    ok(rows.count() == 19 and "AI 主持人" in rows.first.inner_text() and "对话分析" in rows.first.inner_text(), f"[ai-console] 功能总览 lists the 19 AI features (got {rows.count()})")
+    ok(wait_until(lambda: "2 / 1" in pg.inner_text("#aipanel") and "1 / 0" in pg.inner_text("#aipanel"), 4), "[ai-console] the 24-hour calls / failures come from the call log")
+    body = pg.inner_text("#aipanel")
+    ok("v010" in body and "代码内置" in body and "云端" not in body.replace("云端模型", "") and "DeepSeek" not in body and "deepseek" not in body.lower(), "[ai-console] prompt versions are shown; the model appears only as an alias, never a vendor name")
+    audit_page(pg, "ai-console overview/desktop", errs)
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "ai_console_over.png"))
+    pg.locator("#aitabs a", has_text="调用监控").click(); pg.wait_for_selector("#aipanel .ai-kpi")
+    log = pg.inner_text("#aipanel")
+    ok("格式错误" in log and "超时" in log and "最近的失败" in log, "[ai-console] 调用监控 shows the error categories and the latest failures")
+    audit_page(pg, "ai-console log/desktop", errs)
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "ai_console_log.png"))
+    ctx.close()
+    for role in ("researcher", "moderator", "observer"):
+        ctx, pg, errs = new_page(br, 1280, token=D["tok"][role])
+        pg.goto(B + "/#/projects"); pg.wait_for_selector(".card")
+        ok(pg.locator("nav.side a", has_text="AI 后台").count() == 0, f"[ai-console] {role} does not see the entry")
+        ctx.close()
+        r = requests_get(f"/ai-console/overview", D["tok"][role])
+        ok(r == 403, f"[ai-console] {role} is refused by the server (got {r})")
+
+
+def requests_get(path, tok):
+    import urllib.error
+    import urllib.request
+    try:
+        return urllib.request.urlopen(urllib.request.Request(B + "/api" + path, headers={"Authorization": "Bearer " + tok})).status
+    except urllib.error.HTTPError as e:
+        return e.code
+
+
 def main():
+    global QA_DB
     tmp = tempfile.mkdtemp()
+    QA_DB = f"{tmp}/qa.db"
     env = {**os.environ, "CONCEPT_TEST_FIXTURE": "1", "DATABASE_URL": f"sqlite:///{tmp}/qa.db", "MEDIA_DIR": f"{tmp}/media", "LIVEKIT_URL": "", "ASR_PROVIDER": "mock", "LLM_PROVIDER": "mock", "ASR_API_KEY": "", "LLM_API_KEY": "",
            "MODERATOR_PROVIDER": "mock", "MODERATOR_API_KEY": "", "MODERATOR_VENDOR": ""}  # never use the developer's real keys or video server in QA
     srv = subprocess.Popen([sys.executable, "-m", "uvicorn", "app.main:app", "--port", str(PORT), "--log-level", "warning"], cwd=ROOT, env=env)
@@ -2296,7 +2347,7 @@ def run():
     staff_routes = [f"#/projects", f"#/p/{pid}/home", f"#/p/{pid}/people", f"#/p/{pid}/outline", f"#/p/{pid}/members", f"#/p/{pid}/studies", f"#/p/{pid}/listening", f"#/p/{pid}/pool", "#/repo"] + proj + [f"#/i/{mi}", f"#/i/{mi}/insights", f"#/i/{mi}/clips"]
     role_routes = {
         "demo_admin": ["#/projects", f"#/p/{D['demo_pid']}/home", "#/demo"],
-        "admin": staff_routes + ["#/team", "#/audit", "#/retention"],
+        "admin": staff_routes + ["#/team", "#/audit", "#/retention", "#/ai"],
         "researcher": staff_routes,
         "moderator": ["#/projects", f"#/p/{pid}"] + proj + [f"#/i/{mi}", f"#/i/{mi}/insights"],
         "observer": ["#/projects", f"#/p/{pid}"] + proj + [f"#/i/{mi}", f"#/i/{mi}/insights", f"#/i/{mi}/clips"],

@@ -2,7 +2,7 @@
 <html lang="zh-CN" data-theme="light"><head><meta charset="utf-8"><script src="/theme.js"></script><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>星桐 TOTAL · 深访</title><link rel="stylesheet" href="/app.css">
 <link rel="stylesheet" href="/editorial.css"><link rel="stylesheet" href="/fonts.css"><link rel="stylesheet" href="/ui_v7.css"><link rel="stylesheet" href="/ui_v8.css"><link rel="stylesheet" href="/ui_rooms.css">
-<link rel="stylesheet" href="/chat.css"><link rel="stylesheet" href="/chatsel.css"><link rel="stylesheet" href="/ui_list.css"><link rel="stylesheet" href="/ui_screening.css"><link rel="stylesheet" href="/ui_outline.css"><link rel="stylesheet" href="/ui_wizard.css"><link rel="stylesheet" href="/ui_overview.css"><link rel="stylesheet" href="/ui_v6.css"><link rel="stylesheet" href="/ui_global.css"><link rel="stylesheet" href="/ui_v9.css"><link rel="stylesheet" href="/ui_v10.css"><link rel="stylesheet" href="/ui_responsive.css"></head>
+<link rel="stylesheet" href="/chat.css"><link rel="stylesheet" href="/chatsel.css"><link rel="stylesheet" href="/ui_list.css"><link rel="stylesheet" href="/ui_screening.css"><link rel="stylesheet" href="/ui_outline.css"><link rel="stylesheet" href="/ui_wizard.css"><link rel="stylesheet" href="/ui_overview.css"><link rel="stylesheet" href="/ui_ai.css"><link rel="stylesheet" href="/ui_v6.css"><link rel="stylesheet" href="/ui_global.css"><link rel="stylesheet" href="/ui_v9.css"><link rel="stylesheet" href="/ui_v10.css"><link rel="stylesheet" href="/ui_responsive.css"></head>
 <body>
 <div id="app"></div>
 <script src="/app.js"></script>
@@ -16,6 +16,7 @@
 <script src="/rtrans.js"></script>
 <script src="/rdash.js"></script>
 <script src="/outline.js"></script>
+<script src="/ai_console.js"></script>
 <script src="/insights.js"></script>
 <script src="/respondent.js"></script>
 <script src="/rooms.js"></script>
@@ -53,7 +54,7 @@ function navHtml(active, p) {
       h += (live ? a(`/p/${p.id}/rooms`, "直播间", "rooms", "◉") : "") + a(`/p/${p.id}/insights`, "洞察与片段", "insights", "◈");
     }
   }
-  if (ME.role === "admin") h += `<div class="sec">设置</div>${a("/team", "团队", "team", "◎")}${a("/retention", "数据保留", "retention", "⌛")}${a("/audit", "审计日志", "audit", "≡")}${DEMO_ORG ? a("/demo", "演示数据", "demo", "↺") : ""}`;
+  if (ME.role === "admin") h += `<div class="sec">设置</div>${a("/team", "团队", "team", "◎")}${a("/retention", "数据保留", "retention", "⌛")}${a("/audit", "审计日志", "audit", "≡")}${a("/ai", "AI 后台", "ai", "✦")}${DEMO_ORG ? a("/demo", "演示数据", "demo", "↺") : ""}`;
   h += (window.TT_THEME ? TT_THEME.html() : "") + `<div class="me"><span>${esc(ME.org_name)}<br><b>${esc(ME.name)}</b> · ${ROLE[ME.role]}</span><button id="out">退出</button></div>`;
   return h;
 }
@@ -66,7 +67,7 @@ function shell(inner, { active, p, title } = {}) {
     (STAFF() ? (p.closed_at ? `<button class="s" id="reopen">重新打开</button>` : `<button class="s" id="closeproj" title="从结项那天起 ${p.retention_days} 天，受访者数据会自动删除">结项</button>`) : "") : "";
   const notice = p && p.closed_at ? `<div class="note"><b>项目已结项。</b>受访者的录像、转写原文、引文和分享链接将在 ${esc(new Date(p.purge_at + "Z").toLocaleDateString())} 自动删除（结项后 ${p.retention_days} 天），洞察结论会保留。</div>` : "";
   const top = proj ? shCtx(p, active) : `<div class="top">${p ? `<span class="crumb"><a href="#/projects">项目总览</a> /</span><span class="pname">${esc(p.name)}</span>` : `<span class="pname">${esc(title || "")}</span>`}<div class="meta">${meta}</div></div>`;
-  const navP = p || (STAFF() && CUR_PROJ && ["team", "retention", "audit", "demo"].includes(active) ? (PROJECTS || []).find((x) => x.id === CUR_PROJ) : null);
+  const navP = p || (STAFF() && CUR_PROJ && ["team", "retention", "audit", "ai", "demo"].includes(active) ? (PROJECTS || []).find((x) => x.id === CUR_PROJ) : null);
   shMount({ proj, p, active, nav: navHtml(active, navP), top, tabs: proj ? shTabs(p, active) : "", notice, inner });
   labelTables();
   const hd = app.querySelector("main.hubpage > .head"), h1 = hd && hd.querySelector("h1"), tabOn = app.querySelector(".hubtabs a.on");
@@ -167,6 +168,7 @@ async function render() {
     if (r === "/retention") return await dataView();
     if (r === "/team") return await teamView();
     if (r === "/audit") return await auditView();
+    if (r === "/ai") return await aiConsoleView();
     if (r === "/demo") return await demoView();
     location.hash = "#/projects";
   } catch (e) { if (stale(seq)) return; shell(`<div class="card empty"><b>${esc(e.message)}</b><span>如果刚才网络断开，刷新页面再试一次；问题一直存在，请把这句话发给管理员。</span><a class="btn p" href="#/projects">回到全部项目</a></div>`, { title: "打不开这个页面" }); }
