@@ -82,6 +82,15 @@
 - 没测：整套 qa.sh；真人房间的录制路径（没改）；语音在真实 ASR（腾讯云/OpenAI）上的识别效果（测试用的是 mock ASR）；接管语音和聊天的重复文字（研究员同时打字和说话时会出现两条）；录像里屏幕共享的合成画面（只验证了录制就绪，没有人工看成片）。
 - 还要注意：结束访谈（`/end`）时会用聊天重写转写，会清掉之前转写里的语音段；语音段需要在录制就绪后再点一次“转写”。
 
+## 2026-11-02 · 部署 0e61355 完成（SW 指令，已在线上核对）
+- 包含：问卷对话“返回的内容格式不正确”修复（app/moderator/providers.py：回复包在代码块或前后有文字时先取出 JSON；回复被输出上限截断时记日志并报“被截断”，不再用同样请求重问；app/recruit_form.py：截断时页面显示单独说明；tests/test_chat_reply_format.py）。
+- 部署前核对：线上 /opt/total-mvp 的 209 个 app 文件 sha256 与 735c505 一致；无进行中访谈、无未完成录制或合成。
+- 测试：`pytest tests/test_chat_reply_format.py tests/test_recruit_review.py tests/test_service_refusal.py tests/test_moderator_setup.py` 74 项通过。
+- 备份：`total-20261102-083913.db.gz`，异地 COS 上传 HTTP 200。回滚材料：代码 /opt/rollback-code-735c505.tgz（不含 deploy/.env、secrets/、数据库）；旧镜像标签 total-app:rollback-735c505。
+- 部署：git archive 0e61355 覆盖 /opt/total-mvp（deploy/.env 未动）；docker compose up -d --build --no-deps app。
+- 检查：容器 healthy；日志无 cannot add/error/traceback；app.doctor 无必须解决的问题；/api/health、/api/public/config、/index.html、/rform.js 本机 200，公网 HTTPS /api/health 200；线上 providers.py 与 0e61355 一致。
+- 未测（需用户在网页上确认）：招募问卷对话“检查问卷”是否正常给建议、不再报“返回的内容格式不正确”；若仍失败，看服务器日志里 “reply was cut off” 或 “reply is not JSON” 的那一行（不含谈话内容）；预估通过率、定位筛除率较高的题目照常。
+
 ## 2026-11-02 · 部署 735c505 完成（SW 指令，已在线上核对）
 - 包含：9ee887d（立项第 1 步删掉右侧 1–7 步目录，表单铺满主区）、735c505（子项目表按效果图 v6：无“新增国家”框和灰色提示，深访形式单独一列，舆情在最右，无方框虚线可改，研究顺序一行）。
 - 部署前核对：线上 /opt/total-mvp 的 209 个 app 文件 sha256 与 c16317f 一致；无进行中访谈、无未完成录制或合成。
