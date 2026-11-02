@@ -75,6 +75,15 @@
 - 没测：整套 qa.sh；真人房间的录制路径（没改）；语音在真实 ASR（腾讯云/OpenAI）上的识别效果（测试用的是 mock ASR）；接管语音和聊天的重复文字（研究员同时打字和说话时会出现两条）；录像里屏幕共享的合成画面（只验证了录制就绪，没有人工看成片）。
 - 还要注意：结束访谈（`/end`）时会用聊天重写转写，会清掉之前转写里的语音段；语音段需要在录制就绪后再点一次“转写”。
 
+## 2026-11-02 · 部署 735c505 完成（SW 指令，已在线上核对）
+- 包含：9ee887d（立项第 1 步删掉右侧 1–7 步目录，表单铺满主区）、735c505（子项目表按效果图 v6：无“新增国家”框和灰色提示，深访形式单独一列，舆情在最右，无方框虚线可改，研究顺序一行）。
+- 部署前核对：线上 /opt/total-mvp 的 209 个 app 文件 sha256 与 c16317f 一致；无进行中访谈、无未完成录制或合成。
+- 测试：`pytest tests/test_plan_derive.py tests/test_plans.py` 30 项通过。`qa_shots/wizard_nav_check.py` 硬编码路径 C:\Users\PC\total-mvp，本机是 D:\work\total-mvp，直接运行失败；改用本机路径的临时副本（未改提交内容）运行，1280/1920/2560 宽：无目录（toc 0）、表单贴满主区、无“新增国家”框、无灰色提示、列为 编号/国家/执行语言/责任人/研究顺序/深访形式/访谈时间/舆情。
+- 备份：`total-20261102-081943.db.gz`，异地 COS 上传 HTTP 200（同时清理过期本地备份 1 个）。回滚材料：代码 /opt/rollback-code-c16317f.tgz（不含 deploy/.env、secrets/、数据库）；旧镜像标签 total-app:rollback-c16317f。
+- 部署：git archive 735c505 覆盖 /opt/total-mvp（deploy/.env 未动）；docker compose up -d --build --no-deps app。
+- 检查：容器 healthy；日志无 cannot add/error/traceback；app.doctor 无必须解决的问题；/api/health、/api/public/config、/index.html、/wizard.js、/ui_wizard.css 本机 200，公网 HTTPS /api/health 200；线上 wizard.js 与 735c505 一致。
+- 未测（需用户在网页上确认）：第 1 步无右侧目录、表单铺满；子项目表无“新增国家”框和灰色提示；深访形式单独一列；舆情在最右；国家/责任人/访谈时间/研究顺序无方框、顶端左对齐、研究顺序一行；“+ 添加子项目”新增“新国家”可改名；选择语言/形式弹窗；已发布解锁项目的实时块。
+
 ## 2026-11-02 · 部署 c16317f 完成（SW 指令，已在线上核对）
 - 部署前核对：线上 /opt/total-mvp 的 209 个 app 文件 sha256 与 c2b3633 一致；无进行中访谈、无未完成录制或合成。
 - 测试：本机 `pytest tests/test_plan_derive.py tests/test_plans.py tests/test_project_languages.py tests/test_formats.py` 36 项通过。
