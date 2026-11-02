@@ -14,7 +14,7 @@ from app.models import CaptionLine, Highlight, Interview
 from app.retention import purge_interview
 from conftest import H, Org
 
-TEMPLATE = "loreal_skincare_concept"
+TEMPLATE = "concept_test_sample"
 
 
 def _live_room_not_entered(org: Org, **kw) -> dict:
@@ -88,7 +88,7 @@ def test_the_script_is_for_the_team_not_for_observers_or_other_companies(org, cl
 
 
 def test_every_material_address_is_from_the_reviewed_list():
-    for s in concept.LOREAL_SKINCARE["stimuli"]:
+    for s in concept.TEMPLATES[TEMPLATE]["stimuli"]:
         assert s["url"].startswith("https://player.bilibili.com/player.html?bvid=BV") or s["url"].startswith("/concepts/"), s
         assert s["source_note"]
 

@@ -24,13 +24,19 @@
   function next() { set(ORDER[(ORDER.indexOf(read()) + 1) % ORDER.length]); }
   function html() { return ""; }   // the old sidebar button is gone: see mount()
   /** The switch (top right) and the back-to-top button (bottom right), added once to the researcher app. */
-  function mount() {
-    if (document.querySelector(".tsw")) return;
+  /** The three-icon switch itself: a click on one of its buttons saves that theme (other pages can add their own listener to repaint). */
+  function capsule() {
     var sw = document.createElement("div");
     sw.className = "tsw"; sw.setAttribute("role", "radiogroup"); sw.setAttribute("aria-label", "主题");
     sw.innerHTML = ORDER.map(function (k) { return '<button type="button" role="radio" data-theme="' + k + '" aria-label="' + NAMES[k] + '" title="' + NAMES[k] + '">' + svg(ICON[k], 16) + "</button>"; }).join("");
     sw.addEventListener("click", function (e) { var b = e.target.closest && e.target.closest("button[data-theme]"); if (b) set(b.dataset.theme); });
-    document.body.appendChild(sw);
+    var now = read();   // the switch is not in the page yet, so mark its own buttons (apply() only sees switches already on the page)
+    sw.querySelectorAll("button[data-theme]").forEach(function (b) { var on = b.dataset.theme === now; b.classList.toggle("on", on); b.setAttribute("aria-checked", String(on)); });
+    return sw;
+  }
+  function mount() {
+    if (document.querySelector(".tsw")) return;
+    document.body.appendChild(capsule());
     var up = document.createElement("button");
     up.type = "button"; up.className = "totop"; up.hidden = true; up.setAttribute("aria-label", "回到顶部"); up.title = "回到顶部";
     up.innerHTML = svg('<path d="M12 19V5M5 12l7-7 7 7"/>', 20);
@@ -49,5 +55,5 @@
     apply(read());
   }
   apply(read());
-  window.TT_THEME = { html: html, next: next, get: read, set: set, mount: mount };
+  window.TT_THEME = { html: html, next: next, get: read, set: set, mount: mount, capsule: capsule };
 })();

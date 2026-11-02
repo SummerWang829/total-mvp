@@ -71,4 +71,6 @@ class RevalidatedStaticFiles(StaticFiles):
         return response
 
 
+if os.getenv("CONCEPT_TEST_FIXTURE") == "1":   # the automated tests' placeholder cards (the product has no materials of its own)
+    app.mount("/concepts", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "..", "tests", "concepts")), name="test_concepts")
 app.mount("/", RevalidatedStaticFiles(directory=STATIC, html=True), name="static")

@@ -97,11 +97,11 @@ const rmKeyLine = (i) => (i.key_answers && i.key_answers.length ? i.key_answers.
 async function roomsView(p) {
   let its = shFilterInterviews(p, await api(`/projects/${p.id}/interviews`));
   const staff = STAFF(), obs = ME.role === "observer";
-  const canEdit = (i) => staff && rmOpen(i) && i.kind !== "async";   // the moderator and the time can be changed here until the interview has ended
+  const canEdit = (i) => staff && i.status === "scheduled" && i.kind !== "async";   // the time and the moderator are set before the interview starts; after that they are read-only
   let users = []; if (staff) { try { users = await api("/users"); } catch { /* no list: the cells just stay read-only */ } }
   const mods = users.filter((u) => ["moderator", "researcher", "admin"].includes(u.role)).map((u) => ({ id: u.id, name: u.name }));
   const go = (i, as, label, cls) => `<a class="btn s ${cls}" href="/room.html?i=${i.id}&as=${as}" target="_blank" rel="noopener">${label}</a>`;
-  const mod = (i) => (obs ? "—" : i.moderator_name || "未指定");
+  const mod = (i) => (obs ? "—" : i.moderation === "ai" ? "AI 主持人" : i.moderator_name || "未指定");   // an AI-run interview is always the AI moderator
   const tagsOf = (i) => i.participant.tags || [];
   const FIELDS = [["who", "受访者", (i) => [i.participant.name]], ["moderator", "主持人", (i) => [mod(i)]], ["time", "开始时间", (i) => [timeBucket(i)]], ["tag", "标签", tagsOf]];
   const sel = () => RM.sel[RM.tab];
@@ -139,7 +139,7 @@ async function roomsView(p) {
     const names = ["受访者", "主持人", "开始时间", "标签", ...(showKey ? ["关键回答"] : []), ...(staff ? ["邀请进度"] : []), ...(showLen() ? [rmLengthHead(RM.tab)] : []), ...(showStatus() ? ["状态"] : [])];
     $("#rmb").innerHTML = rows.map((i, ri) => { const [t, c] = roomState(i);
       const [pt, pc] = rmProgress(i), ed = canEdit(i);
-      const modCell = ed ? `<button type="button" class="ed${i.moderator_name ? "" : " none"}" data-edm="${i.id}" aria-label="修改主持人，现在是${esc(mod(i))}">${esc(mod(i))}</button>` : `<span class="${i.moderator_name || obs ? "" : "mut"}">${esc(mod(i))}</span>`;
+      const modCell = ed && i.moderation !== "ai" ? `<button type="button" class="ed${i.moderator_name ? "" : " none"}" data-edm="${i.id}" aria-label="修改主持人，现在是${esc(mod(i))}">${esc(mod(i))}</button>` : `<span class="${i.moderator_name || obs ? "" : "mut"}">${esc(mod(i))}</span>`;
       const timeCell = ed ? `<button type="button" class="ed" data-edt="${i.id}" aria-label="修改开始时间">${startOf(i) ? when(startOf(i)) : "随时可进入"}</button>` : `<span class="mut">${startOf(i) ? when(startOf(i)) : "随时可进入"}</span>`;
       const cells = [`<b>${esc(i.participant.name)}</b>`, modCell, timeCell, `<div class="lbox" style="border:0;background:none;padding:0">${tagBox(i)}</div>`,
         ...(showKey ? [`<span class="rmkey" title="${esc(rmKeyLine(i))}">${esc(rmKeyLine(i)) || `<span class="mut">—</span>`}</span>`] : []),

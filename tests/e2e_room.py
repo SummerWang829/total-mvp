@@ -54,6 +54,10 @@ PORT, LKPORT, LKTCP = free_port(), free_port(), free_port()
 B = f"http://127.0.0.1:{PORT}"
 
 
+THEME_DARK = ".tsw button[data-theme=dark]"   # the team's room: the three-icon switch (the respondent keeps the text button #theme)
+THEME_LIGHT = ".tsw button[data-theme=light]"
+
+
 def call(path, body=None, token=None, method=None, raw=False):
     req = urllib.request.Request(B + "/api" + path, data=json.dumps(body).encode() if body is not None else None, method=method or ("POST" if body is not None else "GET"),
                                  headers={"Content-Type": "application/json", **({"Authorization": "Bearer " + token} if token else {})})
@@ -127,7 +131,7 @@ logging:
            "MODERATOR_PROVIDER": "mock", "MODERATOR_API_KEY": "", "MODERATOR_VENDOR": "",
            "TENCENT_ASR_APPID": "1250000000", "TENCENT_ASR_SECRET_ID": "AKIDe2e", "TENCENT_ASR_SECRET_KEY": "e2e-secret-key", "ASR_LIVE_WS_BASE": f"ws://127.0.0.1:{asr_port}",
            "LOOP_WATCH_S": "2"}  # the server names whatever blocks its event loop (printed below if it happens)
-    srv = subprocess.Popen([sys.executable, "-m", "uvicorn", "app.main:app", "--port", str(PORT), "--log-level", "warning"], cwd=ROOT, env=env,
+    srv = subprocess.Popen([sys.executable, "-m", "uvicorn", "app.main:app", "--port", str(PORT), "--log-level", "warning"], cwd=ROOT, env={**env, "CONCEPT_TEST_FIXTURE": "1"},
                            stdout=open(os.path.join(tmp, "srv.log"), "w"), stderr=subprocess.STDOUT)
     try:
         if not wait_for(lambda: urllib.request.urlopen(B + "/api/health").status == 200, 20):
@@ -283,11 +287,11 @@ def run(tmp):
         pm.screenshot(path=f"{SHOTS}/e2e_room_recording.png")
         for page, name in ((pm, "moderator"), (pp, "participant"), (po, "observer")):  # both colour themes: light (default) and dark green
             audit(page, f"live room {name}/light/desktop"); audit(page, f"live room {name}/light/phone", phone=True)
-            page.click("#theme")
+            page.click(THEME_DARK if name != "participant" else "#theme")
             ok("t-dark" in page.evaluate("document.body.className"), f"{name}: switching to dark green works")
             audit(page, f"live room {name}/dark/desktop"); audit(page, f"live room {name}/dark/phone", phone=True)
             page.screenshot(path=f"{SHOTS}/e2e_room_{name}_dark.png")
-            page.click("#theme")
+            page.click(THEME_LIGHT if name != "participant" else "#theme")
         pp.set_viewport_size({"width": 390, "height": 780}); pp.screenshot(path=f"{SHOTS}/e2e_room_participant_phone.png"); pp.set_viewport_size({"width": 1280, "height": 760})
         pm.click("#b-stop")
         ok(wait_for(lambda: not pp.is_visible("#recdot"), 10), "indicator disappears after stop")
@@ -434,6 +438,8 @@ def run(tmp):
         call(f"/public/join/{atk}/consent", {"country": "SG", "recording": True, "observers": True, "cross_border": True, "ai": True})
         call(f"/interviews/{aid}/start", {}, tok["moderator"])
         cam, pam = ctx("ai-moderator", tok["moderator"])
+        cre, pre = ctx("ai-researcher", tok["researcher"])   # taking over and handing back are for the researcher (the moderator only runs the session)
+        pre.goto(f"{B}/room.html?i={aid}")
         cap, pap = ctx("ai-participant")
         cao, pao = ctx("ai-observer", tok["observer"])
         pam.goto(f"{B}/room.html?i={aid}&as=moderator"); pap.goto(f"{B}/room.html?t={atk}"); pao.goto(f"{B}/room.html?i={aid}&as=observer")
@@ -452,28 +458,29 @@ def run(tmp):
         pap.fill("#cin", "I usually order lunch on Grab because it is quick."); pap.click("#csend")
         ok(wait_for(lambda: pap.locator("#clog .m").count() >= 3, 20), "AI interview: the participant's answer is followed by the AI's next question")
         ok("Grab" in pao.inner_text("#clog") or wait_for(lambda: "Grab" in pao.inner_text("#clog"), 10), "AI interview: the hidden observer follows the conversation")
-        pam.fill("#win", "Ask about delivery fees next"); pam.click("#wsend")
+        pam.fill("#pin", "Ask about delivery fees next"); pam.click("#psend")   # the AI room is four columns: the whisper box is the follow-up form
         ok(wait_for(lambda: "Ask about delivery fees" in pam.inner_text("#clog"), 10), "AI interview: the whisper is in the team's log")
         ok("delivery fees" not in pap.inner_text("body") and "delivery fees" not in pao.inner_text("body"), "AI interview: whispers never reach the participant or the observer")
-        pam.click("#a-take")
-        ok(wait_for(lambda: pam.is_visible("#hform"), 10), "AI interview: after taking over the moderator can reply")
+        pre.click("#a-take")
+        ok(wait_for(lambda: pre.is_visible("#hform"), 10), "AI interview: after taking over the moderator can reply")
         n = pap.locator("#clog .m").count(); pap.fill("#cin", "Let me think about it."); pap.click("#csend")
         lines = lambda: [x[:40] for x in pap.locator("#clog .m").all_inner_texts()]
         ok(wait_for(lambda: pap.locator("#clog .m").count() == n + 1, 10), f"AI interview: the participant's line is stored while a human has control (before {n}, now {lines()[n - 1:]})")
         time.sleep(3); ok(pap.locator("#clog .m").count() == n + 1, f"AI interview: the AI stays silent while a human has control (before {n}, now {lines()[n - 1:]})")
-        pam.fill("#hin", "Take your time, there is no rush."); pam.click("#hsend")
+        pre.fill("#hin", "Take your time, there is no rush."); pre.click("#hsend")
         ok(wait_for(lambda: "Take your time" in pap.inner_text("#clog"), 10), "AI interview: the moderator's own line reaches the participant")
-        pam.click("#a-back")
-        ok(wait_for(lambda: "AI 正在主持" in pam.inner_text("#aist"), 10), "AI interview: the AI takes over again after the hand back")
+        pre.click("#a-back")
+        ok(wait_for(lambda: "AI 正在主持" in pre.inner_text("#aist"), 10), "AI interview: the AI takes over again after the hand back")
         pap.fill("#cin", "Honestly I want to end my life."); pap.click("#csend")
         ok(wait_for(lambda: pam.is_visible("#aalert") and "红色" in pam.inner_text("#aalert"), 15), "AI interview: a crisis raises a red alert for the moderator")
         ok(wait_for(lambda: "995" in pap.inner_text("#clog"), 10), "AI interview: the participant gets the fixed safety message with the hotline")
         ok("红色" not in pap.inner_text("body") and "红色" not in pao.inner_text("body"), "AI interview: the alert is for the team only")
         pam.screenshot(path=f"{SHOTS}/e2e_ai_room_moderator.png"); pap.screenshot(path=f"{SHOTS}/e2e_ai_room_participant.png")
         for name, page in (("ai-moderator", pam), ("ai-participant", pap)):  # both colour themes in the real room too
-            page.click("#theme"); ok("t-dark" in page.evaluate("document.body.className"), f"{name}: dark green works in the AI room")
+            dark, light = (THEME_DARK, THEME_LIGHT) if name != "ai-participant" else ("#theme", "#theme")   # the respondent keeps the text button
+            page.click(dark); ok("t-dark" in page.evaluate("document.body.className"), f"{name}: dark green works in the AI room")
             audit(page, f"{name}/ai-room/dark")
-            page.click("#theme")
+            page.click(light)
         pam.click("#b-end")
         ok(wait_for(lambda: "thank you" in pap.inner_text("#msg").lower(), 15), "AI interview: the participant sees the thank-you after the end")
         aseg = call(f"/interviews/{aid}/transcript", token=tok["researcher"])
@@ -509,7 +516,7 @@ def concept_phase(pw, tok, ids, pid, errs):
                                                "observer_ids": [ids["observer"]]}, tok["researcher"])
     iid, T = itv["id"], itv["invite_token"]
     FAKE.mark()  # earlier phases (English interviews) also opened recognition sessions: count and hand out scripts from here
-    call(f"/interviews/{iid}/concept/template", {"template": "loreal_skincare_concept"}, tok["researcher"])
+    call(f"/interviews/{iid}/concept/template", {"template": "concept_test_sample"}, tok["researcher"])
     call(f"/public/join/{T}/device", {"camera": True, "microphone": True, "speaker": True})
     call(f"/public/join/{T}/consent", {"country": "SG", "recording": True, "observers": True, "cross_border": True})
     # NOT the autoplay override the other phases use: the real browser rules apply to the caption microphone (the participant has clicked "enter")
@@ -542,6 +549,7 @@ def concept_phase(pw, tok, ids, pid, errs):
     pm.screenshot(path=f"{SHOTS}/e2e_concept_script.png")
 
     # ---- start: the moderator's microphone is captioned ----
+    pm.click("#b-mic")   # the team starts muted: the moderator turns the microphone on for the recognition test
     pm.click("#b-start")
     ok(wait_for(lambda: "已用" in pm.inner_text("#plantm"), 10), "concept test: after the start the script shows the elapsed time and the current step")
     ok(wait_for(lambda: len(FAKE.phase) >= 1, 25), "concept test: the moderator's browser opened a speech-recognition session")
@@ -623,7 +631,8 @@ def concept_phase(pw, tok, ids, pid, errs):
         audit(page, f"concept/{name}")
     audit(pm, "concept/moderator-phone", phone=True)
     for name, page in (("moderator", pm), ("participant", pp)):
-        page.click("#theme"); audit(page, f"concept/{name}/dark"); page.click("#theme")
+        theme = "#theme" if name == "participant" else THEME_DARK
+        page.click(theme); audit(page, f"concept/{name}/dark"); page.click("#theme" if name == "participant" else THEME_LIGHT)
 
     # ---- end: both browsers close their recognition sessions properly ----
     pm.click("#b-end")
@@ -784,6 +793,7 @@ def run_group(tmp):
         ok("参与者 ·01" in pm.inner_text("#gwait") and "参与者 ·03" in pm.inner_text("#gwait"), "waiting list uses seat labels")
         ok(not po.is_visible("#wbox"), "the observer does not see the list or anyone's name")
         pm.click("#b-start")
+        pm.click("#b-mic")   # the team starts muted: the group moderator turns the microphone on
         ok(wait_for(_tiles_ready(pm, 4), 45), "moderator sees self and three participants")
         for i, page in enumerate(pages):
             ok(wait_for(_tiles_ready(page, 4), 45), f"seat {i + 1} sees the moderator and the other two")
@@ -894,7 +904,7 @@ def run_group(tmp):
         left = invites[2]["participant_id"]
         ok(wait_for(lambda: "进过房间" in pm.inner_text("#gwait"), 15), "the person who left shows as having been in the room (and can come back without anyone's say-so)")
         ok(wait_for(_tiles_ready(pm, 3), 20), "moderator's grid drops the person who left")
-        pm.click("#theme")
+        pm.click(THEME_DARK)
         ok("t-dark" in pm.evaluate("document.body.className"), "group room switches to dark green")
         pm.screenshot(path=f"{SHOTS}/e2e_group_moderator_dark.png")
         pages[0].set_viewport_size({"width": 390, "height": 780})

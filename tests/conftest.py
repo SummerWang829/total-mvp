@@ -5,6 +5,7 @@ _tmp = tempfile.mkdtemp()
 os.environ["DATABASE_URL"] = f"sqlite:///{_tmp}/test.db"
 os.environ["MEDIA_DIR"] = f"{_tmp}/media"
 os.environ["DISABLE_WORKER"] = "1"
+os.environ["CONCEPT_TEST_FIXTURE"] = "1"   # the automated tests load their own sample script and cards
 for _k, _v in (("LIVEKIT_URL", ""), ("ASR_PROVIDER", "mock"), ("LLM_PROVIDER", "mock"), ("ASR_API_KEY", ""), ("LLM_API_KEY", ""),
                ("MODERATOR_PROVIDER", "mock"), ("MODERATOR_API_KEY", ""), ("MODERATOR_BASE_URL", ""), ("MODERATOR_VENDOR", "")):
     os.environ[_k] = _v  # tests never use a developer's .env (real keys, local video server)

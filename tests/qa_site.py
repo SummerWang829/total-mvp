@@ -1822,7 +1822,7 @@ def reel_section(br, D):
 
 def main():
     tmp = tempfile.mkdtemp()
-    env = {**os.environ, "DATABASE_URL": f"sqlite:///{tmp}/qa.db", "MEDIA_DIR": f"{tmp}/media", "LIVEKIT_URL": "", "ASR_PROVIDER": "mock", "LLM_PROVIDER": "mock", "ASR_API_KEY": "", "LLM_API_KEY": "",
+    env = {**os.environ, "CONCEPT_TEST_FIXTURE": "1", "DATABASE_URL": f"sqlite:///{tmp}/qa.db", "MEDIA_DIR": f"{tmp}/media", "LIVEKIT_URL": "", "ASR_PROVIDER": "mock", "LLM_PROVIDER": "mock", "ASR_API_KEY": "", "LLM_API_KEY": "",
            "MODERATOR_PROVIDER": "mock", "MODERATOR_API_KEY": "", "MODERATOR_VENDOR": ""}  # never use the developer's real keys or video server in QA
     srv = subprocess.Popen([sys.executable, "-m", "uvicorn", "app.main:app", "--port", str(PORT), "--log-level", "warning"], cwd=ROOT, env=env)
     try:
@@ -1895,10 +1895,11 @@ def concept_room_section(br, D):
     it = call(f"/projects/{pid}/interviews", {"participant_id": part["id"], "title": "概念测试", "language": "zh", "moderator_id": D["ids"]["moderator"],
                                               "observer_ids": [D["ids"]["observer"]]}, adm)
     iid, T = it["id"], it["invite_token"]
-    call(f"/interviews/{iid}/concept/template", {"template": "loreal_skincare_concept"}, adm)
+    call(f"/interviews/{iid}/concept/template", {"template": "concept_test_sample"}, adm)
     call(f"/public/join/{T}/device", {"camera": True, "microphone": True, "speaker": True})
     call(f"/public/join/{T}/consent", {"country": "SG", "recording": True, "observers": True, "cross_border": True})
     call(f"/interviews/{iid}/start", {}, mod)
+    call(f"/interviews/{iid}/admit", {}, mod)   # the moderator lets them in (once)
     call(f"/public/join/{T}/enter", {})
     for who, text in (("m", "先聊聊你平时的护肤习惯。"), ("p", "我平时先看成分，再看价格，最担心买到假货。"), ("m", "你为什么会选这一款？"), ("p", "因为朋友推荐，而且旗舰店有保障。")):
         if who == "m":
@@ -2142,10 +2143,11 @@ def marks_section(br, D):
     it = call(f"/projects/{pid}/interviews", {"participant_id": part["id"], "title": "素材圈选深访", "language": "zh",
                                               "moderator_id": D["ids"]["moderator"], "observer_ids": [D["ids"]["observer"]]}, adm)
     iid, T = it["id"], it["invite_token"]
-    call(f"/interviews/{iid}/concept/template", {"template": "loreal_skincare_concept"}, adm)
+    call(f"/interviews/{iid}/concept/template", {"template": "concept_test_sample"}, adm)
     call(f"/public/join/{T}/device", {"camera": True, "microphone": True, "speaker": True})
     call(f"/public/join/{T}/consent", {"country": "SG", "recording": True, "observers": True, "cross_border": True})
     call(f"/interviews/{iid}/start", {}, mod)
+    call(f"/interviews/{iid}/admit", {}, mod)   # the moderator lets them in (once)
     call(f"/public/join/{T}/enter", {})
     shown = next(s for s in call(f"/interviews/{iid}/concept", token=mod)["stimuli"] if s["key"] == "concept_a")
     call(f"/interviews/{iid}/stimulus/show", {"stimulus_id": shown["id"]}, mod)
@@ -2501,7 +2503,8 @@ def run():
         pg.select_option("[name=country]", "SG")
         for i in range(3): pg.locator("input[type=checkbox]").nth(i).check()
         pg.click("form button")
-        pg.wait_for_selector("#claims", timeout=20000)   # consent done: straight into the room, before the interview has started
+        call(f"/interviews/{it['id']}/admit", {}, mod)   # consent done: the moderator lets them in (once), then the room opens, before the interview has started
+        pg.wait_for_selector("#claims", timeout=20000)
         cl = json.loads(pg.inner_text("#claims")); ok(cl["canPublish"] and not cl["hidden"] and not cl["canPublishData"], f"participant grants wrong {cl}")
         ok(state(it) == "entered", "staff should see the participant as entered")
         ok(wait_until(lambda: call(f"/interviews/{it['id']}/live", token=mod)["participant"]["waiting"], 10), "the moderator sees the participant in the room before starting")

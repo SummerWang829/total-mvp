@@ -2,7 +2,7 @@
 <html lang="zh-CN"><head><meta charset="utf-8"><script src="/theme.js"></script><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Interview room</title><link rel="stylesheet" href="/app.css"><link rel="stylesheet" href="/editorial.css"><link rel="stylesheet" href="/fonts.css"><link rel="stylesheet" href="/ui_v7.css"><link rel="stylesheet" href="/ui_v8.css"><link rel="stylesheet" href="/room-role.css"><link rel="stylesheet" href="/ui_room.css"><link rel="stylesheet" href="/emoji.css"><link rel="stylesheet" href="/room_bar.css"><script src="/emoji.js"></script></head>
 <body class="stage t-light">
-<script>try { if (localStorage.getItem("tt_room_theme") === "dark") document.body.className = "stage t-dark"; } catch (e) {}</script>
+<script>try { const staff = !new URLSearchParams(location.search).has("t"); if ((staff ? localStorage.getItem("tt_theme") : localStorage.getItem("tt_room_theme")) === "dark") document.body.className = "stage t-dark"; } catch (e) {}</script>
 <header class="rhead">
   <span id="logo" aria-hidden="true"></span>
   <span id="who" class="rwho"></span>
@@ -98,6 +98,13 @@ $id("theme").onclick = () => {
   themeLabel();
 };
 themeLabel();
+// the team's rooms use the same three-icon switch as the rest of the researcher app (one setting per browser); the respondent keeps the text button
+function roomPaint(v) { const dark = v === "dark"; document.body.classList.toggle("t-dark", dark); document.body.classList.toggle("t-light", !dark); }
+function staffTheme() {
+  const sw = TT_THEME.capsule();
+  sw.addEventListener("click", () => roomPaint(TT_THEME.get()));
+  $id("theme").replaceWith(sw); roomPaint(TT_THEME.get());
+}
 let room = null, S = null, role = null, ended = false, localTracks = [], camTrack = null, micTrack = null;
 
 // ---- emoji: a quick row, and the full panel (search, categories, skin tones, recents) like a phone keyboard; all files come from our own server ----
@@ -325,8 +332,9 @@ function aiSpeak(text) {
 }
 function addLine(m) {
   const log = $id("clog"); if (!log) return;
+  if (log.querySelector(`[data-seq="${m.seq}"]`)) return;   // two polls can return the same new line: show each line once
   if (m.sender === "ai" && C.after > 0) aiSpeak(m.text);   // only lines that arrive while the page is open (not the history loaded at start)
-  const d = document.createElement("div");
+  const d = document.createElement("div"); d.dataset.seq = m.seq;
   d.className = "m" + (m.sender === "participant" && role === "participant" ? " me" : m.sender === "moderator" ? " human" : m.sender === "whisper" ? " whisper" : "");
   const w = document.createElement("span"); w.className = "who"; w.textContent = whoLabel(m.sender); d.appendChild(w);
   d.appendChild(document.createTextNode(m.text));
@@ -909,10 +917,7 @@ function renderPlan() {
   const box = $id("plan"); $id("planbox").hidden = false; box.textContent = ""; PLAN.cur = -1;
   const d = PLAN.d;
   if (!d || !d.template) {
-    const p = document.createElement("p"); p.textContent = "这场访谈还没有提纲。"; box.appendChild(p);
-    const b = document.createElement("button"); b.type = "button"; b.className = "p"; b.id = "plan-load"; b.textContent = "载入：欧莱雅护肤概念测试（10 分钟）";
-    b.onclick = guard(async () => { await api(`/interviews/${iid}/concept/template`, { method: "POST", body: { template: "loreal_skincare_concept" } }); toast("提纲和素材已载入"); await loadPlan(); });
-    box.appendChild(b); return;
+    const p = document.createElement("p"); p.textContent = "这场访谈还没有提纲。"; box.appendChild(p); return;
   }
   const stim = Object.fromEntries(d.stimuli.map((s) => [s.key, s]));
   const tm = document.createElement("div"); tm.className = "tm"; tm.id = "plantm"; box.appendChild(tm);
@@ -1085,6 +1090,7 @@ async function start() {
       : await api(`/interviews/${iid}/token`, { method: "POST", body: asRole ? { as: asRole } : {} });
   } catch (e) { msg(`<b>${esc(T.cantEnter)}：</b>${esc(e.message)}`); return; }
   role = S.role;
+  if (role !== "participant") staffTheme();
   document.body.dataset.roomRole = role;
   document.body.classList.toggle("role-one-to-one", S.kind !== "group" && S.moderation !== "ai");
   if (role === "participant") { $id("q4").remove(); $id("brpop").remove(); }   // the team's four columns are not even in the participant's page
@@ -1117,8 +1123,9 @@ async function start() {
     addBtn("b-end", "结束访谈", async () => { if (confirm("结束后所有人会被移出，且不能再进入。")) { await api(`/interviews/${iid}/end`, { method: "POST" }); } }, "bad");
   }
   if (role !== "observer" && !S.view_only) {
-    addBtn("b-mic", T.mic, async (b) => { if (!micTrack) return; micTrack.mediaStreamTrack.enabled = !micTrack.mediaStreamTrack.enabled; b.textContent = micTrack.mediaStreamTrack.enabled ? T.mic : T.micOff; b.setAttribute("aria-pressed", String(!micTrack.mediaStreamTrack.enabled)); });
-    addBtn("b-cam", T.cam, async (b) => { if (!camTrack) return; const on = (camTrack.mediaStreamTrack.enabled = !camTrack.mediaStreamTrack.enabled); b.textContent = on ? T.cam : T.camOff; b.setAttribute("aria-pressed", String(!on)); const o = $id("t_me")?.querySelector(".off"); if (o) { o.hidden = on; o.textContent = T.camOff; } });
+    // the team starts with microphone and camera off and the button says what a press does: 打开 / 关闭; the respondent keeps the old labels
+    addBtn("b-mic", role === "participant" ? T.mic : "打开麦克风", async (b) => { if (!micTrack) return; const on = (micTrack.mediaStreamTrack.enabled = !micTrack.mediaStreamTrack.enabled); b.textContent = role === "participant" ? (on ? T.mic : T.micOff) : (on ? "关闭麦克风" : "打开麦克风"); b.setAttribute("aria-pressed", String(!on)); });
+    addBtn("b-cam", role === "participant" ? T.cam : "打开摄像头", async (b) => { if (!camTrack) return; const on = (camTrack.mediaStreamTrack.enabled = !camTrack.mediaStreamTrack.enabled); b.textContent = role === "participant" ? (on ? T.cam : T.camOff) : (on ? "关闭摄像头" : "打开摄像头"); b.setAttribute("aria-pressed", String(!on)); const o = $id("t_me")?.querySelector(".off"); if (o) { o.hidden = on; o.textContent = T.camOff; } });
   }
   if (role === "participant") buildReactionButton();
   if (Q4.on) {   // the team's private chat: a small button that opens it over the page
@@ -1162,6 +1169,7 @@ async function start() {
       try { localTracks = await createLocalTracks({ audio: true, video: { resolution: { width: 640, height: 360, frameRate: 25 } } }); }
       catch { try { localTracks = await createLocalTracks({ audio: true, video: false }); msg(esc(T.noCam)); } catch { msg(`<b>${esc(T.noDevice)}</b>`); } }
       camTrack = localTracks.find((t) => t.kind === "video") || null; micTrack = localTracks.find((t) => t.kind === "audio") || null;
+      if (role !== "participant") localTracks.forEach((t) => { t.mediaStreamTrack.enabled = false; });   // the team starts muted, camera off: the bar buttons turn them on
       for (const t of localTracks) await room.localParticipant.publishTrack(t);
       const me = tile("me", T.you); me.id = "t_me"; me.classList.add("me");
       if (camTrack) setTileVideo(me, camTrack);

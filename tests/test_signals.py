@@ -130,7 +130,7 @@ def _react(org, itv, emoji="😕"):
 
 def test_a_participant_sends_an_emoji_and_the_whole_team_sees_it_with_the_moment_and_the_material(org):
     itv = _live_room(org)
-    org.c.post(f"/api/interviews/{itv['id']}/concept/template", headers=org.h(), json={"template": "loreal_skincare_concept"})
+    org.c.post(f"/api/interviews/{itv['id']}/concept/template", headers=org.h(), json={"template": "concept_test_sample"})
     stims = {s["key"]: s["id"] for s in org.c.get(f"/api/interviews/{itv['id']}/concept", headers=org.h()).json()["stimuli"]}
     org.c.post(f"/api/interviews/{itv['id']}/stimulus/show", headers=org.h("moderator"), json={"stimulus_id": stims["concept_a"]})
     assert _react(org, itv, "😕").status_code == 201

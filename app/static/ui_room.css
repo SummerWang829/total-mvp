@@ -60,3 +60,8 @@ body.q4mode #bar button[aria-pressed=true]{color:var(--r-bad,#B72C3C)}
 @media (max-width:1050px){.q4 .qrow.big{height:55vh}}
 body.q4mode.has-admit .q4{height:calc(100vh - 232px)}
 @media (max-width:600px){.qbox .qsend{width:36px;min-width:36px;height:36px;min-height:36px}}
+/* 工作人员房间顶栏里的三图标切换：放在顶栏右端，不浮在页面上 */
+.rhead .tsw{position:static;margin-left:auto;flex:none}
+/* 深色主题：大纲进度条的文字和轨道要用深色上的浅色，不能沿用浅色主题的变量 */
+body.t-dark .q4 .qbar{color:#D2E2D8;background:transparent}
+body.t-dark .q4 .qbar>div{background:#24413A}
