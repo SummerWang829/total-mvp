@@ -13,3 +13,4 @@ pillow>=10
 numpy>=1.26
 scrapling>=0.4  # only its HTML parser (public listing pages); the stealth / anti-bot browsers are not installed or used
 segno>=1.6  # the QR code of the public questionnaire link (pure Python, no dependencies)
+pypdf>=4.0
