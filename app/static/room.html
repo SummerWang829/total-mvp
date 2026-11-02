@@ -408,7 +408,9 @@ const WHO_STAFF = { ai: "AI 主持人", moderator: "主持人", participant: "�
 const whoLabel = (s) => (role === "participant" ? { ai: T.aiName, moderator: T.mod, participant: T.you }[s] : WHO_STAFF[s]);
 // the AI moderator's face: calm while it listens, speaking (with a small "AI 正在发言…" tag) for a few seconds after each of its lines
 const AIF = { timer: 0 };
-const aiFace = (name) => `<span class="aiface" role="img" aria-label="${name}"><span class="aiwave l" aria-hidden="true"><i></i><i></i><i></i></span><span class="aiwave r" aria-hidden="true"><i></i><i></i><i></i></span><span class="aibody"><img class="ai-idle" src="/ai_idle.webp" alt=""><img class="ai-talk" src="/ai_talk.webp" alt=""></span><i class="aitag" role="status"><u aria-hidden="true"></u><u aria-hidden="true"></u><u aria-hidden="true"></u>${role === "participant" ? (T.aiSpeaking || "AI is speaking…") : "AI 正在发言…"}</i></span>`;
+// the small bubbles that rise from the bottom while the AI speaks: [left %, width %, delay s, drift px, duration s]
+const AI_KIDS = [[16, 7, 0, -14, 3.2], [40, 11, 0.9, 10, 4], [62, 6, 1.8, -6, 4.8], [12, 5, 2.6, 8, 3.2], [70, 9, 3.4, -12, 4], [50, 6, 4.2, 4, 4.8]];
+const aiFace = (name) => `<span class="aiface" role="img" aria-label="${name}"><span class="aibody"><span class="abub"><img src="/logo_phoenix.svg" alt=""></span><span class="akids" aria-hidden="true">${AI_KIDS.map(([l, w, dl, x, d]) => `<span class="akid" style="left:${l}%;width:${w}%;--dl:${dl}s;--x:${x}px;--d:${d}s"></span>`).join("")}</span></span>${tag_part}`;
 function aiSpeak(text) {
   document.querySelectorAll(".aiface").forEach((f) => f.classList.add("talking"));
   clearTimeout(AIF.timer);
