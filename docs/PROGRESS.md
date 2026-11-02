@@ -321,6 +321,11 @@ SW 执行。部署前：无进行中访谈、无录制/合成/后台任务；数
 - 测试：Playwright 脚本（不入库）：10 行、12 个表头、无横向滚动、筛选/清除/焦点仍正常；截图 qa_shots/scr_title/。未测：QA_ONLY=recruit_section 名单检查（仍被原有的 #sd 过时检查挡住）；窄桌面（<1000px）标题行会挤，未处理；手机宽度未测（按规定不处理）。
 - 注意：隐私说明一行已删，CLAUDE.md 的“文字政策”仍写着名单页的隐私说明保留，待用户确认是否更新。
 
+## 2026-11-02 · 招募问卷页：改名 + 去掉右侧空白滚动条位（用户确认）
+- 左侧“对话编写”改为“问卷编写”；右侧页签“大纲”改为“招募问卷”（访谈页的“大纲”不动）。这一页的主区域不再为滚动条预留右侧空白（html body.rfmode .app.shfix .work>main{scrollbar-gutter:auto}，写在 ui_screening.css，只这一页）。
+- 改动文件：app/static/rform.js、app/static/ui_screening.css。无新增数据库列。
+- 测试：Playwright（不入库）：左右标签文字正确；gutter 为 auto；截图 qa_shots/scr_title/form.png，右侧空条已消失。未跑 qa_site 小节（review_section 仍有手机点击区等原有失败，按规定不处理）。
+
 ## 2026-10-31 · 视觉改版两页（项目总览、受访者邀请页）：只改展示，未部署
 - 备份：`backup/ui-before-impeccable-20261031`（2a19589，已推送远端，远端确认）。
 - 改动：`app/static/index.html`（项目总览：研究阶段进前、语言与受访形式挪到下面、深绿总览块挂在页头下；页面加 `ovx` 类）；`app/static/join.html`（引入样式）；新增 `app/static/ui_v6.css`（只作用于 `.ovx` 与 `body.participant`，衬线标题，受访者页顶部深绿块，卡片圆角）。

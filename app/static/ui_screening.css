@@ -15,3 +15,5 @@
 .rf-ws.rf-collapsed #rfsplit,.rf-ws.rf-collapsed #rfright{display:none}
 #rfexp{display:none}
 .rf-ws.rf-collapsed #rfexp{display:inline-flex}
+/* 招募问卷页：内容在框里滚动、整页不滚动，所以不为滚动条预留右侧空白（只这一页） */
+html body.rfmode .app.shfix .work>main{scrollbar-gutter:auto}
