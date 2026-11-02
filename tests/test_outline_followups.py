@@ -78,3 +78,42 @@ def test_a_long_message_from_several_selected_passages_is_accepted(org, pid):
     assert 1000 < len(msg + "x" * 900) <= 4000
     r = org.c.post(url(pid, "/chat"), headers=org.h(), json={"message": msg + "x" * 900})
     assert r.status_code == 200
+
+
+# ---------- question cards: copy, insert above / below, drag to reorder ----------
+def _q(org, pid, **b):
+    r = org.c.post(f"/api/projects/{pid}/outline/edit", headers=org.h(), json=b)
+    return r
+
+
+def test_copy_insert_and_move_keep_each_questions_depth_and_guidance(org):
+    pid = org.project()
+    org.c.post(f"/api/projects/{pid}/outline/chat", headers=org.h(), json={"message": "帮我起草大纲"})
+    topic = 0
+    for text in ("第二个问题？", "第三个问题？", "第四个问题？"):
+        assert _q(org, pid, op="add", kind="topic", ref=topic, value=text).status_code == 200
+    parts = org.c.get(f"/api/projects/{pid}/outline", headers=org.h()).json()["summary"]["parts"]
+    first = [q for q in next(x for x in parts if x["kind"] == "topic" and x["ref"] == topic)["questions"] if not q.get("cover")]
+    assert _q(org, pid, op="meta", kind="topic", ref=topic, index=0, value="deep|看他怎么选").status_code == 200
+    r = _q(org, pid, op="dup", kind="topic", ref=topic, index=0).json()
+    qs = [q for q in next(x for x in r["summary"]["parts"] if x["kind"] == "topic" and x["ref"] == topic)["questions"] if not q.get("cover")]
+    assert len(qs) == len(first) + 1 and qs[0]["text"] == qs[1]["text"] and qs[1]["depth"] == "deep" and qs[1]["guide"] == "看他怎么选"
+    r = _q(org, pid, op="insert", kind="topic", ref=topic, index=0, value="最先问的一个新问题？").json()
+    qs = [q for q in next(x for x in r["summary"]["parts"] if x["kind"] == "topic" and x["ref"] == topic)["questions"] if not q.get("cover")]
+    assert qs[0]["text"] == "最先问的一个新问题？" and qs[0]["depth"] == "shallow" and qs[1]["depth"] == "deep"
+    r = _q(org, pid, op="move", kind="topic", ref=topic, index=0, value=f"topic:{topic}:3").json()   # drop it before the 4th question (the list was 0-based, the first one leaves)
+    qs = [q for q in next(x for x in r["summary"]["parts"] if x["kind"] == "topic" and x["ref"] == topic)["questions"] if not q.get("cover")]
+    assert qs[2]["text"] == "最先问的一个新问题？" and qs[0]["depth"] == "deep"
+    assert _q(org, pid, op="move", kind="topic", ref=topic, index=0, value="topic:99:0").status_code == 422
+    assert _q(org, pid, op="insert", kind="topic", ref=topic, index=0, value=" ").status_code == 422
+
+
+def test_a_question_can_be_dragged_into_another_part_and_an_emptied_part_goes(org):
+    pid = org.project()
+    org.c.post(f"/api/projects/{pid}/outline/chat", headers=org.h(), json={"message": "帮我起草大纲"})
+    parts = org.c.get(f"/api/projects/{pid}/outline", headers=org.h()).json()["summary"]["parts"]
+    n = sum(len([q for q in x["questions"] if not q.get("cover")]) for x in parts)
+    r = _q(org, pid, op="move", kind="topic", ref=0, index=0, value="warmup:0:1")
+    assert r.status_code == 200, r.text
+    assert _q(org, pid, op="move", kind="warmup", ref=0, index=0, value="warmup:0:0").status_code == 200
+    assert sum(len([q for q in x["questions"] if not q.get("cover")]) for x in r.json()["summary"]["parts"]) == n

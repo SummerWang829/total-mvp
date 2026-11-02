@@ -21,7 +21,7 @@ FAMILIES = {"live": ("audio", "video", "video_screen"), "text": ("text", "text_v
 FAMILY_NAMES = {"live": "语音 / 视频", "text": "文字访谈"}
 STRUCTURAL = ("add", "delete", "add_part", "del_part")  # changes to the shape of the outline: a version that no longer lines up with the open one is skipped
 TOPIC_MAX = 18  # the participant topic (对外标题) is at most 18 characters
-WORDING = ("set", "rename", "add", "add_part", "meta")  # operations that bring new words, which another language needs translated ("meta": the guidance of a question; its depth is not language)
+WORDING = ("set", "rename", "add", "insert", "add_part", "meta")  # operations that bring new words, which another language needs translated ("meta": the guidance of a question; its depth is not language)
 
 
 class VersionError(ValueError):
@@ -136,13 +136,19 @@ def targets_for(p: Project, cur: str, sync: list[str], op: str = "") -> list[str
     return [k for k in keys_of(p) if k != cur and text_of(p, k).strip() and k in chosen]
 
 
-def _lines_up(cur_sizes: dict | None, tgt_sizes: dict | None, kind: str, ref: int, op: str) -> bool:
-    """Whether a change to this part can be made in the other version too: the part has the same number of questions there (a whole-part change: the same number of parts of that kind)."""
+def _lines_up(cur_sizes: dict | None, tgt_sizes: dict | None, kind: str, ref: int, op: str, value: str = "") -> bool:
+    """Whether a change to this part can be made in the other version too: the part has the same number of questions there (a whole-part change: the same number of parts of that kind; a move: both parts line up)."""
     if cur_sizes is None or tgt_sizes is None:
         return False
     if op in ("add_part", "del_part"):
         return sum(1 for k in cur_sizes if k[0] == "topic") == sum(1 for k in tgt_sizes if k[0] == "topic") and (op == "add_part" or cur_sizes.get((kind, ref)) == tgt_sizes.get((kind, ref)))
-    return (kind, ref) in cur_sizes and cur_sizes.get((kind, ref)) == tgt_sizes.get((kind, ref))
+    places = [(kind, ref)]
+    if op == "move":
+        try:
+            places.append(outline.parse_target(value)[:2])
+        except outline.EditError:
+            return False
+    return all(pl in cur_sizes and cur_sizes.get(pl) == tgt_sizes.get(pl) for pl in places)
 
 
 def edit(p: Project, cur: str, sync: list[str], op: str, kind: str, ref: int, index: int, value: str, chat: ModeratorChatProvider | None) -> dict:
@@ -169,7 +175,7 @@ def edit(p: Project, cur: str, sync: list[str], op: str, kind: str, ref: int, in
     for t in targets:
         lang = split(t)[0]
         w = words if lang == cur_lang or op not in WORDING or lang not in made else made[lang]
-        if not _lines_up(sizes, outline.part_sizes(text_of(p, t)), kind, ref, op):
+        if not _lines_up(sizes, outline.part_sizes(text_of(p, t)), kind, ref, op, value):
             skipped.append({"key": t, "reason": "这一版的这一段和当前版本对不上"})
             continue
         try:

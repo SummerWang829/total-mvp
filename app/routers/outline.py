@@ -27,7 +27,7 @@ class OutlineBody(BaseModel):
 
 
 class EditBody(BaseModel):
-    op: Literal["set", "delete", "add", "rename", "del_part", "add_part", "meta"]
+    op: Literal["set", "delete", "add", "insert", "dup", "move", "rename", "del_part", "add_part", "meta"]
     kind: Literal["warmup", "topic", "stimulus"] = "topic"
     ref: int = Field(default=0, ge=0, le=50)
     index: int = Field(default=0, ge=0, le=100)

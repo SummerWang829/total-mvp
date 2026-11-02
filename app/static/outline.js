@@ -17,7 +17,8 @@ async function outlineView(p) {
   let S; try { S = await api(`/projects/${p.id}/outline${V ? "?v=" + encodeURIComponent(V) : ""}`); } catch { S = await api(`/projects/${p.id}/outline`); }
   if (stale(my)) return;
   V = S.v;
-  let seg = sessionStorage.getItem("ol_seg") || "outline", sending = false, pending = "", editing = "", viewer = "host", step = 0, pop = "", L = new Set(), F = new Set(), opened = new Set(), batch = false, picked = new Set(), autoPend = new Set(), autoFail = new Set();
+  let seg = sessionStorage.getItem("ol_seg") || "outline", sending = false, pending = "", editing = "", qmenu = "", viewer = "host", step = 0, pop = "", L = new Set(), F = new Set(), opened = new Set(), batch = false, picked = new Set(), autoPend = new Set(), autoFail = new Set();
+  let dragKey = "";
   if (!["outline", "settings", "test"].includes(seg)) seg = "outline";
   let useLib = sessionStorage.getItem("ol_lib") !== "0";
   const stat = (t) => { const s = $("#olstat"); if (s) s.textContent = t; };
@@ -78,16 +79,20 @@ async function outlineView(p) {
     const hello = `<div class="rf-msg">你好！我是访谈大纲助手。你可以让我起草大纲，也可以直接问我问题、让我解释或给建议；你说“帮我改成……”我就直接改，并写清楚改了什么，不满意可以一键撤销。</div>`;
     const msgs = S.chat.map((m, i) => (m.role === "user" ? `<div class="rf-msg rf-me">${esc(m.text)}</div>` : `<div class="rf-msg" data-selk="m:${i}">${aiBody(m)}</div>`)).join("");
     const fix = S.problem && !pending ? `<div class="rf-msg"><div class="ol-tx">我发现大纲文字里有一处写得不对，系统看不懂：</div><div class="ol-sg"><div>${esc(S.problem)}</div></div><div class="row"><button class="p" type="button" data-fix="1">帮我修好</button></div></div>` : "";
+    return hello + msgs + fix + (pending ? `<div class="rf-msg rf-me">${esc(pending)}</div><div class="rf-msg mut">正在思考…</div>` : "");
+  };
+  const sugHtml = () => {   // 输入框上方的“建议”气泡：点一下就把这句话发出去；有没有大纲，建议不一样
+    if (pending) return "";
     const chips = S.summary ? ["给每个核心问题补追问", "检查有没有引导性问题", "缩短到 30 分钟"] : ["帮我起草大纲"];
-    return hello + msgs + fix + (pending ? `<div class="rf-msg rf-me">${esc(pending)}</div><div class="rf-msg mut">正在思考…</div>`
-      : `<div class="rf-chips">${chips.map((c) => `<button class="s" type="button" data-chip="${esc(c)}">${esc(c)}</button>`).join("")}</div>`);
+    return `<div class="ol-sl">建议</div>${chips.map((c) => `<button class="ol-sb" type="button" data-chip="${esc(c)}">${esc(c)}</button>`).join("")}`;
   };
   const fixMessage = () => `请帮我修好大纲文字里的这个问题：${S.problem}。如果修不了，就按研究背景重新整理一份大纲。`.slice(0, 900);
   const drawChat = () => {
     const c = $("#olchat"); if (!c) return;
     c.innerHTML = chatHtml(); c.scrollTop = c.scrollHeight;
     const x = $("#olctx"); if (x) x.innerHTML = ctxHtml();
-    c.querySelectorAll("[data-chip]").forEach((b) => (b.onclick = () => send(QUICK[b.dataset.chip] || b.dataset.chip)));
+    const sg = $("#olsug"); if (sg) sg.innerHTML = sugHtml();
+    document.querySelectorAll("#olsug [data-chip]").forEach((b) => (b.onclick = () => send(QUICK[b.dataset.chip] || b.dataset.chip)));
     c.querySelectorAll("[data-undo]").forEach((b) => (b.onclick = () => act(b.dataset.undo, { action: "undo" })));
     c.querySelectorAll("[data-adopt]").forEach((b) => (b.onclick = () => { const [mid, sid] = b.dataset.adopt.split(":"); act(mid, { action: "adopt", sid }); }));
     c.querySelectorAll("[data-skip]").forEach((b) => (b.onclick = () => { const [mid, sid] = b.dataset.skip.split(":"); act(mid, { action: "dismiss", sid }); }));
@@ -126,22 +131,28 @@ async function outlineView(p) {
 
   const DEPTH = { none: ["不追问", "只问这一题"], shallow: ["浅度追问", "追问 1 个"], deep: ["深度追问", "追问 2–3 个"], free: ["自由讨论", "追问 1–3 个，不限"] };
   const refOf = (pi, qi) => { const part = S.summary && S.summary.parts[pi], r = S.ref && S.ref[pi] && part && S.ref[pi].length === part.questions.length && S.ref[pi][qi]; return r ? `<span class="ol-ref">${esc(r.text)}</span>` : ""; };   // 其他语言的版本：原文（中文）放在下面对照
+  const insRow = (part, qi) => `<div class="row ol-ins"><input class="olq" data-ins="${part.kind}:${part.ref}:${qi}" maxlength="300" placeholder="新问题（一句话，以问号结尾）" aria-label="新问题" style="flex:1;min-width:160px"><button class="p" type="button" data-insok="${part.kind}:${part.ref}:${qi}">添加</button><button class="s" type="button" data-no="1">取消</button></div>`;
   const questionRow = (part, q, qi, label, pi) => {
-    if (q.cover) return S.lang === "zh" ? "" : `<div class="rf-o mut">· ${esc(q.text)}${refOf(pi, qi)}</div>`;   // “要了解”只在非中文版本里留着，中文版不显示
+    if (q.cover) return "";   // “要了解”挂在环节标题下面（只有非中文版本显示）
     const key = `${part.kind}:${part.ref}:${qi}`;
     if (editing === key) return `<div class="row" style="margin:4px 0"><input class="olq" data-key="${key}" value="${esc(q.text)}" maxlength="300" aria-label="问题" style="flex:1;min-width:160px"><button class="p" type="button" data-ok="${key}">保存</button><button class="s" type="button" data-no="1">取消</button></div>`;
     if (batch) return `<label class="ol-q ol-bq"><input type="checkbox" class="ol-pk" data-pk="${key}" ${picked.has(key) ? "checked" : ""} aria-label="选择这个问题"><span class="rf-n">${label}</span><span class="ol-qt">${esc(q.text)}${refOf(pi, qi)}</span><span class="ol-dl" data-d="${q.depth || "shallow"}">${DEPTH[q.depth || "shallow"][0]}</span></label>`;
-    const mk = (S.marks || {})[q.text], on = opened.has(key), depth = q.depth || "shallow";
+    const mk = (S.marks || {})[q.text], on = opened.has(key), depth = q.depth || "shallow", menu = qmenu === key;
     const panel = !on ? "" : `<div class="ol-ex" data-ex="${key}"><div class="ol-exr"><label for="d-${key}">追问深度</label><select id="d-${key}" class="ol-dp" data-dp-sel="${key}" aria-label="追问深度">${Object.entries(DEPTH).map(([k, v]) => `<option value="${k}"${k === depth ? " selected" : ""}>${v[0]} · ${v[1]}</option>`).join("")}</select></div><label for="g-${key}" class="ol-gl">访谈指引</label><textarea id="g-${key}" class="ol-gt" data-gt="${key}" maxlength="500" rows="3" aria-label="访谈指引">${esc(q.guide || "")}</textarea><div class="ol-gc"><span data-gc>${(q.guide || "").length}</span> / 500</div></div>`;
-    return `<div class="ol-q${mk ? " ol-" + mk : ""}"><button class="ol-cv${on ? " on" : ""}" type="button" data-tg="${key}" aria-expanded="${on}" aria-label="${on ? "收起" : "展开"}这个问题的设置">›</button><span class="rf-n">${label}</span><span class="ol-qt" data-selk="q:${key}">${esc(q.text)}${mk ? `<em class="ol-mk">${mk === "new" ? "新增" : "已修改"}</em>` : ""}${refOf(pi, qi)}</span><span class="ol-dl" data-d="${depth}">${DEPTH[depth][0]}</span><span class="ol-qa"><button class="s" type="button" data-ed="${key}" aria-label="编辑这个问题">编辑</button><button class="s" type="button" data-rm="${key}" aria-label="删除这个问题">删除</button></span></div>${panel}`;
+    const menuHtml = !menu ? "" : `<div class="ol-qmenu" role="menu"><button type="button" role="menuitem" data-mdup="${key}">复制</button><button type="button" role="menuitem" data-mins="${key}:0">在上方添加问题</button><button type="button" role="menuitem" data-mins="${key}:1">在下方添加问题</button><hr><button type="button" role="menuitem" class="del" data-rm="${key}">删除</button></div>`;
+    const above = editing === `ins:${key}:0` ? insRow(part, qi) : "", below = editing === `ins:${key}:1` ? insRow(part, qi + 1) : "";
+    return `${above}<div class="ol-q ol-card2${mk ? " ol-" + mk : ""}" data-card="${key}"><button class="ol-grip" type="button" data-grip="${key}" aria-label="拖动排序（也可以用上下方向键）">⋮⋮</button>
+      <div class="ol-top"><span class="rf-n">${label}</span><span class="ol-qt" data-selk="q:${key}" data-ed="${key}" title="点一下修改">${esc(q.text)}${mk ? `<em class="ol-mk">${mk === "new" ? "新增" : "已修改"}</em>` : ""}${refOf(pi, qi)}</span><span class="ol-dl" data-d="${depth}">${DEPTH[depth][0]}</span>
+        <button class="ol-cv${on ? " on" : ""}" type="button" data-tg="${key}" aria-expanded="${on}" aria-label="${on ? "收起" : "展开"}这个问题的设置">›</button><button class="ol-mn" type="button" data-qm="${key}" aria-haspopup="true" aria-expanded="${menu}" aria-label="更多">⋮</button>${menuHtml}</div>${panel}</div>${below}`;
   };
   const partCard = (part, mins, pi, n0) => {
     let k = n0; const live = cur().family === "live";
     const real = part.questions.filter((q) => !q.cover).length;
     const tkey = `title:${part.kind}:${part.ref}`, kindName = part.kind === "stimulus" ? "素材" : part.kind === "warmup" ? "" : "话题";
     const title = editing === tkey ? `<input class="olt" data-key="${tkey}" value="${esc(part.title)}" maxlength="120" aria-label="话题名称" style="flex:1;min-width:140px"><button class="p" type="button" data-tok="${tkey}">保存</button><button class="s" type="button" data-no="1">取消</button>`
-      : `<b>${kindName ? kindName + "：" : ""}${esc(part.title)}</b><span class="sp"></span><span class="sm mut">${real} 题${live ? ` · 约 ${mins} 分钟` : ""}</span>${part.kind === "topic" ? `<button class="s" type="button" data-rn="${tkey}">改名</button>` : ""}<button class="s" type="button" data-dp="${part.kind}:${part.ref}" aria-label="删除这一段">删除这一段</button>`;
-    return `<div class="rf-q"><div class="row">${title}</div>${part.questions.map((q, qi) => questionRow(part, q, qi, q.cover ? "" : "Q" + (++k), pi)).join("")}
+      : `<span class="ol-pn">环节 ${pi + 1}</span><b>${kindName ? kindName + "：" : ""}${esc(part.title)}</b><span class="sp"></span><span class="sm mut">${real} 题${live ? ` · 约 ${mins} 分钟` : ""}</span>${part.kind === "topic" ? `<button class="s" type="button" data-rn="${tkey}">改名</button>` : ""}<button class="s" type="button" data-dp="${part.kind}:${part.ref}" aria-label="删除这一段">删除这一段</button>`;
+    const covers = S.lang === "zh" ? "" : part.questions.map((q, qi) => (q.cover ? `<div class="rf-o mut">· ${esc(q.text)}${refOf(pi, qi)}</div>` : "")).join("");
+    return `<div class="rf-q" data-part="${part.kind}:${part.ref}" data-n="${real}"><div class="row">${title}</div>${covers}${part.questions.map((q, qi) => questionRow(part, q, qi, q.cover ? "" : "Q" + (++k), pi)).join("")}
       ${editing === `add:${part.kind}:${part.ref}` ? `<div class="row" style="margin:4px 0"><input class="olq" data-add-key="${part.kind}:${part.ref}" maxlength="300" placeholder="新问题（一句话，以问号结尾）" aria-label="新问题" style="flex:1;min-width:160px"><button class="p" type="button" data-addok="${part.kind}:${part.ref}">添加</button><button class="s" type="button" data-no="1">取消</button></div>`
         : `<div><button class="s" type="button" data-add="${part.kind}:${part.ref}">＋ 添加问题</button></div>`}</div>`;
   };
@@ -217,6 +228,42 @@ async function outlineView(p) {
     r.innerHTML = rightHead() + `<div class="rf-sc" id="olout"><div class="rf-col"><div id="olnotes">${notes()}</div>${body}</div></div>`;
     $("#olout").scrollTop = keep; wireRight();
   }
+  const moveTo = (from, to) => { const [kind, ref, idx] = from.split(":"); edit({ op: "move", kind, ref: +ref, index: +idx, value: to }); };
+  function wireDrag() {   // 拖动手柄：按住拖到别的问题前后（也可以放进别的环节），松手保存；手柄上按上下方向键一格一格挪
+    const cards = [...document.querySelectorAll("[data-card]")], clear = () => document.querySelectorAll(".ol-dbefore, .ol-dafter, .ol-dend").forEach((x) => x.classList.remove("ol-dbefore", "ol-dafter", "ol-dend"));
+    document.querySelectorAll("[data-grip]").forEach((g) => {
+      const card = g.closest("[data-card]");
+      g.onmousedown = () => { card.draggable = true; };
+      g.onmouseup = () => { card.draggable = false; };
+      g.onkeydown = (e) => {
+        if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+        e.preventDefault();
+        const [kind, ref, idx] = g.dataset.grip.split(":"), n = +document.querySelector(`[data-part="${kind}:${ref}"]`).dataset.n, i = +idx;
+        const pos = e.key === "ArrowUp" ? i - 1 : i + 2;
+        if (pos < 0 || pos > n) return;
+        moveTo(g.dataset.grip, `${kind}:${ref}:${pos}`);
+      };
+    });
+    cards.forEach((c) => {
+      c.ondragstart = (e) => { dragKey = c.dataset.card; e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", dragKey); c.classList.add("ol-dragging"); };
+      c.ondragend = () => { dragKey = ""; c.draggable = false; c.classList.remove("ol-dragging"); clear(); };
+    });
+    document.querySelectorAll("[data-part]").forEach((box) => {
+      const where = (e) => {   // 放在哪：鼠标在哪张卡片的上半/下半，或者环节最后
+        const over = e.target.closest("[data-card]"), [kind, ref] = box.dataset.part.split(":");
+        if (!over || over.closest("[data-part]") !== box) return { el: box, pos: +box.dataset.n, cls: "ol-dend", kind, ref };
+        const r = over.getBoundingClientRect(), after = e.clientY > r.top + r.height / 2, qi = over.dataset.card.split(":")[2];
+        return { el: over, pos: +qi + (after ? 1 : 0), cls: after ? "ol-dafter" : "ol-dbefore", kind, ref };
+      };
+      box.ondragover = (e) => { if (!dragKey) return; e.preventDefault(); e.dataTransfer.dropEffect = "move"; clear(); const w = where(e); w.el.classList.add(w.cls); };
+      box.ondrop = (e) => {
+        if (!dragKey) return; e.preventDefault(); const w = where(e), from = dragKey; clear(); dragKey = "";
+        const [fk, fr, fi] = from.split(":");
+        if (fk === w.kind && fr === w.ref && (w.pos === +fi || w.pos === +fi + 1)) return;   // 放回原处
+        moveTo(from, `${w.kind}:${w.ref}:${w.pos}`);
+      };
+    });
+  }
   function wireRight() {
     document.querySelectorAll("[data-seg]").forEach((b) => (b.onclick = () => { seg = b.dataset.seg; sessionStorage.setItem("ol_seg", seg); drawRight(); }));
     document.querySelectorAll("[data-fixnote]").forEach((b) => (b.onclick = () => send(fixMessage())));
@@ -251,7 +298,12 @@ async function outlineView(p) {
       return;
     }
     const keyOf = (s) => s.split(":");
-    document.querySelectorAll("[data-ed]").forEach((b) => (b.onclick = () => { editing = b.dataset.ed; drawRight(); const i = document.querySelector(".olq"); if (i) { i.focus(); i.select(); } }));
+    document.querySelectorAll("[data-ed]").forEach((b) => (b.onclick = () => { if (String(getSelection())) return; editing = b.dataset.ed; qmenu = ""; drawRight(); const i = document.querySelector(".olq"); if (i) { i.focus(); i.select(); } }));
+    document.querySelectorAll("[data-qm]").forEach((b) => (b.onclick = (e) => { e.stopPropagation(); qmenu = qmenu === b.dataset.qm ? "" : b.dataset.qm; drawRight(); }));
+    document.querySelectorAll("[data-mdup]").forEach((b) => (b.onclick = () => { const [kind, ref, idx] = keyOf(b.dataset.mdup); qmenu = ""; edit({ op: "dup", kind, ref: +ref, index: +idx }); }));
+    document.querySelectorAll("[data-mins]").forEach((b) => (b.onclick = () => { const [kind, ref, idx, off] = keyOf(b.dataset.mins); qmenu = ""; editing = `ins:${kind}:${ref}:${idx}:${off}`; drawRight(); const i = document.querySelector(".olq"); if (i) i.focus(); }));
+    document.querySelectorAll("[data-insok]").forEach((b) => (b.onclick = () => { const [kind, ref, pos] = keyOf(b.dataset.insok), v = document.querySelector(".olq").value.trim(); if (!v) return toast("问题不能是空的", true); edit({ op: "insert", kind, ref: +ref, index: +pos, value: v }); }));
+    wireDrag();
     document.querySelectorAll("[data-rn]").forEach((b) => (b.onclick = () => { editing = b.dataset.rn; drawRight(); const i = document.querySelector(".olt"); if (i) { i.focus(); i.select(); } }));
     const doBatch = guard(async (action, depth) => {
       const items = [...picked].map((k) => { const [kind, ref, idx] = keyOf(k); return [kind, +ref, +idx]; });
@@ -269,7 +321,7 @@ async function outlineView(p) {
     document.querySelectorAll("[data-gt]").forEach((a) => { a.oninput = () => { const c = a.parentElement.querySelector("[data-gc]"); if (c) c.textContent = a.value.length; }; a.onchange = () => saveMeta(a.dataset.gt); });
     document.querySelectorAll("[data-no]").forEach((b) => (b.onclick = () => { editing = ""; drawRight(); }));
     document.querySelectorAll("[data-ok]").forEach((b) => (b.onclick = () => { const [kind, ref, idx] = keyOf(b.dataset.ok), v = document.querySelector(".olq").value; edit({ op: "set", kind, ref: +ref, index: +idx, value: v }); }));
-    document.querySelectorAll(".olq").forEach((i) => (i.onkeydown = (e) => { if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); (document.querySelector("[data-ok]") || document.querySelector("[data-addok]")).click(); } else if (e.key === "Escape") { editing = ""; drawRight(); } }));
+    document.querySelectorAll(".olq").forEach((i) => (i.onkeydown = (e) => { if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); (document.querySelector("[data-ok]") || document.querySelector("[data-insok]") || document.querySelector("[data-addok]")).click(); } else if (e.key === "Escape") { editing = ""; drawRight(); } }));
     document.querySelectorAll("[data-tok]").forEach((b) => (b.onclick = () => { const [, kind, ref] = keyOf(b.dataset.tok), v = document.querySelector(".olt").value; edit({ op: "rename", kind, ref: +ref, value: v }); }));
     document.querySelectorAll(".olt").forEach((i) => (i.onkeydown = (e) => { if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); document.querySelector("[data-tok]").click(); } else if (e.key === "Escape") { editing = ""; drawRight(); } }));
     document.querySelectorAll("[data-rm]").forEach((b) => (b.onclick = () => { const [kind, ref, idx] = keyOf(b.dataset.rm); edit({ op: "delete", kind, ref: +ref, index: +idx }); }));
@@ -280,13 +332,13 @@ async function outlineView(p) {
   }
 
   if (window._olOff) document.removeEventListener("click", window._olOff);
-  window._olOff = (e) => { if (pop && !e.target.closest(".ol-pop, .rf-vm, [data-pop]")) { pop = ""; if ($("#olright")) drawRight(); } };
+  window._olOff = (e) => { const out = !e.target.closest(".ol-pop, .rf-vm, [data-pop]"), qout = qmenu && !e.target.closest(".ol-qmenu, [data-qm]"); if ((pop && out) || qout) { if (pop && out) pop = ""; if (qout) qmenu = ""; if ($("#olright")) drawRight(); } };
   document.addEventListener("click", window._olOff);
 
   /* ---------- the whole page ---------- */
   shell(`<div class="rf-seg" id="olseg" role="tablist" aria-label="大纲视图" data-subrow></div><div class="rf" style="padding:0"><div class="rf-ws" id="olws"><div class="rf-pane"><div class="rf-hd ol-hd"><div class="ol-ctx" id="olctx"></div><span class="sp"></span><label class="chk"><input type="checkbox" id="ollib" ${useLib ? "checked" : ""}>参考研究库</label></div>
       <div class="rf-sc" id="olchat"></div>
-      <div id="olsel" hidden></div><div class="rf-inp"><div class="rf-box"><textarea id="olmsg" rows="2" maxlength="1000" placeholder="说说你想怎么改，或者直接问我问题……" aria-label="对话输入"></textarea><button class="p rf-send" type="button" id="olsend" aria-label="发送">↑</button></div></div></div>
+      <div id="olsel" hidden></div><div class="ol-sug" id="olsug"></div><div class="rf-inp"><div class="rf-box"><textarea id="olmsg" rows="2" maxlength="1000" placeholder="说说你想怎么改，或者直接问我问题……" aria-label="对话输入"></textarea><button class="p rf-send" type="button" id="olsend" aria-label="发送">↑</button></div></div></div>
       <div class="rf-split" id="olsplit" role="separator" aria-orientation="vertical" aria-label="拖动调整对话和大纲的宽度（双击恢复）" tabindex="0"><i></i></div><div class="rf-pane" id="olright"></div></div></div>`, { active: "outline", p });
   document.body.classList.add("rfmode", "pgw");
   const ws = $("#olws"), fit = () => { if (ws && ws.offsetParent) ws.style.height = Math.max(380, innerHeight - ws.getBoundingClientRect().top - 18) + "px"; };

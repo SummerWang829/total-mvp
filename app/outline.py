@@ -77,7 +77,7 @@ def edit(text: str, op: str, kind: str, ref: int, index: int, value: str) -> str
 
     Args:
         text: the current outline text (must be valid).
-        op: set | delete | add | rename | del_part | add_part | depth (value: the depth only) | meta ("meta": value is "<depth>|<guidance>", the question's follow-up depth and guidance).
+        op: set | delete | add | insert (value: the text, index: where it goes) | dup (copy the question at index just after it) | move (value: "<kind>:<part>:<position>" to drop it at) | rename | del_part | add_part | depth (value: the depth only) | meta ("meta": value is "<depth>|<guidance>", the question's follow-up depth and guidance).
         kind: warmup | topic | stimulus (which list the part is in); ref: its position in that list; index: the question's position in the part.
         value: the new question text (set / add / add_part) or the new title (rename / add_part).
 
@@ -108,6 +108,20 @@ def edit(text: str, op: str, kind: str, ref: int, index: int, value: str) -> str
             else:
                 qs.append(value)
                 ms.append(guide_text.blank_meta())
+        elif op == "insert":
+            if not value:
+                raise EditError("问题不能是空的")
+            if not 0 <= index <= len(qs):
+                raise IndexError
+            qs.insert(index, value)
+            ms.insert(index, guide_text.blank_meta())
+        elif op == "dup":
+            if not 0 <= index < len(qs):
+                raise IndexError
+            qs.insert(index + 1, qs[index])
+            ms.insert(index + 1, dict(ms[index]))
+        elif op == "move":
+            _move(g, kind, ref, index, value)
         elif op == "meta":
             depth, _, note = value.partition("|")
             if depth not in guide_text.DEPTHS:
@@ -154,6 +168,48 @@ def edit(text: str, op: str, kind: str, ref: int, index: int, value: str) -> str
     except guide_text.GuideTextError as e:
         raise EditError(str(e)) from e
     return new
+
+
+def _slot(g: dict, kind: str, ref: int) -> tuple[list, list]:
+    """The question list and the matching follow-up settings of one part (IndexError / KeyError when it does not exist)."""
+    if kind == "warmup":
+        return g["warmup_questions"], g["meta"]["warmup"]
+    key, lst = ("topics", g["topics"]) if kind == "topic" else ("stimuli", g.get("stimuli", []))
+    if not 0 <= ref < len(lst):
+        raise IndexError
+    return lst[ref]["questions"], g["meta"][key][ref]
+
+
+def parse_target(value: str) -> tuple[str, int, int]:
+    """A drop position "<kind>:<part position>:<insert position>" as numbers.
+
+    Raises:
+        EditError: the text is not a drop position.
+    """
+    try:
+        kind, ref, pos = value.split(":")
+        if kind not in ("warmup", "topic", "stimulus"):
+            raise ValueError
+        return kind, int(ref), int(pos)
+    except ValueError as e:
+        raise EditError("放的位置不对") from e
+
+
+def _move(g: dict, kind: str, ref: int, index: int, value: str) -> None:
+    """Move one question (with its follow-up depth and guidance) to a drop position, in the same part or another one. A part left with no question is dropped."""
+    dkind, dref, pos = parse_target(value)
+    src_qs, src_ms = _slot(g, kind, ref)
+    dst_qs, dst_ms = _slot(g, dkind, dref)
+    if not 0 <= index < len(src_qs) or not 0 <= pos <= len(dst_qs):
+        raise IndexError
+    text, meta = src_qs.pop(index), src_ms.pop(index)
+    if src_qs is dst_qs and pos > index:
+        pos -= 1
+    dst_qs.insert(pos, text)
+    dst_ms.insert(pos, meta)
+    if not src_qs and kind != "warmup":
+        (g["topics"] if kind == "topic" else g["stimuli"]).pop(ref)
+        g["meta"]["topics" if kind == "topic" else "stimuli"].pop(ref)
 
 
 def set_headers(text: str, topic: str | None, minutes: int | None) -> str:

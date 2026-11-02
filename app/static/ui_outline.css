@@ -25,3 +25,38 @@
 
 /* 手机宽度：大纲 / 设置 / 预览测试 的点击区不小于 36px。 */
 @media (max-width:600px){.subrow>.rf-seg button{height:36px;min-height:36px}}
+
+/* 题目卡片（效果图 questionnaire_design_mockup）：左边拖动手柄、Q 圆标、题目、追问深度、展开、⋮ 菜单；开放题没有选项 */
+#olws .ol-card2{position:relative;display:block;margin:0 0 10px;padding:12px 14px 12px 34px;border:1px solid var(--line);border-top:1px solid var(--line);border-radius:12px;background:var(--surface)}
+#olws .ol-card2:first-of-type{border-top:1px solid var(--line)}
+#olws .ol-card2.ol-new{background:var(--green-soft);border-radius:12px;padding-left:34px;padding-right:14px}
+#olws .ol-card2.ol-chd{background:var(--orange-soft);border-radius:12px;padding-left:34px;padding-right:14px}
+#olws .ol-card2.ol-dragging{opacity:.45}
+#olws .ol-grip{position:absolute;left:6px;top:10px;width:24px;min-height:28px;padding:0;border:0;background:none;color:var(--ink2);font-size:16px;letter-spacing:-3px;line-height:1;cursor:grab;touch-action:none}
+#olws .ol-grip:hover{color:var(--ink2);background:none}
+#olws .ol-top{display:flex;align-items:flex-start;gap:8px;position:relative}
+#olws .ol-top .ol-qt{cursor:text}
+#olws .ol-top .ol-dl,#olws .ol-top .ol-cv,#olws .ol-top .ol-mn{flex:none}
+#olws .ol-mn{width:28px;min-height:28px;padding:0;border:0;background:none;color:var(--ink2);font-size:20px;line-height:1;cursor:pointer;border-radius:8px}
+#olws .ol-mn:hover:not(:disabled){background:var(--wash);color:var(--ink)}
+#olws .ol-qmenu{position:absolute;right:0;top:32px;z-index:6;min-width:190px;padding:6px 0;border:1px solid var(--line);border-radius:10px;background:var(--surface);box-shadow:0 8px 22px rgba(11,56,44,.15)}
+#olws .ol-qmenu button{display:block;width:100%;min-height:34px;padding:6px 14px;border:0;border-radius:0;background:none;color:var(--ink);font-size:14px;font-weight:400;text-align:left;box-shadow:none}
+#olws .ol-qmenu button:hover:not(:disabled){background:var(--wash);color:var(--ink)}
+#olws .ol-qmenu button.del{color:var(--risk-ink)}
+#olws .ol-qmenu hr{border:0;border-top:1px solid var(--line);margin:4px 0}
+#olws .ol-card2 .ol-ex{margin:8px 0 0 0;padding:8px 0 0;border-top:1px dashed var(--line)}
+#olws .ol-ins{margin:0 0 10px}
+/* 拖动时的落点线 */
+#olws .ol-dbefore{box-shadow:0 -3px 0 0 var(--orange)}
+#olws .ol-dafter{box-shadow:0 3px 0 0 var(--orange)}
+#olws .rf-q.ol-dend{box-shadow:inset 0 -3px 0 0 var(--orange)}
+/* 环节标题 */
+#olws .ol-pn{flex:none;padding:0 10px;border-radius:999px;background:var(--wash);color:var(--ink2);font-size:12.5px;font-weight:600;line-height:22px}
+/* 输入框上方的“建议”气泡 */
+#olws .ol-sug{flex:none;padding:6px 12px 0;display:flex;flex-direction:column;gap:6px}
+#olws .ol-sug:empty{display:none}
+#olws .ol-sl{font-size:13px;color:var(--muted)}
+#olws .ol-sb{display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;min-height:36px;padding:6px 12px;border:1px solid #BFD9CC;border-radius:10px;background:var(--green-soft);color:var(--brand);font-size:14px;font-weight:500;text-align:left;box-shadow:none;white-space:nowrap}
+#olws .ol-sb::after{content:"›";flex:none;font-size:18px}
+#olws .ol-sb:hover:not(:disabled){border-color:var(--brand);background:var(--green-soft);color:var(--brand)}
+@media (max-width:900px){#olws .ol-grip,#olws .ol-mn{width:36px;min-height:36px}#olws .ol-card2{padding-left:44px}}
