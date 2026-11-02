@@ -223,7 +223,7 @@
 - 备份：`total-20261102-130023.db.gz`，异地 COS 上传 HTTP 200（60 张表）。回滚材料：代码 /opt/rollback-code-c6dd626.tgz；旧镜像标签 total-app:rollback-c6dd626。
 - 部署：git archive c3caa55 覆盖 /opt/total-mvp（deploy/.env 未动）；docker compose up -d --build --no-deps app（重建镜像，安装 pypdf）。
 - 检查：容器 healthy；日志无 cannot add/error/traceback；容器内 import pypdf 成功（6.21.4）；app.doctor 无必须解决的问题；/api/health、/api/public/config、/index.html、/ui_icons.css、/outline.js、/rform.js 本机 200，公网 HTTPS /api/health 200。
-- 公司名：线上 orgs 表只有一条（id 21ac98401265462cbb4b216e1f52543e，名称 Admin）。尚未改名为“甲业科技”，等用户确认这条是自己的公司。
+- 公司名：线上 orgs 表只有一条（id 21ac98401265462cbb4b216e1f52543e，原名 Admin）。用户确认是自己的公司后，已在部署后把它的 name 改为“甲业科技”（只改这一行，改之前备份 total-20261102-130023.db.gz 已完成）。
 - 未测（需用户强刷缓存后在网页上确认）：左侧导航线条图标和阶段小徽章；鼠标移到“退出”显示用户名、账号类型、公司，悬停橙底白字；项目顶部没有“先深访，后定量”；访谈页和招募问卷页拖动动效；招募问卷页研究目标/招募需求圆点列表、“问卷流程”加粗；两个对话框的附件按钮（PDF/Word/txt 是否被 AI 使用，图片/视频显示“暂不支持”）。
 
 ## 2026-11-02 · 部署 c6dd626 完成（SW 指令，已在线上核对）
