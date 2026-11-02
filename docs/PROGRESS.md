@@ -156,6 +156,15 @@
 - 效果图：qa_shots/ai_bubble_preview.html（不提交，嵌入了凤凰 SVG，约 3 MB）。
 - 测试：node 语法检查 room.html 内联脚本通过；pytest tests/test_ai_room.py 29 项通过；独立测试页截图确认泡泡中间没有方框、凤凰正常显示。未在真实房间里跑过 AI 主持场次，也未跑 e2e。
 
+## 2026-11-02 · 部署 1e2935d 完成（SW 指令，已在线上核对）
+- 包含：fa6ccd2（项目页与立项向导八处调整，只改前端）；db4ac4f（凤凰 logo 高清化，logo_phoenix.svg 由 800KB 缩到 16KB，橙色主题也用橙色凤凰，部署后需用户强刷缓存）；e2d80b3 / 1e2935d（AI 后台第 1 步，只读：管理员左栏“设置”下“AI 后台”，功能总览与调用监控；新表 ai_call_log 由启动时 create_all 自动创建，只记公司、功能、提示词版本、模型别名、耗时、状态、错误类别、时间，不记任何人说的话；接口 GET /api/ai-console/overview 仅管理员）。
+- 部署前核对：线上 221 个 app 文件与 48207d2 一致；无进行中访谈、无未完成录制或合成、无已排期访谈。
+- 测试：pytest tests/test_ai_console.py tests/test_chat_reply_format.py tests/test_outline_chat.py tests/test_moderator_setup.py tests/test_plan_derive.py tests/test_plans.py 94 项通过。
+- 备份：`total-20261102-112649.db.gz`，异地 COS 上传 HTTP 200。回滚材料：代码 /opt/rollback-code-48207d2.tgz；旧镜像标签 total-app:rollback-48207d2。注意：回滚到旧镜像时 ai_call_log 表会保留（不影响旧代码运行）。
+- 部署：git archive 1e2935d 覆盖 /opt/total-mvp（deploy/.env 未动）；docker compose up -d --build --no-deps app。
+- 检查：容器 healthy；日志无 cannot add/error/traceback；app.doctor 无必须解决的问题；数据库里有 ai_call_log 表（只看表名）；/api/health、/api/public/config、/index.html、/wizard.js、/ai_console.js、/ui_ai.css、/logo_phoenix.svg 本机 200，公网 HTTPS /api/health 200。
+- 未测（需用户强刷缓存后在网页上确认）：项目总览无“进入直播间”、“最近动态”折叠；项目页“结项”在主题切换右边、无“定量/深访”标签；立项第 1 步子项目表无“按国家拆”、左对齐、有“增加语言”“增加形式”；第 2 步表“项目/研究形式”无“异步 AI 研究”列、“建议”四个页签；第 3 步勾选框对齐；已发布解锁项目第 1 步语言/形式弹窗；管理员“AI 后台”功能总览 19 个功能，其他角色看不到；三个主题下侧栏凤凰为橙色且清晰。调用监控需要先让大家用一段时间才有数字。
+
 ## 2026-11-02 · 部署 48207d2 完成（方案 A：界面和 v010 一起上线）
 - 包含：悄悄话让 AI 提问（新增 app/moderator/prompts/v010.json，CURRENT_PROMPT_VERSION=v010；有悄悄话时 AI 这一轮问题围绕第一条悄悄话，中立、一个问题、不照念）；AI 主持的受访者手机页布局（头像卡片和我的画面在上，对话在中间，回答框在底部，键盘弹出时跟随）。旧版 v009 保留，设 MODERATOR_PROMPT_VERSION=v009 可回退。
 - 风险：v010 只是候选版，完整红线评估还没跑；用户选择 A 后直接上线。若需回退，在 deploy/.env 追加 MODERATOR_PROMPT_VERSION=v009 后重建 app，或切回镜像 total-app:rollback-5a51cb5。
