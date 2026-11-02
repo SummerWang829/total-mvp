@@ -8,6 +8,7 @@ import logging
 
 from pydantic import ValidationError
 
+from . import ai_prompts
 from .moderator.engine import ModeratorEngine
 from .moderator.knowledge import InterviewGuide
 from .moderator.providers import ChatError, ChatFatalError, ModeratorChatProvider
@@ -87,7 +88,7 @@ def draft_guide(chat: ModeratorChatProvider | None, goal: str, language: str, du
                 user = f"Research goal (internal): {goal}\nInterview language: {language}\nLength: about {duration_min} minutes."
                 if problem:
                     user += f"\nYour previous outline was rejected: {problem}\nWrite a new one that avoids this."
-                system = SYSTEM.replace("{language}", language).replace("{max_topics}", str(MAX_TOPICS)).replace("{minutes}", str(duration_min))  # (not str.format: the JSON example has braces)
+                system = ai_prompts.get("study.draft", SYSTEM).replace("{language}", language).replace("{max_topics}", str(MAX_TOPICS)).replace("{minutes}", str(duration_min))  # (not str.format: the JSON example has braces)
                 reply = chat.complete([{"role": "system", "content": system}, {"role": "user", "content": user}], temperature=0.4)
             guide = _guide_from(reply, goal, language, duration_min)
         except ChatFatalError:

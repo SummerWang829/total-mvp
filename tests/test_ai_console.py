@@ -48,7 +48,7 @@ def test_a_good_call_is_logged_under_the_feature_that_asked(registered):
         assert converse(chat, [{"role": "user", "content": SECRET}]) == {"ok": True}
     (r,) = rows()
     assert (r.feature, r.status, r.error_type, r.org_id, r.model) == ("outline.chat", "ok", "", "org-1", "云端模型")
-    assert r.prompt_version == "代码内置" and r.duration_ms >= 0
+    assert r.prompt_version == "内置" and r.duration_ms >= 0
 
 
 def test_a_call_from_somewhere_unlisted_counts_as_other():
@@ -117,7 +117,7 @@ def test_the_overview_lists_every_feature_with_numbers_and_never_a_key_or_a_vend
     with SessionLocal() as db:
         oid = db.execute(__import__("sqlalchemy").text("select id from orgs limit 1")).scalar()
         for ms, status, err in ((1000, "ok", ""), (3000, "ok", ""), (500, "error", "格式错误")):
-            db.add(AiCallLog(org_id=oid, feature="recruit.chat", prompt_version="代码内置", model="云端模型", duration_ms=ms, status=status, error_type=err, at=utcnow()))
+            db.add(AiCallLog(org_id=oid, feature="recruit.chat", prompt_version="内置", model="云端模型", duration_ms=ms, status=status, error_type=err, at=utcnow()))
         db.commit()
     body = org.c.get("/api/ai-console/overview", headers=org.h("admin")).json()
     by = {f["key"]: f for f in body["features"]}

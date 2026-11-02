@@ -41,6 +41,11 @@ class AiCallLog(Base):
     at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
 
 
+def current_org() -> str:
+    """The company of the request being served ("" outside a signed-in request)."""
+    return _org.get()
+
+
 def set_org(org_id: str) -> None:
     """Remember whose request this is, so the calls it makes are logged under the right company (attribution only, never authorization)."""
     _org.set(org_id or "")
@@ -88,8 +93,12 @@ def _feature_of_caller(skip: int) -> str:
     return OTHER_KEY
 
 
-def _prompt_of(feature: str) -> str:
+def _prompt_of(db: Session, org_id: str, feature: str) -> str:
+    """The prompt version the call used: the company's live version ("v3") or the one in the code ("内置"); the moderator's is its file version."""
+    from . import ai_prompts
     f = feature_by_key(feature)
+    if f and feature in ai_prompts.SLOTS and org_id:
+        return ai_prompts.live_label(db, org_id, feature)
     return prompt_version(f) if f else ""
 
 
@@ -97,7 +106,7 @@ def record(feature: str, model: str, started: float, error: BaseException | None
     """Write one log row. A failure here is logged and forgotten: the business call must not notice."""
     try:
         with SessionLocal() as db:
-            db.add(AiCallLog(org_id=_org.get(), feature=feature, prompt_version=_prompt_of(feature), model=model, duration_ms=int((time.monotonic() - started) * 1000),
+            db.add(AiCallLog(org_id=_org.get(), feature=feature, prompt_version=_prompt_of(db, _org.get(), feature), model=model, duration_ms=int((time.monotonic() - started) * 1000),
                              status=STATUS_ERROR if error else STATUS_OK, error_type=error_category(error) if error else ""))
             db.commit()
     except Exception:  # noqa: BLE001 - any failure of the log is swallowed on purpose, and recorded

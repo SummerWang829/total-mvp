@@ -5,7 +5,7 @@ Adding a new AI feature = one line here, otherwise its calls are counted under "
 """
 from dataclasses import dataclass
 
-BUILT_IN = "代码内置"
+BUILT_IN = "内置"
 MODERATOR_PROMPTS = "@moderator"  # the AI moderator's four prompts are versioned files (app/moderator/prompts): the version in use is read when asked
 OTHER_KEY = "other"
 

@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from . import ai_prompts
 from . import interview_answers, participant_code, respondent_table
 from .groups import is_group
 from .models import Insight, Interview, Project
@@ -135,7 +136,7 @@ def pick(text: str, ps: list[Person], shown: dict[str, str], cols: list[dict], c
     got: list[tuple[str, str]] = []
     if chat is not None:
         try:
-            reply = chat.complete([{"role": "system", "content": PICK_SYSTEM}, {"role": "user", "content": json.dumps({"want": text[:600], "columns": labels, "themes": list(shown.values())[:60]}, ensure_ascii=False)}], temperature=0.1)
+            reply = chat.complete([{"role": "system", "content": ai_prompts.get("report.pick", PICK_SYSTEM)}, {"role": "user", "content": json.dumps({"want": text[:600], "columns": labels, "themes": list(shown.values())[:60]}, ensure_ascii=False)}], temperature=0.1)
             for it in (reply.get("picks") if isinstance(reply, dict) else None) or []:
                 if isinstance(it, dict) and it.get("col") in labels and _key(str(it.get("theme", ""))) in shown:
                     got.append((it["col"], _key(str(it["theme"]))))
@@ -235,7 +236,7 @@ def write_notes(db: Session, proj: Project, chat: ModeratorChatProvider) -> dict
     data = build(db, proj)
     cards = [c for c in data["cards"] if c["bars"]]
     payload = {"focus": tpl.focus[:600], "brief": (proj.brief or "")[:600], "n": data["n"], "cards": [{"id": c["id"], "title": c["title"], "bars": [{"label": b["label"], "k": b["k"], "n": b["n"]} for b in c["bars"]]} for c in cards]}
-    reply = chat.complete([{"role": "system", "content": NOTE_SYSTEM}, {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}], temperature=0.3)
+    reply = chat.complete([{"role": "system", "content": ai_prompts.get("report.note", NOTE_SYSTEM)}, {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}], temperature=0.3)
     if not isinstance(reply, dict) or not str(reply.get("summary", "")).strip():
         raise ChatError("report reading has no summary")
     notes = dict(tpl.notes)

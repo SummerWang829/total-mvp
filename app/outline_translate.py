@@ -5,6 +5,7 @@ length stay. The model gets a list and must give back a list of the same length,
 """
 import logging
 
+from . import ai_prompts
 from .moderator.providers import ChatError, ChatFatalError, ModeratorChatProvider
 from .project_langs import NAMES
 
@@ -74,7 +75,7 @@ def translate(chat: ModeratorChatProvider | None, strings: list[str], lang: str,
         return []
     if chat is None:
         return list(strings) if rewrite else mock_translate(strings, lang)
-    msgs = [{"role": "system", "content": SYSTEM.replace("{language}", NAMES.get(lang, lang)) + (REWRITE if rewrite else "")}, {"role": "user", "content": str(list(strings))}]
+    msgs = [{"role": "system", "content": ai_prompts.get("outline.translate", SYSTEM).replace("{language}", NAMES.get(lang, lang)) + (REWRITE if rewrite else "")}, {"role": "user", "content": str(list(strings))}]
     for attempt in range(MAX_ATTEMPTS):
         try:
             return _check(chat.complete(msgs, temperature=0.2), len(strings))

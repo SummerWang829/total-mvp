@@ -10,6 +10,7 @@ from collections import Counter
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from . import ai_prompts
 from . import recruit, recruit_form
 from .models import Interview, Participant, Project, RecruitForm, RecruitSettings, ScreenerAnswer
 from .moderator.providers import ChatError, ChatFatalError, ModeratorChatProvider
@@ -148,7 +149,7 @@ def summarize(chat: ModeratorChatProvider | None, dash: dict) -> str:
         return mock_summary(dash)
     facts = {"kpi": dash["kpi"], "out_by": dash["out_by"], "traits": dash["traits"], "compare": dash["compare"]}
     try:
-        reply = chat.complete([{"role": "system", "content": SUMMARY_SYSTEM}, {"role": "user", "content": json.dumps(facts, ensure_ascii=False)}], temperature=0.3)
+        reply = chat.complete([{"role": "system", "content": ai_prompts.get("recruit.insights", SUMMARY_SYSTEM)}, {"role": "user", "content": json.dumps(facts, ensure_ascii=False)}], temperature=0.3)
         return str(reply["summary"]).strip()[:1500]
     except ChatFatalError:
         raise

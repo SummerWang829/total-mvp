@@ -14,6 +14,7 @@ import re
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from . import ai_prompts
 from . import participant_code, assistant_identity
 from .chat_models import ChatThread
 from .deps import Ctx
@@ -82,7 +83,7 @@ def _passages(db: Session, ctx: Ctx, project_id: str, question: str, history: li
 def _prompt(db: Session, project: Project, question: str, history: list[dict], top: list[search.Source], outline_text: str) -> list[dict]:
     numbered = "\n".join(f"[{i}] ({'受访者原话' if s.type == 'segment' else '已确认的洞察' if s.type == 'insight' else '研究库资料'}{'，' + s.who if s.who else ''}) {s.text[:700]}" for i, s in enumerate(top, 1))
     ctx = f"项目：{project.name}\n研究背景：{(project.brief or '（没有写）')[:800]}\n访谈大纲：{(outline_text or '（还没有写）')[:800]}\n\n资料片段：\n{numbered or '（目前没有可用的资料）'}"
-    msgs: list[dict] = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": ctx}, {"role": "assistant", "content": '{"answer": "好的，我已读完这些资料。", "suggestions": [], "followups": []}'}]
+    msgs: list[dict] = [{"role": "system", "content": ai_prompts.get("insight.chat", SYSTEM)}, {"role": "user", "content": ctx}, {"role": "assistant", "content": '{"answer": "好的，我已读完这些资料。", "suggestions": [], "followups": []}'}]
     for m in history[-MAX_HISTORY:]:
         msgs.append({"role": "user", "content": m["text"]} if m["role"] == "user" else {"role": "assistant", "content": json.dumps({"answer": m.get("answer", ""), "suggestions": m.get("suggestions", []), "followups": []}, ensure_ascii=False)})
     msgs.append({"role": "user", "content": f"新问题：{question}"})

@@ -5,6 +5,7 @@ box), so it must not hold participants' personal details.
 """
 import logging
 
+from . import ai_prompts
 from .moderator.providers import ChatError, ChatFatalError, ModeratorChatProvider
 from .recruit_form import FormError
 
@@ -69,7 +70,7 @@ def suggest(chat: ModeratorChatProvider | None, brief: str, language: str, libra
                     user += f"\n\nReference material from this project's research library (internal):\n{library}"
                 if problem:
                     user += f"\nYour previous answer was rejected: {problem}\nWrite a new one that avoids this."
-                reply = chat.complete([{"role": "system", "content": SYSTEM.replace("{language}", language)}, {"role": "user", "content": user}], temperature=0.4)
+                reply = chat.complete([{"role": "system", "content": ai_prompts.get("plan.suggest", SYSTEM).replace("{language}", language)}, {"role": "user", "content": user}], temperature=0.4)
             return {"depth_topics": _topics(reply.get("depth_topics")), "group_topics": _topics(reply.get("group_topics")), "quota_hint": str(reply.get("quota_hint", "")).strip()[:600],
                     "listening_keywords": [str(k).strip()[:60] for k in (reply.get("listening_keywords") or [])[:MAX_KEYWORDS] if str(k).strip()]}
         except ChatFatalError:

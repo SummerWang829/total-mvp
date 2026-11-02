@@ -21,6 +21,7 @@ from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
+from . import ai_prompts
 from . import assistant_identity
 from .moderator.providers import ChatError, ChatFatalError, ModeratorChatProvider
 
@@ -410,7 +411,7 @@ def generate(chat: ModeratorChatProvider | None, idea: str, language: str, libra
                     user += f"\n\nReference material from this project's research library (internal):\n{library}"
                 if problem:
                     user += f"\nYour previous questionnaire was rejected: {problem}\nWrite a new one that avoids this."
-                reply = chat.complete([{"role": "system", "content": SYSTEM.replace("{language}", language)}, {"role": "user", "content": user}], temperature=0.3)
+                reply = chat.complete([{"role": "system", "content": ai_prompts.get("recruit.draft", SYSTEM).replace("{language}", language)}, {"role": "user", "content": user}], temperature=0.3)
             raw = reply.get("questions")
             if not isinstance(raw, list) or not raw:
                 raise ValueError("no questions")
@@ -493,7 +494,7 @@ def chat_turn(chat: ModeratorChatProvider | None, message: str, history: list[di
         return mock_chat(message, questions, language)
     context = (f"Research background from the project plan:\n{brief.strip() or '(none)'}\n\nReference material from the research library:\n{library or '(none)'}\n\n"
                f"Current questionnaire (JSON):\n{json.dumps([q.model_dump() for q in questions], ensure_ascii=False)}\nCurrent goals: {json.dumps(goals, ensure_ascii=False)}\nCurrent recruiting need: {need or '(none)'}\n\nAnonymous counts and quotas (numbers only, nobody's answers):\n{stats_text or '(none yet)'}")
-    msgs = [{"role": "system", "content": CHAT_SYSTEM.replace("{language}", language)}, {"role": "user", "content": context}, *_history_messages(history), {"role": "user", "content": message.strip()[:MAX_CHAT_TEXT]}]
+    msgs = [{"role": "system", "content": ai_prompts.get("recruit.chat", CHAT_SYSTEM).replace("{language}", language)}, {"role": "user", "content": context}, *_history_messages(history), {"role": "user", "content": message.strip()[:MAX_CHAT_TEXT]}]
     problem = ""
     format_retried = False
     for attempt in range(MAX_ATTEMPTS):

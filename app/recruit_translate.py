@@ -11,6 +11,7 @@ import re
 
 from pydantic import ValidationError
 
+from . import ai_prompts
 from . import recruit_form
 from .moderator.providers import ChatError, ChatFatalError, ModeratorChatProvider
 from .project_langs import NAMES
@@ -121,7 +122,7 @@ def translate(chat: ModeratorChatProvider | None, questions: list[recruit_form.Q
     if chat is None:
         return mock_translation(questions, lang)
     payload = [{"id": q.id, "text": q.text, "options": [{"id": o.id, "text": o.text} for o in q.options]} for q in questions]
-    msgs = [{"role": "system", "content": SYSTEM.replace("{language}", NAMES.get(lang, lang))}, {"role": "user", "content": str(payload)}]
+    msgs = [{"role": "system", "content": ai_prompts.get("recruit.translate", SYSTEM).replace("{language}", NAMES.get(lang, lang))}, {"role": "user", "content": str(payload)}]
     for attempt in range(MAX_ATTEMPTS):
         try:
             return _check(chat.complete(msgs, temperature=0.2), questions)

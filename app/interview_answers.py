@@ -11,6 +11,7 @@ import re
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from . import ai_prompts
 from .models import Interview, TranscriptSegment
 from .moderator.providers import ChatError, ChatFatalError, ModeratorChatProvider
 
@@ -70,7 +71,7 @@ def model_match(chat: ModeratorChatProvider, texts: list[str], segs: list[Transc
         return {}
     payload = {"questions": {str(qi + 1): texts[qi][:300] for qi in missing}, "moderator_turns": {str(i + 1): segs[i].text_orig[:240] for i in free[:MAX_TURNS]}}
     try:
-        reply = chat.complete([{"role": "system", "content": MATCH_SYSTEM}, {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}], temperature=0.0)
+        reply = chat.complete([{"role": "system", "content": ai_prompts.get("answers.match", MATCH_SYSTEM)}, {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}], temperature=0.0)
     except ChatFatalError:
         raise
     except ChatError:
@@ -149,7 +150,7 @@ def add_themes(chat: ModeratorChatProvider, items: list[dict], language: str) ->
     if not idx:
         return
     numbered = "\n".join(f"{n + 1}. {items[i]['a'][:400]}" for n, i in enumerate(idx))
-    reply = chat.complete([{"role": "system", "content": SYSTEM.replace("{language}", language)}, {"role": "user", "content": numbered}], temperature=0.2)
+    reply = chat.complete([{"role": "system", "content": ai_prompts.get("answers.tag", SYSTEM).replace("{language}", language)}, {"role": "user", "content": numbered}], temperature=0.2)
     lists = reply.get("themes") if isinstance(reply, dict) else None
     if not isinstance(lists, list):
         raise ChatError("themes reply has no list")

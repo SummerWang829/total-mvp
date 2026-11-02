@@ -13,6 +13,7 @@ import uuid
 
 from pydantic import ValidationError
 
+from . import ai_prompts
 from . import guide_text, outline, study_draft, assistant_identity
 from .moderator.providers import ChatError, ChatFatalError, ChatFormatError, ModeratorChatProvider
 
@@ -201,7 +202,7 @@ def converse(chat: ModeratorChatProvider | None, history: list[dict], current: s
     goal = " ".join((brief or message).split())[:1000]
     if chat is None:
         return _mock(current, goal, language, minutes)
-    system = SYSTEM.replace("{language}", language).replace("{max_topics}", str(study_draft.MAX_TOPICS)).replace("{minutes}", str(minutes))
+    system = ai_prompts.get("outline.chat", SYSTEM).replace("{language}", language).replace("{max_topics}", str(study_draft.MAX_TOPICS)).replace("{minutes}", str(minutes))
     problem = ""
     for attempt in range(MAX_ATTEMPTS):
         ask = _context(current, brief, library, language, minutes, message) + (f"\n\nYour previous answer was rejected: {problem}\nAnswer again and avoid this." if problem else "")
@@ -257,7 +258,7 @@ def answer_only(chat: ModeratorChatProvider | None, current: str, message: str, 
     """
     if chat is None:
         return MSG_MOCK_KEPT
-    system = SYSTEM.replace("{language}", language).replace("{max_topics}", str(study_draft.MAX_TOPICS)).replace("{minutes}", str(minutes)) + ASK_ONLY
+    system = ai_prompts.get("outline.chat", SYSTEM).replace("{language}", language).replace("{max_topics}", str(study_draft.MAX_TOPICS)).replace("{minutes}", str(minutes)) + ASK_ONLY
     for attempt in range(MAX_ATTEMPTS):
         try:
             raw = chat.complete([{"role": "system", "content": system}, {"role": "user", "content": _context(current, brief, library, language, minutes, message)}], temperature=0.4)

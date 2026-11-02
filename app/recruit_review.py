@@ -12,6 +12,7 @@ import json
 import logging
 import math
 
+from . import ai_prompts
 from . import recruit_form
 from .moderator.providers import ChatError, ChatFatalError, ModeratorChatProvider
 
@@ -178,7 +179,7 @@ def ai_review(chat: ModeratorChatProvider | None, questions: list[recruit_form.Q
     context = (f"Research background:\n{brief.strip() or '(none)'}\n\nReference material:\n{library or '(none)'}\n\nGoals: {json.dumps(goals, ensure_ascii=False)}\nRecruiting need: {need or '(none)'}\n\n"
                f"Questionnaire (JSON):\n{json.dumps([q.model_dump() for q in questions], ensure_ascii=False)}\n\nAnonymous counts:\n{stats_text}\nWrite in {language}.")
     try:
-        reply = chat.complete([{"role": "system", "content": REVIEW_SYSTEM}, {"role": "user", "content": context}], temperature=0.2)
+        reply = chat.complete([{"role": "system", "content": ai_prompts.get("recruit.review", REVIEW_SYSTEM)}, {"role": "user", "content": context}], temperature=0.2)
     except ChatFatalError as e:
         recruit_form.note_fatal(e.reason)
         raise
