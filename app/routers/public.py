@@ -215,7 +215,7 @@ def enter(token: str, request: Request, db: Session = Depends(get_db)):
     audit(db, itv.org_id, f"participant:{part.id}", "room.token", itv.id, ip=client_ip(request), role="participant")
     db.commit()
     return {"token": jwt_, "url": url_for_client(request.headers.get("host")), "room": itv.room_name, "role": "participant", "dev_mode": not settings.livekit_url,
-            "interview_status": itv.status, "language": itv.language, "moderation": itv.moderation}
+            "interview_status": itv.status, "language": itv.language, "moderation": itv.moderation, "one_to_one": not groups.is_group(itv)}
 
 
 def _consented(db: Session, itv: Interview, participant_id: str | None = None) -> bool:

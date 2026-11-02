@@ -2145,6 +2145,56 @@ def timeslot_section(br, D):
     ctx.close()
 
 
+def phone_room_section(br, D):
+    """The participant's phone room (one-to-one, human moderator): pictures on top, live captions in the middle, a quick input at the bottom."""
+    adm, mod, pid = D["tok"]["admin"], D["tok"]["moderator"], D["pid"]
+    part = call(f"/projects/{pid}/participants", {"name": "手机受访者", "country": "SG", "language": "zh"}, adm)
+    it = call(f"/projects/{pid}/interviews", {"participant_id": part["id"], "title": "手机端深访", "language": "zh", "moderator_id": D["ids"]["moderator"]}, adm)
+    iid, T = it["id"], it["invite_token"]
+    call(f"/public/join/{T}/device", {"camera": True, "microphone": True, "speaker": True})
+    call(f"/public/join/{T}/consent", {"country": "SG", "recording": True, "observers": True, "cross_border": True})
+    call(f"/interviews/{iid}/start", {}, mod)
+    call(f"/interviews/{iid}/admit", {}, mod)
+    call(f"/public/join/{T}/enter", {})
+    call(f"/interviews/{iid}/captions", {"text": "你平时怎么选护肤品？", "final": True}, mod)
+    ctx, pg, errs = new_page(br, 390, 780)
+    pg.goto(B + f"/room.html?t={T}"); pg.wait_for_selector("#claims")
+    ok(pg.evaluate("document.body.classList.contains('pphone')"), "[phone room] the phone layout is on for a one-to-one participant")
+    ok(pg.is_visible("#pm-caps") and pg.is_visible("#pm-in") and pg.is_visible("#pm-vm"), "[phone room] captions, input and the picture switch are shown")
+    ok(pg.evaluate("document.querySelector('.rhead').contains(document.getElementById('b-leave'))"), "[phone room] the microphone, camera and leave buttons sit on the title row")
+    ok(wait_until(lambda: "你平时怎么选护肤品" in pg.inner_text("#pm-log"), 8), "[phone room] the moderator's sentence appears in the live captions")
+    pg.fill("#pm-ta", "我先看成分，再看价格。")
+    ok(pg.evaluate("!document.getElementById('pm-in').classList.contains('empty')"), "[phone room] the send button is live once there is text")
+    pg.press("#pm-ta", "Enter")
+    ok(wait_until(lambda: pg.locator("#pm-log .pm-line.me").count() >= 1 and "我先看成分" in pg.inner_text("#pm-log"), 8), "[phone room] a typed answer is sent and shows as my line")
+    ok(pg.input_value("#pm-ta") == "", "[phone room] the box is empty again after sending")
+    ok(pg.evaluate("document.activeElement.id === 'pm-ta'"), "[phone room] the box keeps focus (the keyboard stays open)")
+    ok(any("我先看成分" in x["text"] for x in call(f"/interviews/{iid}/captions", token=mod)["lines"] if x["speaker"] == "participant"), "[phone room] the moderator receives the typed answer")
+    pg.click("#pm-vm [data-m=big]")
+    ok(pg.evaluate("document.getElementById('grid').classList.contains('pv-big')") and pg.evaluate("document.querySelector('.rbody>section').offsetHeight") >= 200, "[phone room] big-screen mode makes the pictures taller")
+    ok(pg.evaluate("JSON.parse(localStorage.getItem('room_vm_p')).mode") == "big", "[phone room] the picture mode is kept in this browser only")
+    pg.click("#pm-vm [data-m=split]")
+    ok(pg.evaluate("document.querySelector('.rbody>section').offsetHeight") <= 130, "[phone room] split mode is back to the short row")
+    wide = pg.evaluate("[...document.querySelectorAll('body *')].filter((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.right > innerWidth + 1; }).slice(0, 6).map((e) => `${e.tagName}#${e.id}.${String(e.className).slice(0, 24)} right=${Math.round(e.getBoundingClientRect().right)}`)")
+    ok(pg.evaluate("document.documentElement.scrollWidth <= innerWidth + 1"), f"[phone room] nothing scrolls sideways {wide}")
+    ok(pg.evaluate("document.getElementById('pm-in').getBoundingClientRect().bottom <= innerHeight + 1"), "[phone room] the input sits inside the screen at the bottom")
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "phone_room_split_390.png"))
+    pg.evaluate("document.body.classList.add('pm-kb')")   # what the page does when the keyboard is open
+    ok(pg.evaluate("document.querySelector('.rbody>section').offsetHeight") <= 70, "[phone room] with the keyboard open the pictures shrink to a strip")
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "phone_room_keyboard_390.png"))
+    pg.evaluate("document.body.classList.remove('pm-kb')")
+    audit_page(pg, "phone room participant/phone", errs)
+    pg.click("#b-leave")
+    ok(wait_until(lambda: pg.locator(".leftcard").is_visible(), 6) and "邀请链接" in pg.inner_text(".leftcard"), "[phone room] leaving shows a clear 'you have left' page that says how to come back")
+    ok("连接已断开" not in pg.inner_text("body"), "[phone room] the 'connection lost' message never covers the leave page")
+    ctx.close()
+    ctx, pg, errs = new_page(br, 1280)
+    pg.goto(B + f"/room.html?t={T}"); pg.wait_for_selector("#claims")
+    ok(not pg.is_visible("#pm-caps") and not pg.is_visible("#pm-in"), "[phone room] on a computer the phone parts stay hidden")
+    ok(pg.evaluate("!document.querySelector('.rhead').contains(document.getElementById('b-leave'))"), "[phone room] on a computer the buttons stay at the bottom")
+    ctx.close()
+
+
 def marks_section(br, D):
     """Material marking (Sprint 1): the participant taps ♥ like / ✕ dislike on an image, the team reads it as a heatmap."""
     adm, mod, obs, pid = D["tok"]["admin"], D["tok"]["moderator"], D["tok"]["observer"], D["pid"]
@@ -2523,7 +2573,7 @@ def run():
         audit_page(pg, "participant room/light/phone", errs)
         pg.click("#theme"); audit_page(pg, "participant room/dark/phone", errs); pg.click("#theme")
         pg.click("#b-leave"); pg.wait_for_timeout(500)
-        ok("邀请链接" in pg.inner_text("#msg"), "after leaving the participant is told the link works again")
+        ok("邀请链接" in pg.inner_text(".leftcard"), "after leaving the participant is told the link works again")
         ok(call(f"/public/join/{it['invite_token']}/enter", {})["token"], "coming back needs nobody's permission")
         ctx.close(); fake.close()
 
@@ -2534,6 +2584,7 @@ def run():
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "pretask_section": pretask_section(br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "timeslot_section": timeslot_section(br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "marks_section": marks_section(br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "phone_room_section": phone_room_section(br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "group_section": group_section(br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "outline_section": outline_section(br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "tabs_section": tabs_section(br, D)

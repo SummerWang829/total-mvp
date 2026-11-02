@@ -318,6 +318,68 @@ async function openTeamTrack(kind) {   // the team may always turn its camera or
     return false;
   }
 }
+// ---------------- participant on a phone (one-to-one, human moderator): pictures on top, live captions in the middle, a quick input at the bottom ----------------
+const PMT = { zh: { caps: "实时字幕", split: "平分", big: "大屏" }, en: { caps: "Live captions", split: "Split", big: "Big" },
+  ms: { caps: "Sarikata langsung", split: "Bahagi", big: "Besar" }, ta: { caps: "நேரடி வசனம்", split: "பிரி", big: "பெரிய" } };   // ms/ta: first drafts, native review needed
+const PM = { after: 0, mode: "split", swap: false, busy: false };
+async function pmPoll() {
+  if (ended || !last || last.status !== "live" || !$id("pm-log")) return;
+  let d; try { const r = await fetch(`/api/public/join/${encodeURIComponent(inviteT)}/captions?after=${PM.after}`); if (!r.ok) return; d = await r.json(); } catch { return; }
+  const log = $id("pm-log"), near = log.scrollHeight - log.scrollTop - log.clientHeight < 60;
+  log.querySelectorAll(".pm-partial").forEach((e) => e.remove());
+  const line = (sp, text, at) => { const el = document.createElement("div"); el.className = "pm-line" + (sp === "participant" ? " me" : "");
+    if (at != null) { const s = document.createElement("small"); s.textContent = `${mmss(at)} · ${sp === "participant" ? T.you : T.mod}`; el.appendChild(s); }
+    const x = document.createElement("div"); x.textContent = text; el.appendChild(x); return el; };
+  d.lines.forEach((c) => { PM.after = Math.max(PM.after, c.seq); log.appendChild(line(c.speaker, c.text, c.at_ms)); });
+  Object.entries(d.partial || {}).forEach(([sp, txt]) => { const el = line(sp, txt, null); el.classList.add("pm-partial"); log.appendChild(el); });
+  if (near || d.lines.length) log.scrollTop = log.scrollHeight;
+}
+function buildPhoneRoom() {
+  const t = PMT[S.language] || PMT.en, body = document.querySelector(".rbody"), head = document.querySelector(".rhead");
+  document.body.classList.add("pphone");
+  try { Object.assign(PM, JSON.parse(localStorage.getItem("room_vm_p") || "{}")); } catch {}   // this phone's own picture mode: never shared with the moderator's or observer's screen
+  const vm = document.createElement("div"); vm.id = "pm-vm"; vm.setAttribute("role", "group");
+  vm.innerHTML = `<button type="button" data-m="split">${esc(t.split)}</button><button type="button" data-m="big">${esc(t.big)}</button>`;
+  const caps = document.createElement("div"); caps.id = "pm-caps"; caps.innerHTML = `<h4>${esc(t.caps)}</h4><div id="pm-log" role="log" aria-live="polite" tabindex="0"></div>`;
+  const form = document.createElement("form"); form.id = "pm-in"; form.className = "empty";
+  form.innerHTML = `<textarea id="pm-ta" rows="1" maxlength="500" enterkeyhint="send" placeholder="${esc(T.chatPh)}" aria-label="${esc(T.chatPh)}"></textarea><button type="button" class="emo" id="pm-emo" aria-haspopup="true" aria-label="${esc(T.rxInsert)}">😊</button><button type="submit" id="pm-send" aria-label="${esc(T.send)}">↑</button>`;
+  const top = document.createElement("div"); top.id = "pm-top"; top.appendChild(vm);   // one row: the colour switch on the left, the picture switch on the right
+  body.before(top); body.after(caps, form);
+  const apply = () => {
+    const g = $id("grid"); g.classList.toggle("pv-big", PM.mode === "big"); g.classList.toggle("pv-swap", PM.mode === "big" && PM.swap); g.parentElement.classList.toggle("pv-bigsec", PM.mode === "big");
+    vm.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.m === PM.mode)));
+    try { localStorage.setItem("room_vm_p", JSON.stringify({ mode: PM.mode, swap: PM.swap })); } catch {}
+  };
+  vm.onclick = (e) => { const b = e.target.closest("button"); if (b) { PM.mode = b.dataset.m; apply(); } };
+  $id("grid").addEventListener("click", (e) => { const tl = e.target.closest(".tile"); if (!tl || PM.mode !== "big") return; if (PM.swap !== tl.classList.contains("me")) { PM.swap = !PM.swap; apply(); } });   // a tap on the small window swaps the two pictures
+  apply();
+  const bar = $id("bar"), mq = matchMedia("(max-width:700px)");
+  const theme = $id("theme");
+  const place = () => { if (mq.matches) { head.appendChild(bar); top.prepend(theme); } else { document.body.appendChild(bar); head.appendChild(theme); } };   // the microphone, camera and leave buttons sit on the title row of a phone
+  mq.addEventListener("change", place); place();
+  const ta = $id("pm-ta");
+  const grow = () => { form.classList.toggle("empty", !ta.value.trim()); ta.style.height = "auto"; ta.style.height = Math.min(96, ta.scrollHeight) + "px"; };
+  ta.oninput = grow; setInterval(() => form.classList.toggle("empty", !ta.value.trim()), 300);
+  ta.onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); form.requestSubmit(); } };
+  $id("pm-emo").onclick = () => { if (EmojiPanel.isOpen()) return closeEmoji(); openEmoji((g) => { putAtCursor(ta, g); grow(); }, { quick: false, stay: true, anchor: form, toggle: $id("pm-emo") }); };
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    const text = ta.value.trim(); if (!text || PM.busy || ended) return;
+    PM.busy = true;
+    try {
+      const r = await fetch(`/api/public/join/${encodeURIComponent(inviteT)}/captions`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, final: true }) });   // typed words become one of the participant's lines, like spoken ones
+      if (!r.ok) throw new Error(String(r.status));
+      ta.value = ""; grow(); await pmPoll();
+    } catch { toast(T.chatErr, true); }
+    PM.busy = false; ta.focus();   // the keyboard stays open for the next sentence
+  };
+  if (window.visualViewport) {   // the keyboard: the page follows the visible area, so the input and the send button sit right above the keys
+    const vv = window.visualViewport;
+    const fit = () => { document.documentElement.style.setProperty("--vvh", `${vv.height}px`); const kb = vv.height < window.innerHeight * 0.75; document.body.classList.toggle("pm-kb", kb); if (kb) window.scrollTo(0, 0); };
+    vv.addEventListener("resize", fit); vv.addEventListener("scroll", fit); fit();
+  }
+  setInterval(pmPoll, 1500);
+}
 function showLeft() {  // leaving is an end state: a clear page with the next step, never a half-working room
   const card = document.createElement("div");
   card.className = "leftcard"; card.setAttribute("role", "status");
@@ -1118,6 +1180,7 @@ async function start() {
   document.body.classList.toggle("role-one-to-one", S.kind !== "group" && S.moderation !== "ai");
   if (role === "participant") { $id("q4").remove(); $id("brpop").remove(); }   // the team's four columns are not even in the participant's page
   if (role === "participant") { T = I18N[S.language] || I18N.en; document.documentElement.lang = S.language || "en"; document.body.classList.add("solo"); themeLabel(); }
+  if (role === "participant" && S.moderation !== "ai" && S.one_to_one) buildPhoneRoom();   // on a phone only: CSS keeps these parts hidden on a computer
   else if (S.kind !== "group") buildQ4();   // the four-column room
   else { $id("lpan").hidden = false; $id("rpan").hidden = false; }
   if (role === "moderator") {  // who is in the room (nobody has to let the participant in)

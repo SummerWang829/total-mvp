@@ -240,6 +240,19 @@ def post_participant_caption(token: str, body: CaptionIn, db: Session = Depends(
     _store_caption(db, j.itv, groups.speaker_key(j.itv, j.seat), body)
 
 
+@router.get("/public/join/{token}/captions")
+def get_participant_captions(token: str, after: int = 0, db: Session = Depends(get_db)):
+    """The participant's phone screen shows the conversation so far: finished sentences of both speakers (the words only, no hints or
+    translations) and what is being said right now. Only for a one-to-one interview, and only once the person is in the room."""
+    j = _entered_participant(db, token)
+    if groups.is_group(j.itv):
+        raise HTTPException(404, "这场访谈没有字幕页")
+    rows = db.scalars(select(CaptionLine).where(CaptionLine.interview_id == j.itv.id, CaptionLine.seq > after).order_by(CaptionLine.seq).limit(200)).all()
+    now = time.time()
+    partial = {sp: txt for (i, sp), (txt, ts) in list(_PARTIAL.items()) if i == j.itv.id and now - ts < PARTIAL_TTL_S}
+    return {"lines": [{"seq": c.seq, "speaker": c.speaker, "text": c.text, "at_ms": c.at_ms} for c in rows], "partial": partial}
+
+
 @router.get("/interviews/{iid}/captions")
 def get_captions(iid: str, after: int = 0, ctx: Ctx = Depends(current_ctx), db: Session = Depends(get_db)):
     """Polled once a second by the team's room page: finished sentences after `after`, and what is being said right now."""

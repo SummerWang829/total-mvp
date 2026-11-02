@@ -72,3 +72,62 @@ body.t-dark .q4 .qbar>div{background:#24413A}
 .leftcard p{margin:0;color:#566E62;max-width:360px}
 body.t-dark .leftcard{background:#0B1D16;color:#E8EFEA}
 body.t-dark .leftcard p{color:#A9C2B5}
+
+/* 受访者手机端（一对一、真人主持）：上面主持人和我的画面（平分/大屏），中间实时字幕，最下面是输入框；
+   麦克风、摄像头、离开放在标题行右侧。电脑端这三块不显示。 */
+#pm-top,#pm-caps,#pm-in{display:none}
+@media (max-width:700px){
+body.pphone{display:flex;flex-direction:column;height:var(--vvh,100dvh);overflow:hidden;padding-bottom:0!important}
+body.pphone .rhead{flex:none;flex-wrap:nowrap;gap:6px;padding:8px 10px 8px 14px;min-height:0}
+body.pphone .rhead .rwho,body.pphone .rhead #netq,body.pphone .rhead #warn,body.pphone .rhead #qtime{display:none}
+body.pphone .rhead #bar{position:static!important;transform:none!important;width:auto!important;max-width:none!important;margin-left:auto;padding:0!important;gap:6px!important;background:transparent!important;border:0!important;box-shadow:none!important;flex-wrap:nowrap!important;display:flex;-webkit-backdrop-filter:none;backdrop-filter:none}
+body.stage.pphone .rhead #bar button{font-size:12px;gap:0!important;width:36px;min-width:36px!important;height:36px;min-height:36px!important;padding:0 0 0 8px!important;border-radius:50%!important;justify-content:flex-start!important;overflow:hidden}
+body.stage.pphone .rhead #bar button::before{margin-right:48px}   /* 只显示图标：文字被推到按钮外面，读屏软件仍然读得到 */
+body.stage.pphone .rhead #bar #b-leave{width:auto;padding:0 12px!important;font-size:13px;gap:6px!important;border-radius:18px!important;justify-content:center!important;overflow:visible}
+body.stage.pphone .rhead #bar #b-leave::before{margin-right:0}
+body.pphone .rmsg{flex:none;padding:4px 14px;font-size:13px}
+body.pphone #pm-top{display:flex;flex:none;align-items:center;gap:8px;margin:0 12px 6px}
+body.pphone #pm-top #theme{flex:none;height:36px;min-height:36px;padding:0 12px;border:1px solid #DCE5DF;border-radius:10px;background:#fff;color:#173B2F;font-size:13px}
+body.pphone #pm-vm{display:flex;gap:2px;margin-left:auto;padding:2px;background:#F4F7F5;border-radius:10px}
+body.pphone #pm-vm button{height:36px;min-height:36px;padding:0 14px;border:0;border-radius:8px;background:transparent;color:#566E62;font-size:13px}
+body.pphone #pm-vm button[aria-pressed=true]{background:#fff;color:#173B2F;font-weight:600;box-shadow:0 1px 3px rgba(23,59,47,.12)}
+body.pphone .rbody{flex:none;display:block!important;padding:0 12px!important;max-width:100%!important;width:100%;min-width:0;box-sizing:border-box}
+body.pphone .rbody>section{height:118px!important;min-height:0!important;border-radius:14px!important;position:relative;background:#0B382C!important;overflow:hidden}
+body.pphone .rbody>section.pv-bigsec{height:210px!important}
+body.pphone #grid{display:flex!important;gap:8px;height:100%!important;position:relative}
+body.pphone #grid>.tile{position:relative!important;inset:auto!important;flex:1;width:auto!important;height:100%!important;min-height:0!important;border-radius:14px!important;border:0!important;overflow:hidden}
+body.pphone #grid.pv-big{display:block!important}
+body.pphone #grid.pv-big>.tile{position:absolute!important;inset:0!important;width:100%!important;height:100%!important}
+body.pphone #grid.pv-big>.tile.me,body.pphone #grid.pv-big.pv-swap>.tile:not(.me){inset:auto 8px 8px auto!important;width:92px!important;height:64px!important;border:2px solid #fff!important;border-radius:10px!important;z-index:3}
+body.pphone #grid.pv-big.pv-swap>.tile.me{inset:0!important;width:100%!important;height:100%!important;border:0!important;border-radius:14px!important;z-index:1}
+body.pphone .rbody>section:has(#stim:not([hidden])){height:44dvh!important}
+body.pphone #stim:not([hidden]){position:absolute!important;inset:0!important;z-index:5;border-radius:14px!important}
+body.pphone #stim:not([hidden])~#grid{position:absolute!important;top:6px;right:6px;width:84px;height:150px!important;flex-direction:column;z-index:6}
+body.pphone #pm-caps{display:flex;flex:1 1 auto;min-height:0;flex-direction:column;gap:6px;margin:10px 12px 0;padding:10px 12px;background:#0B382C;border-radius:16px;color:#E8F2EC}
+body.pphone #pm-caps h4{margin:0;flex:none;font-size:13px;color:#FFD9B8;font-weight:600}
+body.pphone #pm-log{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:8px;-webkit-overflow-scrolling:touch}
+body.pphone .pm-line{background:rgba(255,255,255,.08);border-radius:10px;padding:7px 10px;font-size:14px;line-height:1.45;overflow-wrap:anywhere}
+body.pphone .pm-line small{display:block;color:#A9C2B5;font-size:12px}
+body.pphone .pm-line.me{background:rgba(255,106,0,.18)}
+body.pphone .pm-partial{opacity:.7;font-style:italic}
+body.pphone #pm-in{display:flex;flex:none;align-items:flex-end;gap:8px;margin:10px 12px 12px;padding:8px 8px 8px 14px;background:#fff;border:1px solid #DCE5DF;border-radius:18px;box-shadow:0 2px 8px rgba(23,59,47,.06)}
+body.pphone #pm-in{flex-direction:row!important;flex-wrap:nowrap!important;align-items:flex-end!important;width:auto!important}
+body.pphone #pm-in #pm-ta{width:auto!important;flex:1 1 0!important;border:0!important;box-shadow:none!important;background:transparent!important;margin:0!important;display:block}
+body.pphone #pm-in:focus-within{border-color:#FF6A00}
+body.pphone #pm-ta{flex:1;min-width:0;min-height:40px;max-height:96px;resize:none;border:0;outline:0;background:transparent;color:#173B2F;font-size:16px;line-height:1.4;padding:8px 0}
+body.pphone #pm-in .emo{flex:none;width:36px;height:36px;min-height:36px;padding:0;border-radius:50%;border:0;background:#F4F7F5;font-size:17px}
+body.pphone #pm-send{flex:none;width:44px;height:44px;min-height:44px;padding:0;border-radius:50%;border:0;background:linear-gradient(135deg,#FF8A3D,#FF6A00);color:#fff;font-size:20px}
+body.pphone #pm-in.empty #pm-send{background:#E3E9E5;color:#3F5A4C}
+body.t-dark.pphone #pm-vm{background:#15271F}
+body.t-dark.pphone #pm-top #theme{background:#15271F;border-color:#345044;color:#E8EFEA}
+body.t-dark.pphone #pm-in.empty #pm-send{background:#24443A;color:#A9C2B5}
+body.t-dark.pphone #pm-vm button{color:#A9C2B5}
+body.t-dark.pphone #pm-vm button[aria-pressed=true]{background:#24443A;color:#E8EFEA}
+body.t-dark.pphone #pm-in{background:#15271F;border-color:#345044}
+body.t-dark.pphone #pm-ta{color:#E8EFEA}
+body.t-dark.pphone #pm-in .emo{background:#24443A}
+/* 键盘弹出：两个画面缩成一条，输入框贴着键盘 */
+body.pphone.pm-kb .rbody>section,body.pphone.pm-kb .rbody>section.pv-bigsec{height:64px!important}
+body.pphone.pm-kb #pm-top,body.pphone.pm-kb .rmsg{display:none}
+body.pphone.pm-kb #pm-in{margin-bottom:8px}
+}
