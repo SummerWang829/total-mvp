@@ -162,7 +162,7 @@ def new_page(br, w, h=860, token=None, room_theme=None, **kw):
         ctx.add_init_script(f"try{{localStorage.setItem('tt_token','{token}')}}catch(e){{}}")
     ctx.add_init_script("try{if(sessionStorage.getItem('ptab')===null)sessionStorage.setItem('ptab','list')}catch(e){}")  # the people page opens on the list; the questionnaire tests ask for their own tab
     if room_theme:  # the video room remembers the chosen colours in this browser
-        ctx.add_init_script(f"try{{localStorage.setItem('tt_room_theme','{room_theme}')}}catch(e){{}}")
+        ctx.add_init_script(f"try{{localStorage.setItem('tt_room_theme','{room_theme}');localStorage.setItem('tt_theme','{room_theme}')}}catch(e){{}}")
     pg = ctx.new_page()
     errs: list[str] = []
     pg.on("pageerror", lambda e: errs.append("pageerror: " + str(e)))
@@ -484,6 +484,25 @@ def tabflash_section(br, D):
     ok(all(r[0] == base["cls"] and r[1] == base["w"] and not r[2] for r in old), f"[tabflash] in those frames the layout never changes: classes {base['cls']!r}, main {base['w']}px wide, no page scrollbar (saw {sorted(set((r[0], r[1], r[2]) for r in old))})")
     pg.evaluate("() => { window._log = []; }")
     ctx.close()
+
+
+def fill_section(br, D):
+    """The content fills the width beside the nav at every size (no page-wide cap), the header stays put, and nothing overflows sideways."""
+    adm, pid = D["tok"]["admin"], D["pid"]
+    pages = ["home", "pool", "people", "rooms", "insights", "outline", "studies", "quant", "listening"]
+    for w, h in ((1280, 720), (1920, 1080), (2560, 1440), (3440, 1440)):
+        ctx, pg, errs = new_page(br, w, h, token=adm)
+        for name in pages:
+            pg.goto(B + f"/#/p/{pid}/{name}"); pg.reload(); pg.wait_for_timeout(900)
+            m = pg.evaluate("""() => { const main = document.querySelector('main'), r = main.getBoundingClientRect(), tb = document.querySelector('.hubtabs.pin');
+              return { gapR: innerWidth - Math.round(r.right), sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth,
+                       tabTop: tb ? Math.round(tb.getBoundingClientRect().top) : null, vscroll: document.documentElement.scrollHeight > innerHeight }; }""")
+            ok(m["gapR"] <= 24, f"[fill] {name} at {w} wide: the content reaches the right edge (gap {m['gapR']}px, limit 24px)")
+            ok(m["sw"] <= m["cw"], f"[fill] {name} at {w} wide: no sideways scroll")
+            ok(m["tabTop"] in (None, 61), f"[fill] {name} at {w} wide: the page tabs stay at the same height (top {m['tabTop']})")
+            if name == "rooms":
+                ok(not m["vscroll"], f"[fill] the room page fits the screen height at {w}: its boxes scroll, not the page")
+        ctx.close()
 
 
 def projects_section(br, D):
@@ -2280,10 +2299,10 @@ def run():
             ctx, pg, errs = new_page(br, w, token=D["tok"]["moderator"])
             it = D["itv"]["zh"]
             pg.goto(B + f"/room.html?i={it['id']}&as=moderator"); pg.wait_for_selector("#claims")
-            ok("深绿" in pg.inner_text("#theme"), f"[{vp}] theme button offers dark green")
-            pg.click("#theme"); ok("t-dark" in pg.evaluate("document.body.className") and pg.evaluate("localStorage.getItem('tt_room_theme')") == "dark", f"[{vp}] switching to dark green works and is remembered")
-            pg.reload(); pg.wait_for_selector("#claims"); ok("t-dark" in pg.evaluate("document.body.className") and "浅色" in pg.inner_text("#theme"), f"[{vp}] the room opens in the remembered theme")
-            pg.click("#theme"); ok("t-light" in pg.evaluate("document.body.className"), f"[{vp}] switching back to light works")
+            ok(pg.locator(".tsw button[data-theme=dark]").count() == 1 and pg.locator("#theme").count() == 0, f"[{vp}] the team's room has the three-icon switch, not the text button")
+            pg.click(".tsw button[data-theme=dark]"); ok("t-dark" in pg.evaluate("document.body.className") and pg.evaluate("localStorage.getItem('tt_theme')") == "dark", f"[{vp}] switching to dark green works and is remembered")
+            pg.reload(); pg.wait_for_selector("#claims"); ok("t-dark" in pg.evaluate("document.body.className") and pg.locator(".tsw button[data-theme=dark].on").count() == 1, f"[{vp}] the room opens in the remembered theme")
+            pg.click(".tsw button[data-theme=light]"); ok("t-light" in pg.evaluate("document.body.className"), f"[{vp}] switching back to light works")
             ctx.close()
 
         # ---------- B. journeys & logic ----------
@@ -2506,6 +2525,7 @@ def run():
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "group_section": group_section(br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "outline_section": outline_section(br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "tabs_section": tabs_section(br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "fill_section": fill_section(br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "review_section": review_section(br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "insights_section": insights_section(br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "projects_section": projects_section(br, D)
