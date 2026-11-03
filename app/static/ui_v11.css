@@ -91,7 +91,9 @@ html[data-theme="light"] .stile{color:#fff}
 .l1.on{color:var(--act-ink)}
 .mn:not(:has(.l2slot:not([hidden]))) .l1.on{background:var(--act);box-shadow:0 0 0 1px var(--line)}
 .mn:not(:has(.l2slot:not([hidden]))) .l1.on::before{content:"";position:absolute;left:-14px;top:9px;bottom:9px;width:3px;border-radius:3px;background:var(--bar)}
-body.v11 .sub2 .l2slot{margin:0 0 6px 28px;padding-left:12px;border-left:2px solid var(--line);display:flex;flex-direction:column;gap:2px}
+/* 二级菜单（页面自己的 tab）：左边一条树形连接线，从所属一级项图标中心垂下，顶端带节点圆点，层级一眼可见 */
+body.v11 .sub2 .l2slot{position:relative;margin:2px 0 8px 27px;padding-left:12px;border-left:2px solid var(--line2);display:flex;flex-direction:column;gap:2px}
+body.v11 .sub2 .l2slot::before{content:"";position:absolute;left:-5px;top:-5px;width:8px;height:8px;border-radius:50%;background:var(--line2)}
 body.v11 .sub2 .l2slot>*{display:flex!important;flex-direction:column;align-items:stretch;gap:2px!important;width:100%;height:auto;min-height:0;margin:0;padding:0;border:0;border-radius:0;background:none;box-shadow:none;overflow:visible;flex-wrap:nowrap}
 body.v11 .sub2 .l2slot a,body.v11 .sub2 .l2slot button{display:flex;align-items:center;justify-content:space-between;gap:8px;height:auto!important;min-height:0!important;border-bottom:0!important;width:100%;margin:0;padding:8px 12px;border:0;border-radius:9px;background:none;box-shadow:none;color:var(--muted);font-size:14.5px;font-weight:400;line-height:1.4;text-align:left;text-decoration:none;white-space:nowrap;position:relative;overflow:visible}
 body.v11 .sub2 .l2slot a::before,body.v11 .sub2 .l2slot button::before{display:none}
@@ -158,11 +160,23 @@ html body.v11 .sub2 .bot #closeproj,html body.v11 .sub2 .bot #reopen{flex:1;widt
 .v11app.sub-off .shead>div{display:none}
 .v11app.sub-off .mn{width:100%}
 .v11app.sub-off .l1{justify-content:center;padding:6px 0;width:100%}
-.v11app.sub-off .l1 .tx,.v11app.sub-off .l2slot{display:none}
+.v11app.sub-off .l1 .tx{display:none}
 .v11app.sub-off .sub2 .bot{flex-direction:column-reverse;align-items:center}
 .v11app.sub-off .fold::after{transform:rotate(-135deg);margin-left:-3px}
 .v11app.sub-off .cf{display:none}.v11app.sub-off .cs{display:contents}
 html body.v11 .v11app.sub-off .sub2 .bot #closeproj,html body.v11 .v11app.sub-off .sub2 .bot #reopen{flex:none;width:34px;padding:0}
+
+/* 收起态：当前一级项下面的二级菜单缩成一列小圆点（标志层级仍在；点击圆点=切到对应 tab，事件不变；当前项圆点用主题色）。仅桌面端，移动端保持完整文字菜单 */
+@media (min-width:821px){
+.v11app.sub-off .sub2 .l2slot{display:flex;flex-direction:column;align-items:center;gap:7px;margin:4px 0 10px;padding:0;border-left:0;width:100%}
+.v11app.sub-off .sub2 .l2slot::before{display:none}
+.v11app.sub-off .sub2 .l2slot>*{display:flex!important;flex-direction:column!important;align-items:center;gap:7px;width:100%;height:auto;min-height:0;margin:0;padding:0;border:0;background:none;box-shadow:none;overflow:visible}
+.v11app.sub-off .sub2 .l2slot a,.v11app.sub-off .sub2 .l2slot button{display:block;width:8px;height:8px!important;min-height:8px!important;padding:0;border:0;border-radius:50%;background:var(--line2);color:transparent;font-size:0;line-height:0;overflow:hidden;position:static}
+.v11app.sub-off .sub2 .l2slot a:hover,.v11app.sub-off .sub2 .l2slot button:hover:not(:disabled){background:var(--muted)}
+.v11app.sub-off .sub2 .l2slot a.on,.v11app.sub-off .sub2 .l2slot button.on,
+.v11app.sub-off .sub2 .l2slot a[aria-selected="true"],.v11app.sub-off .sub2 .l2slot button[aria-selected="true"],
+.v11app.sub-off .sub2 .l2slot a[aria-current="page"]{background:var(--pri);box-shadow:none;font-weight:400}
+}
 @media (prefers-reduced-motion:reduce){.sub2,.v11app.thin .rail2 .rin{transition:none}}
 @media (max-width:820px){.fold{display:none}.v11app.sub-off .sub2{width:auto;flex-basis:auto}.v11app.sub-off .l1 .tx{display:inline}.v11app.sub-off .shead>div{display:block}.v11app.sub-off .l2slot{display:flex}.v11app.sub-off .cf{display:contents}.v11app.sub-off .cs{display:none}}
 
