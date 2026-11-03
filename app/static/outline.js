@@ -20,7 +20,7 @@ async function outlineView(p) {
   let seg = sessionStorage.getItem("ol_seg") || "outline", sending = false, pending = "", editing = "", qmenu = "", viewer = "host", step = 0, pop = "", L = new Set(), F = new Set(), opened = new Set(), batch = false, picked = new Set(), autoPend = new Set(), autoFail = new Set();
   let files = [], reading = false;   // 附件：已读出文字的文件 {name, text, chars, truncated}
   if (!["outline", "settings", "test"].includes(seg)) seg = "outline";
-  const stat = (t) => { const s = $("#olstat"); if (s) s.textContent = t; };
+  const stat = (t) => { const s = $("#olstat"); if (s) s.textContent = t; else if (t) toast(t); };
   const take = (r) => { S = { ...S, ...r }; V = S.v; try { sessionStorage.setItem("ol_v_" + p.id, V); } catch { /* no storage */ } };
   const cur = () => S.versions.find((x) => x.key === V) || S.versions[0];
   const resetSync = () => { const c = cur(); L = new Set([c.lang]); F = new Set([c.family]); };   // 同步到：一开始只有当前版本
@@ -227,7 +227,7 @@ async function outlineView(p) {
     return `<div class="rf-ver"><button type="button" data-pop="ver" aria-haspopup="true" aria-expanded="${pop === "ver"}">版本：${esc(c.name)} ▾</button>${pop === "ver" ? `<div class="rf-vm" role="menu">${rows}</div>` : ""}</div>`;
   };
   const segHtml = () => [["outline", "大纲"], ["settings", "设置"], ["test", "预览测试"]].map(([k, n]) => `<button type="button" role="tab" data-seg="${k}" class="${seg === k ? "on" : ""}" aria-selected="${seg === k}">${n}</button>`).join("");   // 大纲/设置/预览测试：放在外壳固定的二级行里（#olseg 带 data-subrow），这里只更新里面的按钮
-  const rightHead = () => `<div class="rf-hd ol-hd"><span class="sp"></span><span class="sm mut" id="olstat" role="status" aria-live="polite"></span>${capsule()}${verMenu()}</div>`;
+  const rightHead = () => S.versions.length < 2 ? "" : `<div class="rf-hd ol-hd"><span class="sp"></span><span class="sm mut" id="olstat" role="status" aria-live="polite"></span>${capsule()}${verMenu()}</div>`;
   function drawRight() {
     const r = $("#olright"); if (!r) return;
     const sg = $("#olseg"); if (sg) sg.innerHTML = segHtml();
