@@ -59,6 +59,20 @@ def call(path, body=None, token=None, method=None):
     return json.loads(urllib.request.urlopen(req).read() or b"null")
 
 
+def pick_mode(pg, mode="ai"):
+    """Opening 招募问卷 shows a choice dialog (问卷编写 / 导入问卷链接, 2026-11-03): choose the mode when it shows, skip when it does not."""
+    if pg.locator("#rfpickok").count() == 0:
+        try:
+            pg.wait_for_selector("#rfpickok", timeout=4000)
+        except Exception:
+            return
+    try:   # a click in the page itself: the dialog may be re-drawn while the page settles
+        pg.evaluate("(v) => { const r = document.querySelector('input[name=rfpick][value=' + v + ']'); if (r) { r.checked = true; r.dispatchEvent(new Event('change')); } const b = document.querySelector('#rfpickok'); if (b) b.click(); }", mode)
+        pg.wait_for_selector("#rfpickok", state="detached", timeout=5000)
+    except Exception:
+        return
+
+
 # ---------------- in-page audit helpers ----------------
 AUDIT_JS = r"""
 () => {
@@ -781,7 +795,7 @@ def review_section(br, D):
     call(f"/projects/{pid}/recruiting/form", {"source": "ai", "questions": qs, "goals": [], "need": ""}, adm, "PUT")
     ctx, pg, errs = new_page(br, 1280, token=adm)
     pg.goto(B + "/"); pg.evaluate("sessionStorage.setItem('ptab', 'form')")
-    pg.goto(B + f"/#/p/{pid}/people"); pg.wait_for_selector("#rfbub .rq-bub")
+    pg.goto(B + f"/#/p/{pid}/people"); pick_mode(pg); pg.wait_for_selector("#rfbub .rq-bub")
     chips = [x.strip() for x in pg.locator("#rfbub .rq-bub").all_inner_texts()]
     ok(chips == ["检查问卷", "对照研究目标", "优化措辞的中立性"], f"[review] with nobody answering yet the 建议 bubbles above the input are these three, no 预估通过率 (got {chips})")
     ok(pg.locator("#rfctx").count() == 0 and pg.locator("#rflib").count() == 0, "[review] no context chips and no 参考研究库 tick above the conversation (the library always goes along, 2026-11-03)")
@@ -805,7 +819,7 @@ def review_section(br, D):
     ok(pg.locator(".rf-err button").count() == 0 and pg.locator("#rfchat .rf-bad[role=alert]").count() == 1 and pg.locator("[data-chip=goals]").is_disabled() and pg.locator("[data-chip=review]").is_enabled(), "[review] a refusal shows no retry, shows why the model cannot be used (above the conversation) and greys out only the buttons that need it")
     pg.unroute("**/recruiting/form/chat")
     errs.clear()   # the 502 / 503 above were made up on purpose
-    pg.reload(); pg.wait_for_selector("#rfbub .rq-bub")
+    pg.reload(); pick_mode(pg); pg.wait_for_selector("#rfbub .rq-bub")
     ok("作答的统计数字" not in pg.inner_text(".rf-inp") and "AI 服务商" not in pg.inner_text(".rf-inp"), "[review] there is no outbound notice by the input (user and legal, 2026-11-01)")
     pg.fill("#rfmsg", "为什么第 1 题要筛人？"); pg.click("#rfsend")
     pg.wait_for_selector(".rf-kind.ans")
@@ -849,7 +863,7 @@ def review_section(br, D):
     pg.locator(".rf-sg [data-adopt]").first.click()
     ok(wait_until(lambda: pg.locator(".rf-q .rf-bd.new").count() == 1 and pg.locator(".rf-sg").count() < n, 8), "[review] adopting changes that question only, marks it 刚改, and the suggestion is gone")
     ok(pg.locator("#rfundo").is_enabled(), "[review] the change can be undone")
-    pg.reload(); pg.wait_for_selector("#rfbub .rq-bub")
+    pg.reload(); pick_mode(pg); pg.wait_for_selector("#rfbub .rq-bub")
     got = call(f"/projects/{pid}/recruiting/form", None, adm)
     ok(all(s["kind"] != "exclusive" for s in got["suggestions"]), "[review] the fixed suggestion does not come back after a reload")
     if got["suggestions"]:
@@ -859,7 +873,7 @@ def review_section(br, D):
     ctx.close()
     ctx, pg, errs = new_page(br, 390, token=adm)
     pg.goto(B + "/"); pg.evaluate("sessionStorage.setItem('ptab', 'form')")
-    pg.goto(B + f"/#/p/{pid}/people"); pg.wait_for_selector("#rfbub .rq-bub")
+    pg.goto(B + f"/#/p/{pid}/people"); pick_mode(pg); pg.wait_for_selector("#rfbub .rq-bub")
     audit_page(pg, "review chat/phone", errs)
     pg.screenshot(path=os.path.join(ROOT, "qa_shots", "review_390.png"))
     ctx.close()
@@ -879,7 +893,7 @@ def languages_section(br, D):
     pg.goto(B + "/#/projects"); pg.wait_for_selector(".card")
     ok("中文、English" in pg.locator(".card", has_text="QA 多语言项目").first.inner_text(), "[languages] the project card lists every language the project allows")
     # the questionnaire's 版本 dropdown
-    pg.goto(B + f"/#/p/{pid}/people"); pg.wait_for_selector("#rfvb")
+    pg.goto(B + f"/#/p/{pid}/people"); pick_mode(pg); pg.wait_for_selector("#rfvb")
     pg.click("#rfvb"); pg.wait_for_selector("#rfvm .rf-vi")
     items = [x.strip() for x in pg.locator("#rfvm .rf-vi").all_inner_texts()]
     ok(items[0].startswith("中文（原文）") and any(x.startswith("English") for x in items) and not any("仅团队" in x for x in items[:2]), f"[languages] the version menu: the original first, project languages without a tag (got {items})")
@@ -916,7 +930,7 @@ def languages_section(br, D):
     c2.close()
     # the original changes: the other versions say so, and 更新译文 brings them back
     call(f"/projects/{pid}/recruiting/form", {"source": "ai", "questions": [qs[0], {**qs[1], "text": "购买时最看重什么？"}], "goals": [], "need": ""}, adm, "PUT")
-    pg.reload(); pg.wait_for_selector("#rfvb"); pg.click("#rfvb")
+    pg.reload(); pick_mode(pg); pg.wait_for_selector("#rfvb"); pg.click("#rfvb")
     ok(wait_until(lambda: "译文待更新" in pg.inner_text("#rfvm"), 5) or True, "[languages] (menu)")
     pg.click("#rfvm [data-ver=en]"); pg.wait_for_selector("#rtupd")
     ok("译文待更新" in pg.inner_text("#rfout"), "[languages] after the original changed, the other version says its translation is out of date")
@@ -969,7 +983,7 @@ def group_section(br, D):
     ctx.close()
     ctx, pg, errs = new_page(br, 390, token=adm)
     pg.goto(B + "/"); pg.evaluate("sessionStorage.setItem('ptab', 'list')")  # (the storage belongs to the site, so open it first)
-    pg.goto(B + f"/#/p/{pid}/people"); pg.wait_for_selector("[data-inv]"); pg.locator("[data-inv]").first.click(); pg.wait_for_selector("[name=kind]")
+    pg.goto(B + f"/#/p/{pid}/people"); pick_mode(pg); pg.wait_for_selector("[data-inv]"); pg.locator("[data-inv]").first.click(); pg.wait_for_selector("[name=kind]")
     pg.select_option("[name=kind]", "group")
     ok(pg.locator("#grouppick").is_visible() and not pg.locator("#depthpick").is_visible(), "[group] the new-session dialog switches to a multi-person picker")
     audit_page(pg, "dialog 新建座谈会/phone", errs)
@@ -1209,7 +1223,7 @@ def recruit_section(br, D):
     ctx, pg, errs = new_page(br, 1280, token=rs)
     pg.on("dialog", lambda d: d.accept())
     pg.goto(B + "/"); pg.evaluate("sessionStorage.setItem('ptab','form')")  # (the storage belongs to the site, so open it first)
-    pg.goto(B + f"/#/p/{pid}/people"); pg.wait_for_selector("#rfws")
+    pg.goto(B + f"/#/p/{pid}/people"); pick_mode(pg); pg.wait_for_selector("#rfws")
     ok(pg.locator("main .head h1").count() == 0 or not pg.locator("main .head h1").first.is_visible(), "[recruit] the 甄别设定 page does not repeat its name as a big title under the tab")
     # the workspace: the conversation on the left, the live outline on the right, each scrolls inside its own frame and the page itself does not scroll
     ok(pg.locator("#rfchat").count() == 1 and pg.locator("#rfout").count() == 1 and pg.evaluate("document.body.classList.contains('rfmode')"), "[recruit] the questionnaire is a workspace: conversation on the left, outline on the right")
@@ -1228,7 +1242,7 @@ def recruit_section(br, D):
     n0 = pg.locator("#rfout .rf-q").count()
     # layout: one-row headers, the mode switch on the left (with the conversation), the workspace runs to the bottom of the window, a divider between the frames
     tops = pg.evaluate("[...document.querySelectorAll('.rf-hd')].map((h) => h.getBoundingClientRect().height)")
-    ok(len(tops) == 2 and all(h <= 100 for h in tops) and pg.locator("#rfbody .rq-sub [data-mode=ai]").count() == 1 and pg.locator("#rfbody .rq-sub [data-mode=html]").count() == 1 and pg.locator("input[name=rfmode]").count() == 0, "[recruit] both frame headers are one row, or two when the icons do not fit (round 3, 2026-11-03), and the mode row (问卷编写 / 导入问卷链接) sits under 招募问卷")
+    ok(len(tops) == 2 and all(h <= 100 for h in tops) and pg.locator("#rfswitch").count() == 1 and pg.locator("input[name=rfmode]").count() == 0, "[recruit] both frame headers are one row, or two when the icons do not fit (round 3, 2026-11-03), and the 切换 button sits in the header (the choice dialog opened before it)")
     ok(pg.evaluate("(() => { const b = document.querySelector('#rfws').getBoundingClientRect().bottom; return b >= innerHeight - 40 && b <= innerHeight; })()"), "[recruit] the workspace runs to the bottom of the window")
     ok(pg.evaluate("(() => { const m = document.querySelector('#rfmsg').closest('.rf-pane').getBoundingClientRect(), r = document.querySelector('#rfright').getBoundingClientRect(); const x = m.width / (m.width + r.width); return x > 0.38 && x < 0.46; })()"), "[recruit] the conversation takes about 42% and the outline the rest")
     ok(pg.evaluate("[...document.querySelectorAll('#rfchat .rf-msg')].every((m) => m.getBoundingClientRect().width <= 561)"), "[recruit] a conversation message is never wider than 560px")
@@ -1239,7 +1253,7 @@ def recruit_section(br, D):
     pg.dblclick("#rfsplit")
     ok(abs(pg.evaluate("document.querySelector('#rfmsg').closest('.rf-pane').getBoundingClientRect().width") - w0) < 6, "[recruit] a double click on the divider restores the default width")
     c3, pg3, e3 = new_page(br, 1912, 914, token=rs); pg3.goto(B + "/"); pg3.evaluate("sessionStorage.setItem('ptab','form')")  # a big screen: the workspace is much wider than the old 1240px page, and keeps a margin on the right
-    pg3.goto(B + f"/#/p/{pid}/people"); pg3.wait_for_selector("#rfws")
+    pg3.goto(B + f"/#/p/{pid}/people"); pick_mode(pg3); pg3.wait_for_selector("#rfws")
     ok(pg3.evaluate("(() => { const r = document.querySelector('#rfws').getBoundingClientRect(); return r.width > 1300 && innerWidth - r.right >= 16 && innerWidth - r.right <= 80; })()"), "[recruit] on a big screen the workspace is wider than before and keeps a margin on the right")
     c3.close()
     # a message typed by hand
@@ -1351,10 +1365,10 @@ def recruit_section(br, D):
     ok("价格和成分" in pg.inner_text("#saview"), "[recruit] the candidate's answers are kept with them")
     ok(pg.locator("#saeb, #sasave, textarea[name=text]").count() == 0 and "只能查看" in pg.inner_text(".modal"), "[recruit] the answers dialog is view-only: no edit, no save, no text box")
     pg.click("#c")
-    pg.click("#ptab-form-t"); pg.wait_for_selector("#rfclose")
+    pg.click("#ptab-form-t"); pick_mode(pg); pg.wait_for_selector("#rfclose")
     ok(not pg.evaluate("document.documentElement.scrollHeight > innerHeight + 2"), "[recruit] switching back keeps the page from scrolling")
     pg.click("#rfclose"); pg.wait_for_selector("#rfpub")
-    pg.click("[data-mode=html]"); pg.wait_for_selector("#rfurl")
+    pg.evaluate("document.querySelector('#rfswitch').click()"); pick_mode(pg, "html"); pg.wait_for_selector("#rfurl")
     pg.fill("#rfurl", "https://survey.example.com/s/qa"); pg.click("#rfsave"); pg.wait_for_selector("#rfedit")
     ok(pg.locator("#rfurl").get_attribute("readonly") is not None and pg.locator("#rfedit").count() == 1 and pg.locator("#rfopen").is_visible() and "survey.example.com" in pg.input_value("#rfurl"), "[recruit] an HTML questionnaire link is saved and can be opened for testing")
     audit_page(pg, "recruiting html link/desktop", errs)
@@ -1509,10 +1523,10 @@ def recruit_section(br, D):
 
     ctx.close()
     ctx, pg, errs = new_page(br, 390, token=rs)
-    pg.goto(B + f"/#/p/{pid}/people"); pg.wait_for_selector("#imp2")
+    pg.goto(B + f"/#/p/{pid}/people"); pick_mode(pg); pg.wait_for_selector("#imp2")
     audit_page(pg, "recruiting/phone", errs)
     call(f"/projects/{pid}/recruiting/form", {"source": "ai", "questions": [{"type": "text", "text": "最近一次购买时看重什么？"}]}, rs, method="PUT")  # (the form was left on the HTML link: back to written questions)
-    pg.evaluate("sessionStorage.setItem('ptab','form')"); pg.reload(); pg.wait_for_selector("#rfws")
+    pg.evaluate("sessionStorage.setItem('ptab','form')"); pg.reload(); pick_mode(pg); pg.wait_for_selector("#rfws")
     audit_page(pg, "recruiting workspace/phone", errs)
     ctx.close()
 
@@ -2387,7 +2401,7 @@ def tabs_section(br, D):
     steps = [("甄别设定", None), ("甄别设定", "配额与受访者名单"), ("甄别设定", "招募问卷"), ("访谈", None), ("直播间", None), ("洞察与片段", None)] + [("洞察与片段", n) for n in ["报告", "问题分析", "精彩片段", "对话", "受访者数据"]] + [("甄别设定", None)]
     for w in ((1366, 1920) if os.environ.get("QA_DESKTOP") else (1366, 1920, 390)):
         ctx, pg, errs = new_page(real, w, 860, token=adm)
-        pg.goto(B + f"/#/p/{pid}/people"); pg.wait_for_selector(".sub2 .l1"); pg.wait_for_timeout(600)
+        pg.goto(B + f"/#/p/{pid}/people"); pick_mode(pg); pg.wait_for_selector(".sub2 .l1"); pg.wait_for_timeout(600)
         pg.evaluate("window.__nodes = { '.rail2': document.querySelector('.rail2'), '.top2': document.querySelector('.top2'), '.sub2': document.querySelector('.sub2') }; window.__mark = 1")
         rows = []
         for i, (tab, sub) in enumerate(steps):
@@ -2571,11 +2585,11 @@ def run():
         pg.click("[data-pf=closed]"); ok(pg.locator(".pcard:visible").count() == 1, "the 'closed' filter shows it"); pg.click("[data-pf=open]")
         pg.goto(B + f"/#/p/{pid}"); pg.wait_for_selector("#reopen"); pg.click("#reopen"); pg.wait_for_selector("#closeproj")
         # SG only: add participant dialog offers only Singapore; staff cannot create other-country interviews
-        pg.goto(B + f"/#/p/{pid}/people"); pg.wait_for_selector("#np")
+        pg.goto(B + f"/#/p/{pid}/people"); pick_mode(pg); pg.wait_for_selector("#np")
         pg.click("#np"); opts = pg.locator("#f [name=country] option").all_inner_texts(); ok(len(opts) == 1 and "SG" in opts[0], f"only Singapore should be selectable, got {opts}")
         pg.keyboard.press("Escape"); pg.mouse.click(5, 5)
         # id participant shows 'not open'
-        pg.goto(B + f"/#/p/{pid}/people"); pg.wait_for_selector("text=地区暂未开放")
+        pg.goto(B + f"/#/p/{pid}/people"); pick_mode(pg); pg.wait_for_selector("text=地区暂未开放")
         # rooms are grouped: in progress / upcoming / ended
         pg.goto(B + f"/#/p/{pid}/rooms"); pg.wait_for_selector(".rmt")
         counts = {b.inner_text().strip(): int(b.get_attribute("data-n")) for b in pg.locator(".rmt").all()}
@@ -2589,7 +2603,7 @@ def run():
         ctx.close()
         # phones: list tables turn into labelled cards
         ctx, pg, errs = new_page(br, 390, token=D["tok"]["admin"])
-        pg.goto(B + f"/#/p/{pid}/people"); pg.wait_for_selector(".tbl.rc")
+        pg.goto(B + f"/#/p/{pid}/people"); pick_mode(pg); pg.wait_for_selector(".tbl.rc")
         ok(pg.evaluate("getComputedStyle(document.querySelector('.tbl.rc thead')).display") == "none", "phone: table header hidden, rows shown as cards")
         ok(pg.evaluate("document.querySelector('.tbl.rc tbody .code').closest('td').dataset.l") == "编号" and pg.evaluate("document.querySelector('.tbl.rc tbody td').dataset.l") == "选择", "phone: every card line carries its column name")
         ctx.close()
@@ -2783,10 +2797,10 @@ def run():
             pg.click("[data-sh]"); pg.wait_for_selector(".modal code.copy")
             audit_page(pg, f"dialog 分享链接/{vp}", errs)
             # recruiting / sessions dialogs
-            pg.goto(B + f"/#/p/{pid}/people"); pg.wait_for_selector("#np"); pg.click("#np"); pg.wait_for_selector(".modal form#f")
+            pg.goto(B + f"/#/p/{pid}/people"); pick_mode(pg); pg.wait_for_selector("#np"); pg.click("#np"); pg.wait_for_selector(".modal form#f")
             audit_page(pg, f"dialog 添加受访者/{vp}", errs)
             pg.keyboard.press("Escape"); ok(pg.locator(".modal").count() == 0, f"[{vp}] Escape closes the dialog")
-            pg.evaluate("sessionStorage.setItem('ptab', 'list')"); pg.goto(B + f"/#/p/{pid}/people"); pg.wait_for_selector("[data-inv]"); pg.locator("[data-inv]").first.click(); pg.wait_for_selector(".modal form#f [name=participant_id]")
+            pg.evaluate("sessionStorage.setItem('ptab', 'list')"); pg.goto(B + f"/#/p/{pid}/people"); pick_mode(pg); pg.wait_for_selector("[data-inv]"); pg.locator("[data-inv]").first.click(); pg.wait_for_selector(".modal form#f [name=participant_id]")
             audit_page(pg, f"dialog 新建场次/{vp}", errs)
             pg.keyboard.press("Escape")
             # the live room page: a status button shows only that status

@@ -70,9 +70,6 @@ html body.rfmode .v11app .body2>main{scrollbar-gutter:auto}
 .rq-ferr[hidden]{display:none}
 
 /* 第三轮（效果图 questionnaire_round3_mockup.html）：招募问卷下的三级菜单、细线图标、选项行距 */
-#rfbody .rq-sub{display:flex;gap:18px;border-bottom:1px solid var(--line);margin:0 0 10px;padding:0 12px;background:var(--surface)}
-#rfbody .rq-sub button{background:none;border:0;padding:8px 0;font:inherit;font-size:13px;color:var(--mut);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
-#rfbody .rq-sub button.on{color:var(--ink);font-weight:700;border-bottom-color:var(--ink)}
 #rfws .rf-ico,#rfbody .rf-ico{width:16px;height:16px;vertical-align:-3px;margin-right:6px;flex:none}
 #rfws .rq-more .rf-ico{width:18px;height:18px;margin:0;vertical-align:middle}
 #rfws .rq-grip .rf-ico{width:14px;height:14px;margin:0;vertical-align:middle}
@@ -89,3 +86,10 @@ html body.rfmode .v11app .body2>main{scrollbar-gutter:auto}
 #rfright .rf-hd{height:auto;min-height:52px;flex-wrap:wrap;row-gap:6px;padding:8px 12px}
 #rfright .rf-hd button{white-space:nowrap}
 @media (max-width:700px){#rfws .rq-grip{width:36px;height:36px;left:0;top:6px;display:grid;place-items:center}}
+
+/* 选择问卷的方式（点“招募问卷”时弹出，单选）：页面中间一个小框 */
+.rq-pick-back{position:fixed;inset:0;background:rgba(6,35,25,.32);display:flex;align-items:center;justify-content:center;z-index:90;padding:16px}
+.rq-pick{background:var(--surface);border:1px solid var(--line2);border-radius:14px;padding:18px 20px;width:min(360px,100%);box-shadow:0 12px 40px rgba(11,46,37,.28);display:flex;flex-direction:column;gap:10px}
+.rq-pick h3{margin:0 0 4px;font-size:16px}
+.rq-pick label{display:flex;align-items:center;gap:10px;font-size:14px;min-height:36px;cursor:pointer}
+.rq-pick-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:6px}

@@ -474,18 +474,26 @@ ${text}
   const setRight = (open) => { rightOpen = open; try { sessionStorage.setItem("rf_right", open ? "1" : "0"); } catch (e) { /* private window */ } const w = $("#rfws"); if (w) w.classList.toggle("rf-collapsed", !open); fit(); };
   function panels() {
     if (mode === "html") return `<div class="rf-htmlmode"><label class="field">问卷链接（https://）<input id="rfurl" type="url" value="${esc(f.html_url)}" placeholder="https://…（在别的系统里做好的问卷）" maxlength="500" ${htmlLocked ? "readonly" : ""}></label>
-      <div class="row">${htmlLocked ? `<span class="tag ok">已锁定</span><button class="s" id="rfedit" type="button">编辑</button>` : `<button class="p" id="rfsave" type="button">保存并锁定</button>`}<button class="s" id="rfopen" type="button" ${f.html_url ? "" : "disabled"}>${rfIcon(RF_IC.ext)}新窗口打开</button></div></div>`;
-    return `<div class="rf-ws${rightOpen ? "" : " rf-collapsed"}" id="rfws"><div class="rf-pane"><div class="rf-hd"><span class="sp"></span><button class="s" type="button" id="rfundo" disabled>${rfIcon(RF_IC.undo)}撤销</button><button class="s" type="button" id="rfredo" disabled>${rfIcon(RF_IC.redo)}重做</button><button class="s" type="button" id="rfexp">${rfIcon(RF_IC.expand)}展开大纲</button></div>
+      <div class="row"><button class="s" type="button" id="rfswitch">切换</button>${htmlLocked ? `<span class="tag ok">已锁定</span><button class="s" id="rfedit" type="button">编辑</button>` : `<button class="p" id="rfsave" type="button">保存并锁定</button>`}<button class="s" id="rfopen" type="button" ${f.html_url ? "" : "disabled"}>${rfIcon(RF_IC.ext)}新窗口打开</button></div></div>`;
+    return `<div class="rf-ws${rightOpen ? "" : " rf-collapsed"}" id="rfws"><div class="rf-pane"><div class="rf-hd"><button class="s" type="button" id="rfswitch">切换</button><span class="sp"></span><button class="s" type="button" id="rfundo" disabled>${rfIcon(RF_IC.undo)}撤销</button><button class="s" type="button" id="rfredo" disabled>${rfIcon(RF_IC.redo)}重做</button><button class="s" type="button" id="rfexp">${rfIcon(RF_IC.expand)}展开大纲</button></div>
       <div class="rf-sc" id="rfchat"></div>
       <div id="rfsel" hidden></div><div class="rq-bubs" id="rfbub"></div><div class="rf-inp"><div class="rq-files" id="rfarow" hidden></div><div class="rf-box"><button class="rq-clip" type="button" id="rfclip" aria-label="附件" title="附件">${RF_CLIP}</button><input type="file" id="rffile" hidden accept=".pdf,.docx,.txt,.md,.csv,image/*,video/*"><textarea id="rfmsg" rows="2" maxlength="2000" placeholder="请输入修改要求或问题，例如“帮我起草问卷”" aria-label="对话输入"></textarea><button class="p rf-send" type="button" id="rfsend" aria-label="发送">${rfIcon(RF_IC.send)}</button></div><div class="rq-ferr" id="rfferr" role="alert" hidden></div></div></div>
       <div class="rf-split" id="rfsplit" role="separator" aria-orientation="vertical" aria-label="拖动调整对话和大纲的宽度（双击恢复）" tabindex="0"><i></i></div><div class="rf-pane" id="rfright"></div></div>`;
   }
-  const modeRow = () => `<div class="rq-sub" role="tablist" aria-label="问卷来源"><button type="button" role="tab" data-mode="ai" class="${mode === "ai" ? "on" : ""}" aria-selected="${mode === "ai"}">问卷编写</button><button type="button" role="tab" data-mode="html" class="${mode === "html" ? "on" : ""}" aria-selected="${mode === "html"}">导入问卷链接</button></div>`;
-  const draw = () => { $("#rfbody").innerHTML = modeRow() + panels(); wire(); };
+  let picking = true, pickMode = mode;   // the choice dialog opens on each visit to the page (2026-11-03); 切换 opens it again
+  const pickHtml = () => !picking ? "" : `<div class="rq-pick-back" id="rfpickback"><div class="rq-pick" role="dialog" aria-modal="true" aria-labelledby="rfpickt">
+      <h3 id="rfpickt">选择招募问卷的方式</h3>
+      <label><input type="radio" name="rfpick" value="ai" ${pickMode === "ai" ? "checked" : ""}>问卷编写</label>
+      <label><input type="radio" name="rfpick" value="html" ${pickMode === "html" ? "checked" : ""}>导入问卷链接</label>
+      <div class="rq-pick-btns"><button class="s" type="button" id="rfpickno">取消</button><button class="p" type="button" id="rfpickok">确定</button></div></div></div>`;
+  const draw = () => { $("#rfbody").innerHTML = panels() + pickHtml(); wire(); };
   const fit = () => { const w = $("#rfws"); if (w && w.offsetParent) w.style.height = Math.max(380, innerHeight - w.getBoundingClientRect().top - 18) + "px"; };
 
   function wire() {
-    document.querySelectorAll("[data-mode]").forEach((b) => (b.onclick = () => { mode = b.dataset.mode; draw(); }));
+    document.querySelectorAll("input[name=rfpick]").forEach((r) => (r.onchange = () => { pickMode = r.value; }));
+    const pok = $("#rfpickok"); if (pok) pok.onclick = () => { mode = pickMode; picking = false; draw(); };
+    const pno = $("#rfpickno"); if (pno) pno.onclick = () => { picking = false; draw(); };
+    const sw = $("#rfswitch"); if (sw) sw.onclick = () => { pickMode = mode; picking = true; draw(); };
     const sv = $("#rfsave"); if (sv) sv.onclick = guard(async () => { f = { ...f, ...(await api(`/projects/${p.id}/recruiting/form`, { method: "PUT", body: { source: "html", html_url: $("#rfurl").value.trim() } })) }; htmlLocked = true; draw(); toast("链接已保存，已锁定"); });
     const op = $("#rfopen"); if (op) op.onclick = () => window.open(f.html_url, "_blank", "noopener,noreferrer");
     const ed = $("#rfedit"); if (ed) ed.onclick = () => { htmlLocked = false; draw(); const u = $("#rfurl"); if (u) u.focus(); };
@@ -523,6 +531,6 @@ ${text}
     s.onkeydown = (e) => { if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return; e.preventDefault(); const cur = parseFloat(w.style.getPropertyValue("--rfl")) || 42; setRatio(cur + (e.key === "ArrowRight" ? 2 : -2)); try { localStorage.setItem(ratioKey, parseFloat(w.style.getPropertyValue("--rfl")) || 42); } catch { /* no storage */ } };
   }
   pageOn("rf-fit", window, "resize", fit);
-  const html = `<div class="rf" style="padding:0"><div id="rfbody">${modeRow()}${panels()}</div></div>`;
+  const html = `<div class="rf" style="padding:0"><div id="rfbody">${panels()}${pickHtml()}</div></div>`;
   return { html, wire, fit };
 }
