@@ -2,7 +2,7 @@
    受访者数据：三个数字 + 受访者表，鼠标移到某一行出详细卡片（手机上点一下）；报告：整个项目的研究报告（页面里看 + 下载 Word）；
    问题分析：按“访谈”页大纲里的每个问题归纳回答；精彩片段：片段卡片墙 + 集锦；对话：只围绕本项目的 AI 提问（引文由服务器从转写里原样取）。
    依赖 index.html 里的 api / esc / toast / guard / $ / STAFF / ME / STATUS / CONFIG / reelsSection / shell。 */
-const INS_TABS = [["r", "受访者数据"], ["p", "报告"], ["q", "问题分析"], ["v", "精彩片段"], ["c", "对话"]];
+const INS_TABS = [["r", "回复"], ["p", "报告"], ["q", "逐题分析"], ["v", "片段"], ["c", "AI 对话"]];   // A 案命名（用户 2026-11-04 定）
 const insClock = (ms) => { const s = Math.max(0, Math.round((ms || 0) / 1000)); return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`; };
 const insAiNotice = () => "";   // the notice about where questions go was removed (user and legal, 2026-11-01)
 const insDownload = (p, url, name) => guard(async () => {  // a download needs the login header, so fetch it and hand the browser a file
@@ -17,7 +17,7 @@ const insAnswer = (r) => (r.insufficient ? `<div class="mut">${esc(r.message)}</
 async function insightsHub(p, my) {
   const team = STAFF(), tabs = team ? INS_TABS : [INS_TABS[0]];
   let tab = sessionStorage.getItem("itab") || "r"; if (!tabs.some((t) => t[0] === tab)) tab = "r";
-  shell(`${team ? `<div class="hubtabs sub" id="itabs" role="tablist" aria-label="洞察与片段">${tabs.map(([k, n]) => `<a href="#" role="tab" data-k="${k}">${n}</a>`).join("")}</div>` : ""}<div id="ipanel" class="ins ins-ws"></div>`, { active: "insights", p });
+  shell(`${team ? `<div class="hubtabs sub" id="itabs" role="tablist" aria-label="洞察">${team ? `<span class="l2grp">洞察 · AI 分析</span>` : ""}${tabs.map(([k, n]) => `<a href="#" role="tab" data-k="${k}">${n}</a>`).join("")}</div>` : ""}<div id="ipanel" class="ins ins-ws"></div>`, { active: "insights", p });
   document.body.classList.add("rfmode", "pgw");   // the page itself does not scroll: each tab's content scrolls inside its own box
   const fit = () => { const b = $("#ipanel"); if (b && b.offsetParent) b.style.height = Math.max(320, innerHeight - b.getBoundingClientRect().top - 18) + "px"; };
   fit(); pageOn("fit", window, "resize", fit);

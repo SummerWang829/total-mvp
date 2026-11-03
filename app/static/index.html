@@ -1,5 +1,6 @@
 <!doctype html>
 <html lang="zh-CN" data-theme="light"><head><meta charset="utf-8"><script src="/theme.js"></script><meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" href="/logo_phoenix.svg" type="image/svg+xml">
 <title>星桐 TOTAL · 深访</title><link rel="stylesheet" href="/app.css">
 <link rel="stylesheet" href="/editorial.css"><link rel="stylesheet" href="/fonts.css"><link rel="stylesheet" href="/ui_v7.css"><link rel="stylesheet" href="/ui_v8.css"><link rel="stylesheet" href="/ui_rooms.css">
 <link rel="stylesheet" href="/chat.css"><link rel="stylesheet" href="/chatsel.css"><link rel="stylesheet" href="/ui_list.css"><link rel="stylesheet" href="/ui_screening.css"><link rel="stylesheet" href="/ui_outline.css"><link rel="stylesheet" href="/ui_wizard.css"><link rel="stylesheet" href="/ui_overview.css"><link rel="stylesheet" href="/ui_ai.css"><link rel="stylesheet" href="/ui_v6.css"><link rel="stylesheet" href="/ui_global.css"><link rel="stylesheet" href="/ui_v9.css"><link rel="stylesheet" href="/ui_v10.css"><link rel="stylesheet" href="/ui_responsive.css"><link rel="stylesheet" href="/ui_icons.css"><link rel="stylesheet" href="/ui_layout.css"><link rel="stylesheet" href="/ui_font.css"><link rel="stylesheet" href="/ui_v11.css"></head>
@@ -21,6 +22,7 @@
 <script src="/respondent.js"></script>
 <script src="/rooms.js"></script>
 <script src="/invite.js"></script>
+<script src="/imports.js"></script>
 <script src="/logo.js"></script>
 <script>
 let ME = null, PROJECTS = null, DEMO_ORG = false;
@@ -317,7 +319,7 @@ const RULE_OPS = [["equals", "等于"], ["in", "是其中之一"], ["not_in", "�
 const RULE_EFFECTS = [["require", "必须满足"], ["exclude", "命中就排除"], ["flag", "命中就让人工看"]];
 async function peopleView(p) {
   const my = renderSeq;
-  let [parts, its, rec, form, lib] = await Promise.all([api(`/projects/${p.id}/participants`), api(`/projects/${p.id}/interviews`), api(`/projects/${p.id}/recruiting`), api(`/projects/${p.id}/recruiting/form`), api(`/projects/${p.id}/recruiting/tags`)]);
+  let [parts, its, rec, form, lib, impB] = await Promise.all([api(`/projects/${p.id}/participants`), api(`/projects/${p.id}/interviews`), api(`/projects/${p.id}/recruiting`), api(`/projects/${p.id}/recruiting/form`), api(`/projects/${p.id}/recruiting/tags`), api(`/projects/${p.id}/recruiting/import/batches`).catch(() => ({ batches: [], orphans_pending: 0 }))]);
   const rf = rfCard(p, form), rd = await rdBuild(p, rec);
   if (stale(my)) return;
   const countries = [...new Set(parts.map((x) => x.country).filter(Boolean))].sort(), langs = [...new Set(parts.map((x) => x.language).filter(Boolean))];
@@ -361,7 +363,7 @@ async function peopleView(p) {
         <td>${tier}</td>
         <td>${x.anonymized ? "" : `<div class="lbox">${tags || `<span class="sm mut">—</span>`}<span class="lbtns"><button class="sqb" type="button" data-tadd="${x.id}" aria-label="给 ${esc(x.name)} 添加标签">＋</button><button class="sqb${TAG_DEL.has(x.id) ? " on" : ""}" type="button" data-tdel="${x.id}" aria-label="去掉 ${esc(x.name)} 的标签">－</button></span></div>`}${bad.size ? `<div class="tgwarn" role="alert">“${esc(clash(x.tags)[0][0])}”和“${esc(clash(x.tags)[0][1])}”互斥，请去掉其中一个。</div>` : ""}</td>
         <td data-l="问卷答案">${x.anonymized ? "" : x.screener ? `<button class="s" data-scr="${x.id}">查看详情</button>` : `<span class="stn">无答案</span>`}</td>
-        <td data-l="来源"><span class="sm mut${x.source === "import" ? " imp" : ""}">${esc(srcName(x))}</span></td>
+        <td data-l="来源"><span class="sm mut srcname${x.source === "import" ? " imp" : ""}" title="${esc(srcName(x))}">${esc(srcName(x))}</span></td>
         ${RC ? "" : `<td class="acts">${x.anonymized || x.screening !== "eligible" || x.screen_result === "disqualified" ? "" : (() => { const iv = invOf(x); return iv ? `<button class="s" data-upd="${iv.id}"${iv.status === "ended" ? ' disabled title="访谈已结束"' : ""}>更新邀请函</button>${iv.mail_status === "failed" ? `<div class="mailwarn">邮件没发出去 · <a data-resend="${iv.id}" role="button" tabindex="0">重发</a></div>` : ""}` : `<button class="s p" data-inv="${x.id}">发送邀请函</button>`; })()}</td>`}
         ${RC ? "" : `<td class="c">${x.anonymized ? "" : `<button type="button" class="xdel" data-erase="${x.id}" data-name="${esc(x.name)}" aria-label="删除 ${esc(x.name)} 的数据" title="删除数据">×</button>`}</td>`}</tr>`; };
   const ptab = sessionStorage.getItem("ptab") === "list" ? "list" : "form";  // 招募问卷 is a workspace (the page does not scroll); the quotas and the people are on the other tab
@@ -369,8 +371,9 @@ async function peopleView(p) {
     <div class="hubtabs sub" role="tablist" aria-label="甄别设定"><a href="#" role="tab" id="ptab-form-t" class="${ptab === "form" ? "on" : ""}" aria-selected="${ptab === "form"}">招募问卷</a><a href="#" role="tab" id="ptab-list-t" class="${ptab === "list" ? "on" : ""}" aria-selected="${ptab === "list"}">配额与受访者名单</a></div>
     <div id="ptab-form" ${ptab === "form" ? "" : "hidden"}>${rf.html}</div><div id="ptab-list" ${ptab === "list" ? "" : "hidden"}>
     ${rd.html}
+    ${impBatchBar(impB.batches, impB.orphans_pending)}
     <div class="card" id="plist"><div class="row rd-tool"><h3 style="margin:0">受访者名单 <span class="sm mut" id="plcount">共 ${parts.length} 人${shown.length !== parts.length ? `，当前显示 ${shown.length}` : ""}</span></h3><span class="sp"></span>
-      <button type="button" id="imp2">导入名单（外部渠道）</button><button type="button" id="np">添加受访者</button><input type="checkbox" class="more-cb" id="pmore" aria-hidden="true"><label class="more-lab" for="pmore">更多</label><div class="mbody"><button type="button" id="pcopy"${parts.length ? "" : " disabled"}>复制名单</button>
+      <button type="button" id="imp3" class="p">导入甄别数据（Confirmit）</button><button type="button" id="imp2">导入名单（外部渠道）</button><button type="button" id="np">添加受访者</button><input type="checkbox" class="more-cb" id="pmore" aria-hidden="true"><label class="more-lab" for="pmore">更多</label><div class="mbody"><button type="button" id="pcopy"${parts.length ? "" : " disabled"}>复制名单</button>
       <span class="rd-menu"><button type="button" id="pexp" aria-haspopup="true" aria-expanded="false"${parts.length ? "" : " disabled"}>导出 ▾</button><div class="rd-pop" id="pexpm" role="menu" hidden>
         <button type="button" role="menuitem" data-exp="all">全部名单（CSV，含联系方式）</button><button type="button" role="menuitem" data-exp="shown">当前筛选结果（CSV）</button><button type="button" role="menuitem" data-exp="picked">已勾选的人（CSV）</button><button type="button" role="menuitem" data-exp="anon">不含姓名和邮箱（给客户看）</button></div></span></div>${RC ? "" : `<span class="sm mut" id="selcount">已选 0 人</span><button type="button" id="binv" class="p">批量邀请</button><button type="button" id="bdel" class="warn">批量删除</button>`}</div>
       ${parts.length ? `<div class="fres" id="fres"></div><div class="lcf" id="bdelcf" role="alert" hidden></div>` : ""}</div>
@@ -512,6 +515,9 @@ async function peopleView(p) {
   }, 10000);
   if (MENU_OPEN) { const el = app.querySelector(`.msel[data-key=${MENU_OPEN}]`); if (el) { el.querySelector(".msm").hidden = false; el.querySelector(".msb").setAttribute("aria-expanded", "true"); } MENU_OPEN = ""; }
   $("#imp2").onclick = () => importModal(p);
+  $("#imp3").onclick = () => openImportWizard(p);
+  document.querySelectorAll("[data-opopen]").forEach((b) => (b.onclick = () => openOrphanPool(p)));
+  document.querySelectorAll("[data-opundo]").forEach((b) => (b.onclick = guard(() => impRollback(p, b.dataset.opundo))));
   rf.wire(); rd.wire();
   const rowsOf = (list) => list.map((x) => [x.code, x.name, x.email || "", x.country || "", x.tags.join("、"), x.screen_result === "disqualified" ? "不符合" : x.tier === "backup" ? "备份" : "正式", srcName(x), x.key_answers || ""]);
   const pc = $("#pcopy"); if (pc) pc.onclick = guard(async () => {

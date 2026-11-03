@@ -937,3 +937,60 @@ class ProjectPlan(Base):
     approved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     published_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class ParticipantImportBatch(Base):
+    """One import of a client's raw data (Confirmit Data Map export) into a project's participant files.
+
+    Kept after a rollback (``rolled_back_at`` set) so the team can see what was imported and undone by whom.
+    ``snapshot`` holds each touched person's fields and answers **before** the import: rolling back is restoring it.
+    """
+    __tablename__ = "participant_import_batches"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
+    org_id: Mapped[str] = mapped_column(String(32), index=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
+    filename: Mapped[str] = mapped_column(String(200), default="")
+    source_name: Mapped[str] = mapped_column(String(120), default="")  # shown next to every person of the batch
+    rows: Mapped[int] = mapped_column(Integer, default=0)  # data rows in the file
+    matched: Mapped[int] = mapped_column(Integer, default=0)  # written into an existing person
+    conflicted: Mapped[int] = mapped_column(Integer, default=0)  # same e-mail twice in the file, or answers that differ
+    orphaned: Mapped[int] = mapped_column(Integer, default=0)  # no one in the list with that e-mail
+    failed: Mapped[int] = mapped_column(Integer, default=0)  # no e-mail at all, or a broken row
+    mapping: Mapped[dict] = mapped_column(JSON, default=dict)  # the mapping used at that moment (codes -> text)
+    snapshot: Mapped[dict] = mapped_column(JSON, default=dict)  # {"people": [{id, before, answers}]} for the rollback
+    actor: Mapped[str] = mapped_column(String(100), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    rolled_back_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class ParticipantImportOrphan(Base):
+    """A row of raw data that matched nobody: it waits here instead of creating a person by itself.
+
+    Attaching it writes the answers into the person the team picks; the original row is kept for the record.
+    """
+    __tablename__ = "participant_import_orphans"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
+    batch_id: Mapped[str] = mapped_column(String(32), index=True)
+    org_id: Mapped[str] = mapped_column(String(32), index=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
+    email: Mapped[str] = mapped_column(String(200), default="")
+    raw_row: Mapped[dict] = mapped_column(JSON, default=dict)  # the whole row as it came, before any decoding
+    answers: Mapped[list] = mapped_column(JSON, default=list)  # decoded [[question, answer], ...]
+    reason: Mapped[str] = mapped_column(String(200), default="")
+    status: Mapped[str] = mapped_column(String(12), default="pending")  # pending | attached | ignored
+    participant_id: Mapped[str] = mapped_column(String(32), default="")  # set when attached
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    handled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    handled_by: Mapped[str] = mapped_column(String(100), default="")
+
+
+class RecruitDataMap(Base):
+    """A saved mapping for one client's export: variable -> question, and how the codes read (app/import_map.py)."""
+    __tablename__ = "recruit_datamaps"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
+    org_id: Mapped[str] = mapped_column(String(32), index=True)
+    project_id: Mapped[str] = mapped_column(String(32), default="", index=True)  # "" = every project of the org may use it
+    name: Mapped[str] = mapped_column(String(120), default="")
+    mapping: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

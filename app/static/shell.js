@@ -5,7 +5,7 @@ const SH_KIND = { depth: "深访", group: "座谈会", quant: "定量" };
 const SH_HUBS = [
   { id: "ov", n: "项目总览", tabs: [["home", "总览"], ["monitor", "执行监控"], ["pool", "洞察池"], ["members", "项目成员"]] },
   { id: "wz", n: "立项向导", tabs: [["wiz", "立项向导"]] },
-  { id: "ql", n: "定性", tabs: [["people", "甄别设定"], ["outline", "访谈"], ["rooms", "直播间"], ["insights", "洞察与片段"], ["studies", "异步研究"]] },
+  { id: "ql", n: "定性", tabs: [["people", "甄别设定"], ["outline", "访谈"], ["rooms", "直播间"], ["insights", "洞察"], ["studies", "异步研究"]] },
   { id: "qt", n: "定量", tabs: [["quant", "定量结果"]] },
   { id: "cr", n: "舆情采集", tabs: [["listening", "舆情监测"]] },
 ];
@@ -156,7 +156,7 @@ function shModules(p, active) {
   }
   if (VIEWER()) return a("pool", "洞察池", "book", active === "pool") + (M.includes("listening") ? a("listening", "舆情监测", "listen", active === "listening") : "") + (M.includes("quant") ? a("quant", "定量结果", "pie", active === "quant") : "");
   if (RECRUITER()) return (p.plan_status ? a("wiz", "立项向导", "flag", active === "wiz") : "") + a("people", "甄别设定", "user", active === "people");
-  return (live ? a("rooms", "直播间", "live", active === "rooms") : "") + a("insights", "洞察与片段", "bulb", active === "insights");   // moderators and observers
+  return (live ? a("rooms", "直播间", "live", active === "rooms") : "") + a("insights", "洞察", "bulb", active === "insights");   // moderators and observers
 }
 
 /** 顶部：项目页是“项目图标 / 项目列表 › 项目号 / 名称 / 状态 | 模块 | 子项目”，其他页只有标题。 */
@@ -187,7 +187,7 @@ function shSubMenu(p, active) {
     return { head, items, staff: true };
   }
   if (RECRUITER() && active === "people") return { head: { ic: "user", title: "甄别设定", meta: stLabel }, items: [it("people", "甄别设定")], slot: true };
-  if (!VIEWER() && !RECRUITER()) return { head: { ic: "live", title: "访谈", meta: stLabel }, items: (live ? [it("rooms", "直播间")] : []).concat([it("insights", "洞察与片段")]), slot: true };
+  if (!VIEWER() && !RECRUITER()) return { head: { ic: "live", title: "访谈", meta: stLabel }, items: (live ? [it("rooms", "直播间")] : []).concat([it("insights", "洞察")]), slot: true };
   return null;
 }
 function shSubHtml(p, active, menu) {

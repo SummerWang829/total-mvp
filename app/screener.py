@@ -53,6 +53,12 @@ def save(db: Session, org_id: str, participant_id: str, items: list[tuple[str, s
     return len(items)
 
 
+def clear(db: Session, participant_id: str) -> None:
+    """Remove the participant's answers (used when an import is rolled back and there were none before)."""
+    db.execute(delete(ScreenerAnswer).where(ScreenerAnswer.participant_id == participant_id))
+    db.flush()
+
+
 def items_for(db: Session, participant_id: str) -> list[dict]:
     """The answers in questionnaire order, as the API shows them."""
     rows = db.scalars(select(ScreenerAnswer).where(ScreenerAnswer.participant_id == participant_id).order_by(ScreenerAnswer.position)).all()
