@@ -232,6 +232,15 @@
 - 效果图：qa_shots/ai_bubble_preview.html（不提交，嵌入了凤凰 SVG，约 3 MB）。
 - 测试：node 语法检查 room.html 内联脚本通过；pytest tests/test_ai_room.py 29 项通过；独立测试页截图确认泡泡中间没有方框、凤凰正常显示。未在真实房间里跑过 AI 主持场次，也未跑 e2e。
 
+## 2026-11-03 · 部署 b25b1f9 完成（SW 指令，已在线上核对）
+- 包含：全站字体（英文和数字 Inter，中文 Noto Sans SC，标题同一套无衬线体，页面大标题细字重）。新增 7 个字体文件（app/static/fonts/ 下 inter-latin-*.woff2、noto-sans-sc-chinese-simplified-*.woff2，约 3.5MB，Fontsource，SIL OFL，自托管不依赖 Google）；新增 app/static/ui_font.css；fonts.css 加字体定义；九个页面各一行引用。只改前端，无新依赖、新表、新列、新环境变量。
+- 部署前核对：线上 231 个 app 文件与 c33f354 一致；无进行中访谈、无未完成录制或合成、无已排期访谈。
+- 测试：python qa_shots/fonts_check.py 5 项 PASS（字体加载、Inter 与 Noto Sans SC 已加载、正文字体栈正确、7 个字体文件 200、没有请求失败）。该脚本硬编码路径 C:\Users\PC\total-mvp，本机是 D:\work\total-mvp，直接运行失败；改用本机路径的临时副本（未改提交内容）运行。
+- 备份：`total-20261103-035048.db.gz`，异地 COS 上传 HTTP 200（60 张表）。回滚材料：代码 /opt/rollback-code-c33f354.tgz；旧镜像标签 total-app:rollback-c33f354。
+- 部署：git archive b25b1f9 覆盖 /opt/total-mvp（deploy/.env 未动）；docker compose up -d --build --no-deps app。
+- 检查：容器 healthy；日志无 cannot add/error/traceback；app.doctor 无必须解决的问题；/api/health、/api/public/config、/index.html、/ui_font.css、/fonts.css、两个代表性字体文件本机 200，公网 HTTPS /api/health 200。
+- 未测（需用户强刷缓存后在网页上确认）：研究员后台中文思源黑体、英文数字 Inter，页面大标题细字重，顶栏仍在一行不折行；受访者侧邀请页、同意页、候场页、访谈房间、候选人问卷页文字正常不乱排。生僻字个别用系统字体属正常。
+
 ## 2026-11-02 · 部署 c33f354 完成（SW 指令，已在线上核对）
 - 包含（主要是前端版面，后端只新增只读接口 GET /api/audit/count，仅管理员）：顶栏合成一行（项目条、页签、小页签，56px；1400px 以下小页签退到 44px 细行；研究路径从顶栏拿掉；文字统一 15px，同一水平中线；新文件 app/static/ui_layout.css）；研究库、团队、数据保留、审计日志、AI 后台去掉重复大标题；审计日志每页 15 条，带页码和上一页/下一页；窄导航“退出”卡片放在“退出”正上方；已发布项目立项第 1 步已选语言/形式显示在按钮下，带 × 可去掉；子项目表每格第一行对齐。
 - 部署前核对：线上 230 个 app 文件与 c3caa55 一致；无进行中访谈、无未完成录制或合成、无已排期访谈。
