@@ -69,7 +69,12 @@ function labelTables(root = app) {
 
 function modal(html) {
   const m = document.createElement("div"); m.className = "modal"; m.innerHTML = `<div role="dialog" aria-modal="true">${html}</div>`;
-  m.addEventListener("click", (e) => { if (e.target === m) m.remove(); });
+  // 只有“在遮罩上按下、也在遮罩上松手”才关闭。用 click 判断会把一种情况也算成点遮罩：
+  // 在输入框里按下鼠标、拖到框外松手（输入框有内容时想选中文字很容易这样），click 的事件目标是两端的公共祖先=.modal，弹窗就无辜消失了（用户 2026-11-03 报的 bug）。
+  let downOnBackdrop = false;
+  m.addEventListener("pointerdown", (e) => { downOnBackdrop = e.target === m; });
+  m.addEventListener("pointerup", (e) => { if (downOnBackdrop && e.target === m) m.remove(); downOnBackdrop = false; });
+  m.addEventListener("pointercancel", () => { downOnBackdrop = false; });
   document.body.appendChild(m); return m;
 }
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") document.querySelectorAll(".modal").forEach((m) => m.remove()); });

@@ -282,3 +282,13 @@ body.v11 .rf-box:has(.ol-att) textarea{padding-left:44px}
 
 /* ⑥ 登录页固定浅色、不放主题切换（2026-11-03 用户批注：登录页不用主题，默认就是浅色绿） */
 body.anon .tsw{display:none!important}
+
+/* ⑦ 输入框结构（2026-11-03 用户“没盖好”复批：上一版只是加了左缩进，文字和图标分成了两行、左边还空一大块）。
+   现在按现代聊天输入框来做：文字从左侧顶头开始（14px），图标统一排在底部一条带里（用下内边距把这条带让出来），
+   文字再长也不会压到图标；问卷页、访谈页、洞察页三处共用这套。 */
+body.v11 .rf-box textarea{padding:11px 52px 46px 14px;line-height:1.55}
+body.v11 #rfws .rf-box textarea{padding-left:14px}
+body.v11 .rf-box:has(.ol-att) textarea{padding-left:14px}
+body.v11 .rf-box .rq-clip{left:8px;bottom:9px}
+body.v11 .rf-box .ol-att{left:8px;bottom:9px}
+body.v11 .rf-box .rf-send{right:9px;bottom:9px}
