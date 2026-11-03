@@ -307,6 +307,16 @@ def rooms_section(br, D):
     ctx.close()
 
 
+def guard_section(fn, br, D):
+    """QA_CONTINUE=1: a section that crashes is reported as a failure and the next sections still run (a long sweep should not stop at the first crash)."""
+    if not os.environ.get("QA_CONTINUE"):
+        return fn(br, D)
+    try:
+        fn(br, D)
+    except Exception as e:  # noqa: BLE001 - reported below as a failure of that section
+        FAILS.append(f"{fn.__name__} crashed"); print(f"  FAIL [{fn.__name__}] crashed: {str(e).splitlines()[0][:200]}")
+
+
 def shell_text(pg):
     """All the text of the shell: the narrow rail, the top bar and the second-level menu (the old single left menu is split across them)."""
     return pg.evaluate("[...document.querySelectorAll('.rail2, .top2, .sub2')].map((e) => e.innerText).join(String.fromCharCode(10))")
@@ -440,8 +450,8 @@ def outline_section(br, D):
     pg.screenshot(path=os.path.join(ROOT, "qa_shots", "outline_1280.png"))
     pg.click("[data-seg=settings]"); pg.fill("#olset-min", "30"); pg.locator("#olset-min").dispatch_event("change")
     ok(all(pg.locator(s).count() == 1 for s in ("#olset-topic", "#olset-brief", "#olset-goals", "#olset-min")) and pg.locator("[data-sl]").count() >= 2 and pg.locator("[data-sf]").count() == 5, "[outline] 设置 has the title, background, goals, languages, length and formats")
-    pg.fill("#olset-goals", "了解认知\n比较差异"); pg.locator("#olset-goals").dispatch_event("change"); pg.wait_for_timeout(500)
-    ok(call(f"/projects/{pid}/recruiting/form", None, adm)["goals"] == ["了解认知", "比较差异"], "[outline] the goals written in 设置 are the questionnaire's goals")
+    pg.fill("#olset-goals", "了解认知\n比较差异"); pg.locator("#olset-goals").dispatch_event("change")
+    ok(wait_until(lambda: call(f"/projects/{pid}/recruiting/form", None, adm)["goals"] == ["了解认知", "比较差异"], 8), "[outline] the goals written in 设置 are the questionnaire's goals")
     pg.fill("#olset-brief", "新的研究背景（访谈页里改）"); pg.locator("#olset-brief").dispatch_event("change"); pg.wait_for_timeout(500)
     ok(call(f"/projects/{pid}", None, adm)["brief"] == "新的研究背景（访谈页里改）", "[outline] the background written in 设置 is the project's background")
     audit_page(pg, "outline settings/desktop", errs)
@@ -1723,7 +1733,7 @@ def pool_section(br, D):
     ctx, pg, errs = new_page(br, 1280, token=rs)
     pg.on("dialog", lambda d: d.accept())
     pg.goto(B + f"/#/p/{pid}/pool"); pg.wait_for_selector("#nf")
-    ok("洞察池" in pg.inner_text(".hubtabs"), "[pool] the project has the insight pool (tab)")
+    ok("洞察池" in pg.inner_text(".sub2"), "[pool] the project has the insight pool (menu item)")
     ok(pg.locator(".card", has_text="已印证的发现").count() >= 1, "[pool] the summary counts confirmed findings")
     audit_page(pg, "pool/desktop", errs)
     pg.fill("#nf [name=theme]", "价格"); pg.fill("#nf [name=text]", "假设：折扣会放大价格敏感"); pg.click("#nf button.p")
@@ -2034,7 +2044,7 @@ def concept_room_section(br, D):
     call(f"/interviews/{iid}/backroom", {"text": "好的，我下一题问。"}, mod)
     shown = next(s for s in call(f"/interviews/{iid}/concept", token=mod)["stimuli"] if s["key"] == "concept_a")
     call(f"/interviews/{iid}/stimulus/show", {"stimulus_id": shown["id"]}, mod)
-    for w, vp in ((1280, "desktop"), (390, "phone")):
+    for w, vp in ((1280, "desktop"),) + (() if os.environ.get("QA_DESKTOP") else ((390, "phone"),)):
         for theme in (None, "dark"):
             tag = f"concept room/{theme or 'light'}/{vp}"
             for role, asr in (("moderator", "moderator"), ("observer", "observer")):
@@ -2080,7 +2090,7 @@ def ai_room_section(br, D):
     call(f"/public/join/{tk}/enter", {})
     log_texts = lambda pg: pg.locator("#clog .m").all_inner_texts()
     for theme in (None, "dark"):
-        for w, vp in ((1280, "desktop"), (390, "phone")):
+        for w, vp in ((1280, "desktop"),) + (() if os.environ.get("QA_DESKTOP") else ((390, "phone"),)):
             tag = f"{theme or 'light'}/{vp}"
             if theme is None and vp == "desktop":
                 # the moderator before the AI starts: the panel, the start button, no reply box
@@ -2375,7 +2385,7 @@ def tabs_section(br, D):
       return { rail: b('.rail2'), top: b('.top2'), sub: b('.sub2'), main: b('.body2>main'), cw: document.documentElement.clientWidth, over: document.documentElement.scrollWidth > document.documentElement.clientWidth,
                same: ['.rail2', '.top2', '.sub2'].every((s) => document.querySelector(s) === window.__nodes[s]), reloaded: !window.__mark }; })()"""
     steps = [("甄别设定", None), ("甄别设定", "配额与受访者名单"), ("甄别设定", "招募问卷"), ("访谈", None), ("直播间", None), ("洞察与片段", None)] + [("洞察与片段", n) for n in ["报告", "问题分析", "精彩片段", "对话", "受访者数据"]] + [("甄别设定", None)]
-    for w in (1366, 1920, 390):
+    for w in ((1366, 1920) if os.environ.get("QA_DESKTOP") else (1366, 1920, 390)):
         ctx, pg, errs = new_page(real, w, 860, token=adm)
         pg.goto(B + f"/#/p/{pid}/people"); pg.wait_for_selector(".sub2 .l1"); pg.wait_for_timeout(600)
         pg.evaluate("window.__nodes = { '.rail2': document.querySelector('.rail2'), '.top2': document.querySelector('.top2'), '.sub2': document.querySelector('.sub2') }; window.__mark = 1")
@@ -2426,7 +2436,7 @@ def run():
         if os.environ.get("QA_ONLY") == "tabs_section":   # this section only needs the seeded project: run it before the long general sweep
             tabs_section(br, D); br.close(); print(f"tabs_section: {PASSES} passed, {len(FAILS)} failed"); sys.exit(1 if FAILS else 0)
         # ---------- A. every role x page x viewport ----------
-        for w, vp in ((1280, "desktop"), (390, "phone")):
+        for w, vp in ((1280, "desktop"),) + (() if os.environ.get("QA_DESKTOP") else ((390, "phone"),)):
             for role, routes in role_routes.items():
                 ctx, pg, errs = new_page(br, w, token=D["tok"][role])
                 for r in routes:
@@ -2503,10 +2513,10 @@ def run():
         tabs = pg.locator(".sub2 .l1[aria-current=page] .tx").all_inner_texts()
         ok(tabs == ["直播间"] and len(cur) == 1 and "深访" in cur[0], f"the menu marks 直播间 and the top bar marks exactly one stage (深访), got menu {tabs} top {cur}")
         ok(pg.locator("main .head h1").count() == 0 or not pg.locator("main .head h1").first.is_visible(), "a page under tabs does not repeat its name as a big title")
-        ok(pg.evaluate("parseFloat(getComputedStyle(document.querySelector('.hubtabs a.on')).fontSize) > parseFloat(getComputedStyle(document.querySelector('.hubtabs a:not(.on)')).fontSize)"), "the selected tab is bigger than the others")
+        ok(pg.evaluate("parseInt(getComputedStyle(document.querySelector('.top2 .mod.on')).fontWeight) > parseInt(getComputedStyle(document.querySelector('.top2 .mod:not(.on)')).fontWeight)"), "the current stage in the top bar is bolder than the others")
         pg.goto(B + f"/#/p/{pid}/sessions"); pg.wait_for_selector(".rmtabs")
         ok(pg.url.endswith("/rooms"), "an old link to the sessions-and-invitations page lands on the live rooms")
-        ok(pg.locator(".hubtabs a", has_text="场次与邀请").count() == 0, "there is no 场次与邀请 tab any more")
+        ok(pg.locator(".sub2 a, .top2 a", has_text="场次与邀请").count() == 0, "there is no 场次与邀请 entry any more")
         # project home: big progress number, a next step that links to the right page, recent activity in plain words
         pg.goto(B + f"/#/p/{pid}"); pg.wait_for_selector("h1:has-text('项目总览')", state="attached")
         ok(pg.locator(".hero-n b").inner_text().isdigit() and pg.locator(".meters .meter").count() == 3, "project home shows the big number and three progress bars")
@@ -2541,9 +2551,9 @@ def run():
         # team page: observer role label
         pg.goto(B + "/#/team"); pg.wait_for_selector("text=客户张"); ok("观察员" in pg.inner_text("main"), "team page should show role names")
         ok(pg.locator(".sub2 a:has-text('演示数据')").count() == 0, "a real company has no 'clear demo data' entry")
-        pg.goto(B + "/#/demo"); pg.wait_for_selector("h1"); ok("demo" not in pg.url, "a real company cannot open the demo data page")
+        pg.goto(B + "/#/demo"); pg.wait_for_selector("h1", state="attached"); ok("demo" not in pg.url, "a real company cannot open the demo data page")
         # logout
-        pg.click("#out"); pg.wait_for_selector("form#f"); ok(pg.evaluate("localStorage.getItem('tt_token')") is None, "logout should clear the token")
+        pg.click("#mebtn"); pg.click("#out"); pg.wait_for_selector("form#f"); ok(pg.evaluate("localStorage.getItem('tt_token')") is None, "logout should clear the token")
         ctx.close()
         # phones: list tables turn into labelled cards
         ctx, pg, errs = new_page(br, 390, token=D["tok"]["admin"])
@@ -2688,40 +2698,40 @@ def run():
 
 
         # ---------- C3. AI moderation in the room (Sprint 5): participant chat, the team's AI panel, observer, alerts; both colour themes, desktop + phone ----------
-        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "ai_room_section": ai_room_section(br, D)
-        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "concept_room_section": concept_room_section(br, D)
-        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "pretask_section": pretask_section(br, D)
-        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "timeslot_section": timeslot_section(br, D)
-        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "marks_section": marks_section(br, D)
-        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "phone_room_section": phone_room_section(br, D)
-        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "group_section": group_section(br, D)
-        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "outline_section": outline_section(br, D)
-        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "tabs_section": tabs_section(br, D)
-        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "fill_section": fill_section(br, D)
-        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "review_section": review_section(br, D)
-        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "insights_section": insights_section(br, D)
-        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "projects_section": projects_section(br, D)
-        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "tabflash_section": tabflash_section(br, D)
-        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "languages_section": languages_section(br, D)
-        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "respondent_window_section": respondent_window_section(br, D)
-        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "rooms_section": rooms_section(br, D)
-        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "members_section": members_section(br, D)
-        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "studies_section": studies_section(br, D)
-        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "repo_section": repo_section(br, D)
-        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "listening_section": listening_section(br, D)
-        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "recruit_section": recruit_section(br, D)
-        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "wizard_section": wizard_section(br, D)
-        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "team_section": team_section(br, D)
-        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "quant_section": quant_section(br, D)
-        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "pool_section": pool_section(br, D)
-        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "admin_data_section": admin_data_section(br, D)
-        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "segcode_section": segcode_section(br, D)
-        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "vote_section": vote_section(br, D)
-        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "gmap_section": gmap_section(br, D)
-        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "reel_section": reel_section(br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "ai_room_section": guard_section(ai_room_section, br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "concept_room_section": guard_section(concept_room_section, br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "pretask_section": guard_section(pretask_section, br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "timeslot_section": guard_section(timeslot_section, br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "marks_section": guard_section(marks_section, br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "phone_room_section": guard_section(phone_room_section, br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "group_section": guard_section(group_section, br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "outline_section": guard_section(outline_section, br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "tabs_section": guard_section(tabs_section, br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "fill_section": guard_section(fill_section, br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "review_section": guard_section(review_section, br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "insights_section": guard_section(insights_section, br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "projects_section": guard_section(projects_section, br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "tabflash_section": guard_section(tabflash_section, br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "languages_section": guard_section(languages_section, br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "respondent_window_section": guard_section(respondent_window_section, br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "rooms_section": guard_section(rooms_section, br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "members_section": guard_section(members_section, br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "studies_section": guard_section(studies_section, br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "repo_section": guard_section(repo_section, br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "listening_section": guard_section(listening_section, br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "recruit_section": guard_section(recruit_section, br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "wizard_section": guard_section(wizard_section, br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "team_section": guard_section(team_section, br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "quant_section": guard_section(quant_section, br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "pool_section": guard_section(pool_section, br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "admin_data_section": guard_section(admin_data_section, br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "segcode_section": guard_section(segcode_section, br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "vote_section": guard_section(vote_section, br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "gmap_section": guard_section(gmap_section, br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "reel_section": guard_section(reel_section, br, D)
 
         # ---------- C2. dialogs and expandable panels on the staff pages (both screen sizes) ----------
-        for w, vp in ((1280, "desktop"), (390, "phone")):
+        for w, vp in ((1280, "desktop"),) + (() if os.environ.get("QA_DESKTOP") else ((390, "phone"),)):
             ctx, pg, errs = new_page(br, w, token=D["tok"]["admin"])
             pg.goto(B + f"/#/i/{mi}/transcript"); pg.wait_for_selector("[data-edit]")
             ok(pg.locator("#tr").count() == 1, f"[{vp}] the transcribe button is in the window")
@@ -2764,7 +2774,7 @@ def run():
         # ---------- E. reduced motion ----------
         ctx, pg, errs = new_page(br, 1280, token=D["tok"]["admin"], reduced_motion="reduce")
         pg.goto(B + "/#/projects"); pg.wait_for_selector("main"); pg.wait_for_timeout(300)
-        ok(not pg.evaluate("document.querySelector('.brandsvg').classList.contains('play')"), "reduced motion: logo must stay still")
+        ok(pg.locator(".rail2 .rlogo img").count() == 1, "reduced motion: the logo in the rail is a still image")
         ctx.close()
 
         # ---------- E2. rapid navigation: a slow page finishing after the user moved on must neither error nor paint over the new page ----------
@@ -2783,7 +2793,7 @@ def run():
         shots = [("admin", f"#/projects"), ("admin", f"#/p/{pid}/home"), ("admin", f"#/p/{pid}/people"), ("admin", f"#/p/{pid}/rooms"), ("admin", f"#/p/{pid}/insights"),
                  ("admin", f"#/i/{mi}/insights"), ("observer", f"#/p/{pid}/rooms"), ("observer", f"#/i/{mi}/insights")]
         for role, r in shots:
-            for w in (1280, 390):
+            for w in ((1280,) if os.environ.get("QA_DESKTOP") else (1280, 390)):
                 ctx, pg, errs = new_page(br, w, token=D["tok"][role]); pg.goto(B + "/" + r); pg.wait_for_selector("main"); pg.wait_for_timeout(2600)
                 parts = r.strip("#/").split("/")
                 name = parts[0] if len(parts) == 1 else f"{parts[0]}_{parts[-1] if len(parts) > 2 else 'detail'}"

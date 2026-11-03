@@ -174,3 +174,17 @@ body.v11 .ol-set input:not([type=checkbox]):focus,body.v11 .ol-set textarea:focu
 @media (max-width:820px){.pinfo .bc a{display:inline-block;padding:11px 6px;margin:-11px -6px}}
 @media (max-width:820px){.sub2 .mn{flex-direction:column;flex-wrap:nowrap}body.v11 .sub2 .l2slot{flex-direction:column;margin-left:28px;padding-left:12px;border-left:2px solid var(--line)}body.v11 .sub2 .l2slot>*{flex-direction:column;flex-wrap:nowrap}body.v11 .sub2 .l2slot a,body.v11 .sub2 .l2slot button{width:100%}}
 body.v11 .ol-dl{background:var(--chip)!important;color:var(--ink2)!important}
+/* 名单表头（内容区比以前窄）：表头文字不换行；翻页里没有上一页/下一页时，按钮保持清晰的文字、只去掉边框 */
+body.v11 .ptbl thead th{white-space:nowrap}
+body.v11 .pager button.s:disabled{opacity:1;background:none;border-color:transparent;color:var(--muted)}
+/* 窄一点的电脑屏幕（小于 1400）：顶部项目条收紧，模块不被截断 */
+@media (min-width:821px) and (max-width:1399px){
+  .pinfo{max-width:200px;min-width:120px}
+  .top2{gap:10px;padding-left:16px}
+  .mod{padding:8px 9px;gap:6px}.mod svg.vi{display:none}
+  .top2 .mods{gap:2px}
+}
+body.v11 .ptbl th .msb.cap,body.v11 .ptbl th .msb.cap .ms-value{white-space:nowrap}
+body.v11 .ptbl th .msb.cap .ms-value{overflow:hidden;text-overflow:ellipsis}
+body.v11 .msb .ms-value:empty{display:none}
+body.v11 .msb.cap .ms-label,body.v11 .msb.cap .ms-value{line-height:15px}
