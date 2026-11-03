@@ -215,3 +215,7 @@ body.v11 .rd-top>.card>h3:first-child{display:flex;align-items:center;gap:10px;h
 body.v11 .rd-top>.card>h3:first-child+*{margin-top:0}
 body.v11 .rd-top>.card>.empty{padding-top:0;margin-top:0;justify-content:flex-start}
 body.v11 .rd-top>.card>h3 button{height:24px;min-height:0;padding:0 4px;line-height:24px}
+
+/* 第二层菜单里的三级项：页面把带 data-l3 的元素搬进来（或放在二级项容器里），会再缩进一级 */
+body.v11 .sub2 .l2slot [data-l3]{margin:0 0 4px 14px;padding-left:10px;border-left:2px solid var(--line);width:auto}
+body.v11 .sub2 .l2slot [data-l3] a,body.v11 .sub2 .l2slot [data-l3] button{font-size:14px}
