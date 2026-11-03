@@ -16,7 +16,7 @@
 #rfexp{display:none}
 .rf-ws.rf-collapsed #rfexp{display:inline-flex}
 /* 招募问卷页：内容在框里滚动、整页不滚动，所以不为滚动条预留右侧空白（只这一页） */
-html body.rfmode .app.shfix .work>main{scrollbar-gutter:auto}
+html body.rfmode .v11app .body2>main{scrollbar-gutter:auto}
 
 /* 招募问卷题目卡片、研究背景圆点列表、建议气泡（效果图 2026-11-02）：只在招募问卷页（#rfws）里生效，访谈页的同名样式不动 */
 #rfws .rf-q{position:relative;padding:12px 14px 12px 36px;gap:6px}

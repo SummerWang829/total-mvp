@@ -307,17 +307,22 @@ def rooms_section(br, D):
     ctx.close()
 
 
+def shell_text(pg):
+    """All the text of the shell: the narrow rail, the top bar and the second-level menu (the old single left menu is split across them)."""
+    return pg.evaluate("[...document.querySelectorAll('.rail2, .top2, .sub2')].map((e) => e.innerText).join(String.fromCharCode(10))")
+
+
 def outline_section(br, D):
     """The 访谈 page: the tab sits between 甄别设定 and 直播间 (and 编码与分析 is gone), left chat + right outline, edit / add / delete a question in place, settings (shared with the project), language and format versions, 同步到, and the trial run."""
     adm, pid = D["tok"]["admin"], D["pid"]
     ctx, pg, errs = new_page(br, 1280, token=adm)
     pg.goto(B + f"/#/p/{pid}/outline"); pg.wait_for_selector("#olws")
-    tabs = [x.strip() for x in pg.locator(".work>.hubtabs.pin a").all_inner_texts()]
+    tabs = [x.strip() for x in pg.locator(".sub2 .l1 .tx").all_inner_texts()]
     ok(tabs[:3] == ["甄别设定", "访谈", "直播间"] and "编码与分析" not in tabs, f"[outline] the tabs are 甄别设定, 访谈, 直播间 and there is no 编码与分析 (got {tabs})")
-    ok(pg.locator(".hubtabs.pin a.on").inner_text().strip() == "访谈", "[outline] 访谈 is the selected tab")
+    ok(pg.locator(".sub2 .l1.on .tx").inner_text().strip() == "访谈", "[outline] 访谈 is the selected menu item")
     ok(pg.locator("#olchat").count() == 1 and pg.locator("#olright").count() == 1 and pg.locator("#olsplit").count() == 1, "[outline] chat on the left, outline on the right, a divider between")
     pg.goto(B + "/#/projects"); pg.wait_for_selector(".card")
-    ok(not pg.evaluate("document.querySelector('.app').classList.contains('rail')") and pg.evaluate("document.querySelector('nav.side').getBoundingClientRect().width") >= 200, "[outline] outside a project (全部项目) the left menu stays wide")
+    ok(pg.locator(".v11app").count() == 1 and pg.evaluate("document.querySelector('.rail2').getBoundingClientRect().width") <= 92 and pg.locator(".sub2:visible").count() == 0, "[outline] outside a project (全部项目) there is the narrow rail only and no second-level menu")
     pg.goto(B + f"/#/p/{pid}/outline"); pg.wait_for_selector("#olws")
     ok(pg.locator("#ollib").is_checked() and "AI 服务商" not in pg.inner_text(".rf-inp") and "AI 运行在我们自己的服务器上" not in pg.inner_text(".rf-inp"), "[outline] the research-library box is ticked and there is no AI notice (user and legal, 2026-11-01)")
     audit_page(pg, "outline empty/desktop", errs)
@@ -337,7 +342,7 @@ def outline_section(br, D):
     ok(nums == [f"Q{i + 1}" for i in range(len(nums))] and "要了解" not in pg.inner_text("#olout"), f"[outline] questions are numbered Q1, Q2... straight through the parts and the Chinese version shows no 要了解 notes (got {nums})")
     ok([x.strip() for x in pg.locator("#olseg [role=tab]").all_inner_texts()] == ["大纲", "设置", "预览测试"], "[outline] the right side has 大纲 / 设置 / 预览测试 and no 文字 tab")
     sb, wb = pg.locator("#olseg").bounding_box(), pg.locator("#olws").bounding_box()
-    ok(pg.locator(".work>.subrow #olseg").count() == 1 and 122 <= sb["y"] and sb["y"] + sb["height"] <= 163 and abs(wb["y"] - 177) <= 14, f"[outline] 大纲/设置/预览测试 sits in the fixed second row (y {sb['y']:.0f}-{sb['y'] + sb['height']:.0f}) and the workbench starts at 177 (got {wb['y']:.0f})")
+    ok(pg.locator(".sub2 #l2slot #olseg").count() == 1 and sb["x"] < 360 and wb["y"] >= 66, f"[outline] 大纲/设置/预览测试 sits in the second-level menu under 访谈 and the workbench starts under the top bar (got {wb['y']:.0f})")
     ok(pg.locator("#olchat .rf-me").count() == 2, "[outline] the conversation keeps what was asked")
     pg.locator("[data-ed]").first.click(); pg.fill(".olq", "最近一次买这类产品，你是怎么挑的？"); pg.keyboard.press("Enter")
     ok(wait_until(lambda: "怎么挑的" in pg.inner_text("#olout"), 5), "[outline] a question can be edited in place")
@@ -523,8 +528,8 @@ def tabflash_section(br, D):
     pg.goto(B + f"/#/p/{pid}/rooms"); pg.reload(); pg.wait_for_selector("#rmb tr")
     base = pg.evaluate("({cls: document.body.className, w: Math.round(document.querySelector('main').getBoundingClientRect().width)})")
     pg.evaluate("""() => { const f = window.fetch; window.fetch = (u, o) => (String(u).includes('/api/projects/') ? new Promise((r) => setTimeout(r, 1200)).then(() => f(u, o)) : f(u, o));
-      window._log = []; const t0 = performance.now(); const tick = () => { const m = document.querySelector('main'); window._log.push([document.body.className, m ? Math.round(m.getBoundingClientRect().width) : null, document.documentElement.scrollHeight > innerHeight, (document.querySelector('.hubtabs.pin a.on') || {}).textContent]); if (performance.now() - t0 < 2600) requestAnimationFrame(tick); }; tick(); }""")
-    pg.locator(".hubtabs.pin a", has_text="甄别设定").first.click()
+      window._log = []; const t0 = performance.now(); const tick = () => { const m = document.querySelector('main'); window._log.push([document.body.className, m ? Math.round(m.getBoundingClientRect().width) : null, document.documentElement.scrollHeight > innerHeight, (document.querySelector('.sub2 .l1.on .tx') || {}).textContent]); if (performance.now() - t0 < 2600) requestAnimationFrame(tick); }; tick(); }""")
+    pg.locator(".sub2 .l1", has_text="甄别设定").first.click()
     pg.wait_for_timeout(2800)
     log = pg.evaluate("window._log")
     old = [r for r in log if r[3] and "直播间" in r[3]]   # frames in which the old page is still the one on screen
@@ -542,12 +547,12 @@ def fill_section(br, D):
         ctx, pg, errs = new_page(br, w, h, token=adm)
         for name in pages:
             pg.goto(B + f"/#/p/{pid}/{name}"); pg.reload(); pg.wait_for_timeout(900)
-            m = pg.evaluate("""() => { const main = document.querySelector('main'), r = main.getBoundingClientRect(), tb = document.querySelector('.hubtabs.pin');
+            m = pg.evaluate("""() => { const main = document.querySelector('main'), r = main.getBoundingClientRect(), tb = document.querySelector('.top2');
               return { gapR: innerWidth - Math.round(r.right), sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth,
                        tabTop: tb ? Math.round(tb.getBoundingClientRect().top) : null, vscroll: document.documentElement.scrollHeight > innerHeight }; }""")
             ok(m["gapR"] <= 24, f"[fill] {name} at {w} wide: the content reaches the right edge (gap {m['gapR']}px, limit 24px)")
             ok(m["sw"] <= m["cw"], f"[fill] {name} at {w} wide: no sideways scroll")
-            ok(m["tabTop"] in (None, 61), f"[fill] {name} at {w} wide: the page tabs stay at the same height (top {m['tabTop']})")
+            ok(m["tabTop"] in (None, 0), f"[fill] {name} at {w} wide: the top bar stays at the top (top {m['tabTop']})")
             if name == "rooms":
                 ok(not m["vscroll"], f"[fill] the room page fits the screen height at {w}: its boxes scroll, not the page")
         ctx.close()
@@ -587,17 +592,17 @@ def projects_section(br, D):
     box = pg.evaluate("(() => { const r = document.querySelector('.tsw').getBoundingClientRect(); return [Math.round(innerWidth - r.right), Math.round(r.top), document.querySelectorAll('.themebtn').length]; })()")
     ok(box[0] <= 30 and box[1] <= 20 and box[2] == 0, f"[theme] the switch is fixed at the top right and the old sidebar button is gone (got {box})")
     ok(pg.locator(".totop").is_hidden(), "[totop] hidden at the top of the page")
-    pg.evaluate("(() => { const m = document.querySelector('main'); const d = document.createElement('div'); d.style.height = '3000px'; m.appendChild(d); window.scrollTo(0, 800); document.scrollingElement.scrollTop = 800; })()")
+    pg.evaluate("(() => { const m = document.querySelector('main'); const d = document.createElement('div'); d.style.cssText = 'height:3000px;flex:none'; m.appendChild(d); m.scrollTop = 800; })()")
     pg.wait_for_timeout(300)
     ok(pg.locator(".totop").is_visible(), "[totop] shows after scrolling down")
     pg.click(".totop"); pg.wait_for_timeout(900)
-    ok(pg.evaluate("document.scrollingElement.scrollTop") < 5 and pg.locator(".totop").is_hidden(), "[totop] clicking it scrolls back to the top and hides it")
+    ok(pg.evaluate("document.querySelector('.body2>main').scrollTop") < 5 and pg.locator(".totop").is_hidden(), "[totop] clicking it scrolls back to the top and hides it")
     ctx.close()
     ctx, pg, errs = new_page(br, 1440, token=adm)   # inside a project the access modes and 结项 sit at the right end of the tab row
-    pg.goto(B + f"/#/p/{D['pid']}/live"); pg.wait_for_selector(".work>.hubtabs.pin .tabx")
-    ok(pg.locator(".hubtabs.pin .tabx #closeproj").count() == 1 and pg.locator(".ctx-row #closeproj").count() == 0 and pg.locator(".tabx .ctx-modes").count() == 1, "[tabs] 深访/座谈会 and 结项 are at the right end of the tab row, not in the project bar")
-    pg.goto(B + f"/#/p/{D['pid']}/wiz"); pg.wait_for_selector(".ctx-row #closeproj", timeout=8000)
-    ok(pg.locator(".ctx-row #closeproj").count() == 1, "[tabs] a page without tabs keeps 结项 in the project bar")
+    pg.goto(B + f"/#/p/{D['pid']}/live"); pg.wait_for_selector(".sub2 .bot #closeproj")
+    ok(pg.locator(".sub2 .bot #closeproj").count() == 1 and pg.locator(".top2 #closeproj").count() == 0, "[tabs] 结项 is at the bottom of the second-level menu, not in the top bar")
+    pg.goto(B + f"/#/p/{D['pid']}/wiz"); pg.wait_for_selector(".sub2 .bot #closeproj", timeout=8000)
+    ok(pg.locator(".sub2 .bot #closeproj").count() == 1, "[tabs] a page without level-2 items keeps 结项 at the bottom of the menu")
     ctx.close()
 
 
@@ -629,7 +634,7 @@ def insights_section(br, D):
     if long_cell.count():
         cut = long_cell.evaluate("e => e.scrollHeight > e.clientHeight + 1")
         if cut:
-            long_cell.hover(); pg.wait_for_selector(".ins-tip:not([hidden])")
+            long_cell.scroll_into_view_if_needed(); pg.wait_for_timeout(300); long_cell.hover(); pg.wait_for_selector(".ins-tip:not([hidden])")   # (scroll first: a hover that scrolls the table sideways closes the tip)
             ok(len(pg.inner_text(".ins-tip")) > len(long_cell.inner_text()) - 1, "[insights] hovering a cut-off answer shows its whole text beside it")
             pg.mouse.move(5, 5)
     ok(pg.locator("#ipop").is_hidden(), "[insights] no card until the mouse is on a code")
@@ -1050,7 +1055,7 @@ def studies_section(br, D):
     ctx, pg, errs = new_page(br, 1280, token=rs)
     pg.on("dialog", lambda d: d.accept())
     pg.goto(B + f"/#/p/{pid}/studies"); pg.wait_for_selector("#nf")
-    ok("异步研究" in pg.inner_text(".hubtabs") and "异步 AI 研究" in pg.inner_text("nav.side"), "[studies] the project has the asynchronous studies page (tabs) and its menu entry")
+    ok("异步研究" in shell_text(pg), "[studies] the project has the asynchronous studies page (tabs) and its menu entry")
     audit_page(pg, "studies list/desktop", errs)
     pg.fill("[name=title]", "QA 异步研究"); pg.fill("[name=goal]", "了解消费者如何选购护肤品"); pg.select_option("[name=language]", "zh"); pg.click("#nf button")
     pg.wait_for_selector("#outline")
@@ -1122,7 +1127,7 @@ def repo_section(br, D):
     ctx, pg, errs = new_page(br, 1280, token=rs)
     pg.on("dialog", lambda d: d.accept())
     pg.goto(B + "/#/repo"); pg.wait_for_selector("#qf")
-    ok("研究库" in pg.inner_text("nav.side"), "[library] the menu has the research library")
+    ok("研究库" in shell_text(pg), "[library] the menu has the research library")
     audit_page(pg, "library/desktop", errs)
     pg.click("#imp"); pg.wait_for_selector("#f")
     pg.fill("[name=title]", "2023 趋势报告"); pg.fill("[name=text]", "报告指出，新加坡消费者越来越关注成分透明度。" + chr(10) * 2 + "直播带货影响了年轻人的购买决定。")
@@ -1158,7 +1163,7 @@ def listening_section(br, D):
     ctx, pg, errs = new_page(br, 1280, token=rs)
     pg.on("dialog", lambda d: d.accept())
     pg.goto(B + f"/#/p/{pid}/listening"); pg.wait_for_selector("#addsrc")
-    ok("舆情采集" in pg.inner_text("nav.side"), "[listening] the project menu has the monitoring page")
+    ok("舆情采集" in shell_text(pg), "[listening] the project menu has the monitoring page")
     audit_page(pg, "listening empty/desktop", errs)
     pg.click("#addsrc"); pg.wait_for_selector("#kind")
     pg.fill("[name=name]", "模拟来源"); pg.fill("[name=c_brand]", "Acme"); pg.fill("[name=c_lang]", "en"); pg.click("#f button.p")
@@ -1328,8 +1333,8 @@ def recruit_section(br, D):
     wide = pg.evaluate("(() => { const t = document.querySelector('.ptbl'); return [t.scrollWidth <= t.parentElement.clientWidth + 1, document.querySelector('main').getBoundingClientRect().width >= innerWidth - 300]; })()")
     ok(wide[0] and wide[1], f"[recruit] the list fits without sideways scrolling on the widened page (got {wide})")
     pg.evaluate("window.scrollTo(0, 700)"); pg.wait_for_timeout(200)
-    pin = pg.evaluate("(() => { const a = document.querySelector('.ctx'), b = document.querySelector('.work>.hubtabs.pin'), m = document.querySelector('.work>main'); const t0 = b.getBoundingClientRect().top; m.scrollTop = 300; return [Math.round(a.getBoundingClientRect().top), Math.round(b.getBoundingClientRect().top - a.getBoundingClientRect().bottom), Math.round(b.getBoundingClientRect().top - t0)]; })()")
-    ok(pin[0] == 0 and abs(pin[1]) <= 8 and pin[2] == 0, f"[recruit] the project bar and the tab row stay put at the top while the content scrolls (got {pin})")
+    pin = pg.evaluate("(() => { const a = document.querySelector('.top2'), b = document.querySelector('.sub2'), m = document.querySelector('.body2>main'); const t0 = b.getBoundingClientRect().top; m.scrollTop = 300; return [Math.round(a.getBoundingClientRect().top), Math.round(b.getBoundingClientRect().top - a.getBoundingClientRect().bottom), Math.round(b.getBoundingClientRect().top - t0)]; })()")
+    ok(pin[0] == 0 and abs(pin[1]) <= 8 and pin[2] == 0, f"[recruit] the top bar and the second-level menu stay put while the content scrolls (got {pin})")
     pg.locator("tr", has_text="QA候选人").locator("[data-scr]").click(); pg.wait_for_selector(".sa-it")
     sa = pg.evaluate("(() => { const it = document.querySelector('.sa-it'); const q = it.querySelector('.sa-q'); return [it.querySelector('.sa-n').innerText, getComputedStyle(q).fontWeight, !!q.querySelector('.sa-ty'), document.querySelectorAll('.sa-it').length, document.querySelector('.sa-cd') !== null]; })()")
     ok(sa[0] == "1" and int(sa[1]) >= 600 and sa[2] and sa[3] >= 5 and sa[4], f"[recruit] the answers dialog shows numbered bold questions with a type tag and option codes (got {sa})")
@@ -1346,9 +1351,9 @@ def recruit_section(br, D):
     pg.click("#ptab-list-t"); pg.wait_for_selector("#quotas")
     ok(pg.locator("#rules").count() == 0 and pg.locator("#quotas").count() == 1, "[recruit] eligibility rules are gone from the page (the questionnaire replaces them); quotas stay")
     ok(pg.locator(".rd-top #rdquotas").count() == 1 and pg.locator(".rd-top > .card").count() == 3, "[recruit] the quota progress sits in the top row beside the questionnaire link and the key numbers")
-    top_h = pg.evaluate("(() => { const c = document.querySelector('.ctx').getBoundingClientRect().height, t = document.querySelector('.work>.hubtabs.pin').getBoundingClientRect().height, s = document.querySelector('.hubtabs.sub').getBoundingClientRect().height; return [c, t, s]; })()")
-    ok(top_h[0] <= 60 and top_h[1] == 62 and top_h[2] == 40, f"[recruit] the project bar, the tab row and the second row have their fixed heights (bar, tabs, second row = {top_h})")
-    ok(pg.evaluate("document.querySelector('.app').classList.contains('rail')") and pg.evaluate("document.querySelector('nav.side').getBoundingClientRect().width") <= 92, "[recruit] inside a project the left menu is the narrow icon rail")
+    top_h = [round(x) for x in pg.evaluate("(() => [document.querySelector('.top2').getBoundingClientRect().height, document.querySelector('.rail2').getBoundingClientRect().width, document.querySelector('.sub2').getBoundingClientRect().width])()")]
+    ok(top_h == [66, 88, 272], f"[recruit] the top bar, the narrow rail and the second-level menu have their fixed sizes (66 / 88 / 272, got {top_h})")
+    ok(pg.evaluate("document.querySelector('.rail2').getBoundingClientRect().width") <= 92, "[recruit] inside a project the left column is the narrow icon rail")
     call(f"/projects/{pid}/recruiting/rules", {"rules": [{"field": "country", "op": "in", "value": "SG", "effect": "require"}]}, rs, method="PUT")  # a project that already had a rule keeps it
     pg.reload(); pg.wait_for_selector("#rules")
     audit_page(pg, "recruiting/desktop", errs)
@@ -1513,7 +1518,7 @@ def wizard_section(br, D):
     pg.fill("#npf input[name=name]", "向导测试项目"); pg.click("#npf button.p")
     pg.wait_for_selector(".chain .step")
     ok(pg.locator(".chain .step").count() == 7 and "草稿" in pg.inner_text("main"), "[wizard] a draft opens the 7-step wizard")
-    ok("立项向导" in pg.inner_text("nav.side") and "项目总览" not in pg.inner_text("nav.side"), "[wizard] a project still in the wizard has only the wizard in its menu")
+    ok("立项向导" in shell_text(pg) and "项目总览" not in shell_text(pg), "[wizard] a project still in the wizard has only the wizard in its menu")
     for n, label in enumerate(["基本信息", "研究设计", "人员与角色", "人群与样本", "渠道与触达", "合规举证", "确认发布"], start=1):
         ok(f"{n} {label}" in pg.locator(".chain .step").nth(n - 1).inner_text(), f"[wizard] step {n} is {label}")
     # step 1: name, retention (30/60/120/180), sub-projects with their own research order, listening and async ticks
@@ -1589,7 +1594,7 @@ def wizard_section(br, D):
     ok(pg.locator("a", has_text="去看执行监控").count() == 0 and pg.locator("#wzhome").is_visible(), "[wizard] after publishing the last step offers 去项目总览 (and no 去看执行监控)")
     # unlock, shorten the retention, review and publish again
     pg.click("#wzunlock2"); pg.wait_for_selector("text=修改中")
-    ok(pg.locator("fieldset.wzbody[disabled]").count() == 0 and "项目总览" in pg.inner_text("nav.side"), "[wizard] an unlocked plan can be edited and the project stays usable (full menu)")
+    ok(pg.locator("fieldset.wzbody[disabled]").count() == 0 and "项目总览" in shell_text(pg), "[wizard] an unlocked plan can be edited and the project stays usable (full menu)")
     pg.click("[data-step='0']"); pg.wait_for_selector("select[data-w=retention]")
     pg.select_option("select[data-w=retention]", "30"); pg.wait_for_timeout(1500)
     pg.click("[data-step='5']"); pg.wait_for_selector("#wzsubmit")
@@ -1599,10 +1604,10 @@ def wizard_section(br, D):
     ok(wait_until(lambda: pg.locator("fieldset.wzbody[disabled]").count() == 1, 8), "[wizard] publishing the new version locks the plan again")
     pg.goto(B + "/#/projects"); pg.wait_for_selector(".pcard"); pg.locator(".pcard", has_text="向导测试项目").click()
     pg.wait_for_selector(".hm-stage", timeout=15000)
-    nav = pg.inner_text("nav.side")
+    nav = shell_text(pg)
     ok(nav.index("立项向导") < nav.index("项目总览"), "[nav] the wizard comes before the project overview")
-    ok("异步 AI 研究" in nav and "舆情采集" in nav and "座谈会" not in nav and "深访" in nav and "定量" in nav, "[nav] the menu shows only what the project uses (stages = its research orders)")
-    ok(pg.locator(".track li").count() == 2 and "深访" in pg.inner_text(".track"), "[wizard] the project bar shows the research stages")
+    ok("异步研究" in nav and "舆情采集" in nav and "座谈会" not in nav and "深访" in nav and "定量" in nav, "[nav] the menu shows only what the project uses (stages = its research orders)")
+    ok(pg.locator(".top2 .stg").count() == 2 and "深访" in pg.inner_text(".top2 .mods"), "[wizard] the top bar shows the research stages")
     # the overview is only the research stages: left the stage and its state, right its quota chart
     ok(pg.locator(".hero2").count() == 0 and pg.locator(".sn").count() == 0 and pg.locator(".hm-st").count() == 0 and pg.evaluate("[...document.querySelectorAll('main table.tbl')].filter((t) => !t.closest('#hmlang')).length") == 0, "[home] no big number, map, status bar or sub-project table any more: only the research stages")
     ok(pg.locator("#chm").count() == 0 and pg.locator("#hmcopy").count() == 1, "[home] no 调整研究方法 button; copying the project is in the header")
@@ -1619,10 +1624,10 @@ def wizard_section(br, D):
     audit_page(pg, "sub-project home/desktop", errs)
     pg.screenshot(path=os.path.join(ROOT, "qa_shots", "overview_stages_1280.png"), full_page=True)
     pg.select_option("#subsel", "all"); pg.wait_for_selector(".hm-stage")
-    pg.click("nav.side a:has-text('深访')"); pg.wait_for_selector("#imp2")
+    pg.click(".top2 a.stg:has-text('深访')"); pg.wait_for_selector("#imp2")
     ok(pg.url.endswith("/people"), "[nav] 深访 in the menu opens the recruiting setup first, not the sessions list")
-    pg.goto(B + "/#/team"); pg.wait_for_selector("nav.side")
-    ok("项目总览" in pg.inner_text("nav.side") and "团队" in pg.inner_text("nav.side"), "[nav] the settings pages keep the current project's menu on the left")
+    pg.goto(B + "/#/team"); pg.wait_for_selector(".sub2 .l1")
+    ok("团队" in pg.inner_text(".sub2") and "AI 后台" in pg.inner_text(".sub2") and "设置" in pg.inner_text(".rail2"), "[nav] the settings pages show the settings menu (团队, 数据保留, 审计日志, AI 后台) in the second-level menu")
     pg.goto(B + "/#/projects"); pg.locator(".pcard", has_text="向导测试项目").click(); pg.wait_for_selector(".hm-stage")
     with pg.expect_download(timeout=15000) as dl:
         pg.click("#rep")
@@ -1630,7 +1635,7 @@ def wizard_section(br, D):
     pg.screenshot(path=os.path.join(ROOT, "qa_shots", "starmap_1280.png"), full_page=True)
     pid_new = pg.url.split("/p/")[1].split("/")[0]
     pg.click("#hmcopy"); pg.wait_for_selector(".chain .step")
-    ok("（副本）" in pg.inner_text(".ctx-name") and "草稿" in pg.inner_text(".ctx"), "[home] copying a project opens a draft of it in the wizard")
+    ok("（副本）" in pg.inner_text(".top2 .nm") and "草稿" in pg.inner_text(".top2"), "[home] copying a project opens a draft of it in the wizard")
     pg.goto(B + "/#/p/" + pid_new + "/monitor"); pg.wait_for_selector(".bx.q")
     ok(pg.locator(".bx.i tbody tr").count() >= 1, "[wizard] the monitor shows the quota boards of a published plan")
     audit_page(pg, "monitor/desktop", errs)
@@ -1681,7 +1686,7 @@ def quant_section(br, D):
     ctx, pg, errs = new_page(br, 1280, token=adm)
     pg.on("dialog", lambda d: d.accept())
     pg.goto(B + f"/#/p/{pid}/quant"); pg.wait_for_selector("#kf")
-    ok(pg.locator("nav.side a[href$='/quant']").count() == 1, "[quant] the menu has the results page once the method is on")
+    ok(pg.locator(".top2 a[href$='/quant']").count() == 1, "[quant] the menu has the results page once the method is on")
     audit_page(pg, "quant empty/desktop", errs)
     pg.fill("#kf [name=name]", "问卷平台"); pg.click("#kf button.p"); pg.wait_for_selector("code.copy")
     key = pg.inner_text("code.copy").strip()
@@ -1889,8 +1894,8 @@ def ai_console_section(br, D):
     con.commit(); con.close()
     ctx, pg, errs = new_page(br, 1440, h=900, token=adm)
     pg.goto(B + "/#/projects"); pg.wait_for_selector(".card")
-    ok(pg.locator("nav.side a", has_text="AI 后台").count() == 1 and pg.locator("nav.side .sec", has_text="设置").count() == 1, "[ai-console] 'AI 后台' is in the wide left menu under 设置, beside 团队 / 数据保留 / 审计日志")
-    pg.locator("nav.side a", has_text="AI 后台").click(); pg.wait_for_selector("#aipanel table")
+    ok(pg.locator(".rail2 a", has_text="设置").count() == 1, "[ai-console] 'AI 后台' is in the wide left menu under 设置, beside 团队 / 数据保留 / 审计日志")
+    pg.locator(".rail2 a", has_text="设置").click(); pg.locator(".sub2 a.l1", has_text="AI 后台").click(); pg.wait_for_selector("#aipanel table")
     rows = pg.locator("#aipanel tbody tr")
     ok(rows.count() == 19 and "AI 主持人" in rows.first.inner_text() and "对话分析" in rows.first.inner_text(), f"[ai-console] 功能总览 lists the 19 AI features (got {rows.count()})")
     ok(wait_until(lambda: "2 / 1" in pg.inner_text("#aipanel") and "1 / 0" in pg.inner_text("#aipanel"), 4), "[ai-console] the 24-hour calls / failures come from the call log")
@@ -1918,7 +1923,7 @@ def ai_console_section(br, D):
     for role in ("researcher", "moderator", "observer"):
         ctx, pg, errs = new_page(br, 1280, token=D["tok"][role])
         pg.goto(B + "/#/projects"); pg.wait_for_selector(".card")
-        ok(pg.locator("nav.side a", has_text="AI 后台").count() == 0, f"[ai-console] {role} does not see the entry")
+        ok(pg.locator(".rail2 a, .sub2 a", has_text="AI 后台").count() == 0 and pg.locator(".rail2 a", has_text="设置").count() == 0, f"[ai-console] {role} does not see the entry")
         ctx.close()
         r = requests_get(f"/ai-console/overview", D["tok"][role])
         ok(r == 403, f"[ai-console] {role} is refused by the server (got {r})")
@@ -2361,35 +2366,33 @@ def marks_section(br, D):
 
 
 def tabs_section(br, D):
-    """项目内页签不跳动：项目条、一级页签、二级行的位置在所有页签完全相同（误差 0），页面宽度不变，顶栏/页签栏节点不被重建；每个页签截顶部 200px 放进 qa_shots/tabs_top/。
+    """切换页面不跳动：左窄栏、顶部项目条、第二层菜单的位置和大小在所有页面完全相同，页面宽度不变，这三块是同一批 DOM 节点（不重建、不整页刷新）；每页截顶部 200px 放进 qa_shots/tabs_top/。
     浏览器用 ignore_default_args 去掉 --hide-scrollbars，这样滚动条会真实占宽。"""
     adm, pid = D["tok"]["admin"], D["pid"]
     out = pathlib.Path(ROOT) / "qa_shots" / "tabs_top"; out.mkdir(parents=True, exist_ok=True)
     real = br.browser_type.launch(ignore_default_args=["--hide-scrollbars"])
-    JS = """(() => { const r = (s) => { const e = document.querySelector(s); return e ? Math.round(e.getBoundingClientRect().top * 100) / 100 : null; };
-      const m = document.querySelector('.work>main'); const row = document.querySelector('.work>.subrow');
-      return { tabs: r('.work>.hubtabs.pin'), sub: row ? r('.work>.subrow') : null, content: Math.round((m.getBoundingClientRect().top + parseFloat(getComputedStyle(m).paddingTop)) * 100) / 100,
-               cw: document.documentElement.clientWidth, over: document.documentElement.scrollWidth > document.documentElement.clientWidth,
-               ctx_same: document.querySelector('.ctx') === window.__ctx, tabs_same: document.querySelector('.work>.hubtabs.pin') === window.__tabs, reloaded: !window.__mark }; })()"""
+    JS = """(() => { const b = (s) => { const e = document.querySelector(s); if (!e) return null; const r = e.getBoundingClientRect(); return [Math.round(r.left * 100) / 100, Math.round(r.top * 100) / 100, Math.round(r.width * 100) / 100, Math.round(r.height * 100) / 100]; };
+      return { rail: b('.rail2'), top: b('.top2'), sub: b('.sub2'), main: b('.body2>main'), cw: document.documentElement.clientWidth, over: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+               same: ['.rail2', '.top2', '.sub2'].every((s) => document.querySelector(s) === window.__nodes[s]), reloaded: !window.__mark }; })()"""
     steps = [("甄别设定", None), ("甄别设定", "配额与受访者名单"), ("甄别设定", "招募问卷"), ("访谈", None), ("直播间", None), ("洞察与片段", None)] + [("洞察与片段", n) for n in ["报告", "问题分析", "精彩片段", "对话", "受访者数据"]] + [("甄别设定", None)]
     for w in (1366, 1920, 390):
         ctx, pg, errs = new_page(real, w, 860, token=adm)
-        pg.goto(B + f"/#/p/{pid}/people"); pg.wait_for_selector(".work>.hubtabs.pin"); pg.wait_for_timeout(600)
-        pg.evaluate("window.__ctx = document.querySelector('.ctx'); window.__tabs = document.querySelector('.work>.hubtabs.pin'); window.__mark = 1")
+        pg.goto(B + f"/#/p/{pid}/people"); pg.wait_for_selector(".sub2 .l1"); pg.wait_for_timeout(600)
+        pg.evaluate("window.__nodes = { '.rail2': document.querySelector('.rail2'), '.top2': document.querySelector('.top2'), '.sub2': document.querySelector('.sub2') }; window.__mark = 1")
         rows = []
         for i, (tab, sub) in enumerate(steps):
-            pg.locator(".work>.hubtabs.pin a", has_text=tab).first.click(); pg.wait_for_timeout(900)
-            if sub: pg.locator(".hubtabs.sub a", has_text=sub).first.click(); pg.wait_for_timeout(700)
+            pg.locator(".sub2 a.l1", has_text=tab).first.click(); pg.wait_for_timeout(900)
+            if sub: pg.locator(".sub2 .l2slot a, .sub2 .l2slot button", has_text=sub).first.click(); pg.wait_for_timeout(700)
             pg.wait_for_timeout(300); m = pg.evaluate(JS); rows.append((tab, sub, m))
             pg.screenshot(path=str(out / f"{w}_{i:02d}_{tab}{('_' + sub) if sub else ''}.png"), clip={"x": 0, "y": 0, "width": w, "height": 200})
-        ok(all(not r[2]["over"] for r in rows), f"[tabs {w}] no horizontal scroll on any tab")
+        ok(all(not r[2]["over"] for r in rows), f"[tabs {w}] no horizontal scroll on any page")
         if w >= 821:   # the phone layout (not part of this work) scrolls the whole page, so its scrollbar may come and go
-            ok(len({r[2]["cw"] for r in rows}) == 1, f"[tabs {w}] the page width never changes when switching tabs ({sorted({r[2]['cw'] for r in rows})})")
-            ok(len({r[2]["tabs"] for r in rows}) == 1 and len({r[2]["sub"] for r in rows}) == 1 and len({r[2]["content"] for r in rows}) == 1,
-               f"[tabs {w}] the tab row, the second row and the content start are at exactly the same place on every tab: tabs {sorted({r[2]['tabs'] for r in rows})}, second row {sorted({str(r[2]['sub']) for r in rows})}, content {sorted({r[2]['content'] for r in rows})}")
-            ok(all(r[2]["ctx_same"] and r[2]["tabs_same"] and not r[2]["reloaded"] for r in rows), f"[tabs {w}] the project bar and the tab row are the same DOM nodes after every switch (not rebuilt, no page reload)")
+            ok(len({r[2]["cw"] for r in rows}) == 1, f"[tabs {w}] the page width never changes when switching pages ({sorted({r[2]['cw'] for r in rows})})")
+            ok(len({str(r[2]["rail"]) for r in rows}) == 1 and len({str(r[2]["top"]) for r in rows}) == 1 and len({str(r[2]["sub"]) for r in rows}) == 1 and len({str(r[2]["main"]) for r in rows}) == 1,
+               f"[tabs {w}] the narrow rail, the top bar, the second-level menu and the content area are at exactly the same place on every page: rail {sorted({str(r[2]['rail']) for r in rows})}, top {sorted({str(r[2]['top']) for r in rows})}, sub {sorted({str(r[2]['sub']) for r in rows})}, main {sorted({str(r[2]['main']) for r in rows})}")
+            ok(all(r[2]["same"] and not r[2]["reloaded"] for r in rows), f"[tabs {w}] the rail, the top bar and the second-level menu are the same DOM nodes after every switch (not rebuilt, no page reload)")
         errs[:] = [e for e in errs if "Failed to load resource" not in e]
-        ok(not errs, f"[tabs {w}] no console errors while switching tabs: {errs[:2]}")
+        ok(not errs, f"[tabs {w}] no console errors while switching pages: {errs[:2]}")
         ctx.close()
     real.close()
 
@@ -2491,20 +2494,14 @@ def run():
         audit_page(pg, "forgot password/desktop", [])   # (the 401 from the wrong password above is expected)
         pg.click("#bk"); pg.wait_for_selector("[name=password]"); pg.fill("[name=email]", "boss@acme.com")
         pg.fill("[name=password]", "password123"); pg.click("form button"); pg.wait_for_selector("text=新建项目")
-        ok(pg.locator("nav.side .brandsvg").count() == 1, "logo missing in the side nav")
+        ok(pg.locator(".rail2 .rlogo img").count() == 1, "the phoenix is missing at the top of the narrow rail")
         ok("projects" in pg.url, "after login should land on projects")
-        # logo plays on login, then settles; hover replays; reduced motion respected
-        try:  # the page's own timer ends the animation 3.2 s after it starts; wait for that (up to 8 s) instead of guessing a fixed delay
-            pg.wait_for_function("!document.querySelector('.brandsvg').classList.contains('play')", timeout=8000); settled = True
-        except Exception:  # noqa: BLE001 - a timeout here IS the failure being tested
-            settled = False
-        ok(settled, "logo animation never settles")
-        pg.hover("nav.side .brandsvg"); pg.wait_for_timeout(120); ok(pg.evaluate("document.querySelector('.brandsvg').classList.contains('play')"), "hovering the logo should replay the wings")
+        ok(pg.locator(".rail2 a.rlogo[href='#/projects']").count() == 1, "the phoenix at the top of the narrow rail leads back to the project list")
         # the side nav marks exactly one current page, and it is the one shown
         pg.goto(B + f"/#/p/{pid}/rooms"); pg.wait_for_selector(".rmtabs")
-        cur = pg.locator("nav.side [aria-current=page]").all_inner_texts()
-        tabs = pg.locator(".hubtabs [aria-current=page]").all_inner_texts()
-        ok(tabs == ["直播间"] and len(cur) == 1 and "深访" in cur[0], f"the tab marks 直播间 and the side nav marks exactly one entry (深访 stage), got tab {tabs} nav {cur}")
+        cur = pg.locator(".top2 .mods [aria-current=page]").all_inner_texts()
+        tabs = pg.locator(".sub2 .l1[aria-current=page] .tx").all_inner_texts()
+        ok(tabs == ["直播间"] and len(cur) == 1 and "深访" in cur[0], f"the menu marks 直播间 and the top bar marks exactly one stage (深访), got menu {tabs} top {cur}")
         ok(pg.locator("main .head h1").count() == 0 or not pg.locator("main .head h1").first.is_visible(), "a page under tabs does not repeat its name as a big title")
         ok(pg.evaluate("parseFloat(getComputedStyle(document.querySelector('.hubtabs a.on')).fontSize) > parseFloat(getComputedStyle(document.querySelector('.hubtabs a:not(.on)')).fontSize)"), "the selected tab is bigger than the others")
         pg.goto(B + f"/#/p/{pid}/sessions"); pg.wait_for_selector(".rmtabs")
@@ -2543,7 +2540,7 @@ def run():
         ok(counts["全部"] == counts["待开始"] + counts["进行中"] + counts["已结束"] + counts.get("未到场", 0) and counts["待开始"] >= 1 and counts["已结束"] + counts.get("未到场", 0) >= 1, f"room list has a button per status with its count, got {counts}")
         # team page: observer role label
         pg.goto(B + "/#/team"); pg.wait_for_selector("text=客户张"); ok("观察员" in pg.inner_text("main"), "team page should show role names")
-        ok(pg.locator("nav.side a:has-text('演示数据')").count() == 0, "a real company has no 'clear demo data' entry")
+        ok(pg.locator(".sub2 a:has-text('演示数据')").count() == 0, "a real company has no 'clear demo data' entry")
         pg.goto(B + "/#/demo"); pg.wait_for_selector("h1"); ok("demo" not in pg.url, "a real company cannot open the demo data page")
         # logout
         pg.click("#out"); pg.wait_for_selector("form#f"); ok(pg.evaluate("localStorage.getItem('tt_token')") is None, "logout should clear the token")
@@ -2557,7 +2554,7 @@ def run():
         # demo company: the admin can clear the demo data (and only that)
         ctx, pg, errs = new_page(br, 1280, token=D["tok"]["demo_admin"])
         pg.goto(B + "/#/demo"); pg.wait_for_selector("#demoreset")
-        ok(pg.locator("nav.side a:has-text('演示数据')").count() == 1, "the demo company's admin sees the 'demo data' entry")
+        ok(pg.locator(".sub2 a:has-text('演示数据')").count() == 1, "the demo company's admin sees the 'demo data' entry")
         pg.once("dialog", lambda d: d.accept()); pg.click("#demoreset"); pg.wait_for_selector("#demodone:not([hidden])")
         ok("1 场访谈" in pg.inner_text("#demodone") and "python -m app.seed" in pg.inner_text("#demodone"), "after clearing, says what was removed and how to get fresh demo data")
         ok(call(f"/projects/{pid}/interviews", token=D["tok"]["admin"]) != [], "clearing demo data never touches a real company")
@@ -2588,7 +2585,7 @@ def run():
         ok(see("observer", f"#/i/{mi}", "text=Wei Ling") == 0, "observer must not see the participant's name")
         # the recruiting / invitation pages are for the research team only
         for role in ("observer", "moderator"):
-            ok(see(role, f"#/p/{pid}/rooms", "nav.side a:has-text('甄别设定'), nav.side a:has-text('场次与邀请')") == 0, f"{role} must not see recruiting / invitation pages in the nav")
+            ok(see(role, f"#/p/{pid}/rooms", ".sub2 a:has-text('甄别设定'), .top2 a:has-text('甄别设定'), .sub2 a:has-text('场次与邀请')") == 0, f"{role} must not see recruiting / invitation pages in the nav")
             ok(see(role, f"#/p/{pid}/people", "text=添加受访者") == 0, f"{role} must not reach the recruiting page by URL")
         ok(see("observer", f"#/p/{pid}/rooms", "a:has-text('进入 TA 的房间')") == 0 and see("observer", f"#/p/{pid}/rooms", "a:has-text('隐身观察')") >= 1, "observer can only enter rooms hidden")
         ok(see("observer", f"#/p/{pid}/rooms", "text=Wei Ling") == 0, "observer's room list never shows participant names")

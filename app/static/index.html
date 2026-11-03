@@ -2,7 +2,7 @@
 <html lang="zh-CN" data-theme="light"><head><meta charset="utf-8"><script src="/theme.js"></script><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>星桐 TOTAL · 深访</title><link rel="stylesheet" href="/app.css">
 <link rel="stylesheet" href="/editorial.css"><link rel="stylesheet" href="/fonts.css"><link rel="stylesheet" href="/ui_v7.css"><link rel="stylesheet" href="/ui_v8.css"><link rel="stylesheet" href="/ui_rooms.css">
-<link rel="stylesheet" href="/chat.css"><link rel="stylesheet" href="/chatsel.css"><link rel="stylesheet" href="/ui_list.css"><link rel="stylesheet" href="/ui_screening.css"><link rel="stylesheet" href="/ui_outline.css"><link rel="stylesheet" href="/ui_wizard.css"><link rel="stylesheet" href="/ui_overview.css"><link rel="stylesheet" href="/ui_ai.css"><link rel="stylesheet" href="/ui_v6.css"><link rel="stylesheet" href="/ui_global.css"><link rel="stylesheet" href="/ui_v9.css"><link rel="stylesheet" href="/ui_v10.css"><link rel="stylesheet" href="/ui_responsive.css"><link rel="stylesheet" href="/ui_icons.css"><link rel="stylesheet" href="/ui_layout.css"><link rel="stylesheet" href="/ui_font.css"></head>
+<link rel="stylesheet" href="/chat.css"><link rel="stylesheet" href="/chatsel.css"><link rel="stylesheet" href="/ui_list.css"><link rel="stylesheet" href="/ui_screening.css"><link rel="stylesheet" href="/ui_outline.css"><link rel="stylesheet" href="/ui_wizard.css"><link rel="stylesheet" href="/ui_overview.css"><link rel="stylesheet" href="/ui_ai.css"><link rel="stylesheet" href="/ui_v6.css"><link rel="stylesheet" href="/ui_global.css"><link rel="stylesheet" href="/ui_v9.css"><link rel="stylesheet" href="/ui_v10.css"><link rel="stylesheet" href="/ui_responsive.css"><link rel="stylesheet" href="/ui_icons.css"><link rel="stylesheet" href="/ui_layout.css"><link rel="stylesheet" href="/ui_font.css"><link rel="stylesheet" href="/ui_v11.css"></head>
 <body>
 <div id="app"></div>
 <script src="/app.js"></script>
@@ -36,46 +36,22 @@ const when = (iso) => (iso ? new Date(iso + "Z").toLocaleString([], { month: "nu
 // ---------------- shell: dark-green nav + sticky project bar + white canvas ----------------
 async function projects(force) { if (!PROJECTS || force) PROJECTS = await api("/projects"); return PROJECTS; }
 
-function navHtml(active, p) {
-  const a = (href, label, key, ic = "", sub = false) => `<a class="nv${sub ? " sub" : ""}" href="#${href}"${active === key ? ' aria-current="page"' : ""}>${ic ? `<span class="ic" aria-hidden="true">${ic}</span>` : ""}${label}</a>`;
-  let h = `<a class="brand" href="#/projects" aria-label="星桐 TOTAL 首页">${LOGO_SVG}</a>${a("/projects", "全部项目", "projects", "▦")}${STAFF() ? a("/repo", "研究库", "repo", "◈") : ""}`;
-  if (p && VIEWER()) {
-    const M = p.methods || [];
-    h += `<div class="sec">当前项目<b>${esc(p.name)}</b></div>` + a(`/p/${p.id}/pool`, "洞察池", "pool", "◈") + (M.includes("listening") ? a(`/p/${p.id}/listening`, "舆情监测", "listening", "◔") : "") + (M.includes("quant") ? a(`/p/${p.id}/quant`, "定量结果", "quant", "▤") : "");
-  } else if (p && RECRUITER()) {
-    h += `<div class="sec">当前项目<b>${esc(p.name)}</b></div>` + (p.plan_status ? a(`/p/${p.id}/wiz`, "立项向导", "wiz", "✎") : "") + a(`/p/${p.id}/people`, "甄别设定", "people", "◉");
-  } else if (p) {
-    h += `<div class="sec">当前项目<b>${esc(p.name)}</b></div>`;
-    const M = p.methods || ["depth", "group", "async", "listening"], live = M.includes("depth") || M.includes("group");
-    const setup = p.plan_status && p.plan_status !== "published";
-    if (STAFF() && setup) h += a(`/p/${p.id}/wiz`, "立项向导", "wiz", "✎");  // still in the wizard: nothing else to open yet
-    else if (STAFF()) h += shNav(p, active);
-    else {  // moderators and observers: the rooms and the insights they are assigned to
-      h += (live ? a(`/p/${p.id}/rooms`, "直播间", "rooms", "◉") : "") + a(`/p/${p.id}/insights`, "洞察与片段", "insights", "◈");
-    }
-  }
-  if (ME.role === "admin") h += `<div class="sec">设置</div>${a("/team", "团队", "team", "◎")}${a("/retention", "数据保留", "retention", "⌛")}${a("/audit", "审计日志", "audit", "≡")}${a("/ai", "AI 后台", "ai", "✦")}${DEMO_ORG ? a("/demo", "演示数据", "demo", "↺") : ""}`;
-  h += (window.TT_THEME ? TT_THEME.html() : "") + `<div class="me"><span>${esc(ME.org_name)}<br><b>${esc(ME.name)}</b> · ${ROLE[ME.role]}</span><button id="out">退出</button><div class="mecard" role="note"><b>${esc(ME.name)}</b><i>${ROLE[ME.role]}</i><em>${esc(ME.org_name)}</em></div></div>`;
-  return h;
-}
-
 function shell(inner, { active, p, title } = {}) {
   document.body.classList.remove("rfmode", "pgw");  // the new page is about to be painted: only now does the previous page's layout (fixed height, full width) go away; each view adds its own after this call
-  const proj = p && STAFF();  // researchers and admins: stage navigation + project bar + tabs
-  const st = p ? (p.closed_at ? `<span class="tag">已结项</span>` : `<span class="tag ok keep">进行中</span>`) : "";
-  const meta = p ? `<span class="tag">${esc(p.market || "—")}</span><span class="tag">${esc(langNames(p))}</span>${st}` +
-    (STAFF() ? (p.closed_at ? `<button class="s" id="reopen">重新打开</button>` : `<button class="s" id="closeproj" title="从结项那天起 ${p.retention_days} 天，受访者数据会自动删除">结项</button>`) : "") : "";
+  document.body.classList.add("v11");
+  const proj = p && STAFF();  // researchers and admins: stage modules + sub-menu
   const notice = p && p.closed_at ? `<div class="note"><b>项目已结项。</b>受访者的录像、转写原文、引文和分享链接将在 ${esc(new Date(p.purge_at + "Z").toLocaleDateString())} 自动删除（结项后 ${p.retention_days} 天），洞察结论会保留。</div>` : "";
-  const top = proj ? shCtx(p, active) : `<div class="top">${p ? `<span class="crumb"><a href="#/projects">项目总览</a> /</span><span class="pname">${esc(p.name)}</span>` : `<span class="pname">${esc(title || "")}</span>`}<div class="meta">${meta}</div></div>`;
-  const navP = p || (STAFF() && CUR_PROJ && ["team", "retention", "audit", "ai", "demo"].includes(active) ? (PROJECTS || []).find((x) => x.id === CUR_PROJ) : null);
-  shMount({ proj, p, active, nav: navHtml(active, navP), top, tabs: proj ? shTabs(p, active) : "", notice, inner });
+  const menu = shSubMenu(p, active);
+  shMount({ rail: shRail(active), top: shTop(p, active, title), sub: shSubHtml(p, active, menu), notice, inner, cls: `enter${menu && menu.items.length ? " hubpage" : ""}` });
   labelTables();
-  const hd = app.querySelector("main.hubpage > .head"), h1 = hd && hd.querySelector("h1"), tabOn = app.querySelector(".hubtabs a.on");
-  if (h1 && tabOn) { const a = h1.textContent.trim(), b = tabOn.textContent.trim(); if (a === b || a === "项目" + b) hd.classList.add("dup"); }  // a title that only repeats the tab's name is dropped; a page with its own title keeps it
-  const hd2 = app.querySelector("main > .head"), h1b = hd2 && hd2.querySelector("h1"), pn = app.querySelector(".top .pname");
+  const hd = app.querySelector("main.hubpage > .head"), h1 = hd && hd.querySelector("h1"), tabOn = app.querySelector(".sub2 .l1.on .tx, .top2 .mod.on");
+  if (h1 && tabOn) { const a = h1.textContent.trim(), b = tabOn.textContent.trim(); if (a === b || a === "项目" + b) hd.classList.add("dup"); }  // a title that only repeats the menu item's name is dropped; a page with its own title keeps it
+  const hd2 = app.querySelector("main > .head"), h1b = hd2 && hd2.querySelector("h1"), pn = app.querySelector(".top2 .pname");
   if (h1b && pn && pn.textContent.trim() === h1b.textContent.trim()) hd2.classList.add("dup2");  // a page whose big title only repeats the title in the top bar: the big one is dropped (its buttons and any promise line stay)
   if (proj) shWire(p);
-  if (!window._brandShown) { window._brandShown = true; brandPlay(); }
+  const mb = $("#mebtn"), mc = $("#mecard");
+  mb.onclick = (e) => { e.stopPropagation(); const open = mc.hidden; mc.hidden = !open; mb.setAttribute("aria-expanded", String(open)); };
+  pageOn("mecard", document, "click", (e) => { if (!mc.hidden && !mc.contains(e.target)) { mc.hidden = true; mb.setAttribute("aria-expanded", "false"); } });
   $("#out").onclick = () => { store.del("tt_token"); ME = null; PROJECTS = null; DEMO_ORG = false; location.hash = "#/login"; render(); };
   if (p) {
     const cl = $("#closeproj"); if (cl) cl.onclick = guard(async () => { if (!confirm(`结项后 ${p.retention_days} 天，所有受访者的录像、转写和引文会被永久删除，只保留洞察结论。确定结项吗？`)) return; await api(`/projects/${p.id}/close`, { method: "POST" }); toast("已结项"); await projects(true); render(); });
@@ -178,7 +154,7 @@ async function render() {
 
 // ---------------- login ----------------
 function loginView() {
-  document.body.classList.remove("rfmode", "pgw");
+  document.body.classList.remove("rfmode", "pgw", "v11");
   let mode = "login";
   const draw = () => {
     if (mode === "forgot") return drawForgot();

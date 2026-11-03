@@ -1,5 +1,5 @@
-/* 项目外壳（原版星桐的结构）：左侧按“研究阶段”分组的导航 + 顶部项目条（项目号、名称、状态、子项目、研究路径）+ 页签。
-   依赖 index.html 里的 esc / STAFF / ME / PROJECTS 和 wizard.js 里的 WZ_DESIGNS（8 种研究顺序）。研究员/管理员用这套；客户、项目经理、主持人、观察员保留各自更简单的导航。 */
+/* 项目外壳：最左窄栏 + 顶部项目条（项目号、名称、状态、研究阶段、模块、子项目）+ 第二层菜单（一级、二级）。
+   依赖 index.html 里的 esc / STAFF / ME / PROJECTS / ROLE / DEMO_ORG 和 wizard.js 里的 WZ_DESIGNS（8 种研究顺序）。 */
 const SH_DESIGN = WZ_DESIGNS;  // key -> [label, [method kinds in order]]
 const SH_KIND = { depth: "深访", group: "座谈会", quant: "定量" };
 const SH_HUBS = [
@@ -40,87 +40,146 @@ function shFilterInterviews(p, its) {
   return its.filter((i) => (!qm || i.kind === qm) && (!code || !i.participant || !i.participant.country || i.participant.country === code));
 }
 
-function shNavStage(p, active) {
+
+/* ================= 外壳（2026-11-03，用户确认效果图 v14 平面版）=================
+   三块固定位置：最左 88px 窄栏（凤凰、项目、研究库、设置、账号）；顶部项目条（项目号/名称/状态 · 中间各阶段与模块 · 右侧子项目）；
+   进入项目后，窄栏右边有第二层菜单（一级菜单，当前项下面缩进展开页面自己的二级菜单）。切换页面只替换内容区，这三块不重建、不跳动。
+   页面自己的二级菜单（直接子元素 `.hubtabs.sub`，或任意位置带 data-subrow 的元素）由 shell 搬进第二层菜单里当前一级菜单下面（节点不变，事件照常）。 */
+/* 图标：同一套细线（1.5）几何线条，关键形状带一层很淡的同色底，24×24 */
+const duo = (d) => `<path class="f" d="${d}"/><path d="${d}"/>`;
+const rect = (x, y, w, h, r) => `<rect class="f" x="${x}" y="${y}" width="${w}" height="${h}" rx="${r}"/><rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${r}"/>`;
+const disc = (x, y, r) => `<circle class="f" cx="${x}" cy="${y}" r="${r}"/><circle cx="${x}" cy="${y}" r="${r}"/>`;
+const VI = {
+  folder: duo("M3.5 8a2 2 0 0 1 2-2h3.6l2 2.2h7.4a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"),
+  book: duo("M4 5.5c2.7-.6 5.3-.2 8 1.5v12c-2.7-1.7-5.3-2.1-8-1.5z") + duo("M20 5.5c-2.7-.6-5.3-.2-8 1.5v12c2.7-1.7 5.3-2.1 8-1.5z"),
+  gear: '<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/>' + disc(15, 7, 2) + disc(9, 17, 2),
+  flag: '<path d="M6 20.5V4.5"/>' + duo("M6 5h11l-2.5 3.5L17 12H6"),
+  grid: rect(4, 4, 6.5, 6.5, 1.5) + rect(13.5, 4, 6.5, 6.5, 1.5) + rect(4, 13.5, 6.5, 6.5, 1.5) + rect(13.5, 13.5, 6.5, 6.5, 1.5),
+  chat: duo("M5 5.5h14a1.5 1.5 0 0 1 1.5 1.5v8a1.5 1.5 0 0 1-1.5 1.5h-8l-4 3v-3H5A1.5 1.5 0 0 1 3.5 15V7A1.5 1.5 0 0 1 5 5.5z"),
+  users: disc(9, 8.5, 3) + '<path d="M3.5 19a5.5 5.5 0 0 1 11 0M15.5 5.8a3 3 0 0 1 0 5.4M17.5 14.2a5.5 5.5 0 0 1 3 4.8"/>',
+  pie: duo("M12 3.5v8.5h8.5A8.5 8.5 0 1 1 12 3.5z") + '<path d="M15 3.8a8.5 8.5 0 0 1 5.2 5.2H15z"/>',
+  spark: duo("M12 3.5l2 5.5 5.5 2-5.5 2-2 5.5-2-5.5-5.5-2 5.5-2z"),
+  listen: disc(12, 12, 1.8) + '<path d="M7.8 7.8a6 6 0 0 0 0 8.4M16.2 7.8a6 6 0 0 1 0 8.4M4.9 4.9a10 10 0 0 0 0 14.2M19.1 4.9a10 10 0 0 1 0 14.2"/>',
+  user: disc(9.5, 8.5, 3.2) + '<path d="M3.5 19.5a6 6 0 0 1 12 0M16 11.5l2 2 3.5-3.8"/>',
+  cam: rect(3.5, 6.5, 11, 11, 2) + '<path d="M14.5 11l6-3.2v8.4l-6-3.2"/>',
+  live: disc(12, 12, 2.4) + '<path d="M7.5 7.5a6.4 6.4 0 0 0 0 9M16.5 7.5a6.4 6.4 0 0 1 0 9"/>',
+  bulb: duo("M12 3.5a5.5 5.5 0 0 0-3.2 10c.8.6 1.2 1.4 1.2 2.4V16h4v-.1c0-1 .4-1.8 1.2-2.4A5.5 5.5 0 0 0 12 3.5z") + '<path d="M10 19h4M10.8 21h2.4"/>',
+  home: duo("M4 11l8-6.5 8 6.5v8a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z") + '<path d="M10 20v-5h4v5"/>',
+  pulse: '<path d="M3.5 12h4l2.5-6 4 12 2.5-6h4"/>',
+  clock: disc(12, 12, 8.5) + '<path d="M12 7.5V12l3 2"/>',
+  doc: duo("M6 3.5h8l4 4v12a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-15a1 1 0 0 1 1-1z") + '<path d="M14 3.5v4h4M8.5 12.5h7M8.5 16h5"/>',
+  undo: '<path d="M4 8v5h5"/><path d="M5.2 13a7.5 7.5 0 1 0 2-6.2"/>',
+  wiz: duo("M6 5.5h12a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6.5a1 1 0 0 1 1-1z") + '<rect x="9" y="3" width="6" height="3.5" rx="1"/><path d="M8.5 11.5h7M8.5 15h4"/>',
+};
+const vIc = (k) => `<svg class="vi" viewBox="0 0 24 24" aria-hidden="true">${VI[k] || ""}</svg>`;
+const SH_ICON = { people: "user", outline: "cam", rooms: "live", insights: "bulb", home: "home", monitor: "pulse", pool: "book", members: "users", quant: "pie", listening: "listen", studies: "spark", wiz: "wiz" };
+const SH_STAGE_ICON = { depth: "chat", group: "users", quant: "pie" };
+const SH_SETTINGS = [["team", "团队", "users", "/team"], ["retention", "数据保留", "clock", "/retention"], ["audit", "审计日志", "doc", "/audit"], ["ai", "AI 后台", "spark", "/ai"]];
+const SH_TITLES = { projects: "全部项目", repo: "研究库", team: "团队", retention: "数据保留", audit: "审计日志", ai: "AI 后台", demo: "演示数据" };
+const shSettingsList = () => SH_SETTINGS.concat(DEMO_ORG ? [["demo", "演示数据", "undo", "/demo"]] : []);
+
+/** 最左窄栏：凤凰（回项目列表）、项目、研究库（团队成员）、设置（只有管理员）、账号。 */
+function shRail(active) {
+  const inSet = shSettingsList().some((s) => s[0] === active);
+  const it = (href, ic, label, on) => `<a class="rk${on ? " on" : ""}" href="#${href}" ${on ? 'aria-current="page"' : ""}>${vIc(ic)}<span>${label}</span></a>`;
+  const initial = esc((ME.name || "?").trim().slice(0, 1).toUpperCase());
+  return `<a class="rlogo" href="#/projects" aria-label="星桐 TOTAL，回到项目列表" title="回到项目列表"><img src="/logo_phoenix.svg" alt=""></a>`
+    + it("/projects", "folder", "项目", !inSet && active !== "repo") + (STAFF() ? it("/repo", "book", "研究库", active === "repo") : "")
+    + `<span class="gap"></span>` + (ME.role === "admin" ? it("/team", "gear", "设置", inSet) : "")
+    + `<div class="me2"><button type="button" class="av" id="mebtn" aria-haspopup="true" aria-expanded="false" aria-label="账号：${esc(ME.name)}">${initial}</button>`
+    + `<div class="mecard2" id="mecard" hidden><b>${esc(ME.name)}</b><i>${ROLE[ME.role]}</i><em>${esc(ME.org_name)}</em><button type="button" id="out">退出</button></div></div>`;
+}
+
+/** 研究阶段（深访 → 座谈会 → 定量……）：有几个阶段就带编号和箭头，当前阶段橙色、已走完的打勾。 */
+function shStages(p, active) {
   const M = p.methods || [], hub = shHubOf(active), qm = shQmode(), kinds = shKinds(p), firstQual = kinds.find((k) => k !== "quant");
-  const a = (href, label, on, cls = "", attrs = "") => `<a class="nv ${cls}" href="#${href}" ${on ? 'aria-current="page"' : ""} ${attrs}>${label}</a>`;
-  let h = `<div class="sec">研究阶段 · ${shDesignName(p)}</div>`;
-  kinds.forEach((k, i) => {
-    const c = "c" + (i + 1), head = `<span class="sic k-${k}" data-n="${i + 1}">${i + 1}</span><span>${SH_KIND[k]}</span>`;
-    if (k === "quant") { h += M.includes("quant") ? a(`/p/${p.id}/quant`, head, active === "quant", `stg ${c}`) : `<div class="stghead ${c} off">${head}</div>`; return; }
-    if (!M.includes(k)) { h += `<div class="stghead ${c} off">${head}</div>`; return; }
-    const on = hub === "ql" && active !== "studies" && (qm && kinds.includes(qm) ? qm === k : k === firstQual);  // no choice made yet: the first interview method
-    h += a(`/p/${p.id}/people`, head, on, `stg ${c}`, `data-qmode="${k}"`);  // 深访 / 座谈会 open the recruiting setup first
-  });
-  return h;
+  const cur = hub === "qt" ? "quant" : hub === "ql" && active !== "studies" ? (qm && kinds.includes(qm) ? qm : firstQual) : "", idxOn = kinds.indexOf(cur);
+  return kinds.map((k, i) => {
+    const done = idxOn >= 0 && i < idxOn, body = `${kinds.length > 1 ? `<i class="n">${done ? "✓" : i + 1}</i>` : vIc(SH_STAGE_ICON[k])}<span>${SH_KIND[k]}</span>`, cls = `mod stg${done ? " done" : ""}${i === idxOn ? " on" : ""}`;
+    const one = M.includes(k) ? `<a class="${cls}" href="#/p/${p.id}/${k === "quant" ? "quant" : "people"}" ${i === idxOn ? 'aria-current="page"' : ""} ${k === "quant" ? "" : `data-qmode="${k}"`}>${body}</a>` : `<span class="mod stg off">${body}</span>`;   // 深访 / 座谈会 open the recruiting setup first
+    return one + (i < kinds.length - 1 ? `<span class="arr" aria-hidden="true">→</span>` : "");
+  }).join("");
 }
 
-/** 左侧导航（研究员/管理员，已发布的项目）：立项向导在项目总览前面。 */
-function shNav(p, active) {
-  const hub = shHubOf(active), a = (href, label, on, ic) => `<a class="nv" href="#${href}" ${on ? 'aria-current="page"' : ""}><span class="ic" aria-hidden="true">${ic}</span><span>${label}</span></a>`;
-  let h = a(`/p/${p.id}/wiz`, "立项向导", hub === "wz", "✎") + a(`/p/${p.id}/home`, "项目总览", hub === "ov", "◉");
-  h += shNavStage(p, active);
-  const M = p.methods || [];
-  if (M.includes("async") || M.includes("listening")) h += `<div class="sec">其他</div>`;
-  if (M.includes("async")) h += a(`/p/${p.id}/studies`, "异步 AI 研究", active === "studies", "✦");
-  if (M.includes("listening")) h += a(`/p/${p.id}/listening`, "舆情采集", hub === "cr", "◔");
-  return h;
+/** 顶部项目条里的各个模块（中间）：因身份而异。 */
+function shModules(p, active) {
+  const hub = shHubOf(active), M = p.methods || ["depth", "group", "async", "listening"], live = M.includes("depth") || M.includes("group");
+  const a = (page, label, ic, on) => `<a class="mod${on ? " on" : ""}" href="#/p/${p.id}/${page}" ${on ? 'aria-current="page"' : ""}>${vIc(ic)}<span>${label}</span></a>`;
+  if (STAFF()) {
+    if (shSetup(p)) return a("wiz", "立项向导", "flag", true);   // still in the wizard: nothing else to open yet
+    return a("wiz", "立项向导", "flag", hub === "wz") + a("home", "项目总览", "grid", hub === "ov") + shStages(p, active)
+      + (M.includes("async") ? a("studies", "异步研究", "spark", active === "studies") : "") + (M.includes("listening") ? a("listening", "舆情采集", "listen", hub === "cr") : "");
+  }
+  if (VIEWER()) return a("pool", "洞察池", "book", active === "pool") + (M.includes("listening") ? a("listening", "舆情监测", "listen", active === "listening") : "") + (M.includes("quant") ? a("quant", "定量结果", "pie", active === "quant") : "");
+  if (RECRUITER()) return (p.plan_status ? a("wiz", "立项向导", "flag", active === "wiz") : "") + a("people", "甄别设定", "user", active === "people");
+  return (live ? a("rooms", "直播间", "live", active === "rooms") : "") + a("insights", "洞察与片段", "bulb", active === "insights");   // moderators and observers
 }
 
-/** 顶部项目条：项目号、名称、状态、子项目选择、研究路径、访问方式。 */
-function shCtx(p, active, extraOnly) {
-  const [stLabel, stCls] = shStatus(p), hub = shHubOf(active), subs = (p.setup && p.setup.subs) || [], sub = shSub(p), kinds = shKinds(p), qm = shQmode();
-  const cur = hub === "qt" ? "quant" : hub === "ql" ? (qm && kinds.includes(qm) ? qm : kinds.find((k) => k !== "quant")) : "", idxOn = kinds.indexOf(cur);
-  const close = STAFF() && !shSetup(p) ? (p.closed_at ? `<button class="s" id="reopen">重新打开</button>` : `<button class="s" id="closeproj" title="从结项那天起 ${p.retention_days} 天，受访者数据会自动删除">结项</button>`) : "";
-  const sel = subs.length > 1 && !shSetup(p) ? `<label class="ctx-sub"><span>子项目</span><select id="subsel" aria-label="切换子项目"><option value="all" ${sub ? "" : "selected"}>总项目（全部 ${subs.length} 个）</option>${subs.map((s, i) => `<option value="${s.id}" ${sub && sub.id === s.id ? "selected" : ""}>S${i + 1} ${esc(s.name)}</option>`).join("")}</select></label>` : "";
-  const track = shSetup(p) ? "" : `<div class="track"><ol aria-label="研究路径">${kinds.map((k, i) => `<li class="${idxOn >= 0 && i < idxOn ? "done" : ""} ${i === idxOn ? "on" : ""}" ${i === idxOn ? 'aria-current="step"' : ""}><i>${idxOn >= 0 && i < idxOn ? "✓" : i + 1}</i>${SH_KIND[k]}</li>`).join("")}</ol></div>`;
-  if (extraOnly) return close;
-  return `<div class="ctx"><div class="ctx-row"><span class="ctx-no">${shNumber(p)}</span><span class="ctx-name">${esc(p.name)}</span><span class="pill ${stCls}">${stLabel}</span>${sel}${track}<span class="sp"></span>${shTabbed(p, active) ? "" : close}</div></div>`;
-  // (with a tab row, the access modes and the close button live at the right end of that row: see shTabs)
+/** 顶部：项目页是“项目图标 / 项目列表 › 项目号 / 名称 / 状态 | 模块 | 子项目”，其他页只有标题。 */
+function shTop(p, active, title) {
+  if (!p) return `<div class="pinfo"><span class="nm pname">${esc(SH_TITLES[active] || title || "")}</span></div><div class="mods"></div><div class="tr"></div>`;
+  const [stLabel, stCls] = shStatus(p), subs = (p.setup && p.setup.subs) || [], sub = shSub(p);
+  const sel = STAFF() && subs.length > 1 && !shSetup(p) ? `<label class="ctx-sub"><span>子项目</span><select id="subsel" aria-label="切换子项目"><option value="all" ${sub ? "" : "selected"}>总项目（全部 ${subs.length} 个）</option>${subs.map((s, i) => `<option value="${s.id}" ${sub && sub.id === s.id ? "selected" : ""}>S${i + 1} ${esc(s.name)}</option>`).join("")}</select></label>` : "";
+  return `<span class="ptile" aria-hidden="true">${esc((p.name || "项").trim().slice(0, 1))}</span><div class="pinfo"><span class="bc"><a href="#/projects">项目列表</a> / ${shNumber(p)}</span><div class="r2"><span class="nm">${esc(p.name)}</span><span class="pill ${stCls}">${stLabel}</span></div></div>`
+    + `<div class="mods" role="navigation" aria-label="项目模块">${shModules(p, active)}</div><div class="tr">${sel}</div>`;
 }
 
-/** 页签：同一类页面放在一排（原版的 hubtabs）。 */
-function shTabbed(p, active) {   // does this page have a tab row?
-  if (shSetup(p)) return false;
-  const hub = SH_HUBS.find((h) => h.id === shHubOf(active));
-  return !!hub && hub.tabs.filter((t) => shPageOk(t[0], p)).length >= 2;
+/** 第二层菜单的内容：{head, items, slot}；没有就不显示这一层。 */
+function shSubMenu(p, active) {
+  const ic = (k) => SH_ICON[k] || "grid", it = (page, label) => ({ href: `/p/${p.id}/${page}`, key: page, label, ic: ic(page) });
+  if (!p) {
+    const list = shSettingsList();
+    if (ME.role === "admin" && list.some((s) => s[0] === active)) return { head: { ic: "gear", title: "设置", meta: "" }, items: list.map(([k, n, i, h]) => ({ href: h, key: k, label: n, ic: i })) };
+    return null;
+  }
+  const [stLabel] = shStatus(p), hub = shHubOf(active), M = p.methods || ["depth", "group", "async", "listening"], live = M.includes("depth") || M.includes("group");
+  if (STAFF()) {
+    const kinds = shKinds(p), qm = shQmode(), cur = hub === "ql" && active !== "studies" ? (qm && kinds.includes(qm) ? qm : kinds.find((k) => k !== "quant")) : hub === "qt" ? "quant" : "";
+    let head, items = [];
+    if (hub === "wz" || shSetup(p)) head = { ic: "wiz", title: "立项向导", meta: stLabel };
+    else if (hub === "ov") { head = { ic: "grid", title: "项目总览", meta: stLabel }; items = SH_HUBS[0].tabs.filter((t) => shPageOk(t[0], p)).map(([k, n]) => it(k, n)); }
+    else if (hub === "ql" && active !== "studies") { head = { ic: SH_STAGE_ICON[cur] || "chat", title: SH_KIND[cur] || "深访", meta: kinds.length > 1 ? `阶段 ${kinds.indexOf(cur) + 1} · ${stLabel}` : stLabel }; items = SH_HUBS[2].tabs.filter((t) => t[0] !== "studies" && shPageOk(t[0], p)).map(([k, n]) => it(k, n)); }
+    else head = { ic: hub === "qt" ? "pie" : hub === "cr" ? "listen" : "spark", title: hub === "qt" ? "定量" : hub === "cr" ? "舆情采集" : "异步研究", meta: stLabel };
+    return { head, items, staff: true };
+  }
+  if (RECRUITER() && active === "people") return { head: { ic: "user", title: "甄别设定", meta: stLabel }, items: [it("people", "甄别设定")], slot: true };
+  if (!VIEWER() && !RECRUITER()) return { head: { ic: "live", title: "访谈", meta: stLabel }, items: (live ? [it("rooms", "直播间")] : []).concat([it("insights", "洞察与片段")]), slot: true };
+  return null;
 }
-function shTabs(p, active) {
-  if (!shTabbed(p, active)) return "";
-  const hub = SH_HUBS.find((h) => h.id === shHubOf(active));
-  const ts = hub.tabs.filter((t) => shPageOk(t[0], p));
-  return `<div class="hubtabs pin" role="tablist" aria-label="${hub.n}">${ts.map(([k, n]) => `<a role="tab" class="${active === k ? "on" : ""}" href="#/p/${p.id}/${k}" data-t="${n}" aria-selected="${active === k}" ${active === k ? 'aria-current="page"' : ""}>${n}</a>`).join("")}<span class="tabx">${shCtx(p, active, true)}</span></div>`;
+function shSubHtml(p, active, menu) {
+  if (!menu) return "";
+  const h = menu.head, on = menu.items.find((i) => i.key === active);
+  const close = menu.staff && !shSetup(p) ? `<div class="bot">${p.closed_at ? `<button class="s" id="reopen">重新打开</button>` : `<button class="s" id="closeproj" title="从结项那天起 ${p.retention_days} 天，受访者数据会自动删除">结项</button>`}</div>` : "";
+  return `<div class="shead"><span class="stile">${vIc(h.ic)}</span><div><b>${esc(h.title)}</b>${h.meta ? `<small>${esc(h.meta)}</small>` : ""}</div></div>`
+    + `<div class="mn">${menu.items.map((i) => `<a class="l1${i === on ? " on" : ""}" href="#${i.href}" ${i === on ? 'aria-current="page"' : ""}><span class="it">${vIc(i.ic)}</span><span class="tx">${i.label}</span></a>${i === on ? `<div class="l2slot" id="l2slot"></div>` : ""}`).join("")}</div>${close}`;
 }
 
 function shWire(p) {
-  const pinTabs = () => { const c = document.querySelector(".ctx"), h = document.querySelector("main>.hubtabs.pin"); if (c) document.documentElement.style.setProperty("--ctxh", c.offsetHeight + "px"); if (h) document.documentElement.style.setProperty("--tabh", h.offsetHeight + "px"); };  // the tab row stays pinned right under the project bar
-  pinTabs(); window.onresize = pinTabs;
   const sel = document.getElementById("subsel");
   if (sel) sel.onchange = () => { sessionStorage.setItem("sub_" + p.id, sel.value); render(); };
   document.querySelectorAll("[data-qmode]").forEach((el) => (el.onclick = () => { sessionStorage.setItem("qmode", el.dataset.qmode); if (location.hash === el.getAttribute("href")) render(); }));
 }
 
-
-/** 固定外壳（桌面）：项目条、一级页签、二级行是三个固定位置的节点，切换页签时不重建，只替换内容区；二级行里放页面自己的“同一级小页签/控件”。
- *  页面想放进二级行的东西：直接子元素 `.hubtabs.sub`，或任意位置带 data-subrow 属性的元素，shell 会把它们搬到二级行（节点不变，事件照常）。 */
-const shHtml = (h) => { const t = document.createElement("template"); t.innerHTML = h.trim(); return t.content.firstElementChild; };
-function shMount({ proj, p, active, nav, top, tabs, notice, inner }) {
-  const key = proj ? `${p.id}|${shHubOf(active)}` : "";
-  const cur = app.firstElementChild, hub = proj ? shHubOf(active) : "", isQl = hub === "ql" && !!tabs;
-  const cls = `enter${proj && tabs ? " hubpage" : ""}`;
-  if (proj && cur && cur.classList.contains("shfix") && cur.dataset.key === key) {   // same project and same group of tabs: keep the frame, swap the content
-    const navEl = cur.querySelector("nav.side"), ctx = cur.querySelector(".work>.ctx"), main = cur.querySelector(".work>main"), tb = cur.querySelector(".work>.hubtabs.pin");
-    if (cur._nav !== nav) { navEl.innerHTML = nav; cur._nav = nav; }
-    if (cur._top !== top) { ctx.innerHTML = shHtml(top).innerHTML; cur._top = top; }
-    if (tb) { const want = shHtml(tabs); const tx = tb.querySelector(".tabx"); if (tx && want.querySelector(".tabx")) tx.innerHTML = want.querySelector(".tabx").innerHTML; tb.querySelectorAll("a").forEach((a, i) => { const b = want.children[i]; if (!b) return; a.className = b.className; ["aria-selected", "aria-current"].forEach((n) => (b.hasAttribute(n) ? a.setAttribute(n, b.getAttribute(n)) : a.removeAttribute(n))); }); }
-    main.className = cls; main.innerHTML = notice + inner; main.scrollTop = 0;
-    shMoveSub(cur);
-    return;
+/** 固定外壳：窄栏、顶部、第二层菜单是三个固定位置的节点；切换页面时没变的不动，只替换内容区。 */
+function shMount({ rail, top, sub, notice, inner, cls }) {
+  let a = app.firstElementChild;
+  if (!(a && a.classList.contains("v11app"))) {
+    app.innerHTML = `<div class="v11app"><nav class="rail2" aria-label="主导航"></nav><button type="button" class="fold fold-rail" aria-label="收起或展开左侧窄栏" aria-expanded="true"></button><div class="v11main"><header class="top2"></header><div class="body2"><aside class="sub2" aria-label="本页菜单" hidden></aside><button type="button" class="fold fold-sub" aria-label="收起或展开菜单" aria-expanded="true"></button><main></main></div></div></div>`;
+    a = app.firstElementChild;
+    const keep = (k, v) => { try { v === undefined ? localStorage.getItem(k) : localStorage.setItem(k, v ? "1" : ""); } catch (e) { /* private window: this page only */ } };
+    const was = (k) => { try { return !!localStorage.getItem(k); } catch (e) { return false; } };   // the fold choice is only a convenience of this browser
+    const fold = (btn, cls, key) => { const apply = (off) => { a.classList.toggle(cls, off); btn.setAttribute("aria-expanded", String(!off)); }; apply(was(key)); btn.onclick = () => { const off = !a.classList.contains(cls); apply(off); keep(key, off); }; };
+    fold(a.querySelector(".fold-rail"), "rail-off", "tt_fold_rail"); fold(a.querySelector(".fold-sub"), "sub-off", "tt_fold_sub");
   }
-  if (!proj) { app.innerHTML = `<div class="app"><nav class="side" aria-label="主导航">${nav}</nav><div class="work">${top}<main class="${cls}">${notice}${inner}</main></div></div>`; return; }
-  app.innerHTML = `<div class="app rail shfix" data-key="${esc(key)}"><nav class="side" aria-label="主导航">${nav}</nav><div class="work">${top}${tabs}${isQl ? `<div class="subrow" id="subrow"></div>` : ""}<main class="${cls}">${notice}${inner}</main></div></div>`;
-  const a = app.firstElementChild; a._nav = nav; a._top = top; shMoveSub(a);
+  const set = (el, h) => { if (el._h !== h) { el.innerHTML = h; el._h = h; } };
+  const aside = a.querySelector(".sub2"), main = a.querySelector(".body2>main");
+  set(a.querySelector(".rail2"), rail); set(a.querySelector(".top2"), top); aside.hidden = !sub; if (sub) set(aside, sub);
+  a.classList.toggle("has-sub", !!sub);
+  main.className = cls; main.innerHTML = notice + inner; main.scrollTop = 0;
+  shMoveSub(a);
 }
-function shMoveSub(a) {   // the page's own second-level controls go into the fixed second row
-  const row = a.querySelector(".work>.subrow"), main = a.querySelector(".work>main"); if (!row || !main) return;
-  row.replaceChildren(); main.querySelectorAll(":scope > .hubtabs.sub, [data-subrow]").forEach((e) => row.appendChild(e));   // a direct .hubtabs.sub, or any element marked data-subrow (at any depth)
+function shMoveSub(a) {   // the page's own second-level controls go under the current first-level menu item
+  const slot = a.querySelector(".sub2 .l2slot"), main = a.querySelector(".body2>main"); if (!slot || !main) return;
+  slot.replaceChildren(); main.querySelectorAll(":scope > .hubtabs.sub, [data-subrow]").forEach((e) => slot.appendChild(e));   // a direct .hubtabs.sub, or any element marked data-subrow (at any depth)
+  slot.hidden = !slot.firstChild;
 }

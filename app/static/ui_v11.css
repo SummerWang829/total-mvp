@@ -1,0 +1,176 @@
+/* v11（2026-11-03，用户确认效果图 v14 平面版）：整站新外壳。
+   ① 最左 88px 窄栏（主题色：浅色=深绿、橙色=深棕、深色=近黑）：凤凰、项目、研究库、设置（只有管理员）、账号；
+   ② 顶部项目条（左：项目号/名称/状态；中：研究阶段与模块；右：子项目）；③ 进入项目后窄栏右边有第二层菜单（一级、缩进的二级）；
+   ④ 页面底色很浅的灰、各模块纯白；中文微软雅黑、英文和数字 Inter；浅色主题=深绿字+橙色按钮，橙色主题=橙色字+绿色按钮，深色主题颜色不变。
+   只在研究员端 index.html 载入，且颜色变量只在 body.v11（外壳画出来之后）生效，登录页、访谈房间、受访者页不受影响。 */
+
+/* ---------- 颜色与字体 ---------- */
+body.v11{--f:"Inter","Microsoft YaHei","Noto Sans SC","PingFang SC",system-ui,sans-serif;background:var(--bg);color:var(--ink);overflow:hidden}
+html[data-theme="light"] body.v11{
+  --bg:#F2F3F5;--surface:#FFFFFF;--wash:#F7F8FA;--ink:#0B382C;--ink2:#2F4A40;--muted:#566A60;--line:#E3E6E4;--line2:#D3D9D5;--brand:#0B382C;
+  --orange-soft:#FFF4EA;--orange-mid:#E8EBEE;--green-soft:#EDEFF2;
+  --rail:linear-gradient(180deg,#0E4636,#0B382C 40%,#082A21);--rail-ink:#CFE3D8;--badge:#C2500A;--act-ink:#0B382C;--act:#FFFFFF;--bar:#FF8A2B;--edit-h:#EDEFF2;--edit-on:#E3E6EA;--edit-bd:#FF8A2B;--chip:#EDEFF2;--pri:#FF6A00;--pri-ink:#0B2E25;--pri-hov:#FF7F26}
+html[data-theme="orange"] body.v11{
+  --bg:#F4F2F0;--surface:#FFFFFF;--wash:#FAF7F4;--ink:#9A4208;--ink2:#AD4C0A;--muted:#8C5A33;--line:#EADFD5;--line2:#DCCBBB;--brand:#B34F0A;
+  --orange-soft:#FCEFE3;--orange-mid:#EAE8E6;--green-soft:#EFEDEB;
+  --rail:linear-gradient(180deg,#5A280A,#3F1B07 45%,#2B1305);--rail-ink:#F6D9BF;--badge:#0B6B4A;--act-ink:#0B6B4A;--act:#FFFFFF;--bar:#0B6B4A;--edit-h:#EFEDEB;--edit-on:#E5E2DF;--edit-bd:#0B6B4A;--chip:#EFEDEB;--pri:#0B6B4A;--pri-ink:#FFFFFF;--pri-hov:#0D7C57}
+html[data-theme="dark"] body.v11{
+  --rail:linear-gradient(180deg,#0C1A15,#08120E);--rail-ink:#B9CFC4;--badge:#C2500A;--act-ink:#F4F8F5;--act:#2A2418;--bar:#FF8A2B;--edit-h:#1B2E26;--edit-on:#2A2416;--edit-bd:#FF8A2B;--chip:#1E3329;--pri:#FF6A00;--pri-ink:#0B2E25;--pri-hov:#FF7F26}
+/* 橙色主题：按钮是绿色（浅色主题的橙色按钮、深色主题保持原样，这里不动）；链接式的小按钮仍是文字 */
+html[data-theme="orange"] body.v11 .btn.p,html[data-theme="orange"] body.v11 button.p{background:var(--pri);border-color:var(--pri);color:var(--pri-ink)}
+html[data-theme="orange"] body.v11 .btn.p:hover,html[data-theme="orange"] body.v11 button.p:hover{background:var(--pri-hov);border-color:var(--pri-hov)}
+html[data-theme="orange"] body.v11 main .head .btn.p,html[data-theme="orange"] body.v11 main .head button.p,html[data-theme="orange"] body.v11 main table button.p{background:var(--pri);color:#fff;border-color:var(--pri)}
+html[data-theme="orange"] body.v11 .hm-langs button.p{background:none;color:var(--brand);border:0;text-decoration:underline;text-underline-offset:3px}
+html[data-theme="orange"] body.v11 .body2>main a:not(.btn){color:var(--brand)}
+
+/* ---------- 版面：窄栏 | 顶部 + (第二层菜单 | 内容) ---------- */
+.v11app{display:flex;height:100vh;min-height:0;overflow:hidden}
+.v11main{flex:1;min-width:0;display:flex;flex-direction:column}
+.body2{flex:1;display:flex;min-height:0}
+.body2>main{flex:1;min-width:0;max-width:none;width:auto;overflow-y:auto;overflow-x:hidden;scrollbar-gutter:stable;padding:18px 28px 40px 26px}
+body.v11.pgw .body2>main,body.v11.rfmode .body2>main{max-width:none}
+body.v11.rfmode .body2>main{padding-top:10px;padding-bottom:16px}
+
+/* ---------- 最左窄栏 ---------- */
+.rail2{flex:0 0 88px;width:88px;background:var(--rail);display:flex;flex-direction:column;align-items:center;padding:10px 0 14px;gap:10px;color:var(--rail-ink)}
+.rlogo{display:grid;place-items:center;width:64px;height:64px;margin-bottom:6px;border-radius:14px}
+.rlogo img{height:50px;width:auto;display:block}
+.rlogo:hover{background:rgba(255,255,255,.08)}
+.rk{width:68px;padding:9px 0 7px;border-radius:13px;display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--rail-ink);font-size:12.5px;line-height:1.25;text-decoration:none;position:relative;transition:background-color .12s}
+.rk:hover{background:rgba(255,255,255,.09);color:#fff}
+.rk.on{background:rgba(255,255,255,.15);color:#fff}
+.rk.on::before{content:"";position:absolute;left:-10px;top:12px;bottom:12px;width:4px;border-radius:0 4px 4px 0;background:var(--bar)}
+.rail2 .gap{flex:1}
+svg.vi{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.rk svg.vi{width:22px;height:22px}
+.me2{position:relative}
+.av{width:42px;height:42px;min-height:0;min-width:0;padding:0;border-radius:50%;border:0;background:#6E86AB;color:#fff;font-weight:600;font-size:16px;display:grid;place-items:center}
+.av::before{display:none}
+.av:hover{background:#7B93B8;color:#fff}
+.mecard2{position:absolute;left:54px;bottom:0;z-index:60;width:220px;padding:14px;border-radius:14px;background:var(--surface);color:var(--ink);border:1px solid var(--line2);box-shadow:0 8px 28px rgba(11,56,44,.22);display:flex;flex-direction:column;gap:2px}
+.mecard2 b{font-size:15px}.mecard2 i{font-style:normal;color:var(--muted);font-size:13px}.mecard2 em{font-style:normal;color:var(--muted);font-size:13px;margin-bottom:8px}
+
+/* ---------- 顶部 ---------- */
+.top2{flex:0 0 66px;height:66px;display:flex;align-items:center;gap:16px;padding:0 176px 0 22px;border-bottom:1px solid var(--line);background:var(--bg)}
+.ptile{flex:none;width:46px;height:46px;border-radius:13px;display:grid;place-items:center;font-weight:700;font-size:18px;color:#B84900;background:var(--chip)}
+html[data-theme="dark"] .ptile{background:#2A2418;color:#FF9A55}
+.pinfo{display:flex;flex-direction:column;line-height:1.25;min-width:0;max-width:330px}
+.pinfo .bc{font-size:12.5px;color:var(--muted);white-space:nowrap}
+.pinfo .bc a{color:inherit;text-decoration:none}.pinfo .bc a:hover{text-decoration:underline}
+.pinfo .r2{display:flex;align-items:center;gap:8px;min-width:0}
+.pinfo .nm{font-weight:600;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink)}
+.pinfo .nm.pname{font-size:20px}
+.top2 .mods{flex:1;min-width:0;display:flex;justify-content:center;align-items:center;gap:6px;overflow-x:auto;scrollbar-width:none}
+.top2 .mods::-webkit-scrollbar{display:none}
+.mod{flex:none;display:inline-flex;align-items:center;gap:8px;padding:8px 14px;border-radius:10px;border:1px solid transparent;color:var(--muted);font-size:15px;line-height:24px;text-decoration:none;white-space:nowrap;position:relative;transition:background-color .12s,border-color .12s}
+.mod:hover{background:var(--chip);color:var(--ink)}
+.mod.on{background:var(--surface);border-color:var(--line2);color:var(--ink);font-weight:600}
+.mod.on::after{content:"";position:absolute;left:14px;right:14px;bottom:-12px;height:3px;border-radius:3px;background:var(--bar)}
+.mod.off{opacity:.5;cursor:default}.mod.off:hover{background:none;color:var(--muted)}
+.mod .n{width:21px;height:21px;border-radius:50%;display:grid;place-items:center;font-style:normal;font-size:12px;font-weight:600;line-height:1;background:var(--surface);border:1.5px solid var(--line2);color:var(--muted)}
+.mod.on .n{background:var(--badge);border-color:var(--badge);color:#fff}.mod.done .n{background:#1F7A59;border-color:#1F7A59;color:#fff}
+.arr{flex:none;color:var(--muted);margin:0 -2px}
+.top2 .tr{flex:none;display:flex;align-items:center;gap:12px}
+.top2 .ctx-sub{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:13.5px}
+.top2 .ctx-sub select{height:34px;min-height:0;font-size:14px;padding:0 8px}
+/* 右上角主题开关固定在顶部，高度对齐 */
+body.v11 .tsw{top:14px;right:22px}
+
+/* ---------- 第二层菜单 ---------- */
+.sub2{flex:0 0 272px;width:272px;border-right:1px solid var(--line);padding:16px 14px 14px;display:flex;flex-direction:column;overflow-y:auto}
+.shead{display:flex;align-items:center;gap:12px;padding:4px 8px 14px;margin-bottom:8px;border-bottom:1px solid var(--line)}
+.stile{width:46px;height:46px;border-radius:13px;display:grid;place-items:center;color:#fff;background:var(--pri);flex:none}
+.stile svg.vi{width:22px;height:22px}
+html[data-theme="light"] .stile{color:#fff}
+.shead b{display:block;font-size:17px;line-height:1.25;color:var(--ink)}
+.shead small{color:var(--muted);font-size:12.5px}
+.mn{display:flex;flex-direction:column;gap:2px}
+.l1{display:flex;align-items:center;gap:12px;padding:8px 10px;border-radius:12px;font-weight:600;color:var(--ink);text-decoration:none;position:relative}
+.l1 .it{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;color:var(--muted);background:var(--surface);border:1px solid var(--line)}
+.l1:hover{background:var(--chip)}
+.l1.on .it{color:var(--act-ink);border-color:var(--line2)}
+.l1.on{color:var(--act-ink)}
+.mn:not(:has(.l2slot:not([hidden]))) .l1.on{background:var(--act);box-shadow:0 0 0 1px var(--line)}
+.mn:not(:has(.l2slot:not([hidden]))) .l1.on::before{content:"";position:absolute;left:-14px;top:9px;bottom:9px;width:3px;border-radius:3px;background:var(--bar)}
+body.v11 .sub2 .l2slot{margin:0 0 6px 28px;padding-left:12px;border-left:2px solid var(--line);display:flex;flex-direction:column;gap:2px}
+body.v11 .sub2 .l2slot>*{display:flex!important;flex-direction:column;align-items:stretch;gap:2px!important;width:100%;height:auto;min-height:0;margin:0;padding:0;border:0;border-radius:0;background:none;box-shadow:none;overflow:visible;flex-wrap:nowrap}
+body.v11 .sub2 .l2slot a,body.v11 .sub2 .l2slot button{display:flex;align-items:center;justify-content:space-between;gap:8px;height:auto!important;min-height:0!important;border-bottom:0!important;width:100%;margin:0;padding:8px 12px;border:0;border-radius:9px;background:none;box-shadow:none;color:var(--muted);font-size:14.5px;font-weight:400;line-height:1.4;text-align:left;text-decoration:none;white-space:nowrap;position:relative;overflow:visible}
+body.v11 .sub2 .l2slot a::before,body.v11 .sub2 .l2slot button::before{display:none}
+body.v11 .sub2 .l2slot a:hover,body.v11 .sub2 .l2slot button:hover:not(:disabled){background:var(--chip);color:var(--ink)}
+body.v11 .sub2 .l2slot a.on,body.v11 .sub2 .l2slot button.on,body.v11 .sub2 .l2slot a[aria-selected="true"],body.v11 .sub2 .l2slot button[aria-selected="true"],body.v11 .sub2 .l2slot a[aria-current="page"]{background:var(--act);color:var(--act-ink);font-weight:600;box-shadow:0 0 0 1px var(--line)}
+body.v11 .sub2 .l2slot a.on::before,body.v11 .sub2 .l2slot button.on::before,body.v11 .sub2 .l2slot a[aria-selected="true"]::before,body.v11 .sub2 .l2slot button[aria-selected="true"]::before{display:block;content:"";position:absolute;left:-14px;top:8px;bottom:8px;width:3px;border-radius:3px;background:var(--bar)}
+body.v11 .sub2 .l2slot .rmt::after{margin-left:auto;font-size:12px;color:var(--muted);background:var(--chip);border-radius:999px;padding:0 8px;line-height:20px}
+.sub2 .bot{margin-top:auto;padding-top:12px}
+/* 结项 / 重新打开：放在第二层菜单最下面（ui_v10 里原来固定在右上角） */
+html body.v11 .sub2 #closeproj,html body.v11 .sub2 #reopen{position:static;width:100%;height:38px;min-height:38px;background:var(--surface);color:#B83227;border:1px solid #E3B6B0}
+html body.v11 .sub2 #closeproj:hover:not(:disabled){background:#FDECEA;color:#A93226;border-color:#D99A92}
+html body.v11 .sub2 #reopen{color:var(--ink);border-color:var(--line2)}
+html body.v11 .sub2 #reopen:hover:not(:disabled){background:var(--chip);color:var(--ink)}
+html[data-theme="dark"] body.v11 .sub2 #closeproj{color:#FF9DB0;border-color:#5A2A33}
+html[data-theme="dark"] body.v11 .sub2 #closeproj:hover:not(:disabled){background:#2A1A1E;color:#FFB3C1}
+html body.v11:has(#closeproj) .tsw,html body.v11:has(#reopen) .tsw{right:22px}
+
+/* ---------- 手机 / 窄屏：窄栏变成顶部一条，第二层菜单变成横排 ---------- */
+@media (max-width:820px){
+  body.v11{overflow:auto}
+  .v11app{flex-direction:column;height:auto;min-height:100vh;overflow:visible}
+  .rail2{flex:none;width:auto;flex-direction:row;align-items:center;padding:6px 10px;gap:6px;overflow-x:auto}
+  .rlogo{width:44px;height:44px;margin:0}.rlogo img{height:34px}
+  .rk{width:auto;flex-direction:row;padding:8px 12px;gap:6px}.rk.on::before{display:none}
+  .rail2 .gap{display:none}.me2{margin-left:auto}.mecard2{left:auto;right:0;bottom:auto;top:48px}
+  .v11main{min-height:0}
+  .top2{flex:none;height:auto;flex-wrap:wrap;padding:8px 12px 8px;gap:8px}
+  .top2 .mods{order:3;flex:1 1 100%;justify-content:flex-start}
+  .body2{flex-direction:column}
+  .sub2{flex:none;width:auto;border-right:0;border-bottom:1px solid var(--line);padding:8px 12px}
+  .sub2 .shead{display:none}.sub2 .mn{flex-direction:row;flex-wrap:wrap}.l2slot{margin:0;border-left:0;padding-left:0;flex-direction:row;flex-wrap:wrap}.l2slot>*{flex-direction:row;flex-wrap:wrap}.l2slot a,.l2slot button{width:auto}
+  .body2>main{overflow:visible;padding:14px 14px 40px}
+}
+
+/* ---------- 图标：细线 + 淡底（咨询风） ---------- */
+svg.vi{stroke-width:1.5}
+svg.vi .f{fill:currentColor;fill-opacity:.13;stroke:none}
+.l1 .it{background:var(--chip);border:0;color:var(--act-ink)}
+.l1.on .it{background:var(--pri);color:#fff;border:0}
+html[data-theme="dark"] .l1 .it{color:#9FD8BE}
+html[data-theme="dark"] .l1.on .it{color:#fff}
+.stile svg.vi{stroke-width:1.6}
+
+/* ---------- 左边两栏都能收起（选择只存在这台电脑的浏览器里） ---------- */
+.v11app{--rw:88px;--sw:272px;position:relative}
+.v11app.rail-off{--rw:0px}
+.v11app.sub-off{--sw:0px}
+.body2{position:relative}
+.rail2{flex:0 0 var(--rw);width:var(--rw);overflow:hidden;transition:flex-basis .2s var(--ease),width .2s var(--ease)}
+.sub2{flex:0 0 var(--sw);width:var(--sw);overflow-x:hidden;transition:flex-basis .2s var(--ease),width .2s var(--ease),padding .2s var(--ease)}
+.v11app.rail-off .rail2>*{visibility:hidden}
+.v11app.sub-off .sub2{padding-left:0;padding-right:0;border-right-width:0;overflow:hidden}
+.v11app.sub-off .sub2>*{visibility:hidden}
+.fold{position:absolute;z-index:30;top:50%;transform:translateY(-50%);width:20px;height:48px;min-width:0;min-height:0;padding:0;border-radius:0 10px 10px 0;border:1px solid var(--line2);border-left:0;background:var(--surface);color:var(--muted);display:grid;place-items:center;box-shadow:none;overflow:visible;transition:left .2s var(--ease)}
+.fold::before{display:none}
+.fold::after{content:"";width:7px;height:7px;border-left:1.6px solid currentColor;border-bottom:1.6px solid currentColor;transform:rotate(45deg);margin-left:3px}
+.fold:hover{color:var(--ink);background:var(--chip)}
+.fold-rail{left:var(--rw)}
+.fold-sub{left:var(--sw)}
+.v11app.rail-off .fold-rail::after,.v11app.sub-off .fold-sub::after{transform:rotate(-135deg);margin-left:-3px}
+.v11app:not(.has-sub) .fold-sub{display:none}
+@media (prefers-reduced-motion:reduce){.rail2,.sub2,.fold{transition:none}}
+@media (max-width:820px){.fold{display:none}.v11app.rail-off .rail2>*,.v11app.sub-off .sub2>*{visibility:visible}}
+
+/* ---------- 深色主题：两栏用不同的颜色区分（窄栏最深，第二层稍亮，内容区居中） ---------- */
+html[data-theme="dark"] body.v11{--rail:#050B08}
+html[data-theme="dark"] body.v11 .sub2{background:#102019;border-right-color:#1D3329}
+html[data-theme="dark"] body.v11 .top2{background:var(--bg)}
+@media (max-width:820px){.rail2{flex:none;width:auto;overflow-x:auto}.sub2{flex:none;width:auto}.v11app.rail-off .rail2>*,.v11app.sub-off .sub2>*{visibility:visible}}
+
+/* ---------- 可以直接修改的内容：鼠标移上去整块浅浅变色，点进去编辑时换成另一种颜色并加一圈边框 ----------
+   访谈大纲的问题、设置页的研究背景/研究目标、招募问卷的研究背景/研究目标/招募需求和每道题。 */
+body.v11 .ol-qt[data-ed],body.v11 .rq-bt[contenteditable]{border-radius:8px;transition:background-color .12s}
+body.v11 .ol-qt[data-ed]:hover,body.v11 .rq-bt[contenteditable]:hover{background:var(--edit-h);box-shadow:0 0 0 4px var(--edit-h)}
+body.v11 .rq-bt[contenteditable]:focus{background:var(--edit-on);box-shadow:0 0 0 4px var(--edit-on);outline:2px solid var(--edit-bd);outline-offset:4px}
+body.v11 .ol-set input:not([type=checkbox]),body.v11 .ol-set textarea,body.v11 .rf-q input:not([type=checkbox]):not([type=radio]),body.v11 .rf-q textarea,body.v11 input.olq,body.v11 .ol-ex textarea{transition:background-color .12s,border-color .12s}
+body.v11 .ol-set input:not([type=checkbox]):hover,body.v11 .ol-set textarea:hover,body.v11 .rf-q input:not([type=checkbox]):not([type=radio]):hover,body.v11 .rf-q textarea:hover,body.v11 .ol-ex textarea:hover{background:var(--edit-h)}
+body.v11 .ol-set input:not([type=checkbox]):focus,body.v11 .ol-set textarea:focus,body.v11 .rf-q input:not([type=checkbox]):not([type=radio]):focus,body.v11 .rf-q textarea:focus,body.v11 input.olq:focus,body.v11 .ol-ex textarea:focus{background:var(--edit-on);border-color:var(--edit-bd);outline:2px solid var(--edit-bd);outline-offset:0}
+@media (max-width:820px){.pinfo .bc a{display:inline-block;padding:11px 6px;margin:-11px -6px}}
+@media (max-width:820px){.sub2 .mn{flex-direction:column;flex-wrap:nowrap}body.v11 .sub2 .l2slot{flex-direction:column;margin-left:28px;padding-left:12px;border-left:2px solid var(--line)}body.v11 .sub2 .l2slot>*{flex-direction:column;flex-wrap:nowrap}body.v11 .sub2 .l2slot a,body.v11 .sub2 .l2slot button{width:100%}}
+body.v11 .ol-dl{background:var(--chip)!important;color:var(--ink2)!important}
