@@ -81,11 +81,51 @@ const shSettingsList = () => SH_SETTINGS.concat(DEMO_ORG ? [["demo", "演示数�
 /** 最左窄栏：凤凰（回项目列表）、项目、研究库（团队成员）、设置（只有管理员）。进入项目后收成 12px 细边，鼠标移上去弹出（样式在 ui_v11.css）。 */
 function shRail(active) {
   const inSet = shSettingsList().some((s) => s[0] === active);
-  const it = (href, ic, label, on) => `<a class="rk${on ? " on" : ""}" href="#${href}" ${on ? 'aria-current="page"' : ""}>${vIc(ic)}<span>${label}</span></a>`;
-  return `<div class="rin"><a class="rlogo" href="#/projects" aria-label="星桐 TOTAL，回到项目列表" title="回到项目列表"><img src="/logo_phoenix.svg" alt=""></a>`
+  const it = (href, ic, label, on) => `<a class="rk${on ? " on" : ""}" href="#${href}" ${on ? 'aria-current="page"' : ""} data-tip="${esc(label)}" aria-label="${esc(label)}">${vIc(ic)}<span>${label}</span></a>`;
+  return `<div class="rin"><a class="rlogo" href="#/projects" aria-label="星桐 TOTAL，回到项目列表" title="回到项目列表" data-tip="项目列表"><img src="/logo_phoenix.svg" alt=""></a>`
     + it("/projects", "folder", "项目", !inSet && active !== "repo") + (STAFF() ? it("/repo", "book", "研究库", active === "repo") : "")
     + `<span class="gap"></span>` + (ME.role === "admin" ? it("/team", "gear", "设置", inSet) : "") + `</div>`;
 }
+
+/* 图标名称提示（2026-11-03 用户要求）：鼠标停在图标上就显示这个图标叫什么。
+   两处需要：① 进入项目后窄栏收成 12px 细边；② 第二层菜单收起（sub-off，只剩图标和圆点）。
+   这两处容器都是 overflow:hidden，提示会被裁掉，所以做成 position:fixed 挂在 body 上，跟着图标位置走。 */
+(function shRailTip() {
+  const SEL = ".rail2 [data-tip], .sub2 [data-tip], .sub2 .l2slot a, .sub2 .l2slot button";
+  let tip = null, timer = 0, cur = null;
+  const hide = () => { clearTimeout(timer); if (tip) tip.classList.remove("on"); cur = null; };
+  const needed = (el) => {   // 图标旁边已经有文字时不用再提示
+    const app = document.querySelector(".v11app");
+    if (!app) return false;
+    return el.closest(".rail2") ? app.classList.contains("thin") : app.classList.contains("sub-off");
+  };
+  const textOf = (el) => (el.getAttribute("data-tip") || (el.textContent || "")).trim().slice(0, 24);   // 二级项（圆点）没有 data-tip，用它的文字
+  const show = (el) => {
+    const text = textOf(el);
+    if (!text || !needed(el)) return;
+    if (!tip) { tip = document.createElement("div"); tip.className = "railtip"; document.body.appendChild(tip); }
+    const r = el.getBoundingClientRect();
+    tip.textContent = text;
+    tip.style.left = Math.round(r.right + 10) + "px";
+    tip.style.top = Math.round(r.top + r.height / 2) + "px";
+    tip.classList.add("on");
+  };
+  document.addEventListener("mouseover", (e) => {
+    const el = e.target.closest && e.target.closest(SEL);
+    if (!el) { if (cur) hide(); return; }
+    if (el === cur) return;
+    hide(); cur = el;
+    timer = setTimeout(() => { if (cur === el && el.isConnected) show(el); }, 120);
+  });
+  document.addEventListener("mouseout", (e) => {
+    const el = e.target.closest && e.target.closest(SEL);
+    if (el && !el.contains(e.relatedTarget)) hide();
+  });
+  window.addEventListener("hashchange", hide);
+  window.addEventListener("blur", hide);
+  document.addEventListener("scroll", hide, true);
+})();
+
 
 /** 右上角的身份：一行“姓名 · 职位 · 公司”（窄屏只留头像，悬停才显示）和头像（点一下看退出）。 */
 function shWho() {
@@ -153,9 +193,9 @@ function shSubMenu(p, active) {
 function shSubHtml(p, active, menu) {
   if (!menu) return "";
   const h = menu.head, on = menu.items.find((i) => i.key === active);
-  const close = p && menu.staff && !shSetup(p) ? (p.closed_at ? `<button class="s" id="reopen" aria-label="重新打开"><span class="cf">重新打开</span><span class="cs">开</span></button>` : `<button class="s" id="closeproj" aria-label="结项" title="从结项那天起 ${p.retention_days} 天，受访者数据会自动删除"><span class="cf">结项</span><span class="cs">结</span></button>`) : "";
+  const close = p && menu.staff && !shSetup(p) ? (p.closed_at ? `<button class="s" id="reopen" aria-label="重新打开" data-tip="重新打开"><span class="cf">重新打开</span><span class="cs">开</span></button>` : `<button class="s" id="closeproj" aria-label="结项" title="从结项那天起 ${p.retention_days} 天，受访者数据会自动删除" data-tip="结项"><span class="cf">结项</span><span class="cs">结</span></button>`) : "";
   return `<div class="shead"><span class="stile">${vIc(h.ic)}</span><div><b>${esc(h.title)}</b>${h.meta ? `<small>${esc(h.meta)}</small>` : ""}</div></div>`
-    + `<div class="mn">${menu.items.map((i) => `<a class="l1${i === on ? " on" : ""}" href="#${i.href}" ${i === on ? 'aria-current="page"' : ""}><span class="it">${vIc(i.ic)}</span><span class="tx">${i.label}</span></a>${i === on ? `<div class="l2slot" id="l2slot"></div>` : ""}`).join("")}</div><div class="bot"><button type="button" class="fold" aria-label="收起或展开这一栏" aria-expanded="true"></button>${close}</div>`;
+    + `<div class="mn">${menu.items.map((i) => `<a class="l1${i === on ? " on" : ""}" href="#${i.href}" ${i === on ? 'aria-current="page"' : ""} data-tip="${esc(i.label)}"><span class="it">${vIc(i.ic)}</span><span class="tx">${i.label}</span></a>${i === on ? `<div class="l2slot" id="l2slot"></div>` : ""}`).join("")}</div><div class="bot"><button type="button" class="fold" aria-label="收起或展开这一栏" aria-expanded="true" data-tip="收起这一栏"></button>${close}</div>`;
 }
 
 function shWire(p) {

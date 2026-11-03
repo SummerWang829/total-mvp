@@ -1,7 +1,7 @@
 /* Visual baseline: original ui_v4.html recording + report_prototype_A.html.
    Presentation only: API routes, permissions, data and workflows stay in their existing modules. */
 @import url('/ui-shell.css');
-:root{--r-ctl:4px;--r-pan:12px;--r-pop:12px;--gx:40px;--ease:cubic-bezier(.23,1,.32,1);--fd:"Newsreader","Noto Sans SC","PingFang SC","Microsoft YaHei",sans-serif}
+:root{--r-ctl:4px;--r-pan:12px;--r-pop:12px;--gx:40px;--ease:cubic-bezier(.23,1,.32,1);--fd:"Newsreader","Microsoft YaHei","PingFang SC","Noto Sans SC",sans-serif}
 body{line-height:1.7}
 h1,h2,.hm-name,.ins-rt,.ins-h1,.rp-t{font-family:var(--fd)}
 h1{font-size:32px;line-height:1.35}h2{font-size:24px;line-height:1.4;font-weight:700}

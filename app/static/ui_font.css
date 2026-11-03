@@ -1,9 +1,12 @@
-/* 全站字体（用户 2026-11-02 确认，按简易方案）：英文和数字用 Inter，中文用思源黑体（Noto Sans SC），标题也用同一套无衬线体；
-   浏览器按每个字符自动选字体（字体文件在 fonts.css，都放在本服务器上）。必须是最后加载的样式表，才压得过各页面自己的 --f / --fd。 */
+/* 全站字体（用户 2026-11-03 改定）：英文和数字用 Inter，**中文一律微软雅黑（Microsoft YaHei）**；
+   macOS 用苹方、其它系统才回落到思源黑体（Noto Sans SC）；标题用同一套无衬线体。
+   字体文件在 fonts.css，都放在本服务器上。必须是最后加载的样式表，才压得过各页面自己的 --f / --fd。
+   注意：各样式表里还有多处 --f / --fd 定义（app.css、ui_v7.css、editorial.css、ui_v11.css），
+   那几处的中文字体已一并改成同样的顺序，改字体时要一起改，否则页面之间会不一致。 */
 :root{
-  --f: "Inter", "Noto Sans SC", "Noto Sans Tamil", "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
+  --f: "Inter", "Microsoft YaHei", "PingFang SC", "Noto Sans SC", "Noto Sans Tamil", system-ui, -apple-system, sans-serif;
   --fd: var(--f);
 }
-html, body, button, input, select, textarea { font-family: var(--f); }
-h1, h2, h3, h4 { font-family: var(--f); letter-spacing: 0; }
+html, body, button, input, select, textarea, table, th, td { font-family: var(--f); }
+h1, h2, h3, h4, h5, h6, b, strong { font-family: var(--f); letter-spacing: 0; }
 main .head h1, .login h1, .login-story h1, body.participant .pwrap > h1 { font-weight: 300; }

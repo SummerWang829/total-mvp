@@ -5,7 +5,7 @@
    只在研究员端 index.html 载入，且颜色变量只在 body.v11（外壳画出来之后）生效，登录页、访谈房间、受访者页不受影响。 */
 
 /* ---------- 颜色与字体 ---------- */
-body.v11{--f:"Inter","Microsoft YaHei","Noto Sans SC","PingFang SC",system-ui,sans-serif;background:var(--bg);color:var(--ink);overflow:hidden}
+body.v11{--f:"Inter","Microsoft YaHei","PingFang SC","Noto Sans SC",system-ui,sans-serif;background:var(--bg);color:var(--ink);overflow:hidden}
 html[data-theme="light"] body.v11{
   --bg:#F2F3F5;--surface:#FFFFFF;--wash:#F7F8FA;--ink:#0B382C;--ink2:#2F4A40;--muted:#566A60;--line:#E3E6E4;--line2:#D3D9D5;--brand:#0B382C;
   --orange-soft:#FFF4EA;--orange-mid:#E8EBEE;--green-soft:#EDEFF2;
@@ -233,3 +233,49 @@ body.v11 .rd-top>.card>h3 button{height:24px;min-height:0;padding:0 4px;line-hei
 /* 第二层菜单里的三级项：页面把带 data-l3 的元素搬进来（或放在二级项容器里），会再缩进一级 */
 body.v11 .sub2 .l2slot [data-l3]{margin:0 0 4px 14px;padding-left:10px;border-left:2px solid var(--line);width:auto}
 body.v11 .sub2 .l2slot [data-l3] a,body.v11 .sub2 .l2slot [data-l3] button{font-size:14px}
+
+/* ---------- 2026-11-03 用户截图批注第二批 ---------- */
+
+/* ① 窄栏图标悬停显示名称（tooltip）：窄栏收成 12px 细边时也能显示，所以用 position:fixed 由 shell.js 定位，
+   不放在 .rin 里（那边 overflow:hidden 会裁掉）。 */
+.railtip{position:fixed;z-index:200;transform:translateY(-50%);pointer-events:none;background:#0F1A16;color:#fff;
+  font-size:12px;line-height:1;font-weight:500;letter-spacing:.02em;padding:7px 10px;border-radius:8px;white-space:nowrap;
+  box-shadow:0 6px 18px rgba(0,0,0,.22);opacity:0;transition:opacity .12s var(--ease,ease),transform .12s var(--ease,ease)}
+.railtip.on{opacity:1;transform:translateY(-50%) translateX(0)}
+.railtip::before{content:"";position:absolute;left:-4px;top:50%;width:8px;height:8px;background:inherit;transform:translateY(-50%) rotate(45deg);border-radius:2px}
+html[data-theme="dark"] .railtip{background:#F4F8F5;color:#0B2E25}
+@media (max-width:820px){.railtip{display:none}}
+
+/* ② 分段标签（招募问卷 / 测试答题）：浅灰轨道 + 白色滑块，替代原来的描边方框 */
+body.v11 .rf-seg{display:inline-flex;align-items:center;gap:2px;padding:3px;border:0;border-radius:999px;background:var(--wash);
+  box-shadow:inset 0 0 0 1px var(--line);overflow:visible}
+body.v11 .rf-seg button{height:30px;min-height:0;padding:0 16px;border:0;border-radius:999px;background:none;color:var(--muted);
+  font-size:13.5px;font-weight:500;display:inline-flex;align-items:center;gap:6px;transition:background .15s,color .15s,box-shadow .15s}
+body.v11 .rf-seg button:hover{color:var(--ink)}
+body.v11 .rf-seg button.on{background:var(--surface);color:var(--ink);font-weight:600;box-shadow:0 1px 2px rgba(11,56,44,.12),0 0 0 1px rgba(11,56,44,.06)}
+body.v11 .rf-seg button.on.hover{background:var(--surface)}
+html[data-theme="dark"] body.v11 .rf-seg{background:rgba(255,255,255,.06);box-shadow:inset 0 0 0 1px rgba(255,255,255,.10)}
+html[data-theme="dark"] body.v11 .rf-seg button.on{background:rgba(255,255,255,.16);color:#F4F8F5;box-shadow:0 1px 2px rgba(0,0,0,.35)}
+
+/* ③ 发送键（所有 .rf-send，问卷/访谈/洞察三处共用）：实心圆 + 只放箭头，悬停微抬、按下回缩 */
+body.v11 .rf-send{width:34px;height:34px;border-radius:50%;padding:0;display:grid;place-items:center;line-height:1;
+  background:var(--pri);border:1px solid var(--pri);color:var(--pri-ink);font-size:16px;font-weight:600;
+  box-shadow:0 1px 2px rgba(11,46,37,.18);transition:transform .12s var(--ease,ease),box-shadow .18s,background .18s,opacity .18s}
+body.v11 .rf-send:hover:not(:disabled){background:var(--pri-hov);border-color:var(--pri-hov);transform:translateY(-1px);box-shadow:0 4px 12px rgba(255,106,0,.28)}
+body.v11 .rf-send:active:not(:disabled){transform:translateY(0) scale(.96)}
+body.v11 .rf-send:focus-visible{outline:2px solid var(--pri);outline-offset:2px}
+body.v11 .rf-send:disabled{opacity:.45;box-shadow:none;cursor:not-allowed}
+body.v11 .rf-send .rf-ico,body.v11 .rf-send svg{width:18px;height:18px;display:block}
+html[data-theme="orange"] body.v11 .rf-send:hover:not(:disabled){box-shadow:0 4px 12px rgba(11,107,74,.26)}
+
+/* ④ 输入框：文字不再顶着左上角（左缩进 + 垂直留白），附件按钮与文字不重叠 */
+body.v11 .rf-box textarea{padding:12px 52px 12px 16px;line-height:1.55}
+body.v11 #rfws .rf-box textarea{padding-left:46px}
+body.v11 .rf-box textarea::placeholder{color:var(--muted);opacity:.85}
+
+/* ⑤ 输入框左下角的附件按钮（访谈页 .ol-att 原来没有样式，会掉到输入框外面）：与问卷页的回形针统一成 32px 图标按钮 */
+body.v11 .rf-box .ol-att{position:absolute;left:6px;bottom:7px;width:32px;height:32px;padding:0;border:0;border-radius:8px;
+  background:none;color:var(--muted);display:grid;place-items:center;transition:background .15s,color .15s}
+body.v11 .rf-box .ol-att:hover{background:var(--wash);color:var(--ink)}
+body.v11 .rf-box .ol-att svg{width:18px;height:18px;display:block}
+body.v11 .rf-box:has(.ol-att) textarea{padding-left:44px}

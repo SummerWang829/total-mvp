@@ -1,6 +1,6 @@
 /* 第二版视觉（2026-10-31，只改展示）：字体打包（fonts.css）+ 纸白底、细线卡片、去掉阴影。不改任何功能、布局结构或数据。 */
 :root{
-  --f:"Source Sans 3","Noto Sans SC","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  --f:"Inter","Microsoft YaHei","PingFang SC","Noto Sans SC",system-ui,sans-serif;
   --fd:"Source Serif 4","Noto Sans SC","PingFang SC","Microsoft YaHei",Georgia,sans-serif;  /* Chinese always in the same sans font as the body (user 2026-11-01); only Latin headings stay serif */
 }
 :root:not([data-theme="dark"]){--bg:#FAFAF7}
