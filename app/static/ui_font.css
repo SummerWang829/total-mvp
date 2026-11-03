@@ -1,0 +1,9 @@
+/* 全站字体（用户 2026-11-02 确认，按简易方案）：英文和数字用 Inter，中文用思源黑体（Noto Sans SC），标题也用同一套无衬线体；
+   浏览器按每个字符自动选字体（字体文件在 fonts.css，都放在本服务器上）。必须是最后加载的样式表，才压得过各页面自己的 --f / --fd。 */
+:root{
+  --f: "Inter", "Noto Sans SC", "Noto Sans Tamil", "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
+  --fd: var(--f);
+}
+html, body, button, input, select, textarea { font-family: var(--f); }
+h1, h2, h3, h4 { font-family: var(--f); letter-spacing: 0; }
+main .head h1, .login h1, .login-story h1, body.participant .pwrap > h1 { font-weight: 300; }
