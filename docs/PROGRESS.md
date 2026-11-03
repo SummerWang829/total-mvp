@@ -4,6 +4,15 @@
 > 每条记录写：日期 · 做了什么 · `scripts/qa.sh` 结果数字 · 还差什么 · 风险。最新的写在最上面。
 > qa.sh 数字的顺序：逻辑测试（pytest）/ 全站浏览器检查 / 真实视频访谈 / 一键启动。
 
+## 2026-11-03 · UI 第三批（登录页去主题切换 + 选项行距 0.6cm，已部署线上核对）
+- 用户批注：登录页不用主题、默认就是浅色绿；选项上下间隔改为 0.6cm。
+- 登录页：`loginView()` 给 body 加 `anon` 类并把 `data-theme` 固定为 `light`；`body.anon .tsw{display:none!important}` 隐藏右上角主题胶囊；进入应用（`render()` 跳过 login 分支后）移除 `anon` 并用新增的 `TT_THEME.paint()` 恢复这台电脑上选过的主题。theme.js 只加了一个导出 `paint: apply`。
+- 选项行距：`#rfws .rq-opt+.rq-opt{margin-top:0.6cm}`，实测净距 22.67px（0.6cm = 22.6772px）。
+- 本地验证：先写入 `tt_theme=dark` 再刷新登录页 → `data-theme=light`、`.tsw` 的 display 为 none；登录后 → `data-theme=dark`、胶囊恢复 flex；选项净距 22.67px。
+- **踩坑（重要）**：服务器上的 `theme.js` 比我本地仓库的新（图标 stroke-width 是 1.7，本地是 2.2），直接上传会把别人的改动回退。处理方式：以服务器版本为基准，只把 `paint: apply` 加进导出，本地文件按服务器内容重写后再上传。说明本地仓库仍有文件落后于线上，需要一次完整对账。
+- 部署：备份 `total-20261103-125517.db.gz`（COS 200）；替换 `index.html`、`theme.js`、`ui_screening.css`、`ui_v11.css`；重建 app → `Up (healthy)`；镜像内与公网 md5 全部 MATCH；近 2 分钟日志 error 0。
+- 仓库：`634caef02f`。
+
 ## 2026-11-03 · UI 第二批（用户 6 张截图批注：字体/图标名称/选项行距/标签/发送键，已部署线上核对）
 - ① **全站中文字体统一微软雅黑**：原来有 5 处互相竞争的字体栈（`app.css` 用 Geist+思源、`ui_v7.css` 用 Source Sans、`editorial.css --fd` 用 Newsreader、`ui_font.css` 用 Inter+思源、`ui_v11.css` 用 Inter+雅黑），谁后加载谁生效，所以页面之间不一致。现在 5 处统一成 `"Inter","Microsoft YaHei","PingFang SC","Noto Sans SC"`：英文数字用 Inter，中文一律微软雅黑（macOS 回落苹方，只有非 Windows/macOS 才用思源）。标题 h1–h6 / b / strong 一并纳入，登录页走 `ui_font.css` 同样生效。
 - ② **图标悬停显示名称**：`shell.js` 的窄栏项与第二层菜单项加 `data-tip`，配一个全局 `.railtip`（`position:fixed` 挂 body，因为 `.rin` 与 `.sub2` 都是 `overflow:hidden`，放里面会被裁掉）。进入项目后窄栏是 12px 细边、第二层菜单收起后只剩图标和圆点——这两种状态悬停都出名称；二级圆点没有 data-tip，用自身文字做提示；菜单放开（图标旁已有文字）时不提示，避免重复。
