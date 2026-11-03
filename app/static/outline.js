@@ -20,7 +20,6 @@ async function outlineView(p) {
   let seg = sessionStorage.getItem("ol_seg") || "outline", sending = false, pending = "", editing = "", qmenu = "", viewer = "host", step = 0, pop = "", L = new Set(), F = new Set(), opened = new Set(), batch = false, picked = new Set(), autoPend = new Set(), autoFail = new Set();
   let files = [], reading = false;   // 附件：已读出文字的文件 {name, text, chars, truncated}
   if (!["outline", "settings", "test"].includes(seg)) seg = "outline";
-  let useLib = sessionStorage.getItem("ol_lib") !== "0";
   const stat = (t) => { const s = $("#olstat"); if (s) s.textContent = t; };
   const take = (r) => { S = { ...S, ...r }; V = S.v; try { sessionStorage.setItem("ol_v_" + p.id, V); } catch { /* no storage */ } };
   const cur = () => S.versions.find((x) => x.key === V) || S.versions[0];
@@ -69,12 +68,6 @@ async function outlineView(p) {
     }
     return h;
   };
-  const ctxHtml = () => {
-    const c = S.context || {}, parts = [c.brief ? "✓ 研究背景" : "· 没有研究背景"];
-    if (useLib) parts.push(c.library_docs ? `✓ 研究库 ${c.library_docs} 份` : "· 研究库里还没有资料");
-    parts.push(c.questions ? `✓ 当前大纲（${c.parts} 段 · ${c.questions} 题）` : "· 还没有大纲");
-    return parts.map((x) => `<span>${x}</span>`).join("");
-  };
   const chatHtml = () => {
     const hello = `<div class="rf-msg">你好！我是访谈大纲助手。你可以让我起草大纲，也可以直接问我问题、让我解释或给建议；你说“帮我改成……”我就直接改，并写清楚改了什么，不满意可以一键撤销。</div>`;
     const msgs = S.chat.map((m, i) => (m.role === "user" ? `<div class="rf-msg rf-me">${esc(m.text)}</div>` : `<div class="rf-msg" data-selk="m:${i}">${aiBody(m)}</div>`)).join("");
@@ -106,7 +99,6 @@ async function outlineView(p) {
   const drawChat = () => {
     const c = $("#olchat"); if (!c) return;
     c.innerHTML = chatHtml(); c.scrollTop = c.scrollHeight;
-    const x = $("#olctx"); if (x) x.innerHTML = ctxHtml();
     const sg = $("#olsug"); if (sg) sg.innerHTML = sugHtml();
     document.querySelectorAll("#olsug [data-chip]").forEach((b) => (b.onclick = () => send(QUICK[b.dataset.chip] || b.dataset.chip)));
     c.querySelectorAll("[data-undo]").forEach((b) => (b.onclick = () => act(b.dataset.undo, { action: "undo" })));
@@ -119,7 +111,7 @@ async function outlineView(p) {
     text = (text || "").trim(); if (!text || sending) return false;
     let done = true;
     sending = true; pending = text; $("#olmsg").value = ""; $("#olsend").disabled = true; drawChat();
-    try { take(await api(`/projects/${p.id}/outline/chat`, { method: "POST", body: { message: text, use_library: useLib, v: V, material: materialText() } })); files = []; drawFiles(); }
+    try { take(await api(`/projects/${p.id}/outline/chat`, { method: "POST", body: { message: text, use_library: true, v: V, material: materialText() } })); files = []; drawFiles(); }
     catch (e) { done = false; S = { ...S, chat: [...S.chat, { role: "user", text }, { role: "ai", kind: "answer", text: "没有成功：" + e.message, changes: [], suggestions: [] }] }; toast(e.message, true); }
     sending = false; pending = ""; const b = $("#olsend"); if (b) b.disabled = false; drawChat(); drawRight(); autoGen();
     return done;
@@ -134,7 +126,7 @@ async function outlineView(p) {
     if (window._olSel) window._olSel.destroy();
     window._olSel = ChatSel.attach({
       roots: [$("#olchat"), $("#olright")], bar: $("#olsel"), label: selLabel,
-      ask: async ({ quote, text }) => (await api(`/projects/${p.id}/outline/chat`, { method: "POST", body: { message: `针对这一处：“${quote}”\n${text}\n请只回答，不要修改大纲。`, use_library: useLib, v: V, ask_only: true } })).reply,
+      ask: async ({ quote, text }) => (await api(`/projects/${p.id}/outline/chat`, { method: "POST", body: { message: `针对这一处：“${quote}”\n${text}\n请只回答，不要修改大纲。`, use_library: true, v: V, ask_only: true } })).reply,
       send: async ({ text }) => { const box = $("#olmsg"), draft = box ? box.value : ""; const ok = await send(text); if (box && draft) box.value = draft; return ok; },
     });
   };
@@ -372,7 +364,7 @@ async function outlineView(p) {
   document.addEventListener("click", window._olOff);
 
   /* ---------- the whole page ---------- */
-  shell(`<div class="rf-seg" id="olseg" role="tablist" aria-label="大纲视图" data-subrow></div><div class="rf" style="padding:0"><div class="rf-ws" id="olws"><div class="rf-pane"><div class="rf-hd ol-hd"><div class="ol-ctx" id="olctx"></div><span class="sp"></span><label class="chk"><input type="checkbox" id="ollib" ${useLib ? "checked" : ""}>参考研究库</label></div>
+  shell(`<div class="rf-seg" id="olseg" role="tablist" aria-label="大纲视图" data-subrow></div><div class="rf" style="padding:0"><div class="rf-ws" id="olws"><div class="rf-pane">
       <div class="rf-sc" id="olchat"></div>
       <div id="olsel" hidden></div><div class="ol-sug" id="olsug"></div><div class="ol-files" id="olfiles"></div><div class="rf-inp"><div class="rf-box"><textarea id="olmsg" rows="2" maxlength="1000" placeholder="说说你想怎么改，或者直接问我问题……" aria-label="对话输入"></textarea><button class="ol-att" type="button" id="olatt" aria-label="添加附件（PDF、Word、文字文件）" title="添加附件"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#olclip"/></svg></button><input type="file" id="olfile" hidden accept=".pdf,.docx,.txt,.md,.csv,.png,.jpg,.jpeg,.webp,.mp4,.mov"><button class="p rf-send" type="button" id="olsend" aria-label="发送">↑</button></div></div></div>
       <div class="rf-split" id="olsplit" role="separator" aria-orientation="vertical" aria-label="拖动调整对话和大纲的宽度（双击恢复）" tabindex="0"><i></i></div><div class="rf-pane" id="olright"></div></div></div>`, { active: "outline", p });
@@ -386,7 +378,6 @@ async function outlineView(p) {
   $("#olatt").onclick = () => $("#olfile").click();
   $("#olfile").onchange = (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) addFile(f); };
   m.onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(m.value); } };
-  $("#ollib").onchange = (e) => { useLib = e.target.checked; sessionStorage.setItem("ol_lib", useLib ? "1" : "0"); const x = $("#olctx"); if (x) x.innerHTML = ctxHtml(); };
   const key = "ol_left_pct", setRatio = (pct) => ws.style.setProperty("--rfl", Math.min(60, Math.max(30, pct)) + "%");
   let saved = 42; try { saved = +localStorage.getItem(key) || 42; } catch { /* no storage: the default */ }
   setRatio(saved);
