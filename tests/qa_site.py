@@ -802,7 +802,7 @@ def review_section(br, D):
     pg.unroute("**/recruiting/form/chat")
     pg.route("**/recruiting/form/chat", lambda route: route.fulfill(status=503, content_type="application/json", body=json.dumps({"detail": "DeepSeek暂时不可用：账户余额不足，请联系管理员处理。"})))
     pg.fill("#rfmsg", "对照一下"); pg.click("#rfsend"); pg.wait_for_selector(".rf-err")
-    ok(pg.locator(".rf-err button").count() == 0 and pg.locator("#rfctx .rf-model.bad").count() == 1 and pg.locator("[data-chip=goals]").is_disabled() and pg.locator("[data-chip=review]").is_enabled(), "[review] a refusal shows no retry, marks the model 不可用 and greys out only the buttons that need it")
+    ok(pg.locator(".rf-err button").count() == 0 and pg.locator("#rfchat .rf-bad[role=alert]").count() == 1 and pg.locator("[data-chip=goals]").is_disabled() and pg.locator("[data-chip=review]").is_enabled(), "[review] a refusal shows no retry, shows why the model cannot be used (above the conversation) and greys out only the buttons that need it")
     pg.unroute("**/recruiting/form/chat")
     errs.clear()   # the 502 / 503 above were made up on purpose
     pg.reload(); pg.wait_for_selector("#rfbub .rq-bub")

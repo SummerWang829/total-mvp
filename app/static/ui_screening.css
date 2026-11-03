@@ -68,3 +68,24 @@ html body.rfmode .v11app .body2>main{scrollbar-gutter:auto}
 .rq-file button{min-width:32px;min-height:32px;border:0;background:none;color:var(--mut);cursor:pointer;font-size:16px;line-height:1}
 .rq-ferr{color:var(--risk-ink);font-size:13px;margin-top:6px}
 .rq-ferr[hidden]{display:none}
+
+/* 第三轮（效果图 questionnaire_round3_mockup.html）：招募问卷下的三级菜单、细线图标、选项行距 */
+#rfbody .rq-sub{display:flex;gap:18px;border-bottom:1px solid var(--line);margin:0 0 10px;padding:0 12px;background:var(--surface)}
+#rfbody .rq-sub button{background:none;border:0;padding:8px 0;font:inherit;font-size:13px;color:var(--mut);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+#rfbody .rq-sub button.on{color:var(--ink);font-weight:700;border-bottom-color:var(--ink)}
+#rfws .rf-ico,#rfbody .rf-ico{width:16px;height:16px;vertical-align:-3px;margin-right:6px;flex:none}
+#rfws .rq-more .rf-ico{width:18px;height:18px;margin:0;vertical-align:middle}
+#rfws .rq-grip .rf-ico{width:14px;height:14px;margin:0;vertical-align:middle}
+#rfws .rq-send .rf-ico,#rfws .rf-send .rf-ico{width:18px;height:18px;margin:0}
+#rfws .rf-q{gap:0}
+#rfws .rq-title{line-height:1.75}
+#rfws .rq-opt{padding:0;margin:0;line-height:1.75}
+#rfws .rq-opt .rq-more{height:24px;width:28px;margin:0}
+#rfright .rf-seg{flex:none}
+#rfright .rf-seg button{display:inline-flex;align-items:center;white-space:nowrap;flex:none;min-width:max-content}
+@media (max-width:700px){#rfws .rq-opt .rq-more{height:36px;width:36px}}
+
+#rfright .rf-hd > button,#rfright .rf-hd > .rf-ver{flex:none}
+#rfright .rf-hd{height:auto;min-height:52px;flex-wrap:wrap;row-gap:6px;padding:8px 12px}
+#rfright .rf-hd button{white-space:nowrap}
+@media (max-width:700px){#rfws .rq-grip{width:36px;height:36px;left:0;top:6px;display:grid;place-items:center}}
