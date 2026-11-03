@@ -107,8 +107,9 @@ AUDIT_JS = r"""
   });
   document.querySelectorAll('button, a.btn, .tag, .top nav a, .tabs a').forEach((el) => {
     if (!visible(el) || !el.textContent.trim()) return;
-    const rg = document.createRange(); rg.selectNodeContents(el);
-    const tops = new Set([...rg.getClientRects()].map((r) => Math.round(r.top / 4)));
+    const tops = new Set();   // the text itself: an icon inside a button (an svg) is not text and may sit a few pixels off the line
+    const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    for (let t = walk.nextNode(); t; t = walk.nextNode()) { if (!t.textContent.trim()) continue; const rg = document.createRange(); rg.selectNodeContents(t); Array.from(rg.getClientRects()).forEach((r) => tops.add(Math.round(r.top / 4))); }
     if (tops.size > 1) out.wrap.push(`"${el.textContent.trim().slice(0, 16)}"`);
   });
   return out;
@@ -783,7 +784,7 @@ def review_section(br, D):
     pg.goto(B + f"/#/p/{pid}/people"); pg.wait_for_selector("#rfbub .rq-bub")
     chips = [x.strip() for x in pg.locator("#rfbub .rq-bub").all_inner_texts()]
     ok(chips == ["检查问卷", "对照研究目标", "优化措辞的中立性"], f"[review] with nobody answering yet the 建议 bubbles above the input are these three, no 预估通过率 (got {chips})")
-    ok("AI" not in pg.inner_text("#rfctx") and pg.locator("#rfctx .rf-model").count() == 0 and pg.locator("#rfctx .rf-cx span", has_text="当前问卷（2 题）").count() == 1 and pg.locator("#rflib").is_checked(), "[review] the header names the model and shows what the AI reads")
+    ok(pg.locator("#rfctx").count() == 0 and pg.locator("#rflib").count() == 0, "[review] no context chips and no 参考研究库 tick above the conversation (the library always goes along, 2026-11-03)")
     # a passing failure: the reason in plain words, the question kept, 重新尝试 asks again; a refusal greys out the buttons that need the model
     fails = {"n": 0}
     def flaky(route):
@@ -1227,7 +1228,7 @@ def recruit_section(br, D):
     n0 = pg.locator("#rfout .rf-q").count()
     # layout: one-row headers, the mode switch on the left (with the conversation), the workspace runs to the bottom of the window, a divider between the frames
     tops = pg.evaluate("[...document.querySelectorAll('.rf-hd')].map((h) => h.getBoundingClientRect().height)")
-    ok(len(tops) == 2 and all(h <= 56 for h in tops) and pg.locator(".rf-pane .rf-hd [data-mode=ai]").count() == 1 and pg.locator("input[name=rfmode]").count() == 0, "[recruit] both frame headers are a single row and the mode switch (对话编写 / 导入问卷链接) sits in the conversation's header")
+    ok(len(tops) == 2 and all(h <= 100 for h in tops) and pg.locator("#rfbody .rq-sub [data-mode=ai]").count() == 1 and pg.locator("#rfbody .rq-sub [data-mode=html]").count() == 1 and pg.locator("input[name=rfmode]").count() == 0, "[recruit] both frame headers are one row, or two when the icons do not fit (round 3, 2026-11-03), and the mode row (问卷编写 / 导入问卷链接) sits under 招募问卷")
     ok(pg.evaluate("(() => { const b = document.querySelector('#rfws').getBoundingClientRect().bottom; return b >= innerHeight - 40 && b <= innerHeight; })()"), "[recruit] the workspace runs to the bottom of the window")
     ok(pg.evaluate("(() => { const m = document.querySelector('#rfmsg').closest('.rf-pane').getBoundingClientRect(), r = document.querySelector('#rfright').getBoundingClientRect(); const x = m.width / (m.width + r.width); return x > 0.38 && x < 0.46; })()"), "[recruit] the conversation takes about 42% and the outline the rest")
     ok(pg.evaluate("[...document.querySelectorAll('#rfchat .rf-msg')].every((m) => m.getBoundingClientRect().width <= 561)"), "[recruit] a conversation message is never wider than 560px")
@@ -1354,14 +1355,14 @@ def recruit_section(br, D):
     ok(not pg.evaluate("document.documentElement.scrollHeight > innerHeight + 2"), "[recruit] switching back keeps the page from scrolling")
     pg.click("#rfclose"); pg.wait_for_selector("#rfpub")
     pg.click("[data-mode=html]"); pg.wait_for_selector("#rfurl")
-    pg.fill("#rfurl", "https://survey.example.com/s/qa"); pg.click("#rfsave"); pg.wait_for_selector("#rftest")
-    ok(pg.locator("#rftest").is_visible() and "survey.example.com" in pg.inner_text(".rf"), "[recruit] an HTML questionnaire link is saved and can be opened for testing")
+    pg.fill("#rfurl", "https://survey.example.com/s/qa"); pg.click("#rfsave"); pg.wait_for_selector("#rfedit")
+    ok(pg.locator("#rfurl").get_attribute("readonly") is not None and pg.locator("#rfedit").count() == 1 and pg.locator("#rfopen").is_visible() and "survey.example.com" in pg.input_value("#rfurl"), "[recruit] an HTML questionnaire link is saved and can be opened for testing")
     audit_page(pg, "recruiting html link/desktop", errs)
     pg.click("#ptab-list-t"); pg.wait_for_selector("#quotas")
     ok(pg.locator("#rules").count() == 0 and pg.locator("#quotas").count() == 1, "[recruit] eligibility rules are gone from the page (the questionnaire replaces them); quotas stay")
     ok(pg.locator(".rd-top #rdquotas").count() == 1 and pg.locator(".rd-top > .card").count() == 3, "[recruit] the quota progress sits in the top row beside the questionnaire link and the key numbers")
     top_h = [round(x) for x in pg.evaluate("(() => [document.querySelector('.top2').getBoundingClientRect().height, document.querySelector('.rail2').getBoundingClientRect().width, document.querySelector('.sub2').getBoundingClientRect().width])()")]
-    ok(top_h == [66, 88, 272], f"[recruit] the top bar, the narrow rail and the second-level menu have their fixed sizes (66 / 88 / 272, got {top_h})")
+    ok(top_h == [66, 12, 272], f"[recruit] the top bar, the thin edge of the rail inside a project and the second-level menu have their fixed sizes (66 / 12 / 272, got {top_h})")
     ok(pg.evaluate("document.querySelector('.rail2').getBoundingClientRect().width") <= 92, "[recruit] inside a project the left column is the narrow icon rail")
     call(f"/projects/{pid}/recruiting/rules", {"rules": [{"field": "country", "op": "in", "value": "SG", "effect": "require"}]}, rs, method="PUT")  # a project that already had a rule keeps it
     pg.reload(); pg.wait_for_selector("#rules")
@@ -1904,7 +1905,7 @@ def ai_console_section(br, D):
     ctx, pg, errs = new_page(br, 1440, h=900, token=adm)
     pg.goto(B + "/#/projects"); pg.wait_for_selector(".card")
     ok(pg.locator(".rail2 a", has_text="设置").count() == 1, "[ai-console] 'AI 后台' is in the wide left menu under 设置, beside 团队 / 数据保留 / 审计日志")
-    pg.locator(".rail2 a", has_text="设置").click(); pg.locator(".sub2 a.l1", has_text="AI 后台").click(); pg.wait_for_selector("#aipanel table")
+    pg.hover(".rail2"); pg.wait_for_timeout(300); pg.locator(".rail2 a", has_text="设置").click(); pg.locator(".sub2 a.l1", has_text="AI 后台").click(); pg.wait_for_selector("#aipanel table")
     rows = pg.locator("#aipanel tbody tr")
     ok(rows.count() == 19 and "AI 主持人" in rows.first.inner_text() and "对话分析" in rows.first.inner_text(), f"[ai-console] 功能总览 lists the 19 AI features (got {rows.count()})")
     ok(wait_until(lambda: "2 / 1" in pg.inner_text("#aipanel") and "1 / 0" in pg.inner_text("#aipanel"), 4), "[ai-console] the 24-hour calls / failures come from the call log")
@@ -2406,6 +2407,38 @@ def tabs_section(br, D):
     real.close()
 
 
+def shell_behaviour_section(br, D):
+    """外壳的行为：进入项目后窄栏收成 12px 细边、鼠标移上去弹出；第二栏左下角一个收起箭头（收起后只剩图标、“结项”变“结”）；右上角“姓名 · 职位 · 公司”（窄屏只留头像，悬停才显示）；浏览器里的收起选择记住。"""
+    adm, pid = D["tok"]["admin"], D["pid"]
+    ctx, pg, errs = new_page(br, 1920, 900, token=adm)
+    pg.goto(B + "/#/projects"); pg.wait_for_selector(".card")
+    w = lambda sel: round(pg.evaluate(f"document.querySelector('{sel}').getBoundingClientRect().width"))
+    ok(w(".rail2") == 88 and pg.locator(".fold").count() == 0, "[shell2] outside a project the rail stays 88px wide and there is no fold arrow")
+    pg.goto(B + f"/#/p/{pid}/outline"); pg.wait_for_selector(".sub2 .l1"); pg.wait_for_timeout(500)
+    ok(w(".rail2") == 12, "[shell2] inside a project the left rail is a 12px edge")
+    pg.hover(".rail2"); pg.wait_for_timeout(500)
+    ok(round(pg.evaluate("document.querySelector('.rail2 .rin').getBoundingClientRect().width")) == 88 and pg.locator(".rail2 a", has_text="项目").first.is_visible(), "[shell2] hovering the edge opens the rail over the page")
+    pg.mouse.move(900, 500); pg.wait_for_timeout(500)
+    ok(round(pg.evaluate("document.querySelector('.rail2 .rin').getBoundingClientRect().width")) == 12, "[shell2] moving away folds the rail back to the edge")
+    ok(pg.locator(".fold").count() == 1 and pg.locator(".sub2 .bot .fold").count() == 1, "[shell2] there is one fold arrow, at the bottom of the second-level menu")
+    ok(w(".sub2") == 272 and "结项" in pg.inner_text(".sub2 #closeproj"), "[shell2] the second-level menu is open with 结项")
+    pg.click(".sub2 .fold"); pg.wait_for_timeout(500)
+    ok(w(".sub2") == 68 and pg.evaluate("getComputedStyle(document.querySelector('.sub2 .cs')).display") != "none" and pg.evaluate("getComputedStyle(document.querySelector('.sub2 .cf')).display") == "none", "[shell2] folded: icons only and 结项 shows as 结")
+    pg.locator(".sub2 a.l1").nth(2).click(); pg.wait_for_selector("#rmtable, .rmws, main"); pg.wait_for_timeout(500)
+    ok(w(".sub2") == 68, "[shell2] the folded state is kept when going to another page")
+    pg.click(".sub2 .fold"); pg.wait_for_timeout(500)
+    ok(w(".sub2") == 272, "[shell2] the arrow opens it again")
+    me = pg.inner_text(".top2 .who")
+    ok(me.count("·") == 2 and "王总" in me and "管理员" in me and "Acme" in me, f"[shell2] the top right says name · role · company (got {me!r})")
+    ctx.close()
+    ctx, pg, errs = new_page(br, 1280, 800, token=adm)
+    pg.goto(B + f"/#/p/{pid}/outline"); pg.wait_for_selector(".sub2 .l1"); pg.wait_for_timeout(500)
+    ok(pg.evaluate("getComputedStyle(document.querySelector('.top2 .who')).display") == "none", "[shell2] on a narrower screen only the avatar shows")
+    pg.hover("#mebtn"); pg.wait_for_timeout(300)
+    ok(pg.locator(".whotip").is_visible() and "王总" in pg.inner_text(".whotip"), "[shell2] hovering the avatar shows the name, role and company")
+    ctx.close()
+
+
 def run():
     os.makedirs(os.path.join(ROOT, "qa_shots"), exist_ok=True)
     D = seed()
@@ -2706,6 +2739,7 @@ def run():
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "group_section": guard_section(group_section, br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "outline_section": guard_section(outline_section, br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "tabs_section": guard_section(tabs_section, br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "shell_behaviour_section": guard_section(shell_behaviour_section, br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "fill_section": guard_section(fill_section, br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "review_section": guard_section(review_section, br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "insights_section": guard_section(insights_section, br, D)

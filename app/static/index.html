@@ -42,7 +42,7 @@ function shell(inner, { active, p, title } = {}) {
   const proj = p && STAFF();  // researchers and admins: stage modules + sub-menu
   const notice = p && p.closed_at ? `<div class="note"><b>项目已结项。</b>受访者的录像、转写原文、引文和分享链接将在 ${esc(new Date(p.purge_at + "Z").toLocaleDateString())} 自动删除（结项后 ${p.retention_days} 天），洞察结论会保留。</div>` : "";
   const menu = shSubMenu(p, active);
-  shMount({ rail: shRail(active), top: shTop(p, active, title), sub: shSubHtml(p, active, menu), notice, inner, cls: `enter${menu && menu.items.length ? " hubpage" : ""}` });
+  shMount({ rail: shRail(active), thin: !!p, top: shTop(p, active, title), sub: shSubHtml(p, active, menu), notice, inner, cls: `enter${menu && menu.items.length ? " hubpage" : ""}` });
   labelTables();
   const hd = app.querySelector("main.hubpage > .head"), h1 = hd && hd.querySelector("h1"), tabOn = app.querySelector(".sub2 .l1.on .tx, .top2 .mod.on");
   if (h1 && tabOn) { const a = h1.textContent.trim(), b = tabOn.textContent.trim(); if (a === b || a === "项目" + b) hd.classList.add("dup"); }  // a title that only repeats the menu item's name is dropped; a page with its own title keeps it

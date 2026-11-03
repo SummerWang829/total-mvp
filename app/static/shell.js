@@ -78,15 +78,19 @@ const SH_SETTINGS = [["team", "团队", "users", "/team"], ["retention", "数据
 const SH_TITLES = { projects: "全部项目", repo: "研究库", team: "团队", retention: "数据保留", audit: "审计日志", ai: "AI 后台", demo: "演示数据" };
 const shSettingsList = () => SH_SETTINGS.concat(DEMO_ORG ? [["demo", "演示数据", "undo", "/demo"]] : []);
 
-/** 最左窄栏：凤凰（回项目列表）、项目、研究库（团队成员）、设置（只有管理员）、账号。 */
+/** 最左窄栏：凤凰（回项目列表）、项目、研究库（团队成员）、设置（只有管理员）。进入项目后收成 12px 细边，鼠标移上去弹出（样式在 ui_v11.css）。 */
 function shRail(active) {
   const inSet = shSettingsList().some((s) => s[0] === active);
   const it = (href, ic, label, on) => `<a class="rk${on ? " on" : ""}" href="#${href}" ${on ? 'aria-current="page"' : ""}>${vIc(ic)}<span>${label}</span></a>`;
-  const initial = esc((ME.name || "?").trim().slice(0, 1).toUpperCase());
-  return `<a class="rlogo" href="#/projects" aria-label="星桐 TOTAL，回到项目列表" title="回到项目列表"><img src="/logo_phoenix.svg" alt=""></a>`
+  return `<div class="rin"><a class="rlogo" href="#/projects" aria-label="星桐 TOTAL，回到项目列表" title="回到项目列表"><img src="/logo_phoenix.svg" alt=""></a>`
     + it("/projects", "folder", "项目", !inSet && active !== "repo") + (STAFF() ? it("/repo", "book", "研究库", active === "repo") : "")
-    + `<span class="gap"></span>` + (ME.role === "admin" ? it("/team", "gear", "设置", inSet) : "")
-    + `<div class="me2"><button type="button" class="av" id="mebtn" aria-haspopup="true" aria-expanded="false" aria-label="账号：${esc(ME.name)}">${initial}</button>`
+    + `<span class="gap"></span>` + (ME.role === "admin" ? it("/team", "gear", "设置", inSet) : "") + `</div>`;
+}
+
+/** 右上角的身份：一行“姓名 · 职位 · 公司”（窄屏只留头像，悬停才显示）和头像（点一下看退出）。 */
+function shWho() {
+  const line = `${esc(ME.name)} · ${ROLE[ME.role]} · ${esc(ME.org_name)}`, initial = esc((ME.name || "?").trim().slice(0, 1).toUpperCase());
+  return `<span class="who">${line}</span><div class="me2"><button type="button" class="av" id="mebtn" aria-haspopup="true" aria-expanded="false" aria-label="账号：${esc(ME.name)}">${initial}</button><span class="whotip" role="tooltip">${line}</span>`
     + `<div class="mecard2" id="mecard" hidden><b>${esc(ME.name)}</b><i>${ROLE[ME.role]}</i><em>${esc(ME.org_name)}</em><button type="button" id="out">退出</button></div></div>`;
 }
 
@@ -117,11 +121,11 @@ function shModules(p, active) {
 
 /** 顶部：项目页是“项目图标 / 项目列表 › 项目号 / 名称 / 状态 | 模块 | 子项目”，其他页只有标题。 */
 function shTop(p, active, title) {
-  if (!p) return `<div class="pinfo"><span class="nm pname">${esc(SH_TITLES[active] || title || "")}</span></div><div class="mods"></div><div class="tr"></div>`;
+  if (!p) return `<div class="pinfo"><span class="nm pname">${esc(SH_TITLES[active] || title || "")}</span></div><div class="mods"></div><div class="tr">${shWho()}</div>`;
   const [stLabel, stCls] = shStatus(p), subs = (p.setup && p.setup.subs) || [], sub = shSub(p);
   const sel = STAFF() && subs.length > 1 && !shSetup(p) ? `<label class="ctx-sub"><span>子项目</span><select id="subsel" aria-label="切换子项目"><option value="all" ${sub ? "" : "selected"}>总项目（全部 ${subs.length} 个）</option>${subs.map((s, i) => `<option value="${s.id}" ${sub && sub.id === s.id ? "selected" : ""}>S${i + 1} ${esc(s.name)}</option>`).join("")}</select></label>` : "";
   return `<span class="ptile" aria-hidden="true">${esc((p.name || "项").trim().slice(0, 1))}</span><div class="pinfo"><span class="bc"><a href="#/projects">项目列表</a> / ${shNumber(p)}</span><div class="r2"><span class="nm">${esc(p.name)}</span><span class="pill ${stCls}">${stLabel}</span></div></div>`
-    + `<div class="mods" role="navigation" aria-label="项目模块">${shModules(p, active)}</div><div class="tr">${sel}</div>`;
+    + `<div class="mods" role="navigation" aria-label="项目模块">${shModules(p, active)}</div><div class="tr">${sel}${shWho()}</div>`;
 }
 
 /** 第二层菜单的内容：{head, items, slot}；没有就不显示这一层。 */
@@ -149,9 +153,9 @@ function shSubMenu(p, active) {
 function shSubHtml(p, active, menu) {
   if (!menu) return "";
   const h = menu.head, on = menu.items.find((i) => i.key === active);
-  const close = menu.staff && !shSetup(p) ? `<div class="bot">${p.closed_at ? `<button class="s" id="reopen">重新打开</button>` : `<button class="s" id="closeproj" title="从结项那天起 ${p.retention_days} 天，受访者数据会自动删除">结项</button>`}</div>` : "";
+  const close = p && menu.staff && !shSetup(p) ? (p.closed_at ? `<button class="s" id="reopen" aria-label="重新打开"><span class="cf">重新打开</span><span class="cs">开</span></button>` : `<button class="s" id="closeproj" aria-label="结项" title="从结项那天起 ${p.retention_days} 天，受访者数据会自动删除"><span class="cf">结项</span><span class="cs">结</span></button>`) : "";
   return `<div class="shead"><span class="stile">${vIc(h.ic)}</span><div><b>${esc(h.title)}</b>${h.meta ? `<small>${esc(h.meta)}</small>` : ""}</div></div>`
-    + `<div class="mn">${menu.items.map((i) => `<a class="l1${i === on ? " on" : ""}" href="#${i.href}" ${i === on ? 'aria-current="page"' : ""}><span class="it">${vIc(i.ic)}</span><span class="tx">${i.label}</span></a>${i === on ? `<div class="l2slot" id="l2slot"></div>` : ""}`).join("")}</div>${close}`;
+    + `<div class="mn">${menu.items.map((i) => `<a class="l1${i === on ? " on" : ""}" href="#${i.href}" ${i === on ? 'aria-current="page"' : ""}><span class="it">${vIc(i.ic)}</span><span class="tx">${i.label}</span></a>${i === on ? `<div class="l2slot" id="l2slot"></div>` : ""}`).join("")}</div><div class="bot"><button type="button" class="fold" aria-label="收起或展开这一栏" aria-expanded="true"></button>${close}</div>`;
 }
 
 function shWire(p) {
@@ -161,20 +165,21 @@ function shWire(p) {
 }
 
 /** 固定外壳：窄栏、顶部、第二层菜单是三个固定位置的节点；切换页面时没变的不动，只替换内容区。 */
-function shMount({ rail, top, sub, notice, inner, cls }) {
+function shMount({ rail, top, sub, notice, inner, cls, thin }) {
   let a = app.firstElementChild;
   if (!(a && a.classList.contains("v11app"))) {
-    app.innerHTML = `<div class="v11app"><nav class="rail2" aria-label="主导航"></nav><button type="button" class="fold fold-rail" aria-label="收起或展开左侧窄栏" aria-expanded="true"></button><div class="v11main"><header class="top2"></header><div class="body2"><aside class="sub2" aria-label="本页菜单" hidden></aside><button type="button" class="fold fold-sub" aria-label="收起或展开菜单" aria-expanded="true"></button><main></main></div></div></div>`;
+    app.innerHTML = `<div class="v11app"><nav class="rail2" aria-label="主导航"></nav><div class="v11main"><header class="top2"></header><div class="body2"><aside class="sub2" aria-label="本页菜单" hidden></aside><main></main></div></div></div>`;
     a = app.firstElementChild;
-    const keep = (k, v) => { try { v === undefined ? localStorage.getItem(k) : localStorage.setItem(k, v ? "1" : ""); } catch (e) { /* private window: this page only */ } };
     const was = (k) => { try { return !!localStorage.getItem(k); } catch (e) { return false; } };   // the fold choice is only a convenience of this browser
-    const fold = (btn, cls, key) => { const apply = (off) => { a.classList.toggle(cls, off); btn.setAttribute("aria-expanded", String(!off)); }; apply(was(key)); btn.onclick = () => { const off = !a.classList.contains(cls); apply(off); keep(key, off); }; };
-    fold(a.querySelector(".fold-rail"), "rail-off", "tt_fold_rail"); fold(a.querySelector(".fold-sub"), "sub-off", "tt_fold_sub");
+    const keep = (k, on) => { try { localStorage.setItem(k, on ? "1" : ""); } catch (e) { /* private window: this page only */ } };
+    a.classList.toggle("sub-off", was("tt_fold_sub"));
+    a.addEventListener("click", (e) => { const b = e.target.closest(".sub2 .fold"); if (!b) return; const off = !a.classList.contains("sub-off"); a.classList.toggle("sub-off", off); keep("tt_fold_sub", off); a.querySelectorAll(".sub2 .fold").forEach((x) => x.setAttribute("aria-expanded", String(!off))); });
   }
   const set = (el, h) => { if (el._h !== h) { el.innerHTML = h; el._h = h; } };
   const aside = a.querySelector(".sub2"), main = a.querySelector(".body2>main");
   set(a.querySelector(".rail2"), rail); set(a.querySelector(".top2"), top); aside.hidden = !sub; if (sub) set(aside, sub);
-  a.classList.toggle("has-sub", !!sub);
+  a.classList.toggle("has-sub", !!sub); a.classList.toggle("thin", !!thin);
+  a.querySelectorAll(".sub2 .fold").forEach((x) => x.setAttribute("aria-expanded", String(!a.classList.contains("sub-off"))));
   main.className = cls; main.innerHTML = notice + inner; main.scrollTop = 0;
   shMoveSub(a);
 }
