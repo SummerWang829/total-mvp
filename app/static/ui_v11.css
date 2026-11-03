@@ -279,3 +279,6 @@ body.v11 .rf-box .ol-att{position:absolute;left:6px;bottom:7px;width:32px;height
 body.v11 .rf-box .ol-att:hover{background:var(--wash);color:var(--ink)}
 body.v11 .rf-box .ol-att svg{width:18px;height:18px;display:block}
 body.v11 .rf-box:has(.ol-att) textarea{padding-left:44px}
+
+/* ⑥ 登录页固定浅色、不放主题切换（2026-11-03 用户批注：登录页不用主题，默认就是浅色绿） */
+body.anon .tsw{display:none!important}

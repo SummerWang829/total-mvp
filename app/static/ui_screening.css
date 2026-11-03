@@ -77,8 +77,8 @@ html body.rfmode .v11app .body2>main{scrollbar-gutter:auto}
 #rfws .rf-q{gap:0}
 #rfws .rq-title{line-height:1.75}
 #rfws .rq-opt{padding:0;margin:0;line-height:1.75}
-/* 选项之间的上下间隔 0.9cm（2026-11-03 用户截图批注；只加在选项与选项之间，不动题目行和“＋添加选项”） */
-#rfws .rq-opt+.rq-opt{margin-top:0.9cm}
+/* 选项之间的上下间隔 0.6cm（2026-11-03 用户截图批注；只加在选项与选项之间，不动题目行和“＋添加选项”） */
+#rfws .rq-opt+.rq-opt{margin-top:0.6cm}
 #rfws .rq-opt .rq-more{height:24px;width:28px;margin:0}
 #rfright .rf-seg{flex:none}
 #rfright .rf-seg button{display:inline-flex;align-items:center;white-space:nowrap;flex:none;min-width:max-content}

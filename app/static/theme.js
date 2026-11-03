@@ -55,5 +55,5 @@
     apply(read());
   }
   apply(read());
-  window.TT_THEME = { html: html, next: next, get: read, set: set, mount: mount, capsule: capsule };
+  window.TT_THEME = { html: html, next: next, get: read, set: set, paint: apply, mount: mount, capsule: capsule };
 })();

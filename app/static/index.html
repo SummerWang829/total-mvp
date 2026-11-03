@@ -102,6 +102,10 @@ async function render() {
   // the layout classes of the page on screen stay until the next page is painted (see shell / loginView): taking them off here made the old page reflow narrow, with a scrollbar and a blank right side, for as long as the next page was waiting for its data
   const r = route();
   if (r.startsWith("/login")) return loginView();
+  if (document.body.classList.contains("anon")) {   // 从登录页进到应用：恢复这台电脑上选过的主题（登录页是固定浅色）
+    document.body.classList.remove("anon");
+    if (window.TT_THEME) TT_THEME.paint(TT_THEME.get());
+  }
   if (!store.get("tt_token")) { location.hash = "#/login"; return; }
   if (!ME) {
     try { ME = await api("/me"); } catch { return loginView(); }
@@ -155,6 +159,8 @@ async function render() {
 // ---------------- login ----------------
 function loginView() {
   document.body.classList.remove("rfmode", "pgw", "v11");
+  document.body.classList.add("anon");   // 登录页不显示主题切换，固定浅色（用户 2026-11-03 要求）
+  document.documentElement.setAttribute("data-theme", "light");
   let mode = "login";
   const draw = () => {
     if (mode === "forgot") return drawForgot();
