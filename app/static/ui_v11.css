@@ -366,3 +366,19 @@ body.v11 .rf-box .rf-send{right:9px;bottom:9px}
 body.v11 .sub2 .l2slot>.l2grp{display:block!important;font-size:11px;color:var(--muted);font-weight:600;letter-spacing:.03em;padding:1px 12px 5px;margin:0}
 /* 名单的“来源”列：名字再长也不撑破表格 */
 .ptbl .srcname{display:block;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ---------- 2026-11-04 用户截图批注 ---------- */
+/* ① 问卷流程里，题目行与第一个选项之间再拉开一倍（选项之间 0.3cm，首选项前给 0.6cm） */
+#rfws .rf-q>:not(.rq-opt)+.rq-opt{margin-top:0.6cm}
+
+/* ② 对话里“我打的字”和“AI 的回话”底色分开：我说的=主色浅底靠右，AI=中性浅灰靠左。
+   AI 的“已更新问卷”回执卡（.rf-chgc）有自己的一套颜色，用 :has 排除，避免叠两层底色。 */
+body.v11 .rf-msg.rf-me{background:color-mix(in srgb, var(--pri) 13%, var(--surface));border:1px solid color-mix(in srgb, var(--pri) 30%, var(--surface));
+  border-radius:14px 14px 4px 14px;padding:9px 12px;font-weight:500}
+body.v11 .rf-msg:not(.rf-me):not(.mut):not(:has(.rf-chgc)){background:var(--ai-bub,#F4F7F5);border:1px solid var(--ai-bub-line,#E7EDE9);
+  border-radius:14px 14px 14px 4px;padding:9px 12px;max-width:min(92%,560px)}
+html[data-theme="dark"] body.v11 .rf-msg:not(.rf-me):not(.mut):not(:has(.rf-chgc)){background:rgba(255,255,255,.055);border-color:rgba(255,255,255,.10)}
+html[data-theme="orange"] body.v11 .rf-msg:not(.rf-me):not(.mut):not(:has(.rf-chgc)){background:#F7F3EF;border-color:#EADFD5}
+/* 二级菜单里的静态项（如“访谈大纲”）与页面搬进来的页签长得一样 */
+body.v11 .sub2 .l2slot a.l2e{display:flex;align-items:center;width:100%;padding:8px 12px;border-radius:9px;color:var(--muted);font-size:14.5px;text-decoration:none}
+body.v11 .sub2 .l2slot a.l2e:hover{background:var(--chip);color:var(--ink)}

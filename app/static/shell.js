@@ -5,7 +5,7 @@ const SH_KIND = { depth: "深访", group: "座谈会", quant: "定量" };
 const SH_HUBS = [
   { id: "ov", n: "项目总览", tabs: [["home", "总览"], ["monitor", "执行监控"], ["pool", "洞察池"], ["members", "项目成员"]] },
   { id: "wz", n: "立项向导", tabs: [["wiz", "立项向导"]] },
-  { id: "ql", n: "定性", tabs: [["people", "甄别设定"], ["outline", "访谈"], ["rooms", "直播间"], ["insights", "洞察"], ["studies", "异步研究"]] },
+  { id: "ql", n: "定性", tabs: [["people", "创建访谈"], ["outline", "访谈大纲"], ["rooms", "访谈直播"], ["insights", "洞察"], ["studies", "异步研究"]] },   // 用户 2026-11-04：甄别设定与访谈合并成“创建访谈”，直播间改“访谈直播”
   { id: "qt", n: "定量", tabs: [["quant", "定量结果"]] },
   { id: "cr", n: "舆情采集", tabs: [["listening", "舆情监测"]] },
 ];
@@ -155,8 +155,8 @@ function shModules(p, active) {
       + (M.includes("async") ? a("studies", "异步研究", "spark", active === "studies") : "") + (M.includes("listening") ? a("listening", "舆情采集", "listen", hub === "cr") : "");
   }
   if (VIEWER()) return a("pool", "洞察池", "book", active === "pool") + (M.includes("listening") ? a("listening", "舆情监测", "listen", active === "listening") : "") + (M.includes("quant") ? a("quant", "定量结果", "pie", active === "quant") : "");
-  if (RECRUITER()) return (p.plan_status ? a("wiz", "立项向导", "flag", active === "wiz") : "") + a("people", "甄别设定", "user", active === "people");
-  return (live ? a("rooms", "直播间", "live", active === "rooms") : "") + a("insights", "洞察", "bulb", active === "insights");   // moderators and observers
+  if (RECRUITER()) return (p.plan_status ? a("wiz", "立项向导", "flag", active === "wiz") : "") + a("people", "创建访谈", "user", active === "people");
+  return (live ? a("rooms", "访谈直播", "live", active === "rooms") : "") + a("insights", "洞察", "bulb", active === "insights");   // moderators and observers
 }
 
 /** 顶部：项目页是“项目图标 / 项目列表 › 项目号 / 名称 / 状态 | 模块 | 子项目”，其他页只有标题。 */
@@ -179,23 +179,28 @@ function shSubMenu(p, active) {
   const [stLabel] = shStatus(p), hub = shHubOf(active), M = p.methods || ["depth", "group", "async", "listening"], live = M.includes("depth") || M.includes("group");
   if (STAFF()) {
     const kinds = shKinds(p), qm = shQmode(), cur = hub === "ql" && active !== "studies" ? (qm && kinds.includes(qm) ? qm : kinds.find((k) => k !== "quant")) : hub === "qt" ? "quant" : "";
-    let head, items = [];
+    let head, items = [], extra = null, onKey = active;
     if (hub === "wz" || shSetup(p)) head = { ic: "wiz", title: "立项向导", meta: stLabel };
     else if (hub === "ov") { head = { ic: "grid", title: "项目总览", meta: stLabel }; items = SH_HUBS[0].tabs.filter((t) => shPageOk(t[0], p)).map(([k, n]) => it(k, n)); }
-    else if (hub === "ql" && active !== "studies") { head = { ic: SH_STAGE_ICON[cur] || "chat", title: SH_KIND[cur] || "深访", meta: kinds.length > 1 ? `阶段 ${kinds.indexOf(cur) + 1} · ${stLabel}` : stLabel }; items = SH_HUBS[2].tabs.filter((t) => t[0] !== "studies" && shPageOk(t[0], p)).map(([k, n]) => it(k, n)); }
+    else if (hub === "ql" && active !== "studies") {
+      const merged = active === "people" || active === "outline";   // 这两页共用“创建访谈”一个入口
+      head = { ic: SH_STAGE_ICON[cur] || "chat", title: SH_KIND[cur] || "深访", meta: kinds.length > 1 ? `阶段 ${kinds.indexOf(cur) + 1} · ${stLabel}` : stLabel };
+      items = SH_HUBS[2].tabs.filter((t) => t[0] !== "studies" && t[0] !== "outline" && shPageOk(t[0], p)).map(([k, n]) => it(k, n));
+      if (merged) { onKey = "people"; extra = [{ href: `/p/${p.id}/outline`, label: "访谈大纲", on: active === "outline" }]; }
+    }
     else head = { ic: hub === "qt" ? "pie" : hub === "cr" ? "listen" : "spark", title: hub === "qt" ? "定量" : hub === "cr" ? "舆情采集" : "异步研究", meta: stLabel };
-    return { head, items, staff: true };
+    return { head, items, staff: true, extra, onKey };
   }
-  if (RECRUITER() && active === "people") return { head: { ic: "user", title: "甄别设定", meta: stLabel }, items: [it("people", "甄别设定")], slot: true };
-  if (!VIEWER() && !RECRUITER()) return { head: { ic: "live", title: "访谈", meta: stLabel }, items: (live ? [it("rooms", "直播间")] : []).concat([it("insights", "洞察")]), slot: true };
+  if (RECRUITER() && active === "people") return { head: { ic: "user", title: "创建访谈", meta: stLabel }, items: [it("people", "创建访谈")], slot: true };
+  if (!VIEWER() && !RECRUITER()) return { head: { ic: "live", title: "访谈直播", meta: stLabel }, items: (live ? [it("rooms", "访谈直播")] : []).concat([it("insights", "洞察")]), slot: true };
   return null;
 }
 function shSubHtml(p, active, menu) {
   if (!menu) return "";
-  const h = menu.head, on = menu.items.find((i) => i.key === active);
+  const h = menu.head, on = menu.items.find((i) => i.key === (menu.onKey || active));
   const close = p && menu.staff && !shSetup(p) ? (p.closed_at ? `<button class="s" id="reopen" aria-label="重新打开" data-tip="重新打开"><span class="cf">重新打开</span><span class="cs">开</span></button>` : `<button class="s" id="closeproj" aria-label="结项" title="从结项那天起 ${p.retention_days} 天，受访者数据会自动删除" data-tip="结项"><span class="cf">结项</span><span class="cs">结</span></button>`) : "";
   return `<div class="shead"><span class="stile">${vIc(h.ic)}</span><div><b>${esc(h.title)}</b>${h.meta ? `<small>${esc(h.meta)}</small>` : ""}</div></div>`
-    + `<div class="mn">${menu.items.map((i) => `<a class="l1${i === on ? " on" : ""}" href="#${i.href}" ${i === on ? 'aria-current="page"' : ""} data-tip="${esc(i.label)}"><span class="it">${vIc(i.ic)}</span><span class="tx">${i.label}</span></a>${i === on ? `<div class="l2slot" id="l2slot"></div>` : ""}`).join("")}</div><div class="bot"><button type="button" class="fold" aria-label="收起或展开这一栏" aria-expanded="true" data-tip="收起这一栏"></button>${close}</div>`;
+    + `<div class="mn">${menu.items.map((i) => `<a class="l1${i === on ? " on" : ""}" href="#${i.href}" ${i === on ? 'aria-current="page"' : ""} data-tip="${esc(i.label)}"><span class="it">${vIc(i.ic)}</span><span class="tx">${i.label}</span></a>${i === on ? `<div class="l2slot" id="l2slot">${(menu.extra || []).map((x) => `<a class="l2e${x.on ? " on" : ""}" href="#${x.href}"${x.on ? ' aria-current="page"' : ""}>${x.label}</a>`).join("")}</div>` : ""}`).join("")}</div><div class="bot"><button type="button" class="fold" aria-label="收起或展开这一栏" aria-expanded="true" data-tip="收起这一栏"></button>${close}</div>`;
 }
 
 function shWire(p) {
@@ -225,6 +230,11 @@ function shMount({ rail, top, sub, notice, inner, cls, thin }) {
 }
 function shMoveSub(a) {   // the page's own second-level controls go under the current first-level menu item
   const slot = a.querySelector(".sub2 .l2slot"), main = a.querySelector(".body2>main"); if (!slot || !main) return;
-  slot.replaceChildren(); main.querySelectorAll(":scope > .hubtabs.sub, [data-subrow]").forEach((e) => slot.appendChild(e));   // a direct .hubtabs.sub, or any element marked data-subrow (at any depth)
+  slot.querySelectorAll(":scope > .mvd").forEach((e) => e.remove());   // 只清上一次搬进来的；静态二级（.l2e）保留
+  const anchor = slot.querySelector(":scope > .l2e");
+  main.querySelectorAll(":scope > .hubtabs.sub, [data-subrow]").forEach((e) => {   // a direct .hubtabs.sub, or any element marked data-subrow (at any depth)
+    e.classList.add("mvd");
+    if (anchor) slot.insertBefore(e, anchor); else slot.appendChild(e);
+  });
   slot.hidden = !slot.firstChild;
 }

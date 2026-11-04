@@ -367,8 +367,8 @@ async function peopleView(p) {
         ${RC ? "" : `<td class="acts">${x.anonymized || x.screening !== "eligible" || x.screen_result === "disqualified" ? "" : (() => { const iv = invOf(x); return iv ? `<button class="s" data-upd="${iv.id}"${iv.status === "ended" ? ' disabled title="访谈已结束"' : ""}>更新邀请函</button>${iv.mail_status === "failed" ? `<div class="mailwarn">邮件没发出去 · <a data-resend="${iv.id}" role="button" tabindex="0">重发</a></div>` : ""}` : `<button class="s p" data-inv="${x.id}">发送邀请函</button>`; })()}</td>`}
         ${RC ? "" : `<td class="c">${x.anonymized ? "" : `<button type="button" class="xdel" data-erase="${x.id}" data-name="${esc(x.name)}" aria-label="删除 ${esc(x.name)} 的数据" title="删除数据">×</button>`}</td>`}</tr>`; };
   const ptab = sessionStorage.getItem("ptab") === "list" ? "list" : "form";  // 招募问卷 is a workspace (the page does not scroll); the quotas and the people are on the other tab
-  shell(`${head("甄别设定", `先做招募问卷，再看配额和名单；受访者可来自问卷、手动添加或外部名单。目前只开放新加坡。`)}
-    <div class="hubtabs sub" role="tablist" aria-label="甄别设定"><a href="#" role="tab" id="ptab-form-t" class="${ptab === "form" ? "on" : ""}" aria-selected="${ptab === "form"}">招募问卷</a><a href="#" role="tab" id="ptab-list-t" class="${ptab === "list" ? "on" : ""}" aria-selected="${ptab === "list"}">配额与受访者名单</a></div>
+  shell(`${head("创建访谈", `先做招募问卷，再看配额和名单，最后在「访谈大纲」里安排访谈流程；受访者可来自问卷、手动添加或外部名单。`)}
+    <div class="hubtabs sub" role="tablist" aria-label="创建访谈"><a href="#" role="tab" id="ptab-form-t" class="${ptab === "form" ? "on" : ""}" aria-selected="${ptab === "form"}">招募问卷</a><a href="#" role="tab" id="ptab-list-t" class="${ptab === "list" ? "on" : ""}" aria-selected="${ptab === "list"}">配额与受访者名单</a></div>
     <div id="ptab-form" ${ptab === "form" ? "" : "hidden"}>${rf.html}</div><div id="ptab-list" ${ptab === "list" ? "" : "hidden"}>
     ${rd.html}
     ${impBatchBar(impB.batches, impB.orphans_pending)}
