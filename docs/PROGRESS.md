@@ -24,8 +24,15 @@
 - 预检影响实测：设 2 条规则 + 1 条配额 → `to_qualified 3 / to_disqualified 2`，配额 `大湾区 +2（目标 3，未溢出）`。
 - UI（Playwright + Edge，1512 宽）：五步走完、结果页、未匹配池、批次条全部正常，**控制台 0 报错**；home/outline/rooms/studies/insights 五页回归通过。
 
-**未做 / 待确认**
-- 部署：本次先不部署。原因：提交前要跟线上逐文件核对（防止回退别人改动），而读取 SSH 私钥被权限规则拒绝，核对没做成；部署前需要先恢复该权限或换一种核对方式。
+**部署（2026-11-04 10:53，已上线核对）**
+- **核对发现一个重要事实：线上 `app/main.py` 比 GitHub 新**——它多了 jwt 鉴权中间件、`ai_calls` / `ai_prompts`、`ai_console` 与 `attachments` 路由。所以 `main.py` **没有用本地版覆盖**，而是以线上为底、只并入两处：`from .routers import ... recruit_import as recruit_import_router ...` 和 `for r in (... recruit.router, recruit_import_router.router, quant.router ...)`。其余 9 个文件核对后线上与本仓库一致（models.py / screener.py / insights.js 的 md5 差异仅为换行符）。
+- 备份：`db/total-20261104-025318.db.gz`（COS 上传 200）。
+- 回滚材料：`/opt/rollback-import-20261104-105332.tgz`（4.6M）+ 旧镜像标签 `total-app:rollback-import-20261104-105332`。
+- 替换 10 个文件（统一 LF），服务器与本机 md5 **逐一一致**；`docker compose up -d --build --no-deps app`，`deploy/.env` 未动。
+- 部署后核对：app `Up (healthy)`；`/api/health` `/index.html` `/imports.js` `/ui_v11.css` 全 200；**10 个 `recruiting/import/*` 路由已注册**；3 张新表已建（库内共 63 张表）；近 3 分钟日志 error 0；未带令牌访问 `/api/projects` 与 `/api/recruiting/import/batches` 均 **401**（jwt 中间件仍在）；`/api/ai-console/*`、`/api/attachments/extract` 仍存在（原有功能没被覆盖）；公网 `ui_v11.css` md5 与本机一致。
+
+**待确认 / 遗留**
+- **仓库与线上仍有漂移**：线上有 `ai_calls.py`、`ai_prompts.py`、`routers/ai_console.py`、`routers/attachments.py`、`security.py` 等本地仓库没有的模块，`main.py` 也对不上。建议尽快做一次全量对账（把线上新文件拉回仓库），否则每次部署都要人工合并。
 - 名单列"合格状态"独立成列：现有"资格"列已含 正式/备份/不符合，暂不新增（会与"问卷答案"列重复信息），等用户定。
 - 招募问卷页的"导入态不渲染题目"：产品已有"选择招募问卷方式"弹框（问卷编写 / 导入问卷链接），目前导入链接后仍显示编辑器，是否改成 Data Map 视图待定。
 
