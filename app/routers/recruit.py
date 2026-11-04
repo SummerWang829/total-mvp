@@ -54,12 +54,6 @@ class ChatBody(BaseModel):
     goals: list[str] = Field(default_factory=list, max_length=8)
     need: str = Field(default="", max_length=1500)
     use_library: bool = True  # the "参考研究库" tick above the conversation
-    attachments: list["AttachmentIn"] = Field(default_factory=list, max_length=recruit_form.MAX_ATTACH_FILES)  # text read by /api/attachments/extract; sent with this message only, never kept
-
-
-class AttachmentIn(BaseModel):
-    name: str = Field(default="", max_length=200)
-    text: str = Field(default="", max_length=30_000)
 
 
 class IdeaBody(BaseModel):
@@ -175,9 +169,9 @@ def recruiting(pid: str, ctx: Ctx = Depends(require_roles(*RECRUITERS)), db: Ses
 
 def _form_out(f: RecruitForm | None) -> dict:
     if f is None:
-        return {"source": "ai", "idea": "", "html_url": "", "questions": [], "version": 0, "generated_by": "", "status": "draft", "link": "", "stats": {"qualified": 0, "out": 0, "out_by": {}},
+        return {"source": "ai", "source_confirmed": "", "idea": "", "html_url": "", "questions": [], "version": 0, "generated_by": "", "status": "draft", "link": "", "stats": {"qualified": 0, "out": 0, "out_by": {}},
                 "goals": [], "need": "", "chat": []}
-    return {"source": f.source, "idea": f.idea, "html_url": f.html_url, "questions": [q.model_dump() for q in recruit_form.load(f.questions)], "version": f.version, "generated_by": f.generated_by,
+    return {"source": f.source, "source_confirmed": f.source_confirmed or "", "idea": f.idea, "html_url": f.html_url, "questions": [q.model_dump() for q in recruit_form.load(f.questions)], "version": f.version, "generated_by": f.generated_by,
             "goals": f.goals or [], "need": f.need or "", "chat": (f.chat or [])[-MAX_CHAT:],
             "status": f.status or "draft", "link": f"/screen.html?t={f.token}" if f.token else "", "published_at": f.published_at.isoformat() if f.published_at else None,
             "stats": {"started": f.n_started or 0, "qualified": f.n_qualified or 0, "out": f.n_out or 0, "out_by": f.out_by or {}}}
@@ -361,6 +355,7 @@ def put_form(pid: str, body: FormIn, ctx: Ctx = Depends(require_roles(*RECRUITER
         f = RecruitForm(project_id=proj.id, org_id=proj.org_id)
         db.add(f)
     f.source, f.idea, f.html_url, f.questions = form.source, form.idea, form.html_url, [q.model_dump() for q in form.questions]
+    f.source_confirmed = form.source
     f.goals, f.need = form.goals, form.need
     f.version, f.updated_at = (f.version or 0) + 1, utcnow()
     if form.source != "ai" and f.status == "published":
@@ -368,6 +363,31 @@ def put_form(pid: str, body: FormIn, ctx: Ctx = Depends(require_roles(*RECRUITER
     audit(db, ctx.org_id, ctx.actor, "recruit.form", proj.id, source=form.source, questions=len(form.questions))
     db.commit()
     return _full(db, proj, f)
+
+
+class FormSourceIn(BaseModel):
+    source: Literal["ai", "html"]
+
+
+@router.post("/projects/{pid}/recruiting/form/source")
+def set_form_source(pid: str, body: FormSourceIn, ctx: Ctx = Depends(require_roles(*RECRUITERS)), db: Session = Depends(get_db)):
+    """Remember which source the team picked for the recruiting questionnaire (ai | html).
+
+    Asked once per project: the page only shows that dialog while `source_confirmed` is empty. This writes the choice and nothing else —
+    no new version, no change to the questions — so confirming the source never shows up in the version history.
+    """
+    proj = get_project(db, ctx, pid)
+    f = db.get(RecruitForm, proj.id)
+    if f is None:
+        f = RecruitForm(project_id=proj.id, org_id=proj.org_id)
+        db.add(f)
+    f.source, f.source_confirmed = body.source, body.source
+    if body.source != "ai" and f.status == "published":
+        f.status = "closed"  # the public link only serves the questionnaire written here
+    f.updated_at = utcnow()
+    audit(db, ctx.org_id, ctx.actor, "recruit.form_source", proj.id, source=body.source)
+    db.commit()
+    return _form_out(f)
 
 
 @router.post("/projects/{pid}/recruiting/form/chat")
@@ -398,8 +418,7 @@ def chat_form(pid: str, body: ChatBody, ctx: Ctx = Depends(require_roles(*RECRUI
     quotas = _quotas_of(db, proj)
     try:
         out = recruit_form.chat_turn(chat, body.message, f.chat or [], current.questions, current.goals, current.need, proj.language, proj.brief or "", library,
-                                     recruit_review.stats_context(current.questions, quotas, _stats_of(f), f.tally or {}),
-                                     attachments=[(a.name, a.text) for a in body.attachments if a.text.strip()])
+                                     recruit_review.stats_context(current.questions, quotas, _stats_of(f), f.tally or {}))
     except ChatFatalError as e:
         raise _refused(e) from e
     except recruit_form.ChatUnavailable as e:
@@ -411,7 +430,7 @@ def chat_form(pid: str, body: ChatBody, ctx: Ctx = Depends(require_roles(*RECRUI
         db.commit()
         return {"reply": out.reply, "kind": "answer", "changed": False}
     questions = out.questions if out.questions is not None else current.questions
-    f.source, f.html_url, f.questions = "ai", "", [q.model_dump() for q in questions]
+    f.source, f.source_confirmed, f.html_url, f.questions = "ai", "ai", "", [q.model_dump() for q in questions]
     f.goals = out.goals if out.goals is not None else current.goals
     f.need = out.need if out.need is not None else current.need
     labels = recruit_review.source_labels(out.sources, questions, quotas, bool((proj.brief or "").strip()), bool(library))
@@ -527,7 +546,7 @@ def generate_form(pid: str, body: IdeaBody, ctx: Ctx = Depends(require_roles(*RE
     if f is None:
         f = RecruitForm(project_id=proj.id, org_id=proj.org_id)
         db.add(f)
-    f.source, f.idea, f.html_url, f.questions = "ai", body.idea.strip(), "", [q.model_dump() for q in questions]
+    f.source, f.source_confirmed, f.idea, f.html_url, f.questions = "ai", "ai", body.idea.strip(), "", [q.model_dump() for q in questions]
     f.generated_by, f.version, f.updated_at = chat.name if chat else "mock", (f.version or 0) + 1, utcnow()
     audit(db, ctx.org_id, ctx.actor, "recruit.form_generate", proj.id, model=f.generated_by, questions=len(f.questions), library=bool(library), brief=bool((proj.brief or "").strip()))  # the idea itself is not written to the log
     db.commit()

@@ -404,3 +404,4 @@ body.v11 .sub2 .l2slot a.l2e:hover{background:var(--chip);color:var(--ink)}
 .rf-steps>div{display:flex;gap:9px;align-items:flex-start;font-size:12.5px;line-height:1.65;color:var(--ink2)}
 .rf-steps i{flex:none;width:19px;height:19px;border-radius:99px;background:var(--wash);border:1px solid var(--line2);color:var(--muted);font-style:normal;font-size:11px;display:grid;place-items:center;margin-top:1px}
 .rf-steps b{color:var(--ink);font-weight:600}
+/* 导入态的“更换来源”只放在右栏标题行（左栏那个在 JS 里就不渲染了） */

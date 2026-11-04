@@ -713,6 +713,7 @@ class RecruitForm(Base):
     project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), primary_key=True)
     org_id: Mapped[str] = mapped_column(String(32), index=True)
     source: Mapped[str] = mapped_column(String(10), default="ai")  # ai | html
+    source_confirmed: Mapped[str] = mapped_column(String(10), default="")  # ai | html once the team has picked the source; "" = never asked (the page asks once per project, not on every visit)
     idea: Mapped[str] = mapped_column(Text, default="")
     html_url: Mapped[str] = mapped_column(String(500), default="")
     questions: Mapped[list] = mapped_column(JSON, default=list)
