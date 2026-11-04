@@ -8,8 +8,8 @@ const RF_MAX_FILES = 5;
 const RF_IC = {
   list: '<path d="M9 4h6a1 1 0 0 1 1 1v1H8V5a1 1 0 0 1 1-1z"/><rect x="5" y="6" width="14" height="15" rx="2"/><path d="M9 12h6M9 16h4"/>',
   eye: '<circle cx="12" cy="12" r="8"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .9-1 1.7v.5"/><circle cx="12" cy="17" r=".6" fill="currentColor"/>',
-  undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
-  redo: '<path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/>',
+  undo: '<path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/>',
+  redo: '<path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7"/>',
   collapse: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/><path d="m15 10-2 2 2 2"/>',
   expand: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/><path d="m13 10 2 2-2 2"/>',
   chev: '<path d="m6 9 6 6 6-6"/>',
@@ -105,6 +105,13 @@ function rfCard(p, form) {
 
   /* ---------- left: the conversation ---------- */
   function chatHtml() {
+    if (mode === "html") return `<div class="rf-msg">问卷已经导入了，这里不用再出题。<div class="sm mut" style="margin-top:6px">下一步是生成访谈大纲：按这份问卷的筛选字段（常住地区、年龄、到港、商圈、收入）搭结构。</div></div>
+      <div class="rf-steps">
+        <div><i>1</i><span>确认<b>研究背景 · 研究目标 · 招募需求</b>（右侧可以直接改）</span></div>
+        <div><i>2</i><span>生成<b>访谈大纲</b>，按分群（大湾区 / 非大湾区）拆分追问</span></div>
+        <div><i>3</i><span>Confirmit 数据回来后，在<b>配额与受访者名单</b>里导入甄别数据</span></div>
+      </div>
+      <div class="row" style="margin:2px 0 10px"><button class="p" type="button" id="rfgooutline">生成访谈大纲 →</button></div>`;
     const hello = `<div class="rf-msg">您好！我可以根据研究背景和研究库资料协助设计招募问卷，也可以按您的要求修改，例如“年龄放最前面，18 岁以下筛掉”“每天都用的人跳过频率题”“把第 3 题改成多选”。可先说“帮我起草问卷”。</div>`;
     const all = f.chat || [], msgs = all.map((m, i) => msgHtml(m, i === all.length - 1 && !fail, i)).join("");
     const failHtml = fail ? `<div class="rf-msg rf-me">${esc(fail.ask)}</div><div class="rf-err" role="alert"><b>本次未能完成回复</b><div>${esc(fail.text)}</div>${fail.fatal ? "" : `<button class="s" type="button" data-chip="retry">重新尝试</button><button class="s" type="button" data-chip="rephrase">调整提问方式</button>`}</div>` : "";
@@ -114,13 +121,14 @@ function rfCard(p, form) {
     return down + hello + msgs + cards + failHtml + (pending ? `<div class="rf-msg rf-me">${esc(pending)}</div><div class="rf-msg mut">正在处理…</div>` : news);
   }
   function bubbles() {   // the 建议 bubbles above the input: at most three of the actions for the state of the questionnaire; a click sends those words
+    if (mode === "html") return "";
     const started = (f.stats && f.stats.started) || 0, why = aiOk() ? "" : ` disabled title="${esc(f.ai.reason)}"`;   // the buttons that need the model are greyed out, with the reason, when it cannot be used
     const need = (c, label) => `<button class="rq-bub" type="button" data-chip="${c}"${why}>${label}</button>`, free = (c, label) => `<button class="rq-bub" type="button" data-chip="${c}">${label}</button>`;
     const row = !Q.length ? [need("draft", "帮我起草问卷")] : !started ? [free("review", "检查问卷"), need("goals", "对照研究目标"), need("neutral", "优化措辞的中立性"), free("test", "测试这份问卷")]
       : [free("review", "检查问卷"), free("rate", "预估通过率"), free("worst", "定位筛除率较高的题目"), need("neutral", "优化措辞的中立性")];
     return `<span class="rq-bubh">建议</span>${row.slice(0, 3).join("")}`;
   }
-  const drawChat = () => { const c = $("#rfchat"); if (!c) return; c.innerHTML = chatHtml(); c.scrollTop = c.scrollHeight; const b = $("#rfbub"); if (b) b.innerHTML = pending ? "" : bubbles(); wireChips(); };
+  const drawChat = () => { const c = $("#rfchat"); if (!c) return; c.innerHTML = chatHtml(); c.scrollTop = c.scrollHeight; const b = $("#rfbub"); if (b) b.innerHTML = pending ? "" : bubbles(); wireChips(); const g = $("#rfgooutline"); if (g) g.onclick = goOutline; };
   async function send(text) {
     text = (text || "").trim(); if (!text || sending) return;
     if (incomplete()) return toast("有题目或选项还没写完，先写完再对话", true);
@@ -340,15 +348,25 @@ ${text}
     await api(`/projects/${p.id}/outline/settings`, { method: "PUT", body: { brief: text } });
     f = { ...f, brief: text }; stat("研究背景已保存");
   });
+  function importedCard() {
+    return `<h3 class="rf-h rq-bold">已导入的问卷</h3>
+      <div class="rf-impcard">
+        <label class="field"><span>问卷链接（https://）</span><input id="rfurl" type="url" value="${esc(f.html_url)}" placeholder="https://…（在别的系统里做好的问卷）" maxlength="500" ${htmlLocked ? "readonly" : ""}></label>
+        <div class="row" style="margin-top:8px">${htmlLocked ? `<span class="tag ok">已锁定</span><button class="s" id="rfedit" type="button">编辑</button>` : `<button class="p" id="rfsave" type="button">保存并锁定</button>`}<button class="s" id="rfopen" type="button" ${f.html_url ? "" : "disabled"}>${rfIcon(RF_IC.ext)}新窗口打开</button></div>
+        <div class="sm mut" style="margin-top:8px;line-height:1.7">题目在客户那边作答（Confirmit）。数据回来后，在「配额与受访者名单 → 导入甄别数据」里按 Data Map 批量导入。</div>
+      </div>
+      <div class="row" style="margin-top:12px"><button class="s" type="button" id="rfgooutline2">生成访谈大纲 →</button><span class="sm mut">按这份问卷的筛选字段分段追问</span></div>`;
+  }
   function outline() {
     return `<h3 class="rf-h rq-bold">研究背景</h3>${briefHtml()}
       <h3 class="rf-h rq-bold">研究目标</h3>${listHtml("rfgoalsl", goals, "研究目标的一条")}
       <h3 class="rf-h rq-bold">招募需求</h3>${listHtml("rfneedl", needLines(), "招募需求的一条")}
-      <h3 class="rf-h rq-bold">问卷流程（共 ${Q.length} 题）</h3>${Q.length ? Q.map(qCard).join("") : `<div class="empty"><b>还没有题目</b><span>在左边说“帮我起草问卷”，或点下面的按钮自己加。</span></div>`}
-      <div class="row"><button class="s" type="button" data-add="single">+ 单选</button><button class="s" type="button" data-add="multi">+ 多选</button><button class="s" type="button" data-add="text">+ 文字填空</button><button class="s" type="button" data-add="number">+ 数字填空</button></div>`;
+      ${mode === "html" ? importedCard() : `<h3 class="rf-h rq-bold">问卷流程（共 ${Q.length} 题）</h3>${Q.length ? Q.map(qCard).join("") : `<div class="empty"><b>还没有题目</b><span>在左边说“帮我起草问卷”，或点下面的按钮自己加。</span></div>`}
+      <div class="row"><button class="s" type="button" data-add="single">+ 单选</button><button class="s" type="button" data-add="multi">+ 多选</button><button class="s" type="button" data-add="text">+ 文字填空</button><button class="s" type="button" data-add="number">+ 数字填空</button></div>`}`;
   }
   const rightHead = () => {
     const live = f.status === "published";
+    if (mode === "html") return `<div class="rf-hd"><span class="pill">已导入</span><span class="sm mut">问卷在客户那边作答，本平台不出题</span><span class="sp"></span><button class="s" type="button" id="rfcol" aria-label="收起大纲">${rfIcon(RF_IC.collapse)}收起</button></div>`;
     return `<div class="rf-hd"><div class="rf-seg" role="tablist"><button type="button" role="tab" data-seg="outline" class="${seg === "outline" ? "on" : ""}" aria-selected="${seg === "outline"}">${rfIcon(RF_IC.list)}招募问卷</button><button type="button" role="tab" data-seg="test" class="${seg === "test" ? "on" : ""}" aria-selected="${seg === "test"}">${rfIcon(RF_IC.eye)}测试答题</button></div>
       <span class="sp"></span>${vers && vers.languages.length > 1 || (vers && vers.languages.length) ? verMenu() : ""}<span class="sm mut" id="rfstat" role="status" aria-live="polite">${f.version ? `第 ${f.version} 版` : ""}</span><span class="pill ${live ? "" : "o"}">${live ? "发布中" : f.status === "closed" ? "已停止" : "草稿"}</span>
       ${live ? `<button class="s" type="button" id="rfclose">停止收集</button>` : `<button class="p" type="button" id="rfpub" ${Q.length ? "" : "disabled"}>${f.status === "closed" ? "重新发布" : "发布成链接和二维码"}</button>`}<button class="s" type="button" id="rfcol" aria-label="收起大纲">${rfIcon(RF_IC.collapse)}收起</button></div>`;
@@ -358,6 +376,7 @@ ${text}
     const keep = $("#rfout") ? $("#rfout").scrollTop : 0;
     r.innerHTML = rightHead() + `<div class="rf-sc" id="rfout"><div class="rf-col">${seg === "outline" ? (isSource() ? outline() : `<div id="rftr"><div class="mut" style="padding:12px">加载中…</div></div>`) : `<p class="sm mut" style="margin:0">就是候选人看到的样子：直接填写，看会走到哪里。</p><div id="rfrun"></div><div class="note" id="rfresult" role="status" aria-live="polite" hidden></div>`}</div></div>`;
     $("#rfout").scrollTop = keep; wireRight(); wireVer(); syncUndo();
+    const g2 = $("#rfgooutline2"); if (g2) g2.onclick = goOutline;
   }
   const refreshVers = async () => {   // after the original is saved, other versions may have gone stale: update the menu (the banner shows when you open that version)
     const v = await rtVersions(p); if (!v) return; vers = v; const m = $("#rfvm"), b = $("#rfvb");
@@ -473,18 +492,17 @@ ${text}
   let rightOpen = sessionStorage.getItem("rf_right") !== "0";  // the outline (right) can be folded away; the choice is kept in this browser
   const setRight = (open) => { rightOpen = open; try { sessionStorage.setItem("rf_right", open ? "1" : "0"); } catch (e) { /* private window */ } const w = $("#rfws"); if (w) w.classList.toggle("rf-collapsed", !open); fit(); };
   function panels() {
-    if (mode === "html") return `<div class="rf-htmlmode"><label class="field">问卷链接（https://）<input id="rfurl" type="url" value="${esc(f.html_url)}" placeholder="https://…（在别的系统里做好的问卷）" maxlength="500" ${htmlLocked ? "readonly" : ""}></label>
-      <div class="row"><button class="s" type="button" id="rfswitch">切换</button>${htmlLocked ? `<span class="tag ok">已锁定</span><button class="s" id="rfedit" type="button">编辑</button>` : `<button class="p" id="rfsave" type="button">保存并锁定</button>`}<button class="s" id="rfopen" type="button" ${f.html_url ? "" : "disabled"}>${rfIcon(RF_IC.ext)}新窗口打开</button></div></div>`;
-    return `<div class="rf-ws${rightOpen ? "" : " rf-collapsed"}" id="rfws"><div class="rf-pane"><div class="rf-hd"><button class="s" type="button" id="rfswitch">切换</button><span class="sp"></span><button class="s" type="button" id="rfundo" disabled>${rfIcon(RF_IC.undo)}撤销</button><button class="s" type="button" id="rfredo" disabled>${rfIcon(RF_IC.redo)}重做</button><button class="s" type="button" id="rfexp">${rfIcon(RF_IC.expand)}展开大纲</button></div>
+    return `<div class="rf-ws${rightOpen ? "" : " rf-collapsed"}${mode === "html" ? " rf-import" : ""}" id="rfws"><div class="rf-pane"><div class="rf-hd"><button class="s" type="button" id="rfswitch">切换</button><span class="sp"></span><button class="s" type="button" id="rfundo" disabled>${rfIcon(RF_IC.undo)}撤销</button><button class="s" type="button" id="rfredo" disabled>${rfIcon(RF_IC.redo)}重做</button><button class="s" type="button" id="rfexp">${rfIcon(RF_IC.expand)}展开大纲</button></div>
       <div class="rf-sc" id="rfchat"></div>
       <div id="rfsel" hidden></div><div class="rq-bubs" id="rfbub"></div><div class="rf-inp"><div class="rq-files" id="rfarow" hidden></div><div class="rf-box"><button class="rq-clip" type="button" id="rfclip" aria-label="附件" title="附件">${RF_CLIP}</button><input type="file" id="rffile" hidden accept=".pdf,.docx,.txt,.md,.csv,image/*,video/*"><textarea id="rfmsg" rows="2" maxlength="2000" placeholder="请输入修改要求或问题，例如“帮我起草问卷”" aria-label="对话输入"></textarea><button class="p rf-send" type="button" id="rfsend" aria-label="发送">${rfIcon(RF_IC.send)}</button></div><div class="rq-ferr" id="rfferr" role="alert" hidden></div></div></div>
       <div class="rf-split" id="rfsplit" role="separator" aria-orientation="vertical" aria-label="拖动调整对话和大纲的宽度（双击恢复）" tabindex="0"><i></i></div><div class="rf-pane" id="rfright"></div></div>`;
   }
-  let picking = true, pickMode = mode;   // the choice dialog opens on each visit to the page (2026-11-03); 切换 opens it again
+  let picking = true, pickMode = f.html_url ? "html" : "ai";   // 每次进来都先问来源；默认「AI 生成」（没导入过链接时）
+  const goOutline = () => { location.hash = `#/p/${p.id}/outline`; };
   const pickHtml = () => !picking ? "" : `<div class="rq-pick-back" id="rfpickback"><div class="rq-pick" role="dialog" aria-modal="true" aria-labelledby="rfpickt">
-      <h3 id="rfpickt">选择招募问卷的方式</h3>
-      <label><input type="radio" name="rfpick" value="ai" ${pickMode === "ai" ? "checked" : ""}>问卷编写</label>
-      <label><input type="radio" name="rfpick" value="html" ${pickMode === "html" ? "checked" : ""}>导入问卷链接</label>
+      <h3 id="rfpickt">这份招募问卷怎么来？</h3>
+      <label><input type="radio" name="rfpick" value="ai" ${pickMode === "ai" ? "checked" : ""}><span><b>AI 生成招募问卷</b><span class="sm mut">在左边说清条件，AI 出题、你改逻辑，发布成链接和二维码</span></span></label>
+      <label><input type="radio" name="rfpick" value="html" ${pickMode === "html" ? "checked" : ""}><span><b>导入招募问卷</b><span class="sm mut">客户已在 Confirmit 编好，用链接导入；本平台不出题，数据由 PM 导入</span></span></label>
       <div class="rq-pick-btns"><button class="s" type="button" id="rfpickno">取消</button><button class="p" type="button" id="rfpickok">确定</button></div></div></div>`;
   const draw = () => { $("#rfbody").innerHTML = panels() + pickHtml(); wire(); };
   const fit = () => { const w = $("#rfws"); if (w && w.offsetParent) w.style.height = Math.max(380, innerHeight - w.getBoundingClientRect().top - 18) + "px"; };
@@ -494,12 +512,14 @@ ${text}
     const pok = $("#rfpickok"); if (pok) pok.onclick = () => { mode = pickMode; picking = false; draw(); };
     const pno = $("#rfpickno"); if (pno) pno.onclick = () => { picking = false; draw(); };
     const sw = $("#rfswitch"); if (sw) sw.onclick = () => { pickMode = mode; picking = true; draw(); };
+    if (sel) { sel.destroy(); sel = null; }
+    drawChat(); drawRight(); fit(); wireSplit();   // 两栏先画出来，两种来源都要画（导入态也有左引导 + 右大纲）
+    // 导入态右侧链接卡上的三个按钮属于 drawRight 画出来的元素，必须画完再绑
     const sv = $("#rfsave"); if (sv) sv.onclick = guard(async () => { f = { ...f, ...(await api(`/projects/${p.id}/recruiting/form`, { method: "PUT", body: { source: "html", html_url: $("#rfurl").value.trim() } })) }; htmlLocked = true; draw(); toast("链接已保存，已锁定"); });
     const op = $("#rfopen"); if (op) op.onclick = () => window.open(f.html_url, "_blank", "noopener,noreferrer");
     const ed = $("#rfedit"); if (ed) ed.onclick = () => { htmlLocked = false; draw(); const u = $("#rfurl"); if (u) u.focus(); };
-    if (sel) { sel.destroy(); sel = null; }
-    if (mode !== "ai") return;
-    drawChat(); drawRight(); fit(); wireSplit(); loadVers(true); wireSel();
+    if (mode !== "ai") return;   // 导入模式没有题目：不装版本、选句、题目菜单这些
+    loadVers(true); wireSel();
     if (window._rfVerOff) document.removeEventListener("click", window._rfVerOff);
     window._rfVerOff = () => { const m = $("#rfvm"); if (m && !m.hidden) { m.hidden = true; const b = $("#rfvb"); if (b) b.setAttribute("aria-expanded", "false"); } };
     document.addEventListener("click", window._rfVerOff);

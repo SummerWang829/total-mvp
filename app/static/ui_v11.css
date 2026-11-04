@@ -382,3 +382,25 @@ html[data-theme="orange"] body.v11 .rf-msg:not(.rf-me):not(.mut):not(:has(.rf-ch
 /* 二级菜单里的静态项（如“访谈大纲”）与页面搬进来的页签长得一样 */
 body.v11 .sub2 .l2slot a.l2e{display:flex;align-items:center;width:100%;padding:8px 12px;border-radius:9px;color:var(--muted);font-size:14.5px;text-decoration:none}
 body.v11 .sub2 .l2slot a.l2e:hover{background:var(--chip);color:var(--ink)}
+
+/* ---------- 2026-11-04 招募问卷：来源弹窗与导入态 ---------- */
+/* 导入态：同一个工作区，但不用出题——藏掉输入区和建议气泡 */
+#rfws.rf-import .rf-inp,#rfws.rf-import .rq-bubs{display:none}
+/* 已导入的问卷卡 */
+.rf-impcard{border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:var(--wash)}
+.rf-impcard .field{display:flex;flex-direction:column;gap:5px;font-size:12.5px;color:var(--muted)}
+.rf-impcard input{width:100%;border:1px solid var(--line2);border-radius:9px;padding:8px 10px;font-size:12.5px;background:var(--surface);color:var(--ink)}
+.rf-impcard input[readonly]{background:var(--surface);color:var(--muted)}
+/* 来源弹窗：两个选项带标题和说明，排版更清楚 */
+.rq-pick h3{font-size:15px}
+.rq-pick label{align-items:flex-start;gap:9px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px;cursor:pointer}
+.rq-pick label:hover{border-color:var(--pri);background:#FFFDFB}
+.rq-pick label input{margin-top:3px;flex:none}
+.rq-pick label>span{display:flex;flex-direction:column;gap:3px;min-width:0}
+.rq-pick label b{font-size:13.5px;color:var(--ink)}
+/* 导入态：三步引导 + 隐藏没有意义的撤销/重做 */
+#rfws.rf-import #rfundo,#rfws.rf-import #rfredo{display:none}
+.rf-steps{display:flex;flex-direction:column;gap:8px;margin:10px 0 12px}
+.rf-steps>div{display:flex;gap:9px;align-items:flex-start;font-size:12.5px;line-height:1.65;color:var(--ink2)}
+.rf-steps i{flex:none;width:19px;height:19px;border-radius:99px;background:var(--wash);border:1px solid var(--line2);color:var(--muted);font-style:normal;font-size:11px;display:grid;place-items:center;margin-top:1px}
+.rf-steps b{color:var(--ink);font-weight:600}
