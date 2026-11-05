@@ -26,12 +26,54 @@ html body.rfmode .v11app .body2>main{scrollbar-gutter:auto}
 #rfws .rq-qn{background:#E6ECE8;color:var(--ink2);border-radius:999px;padding:0 9px;font-size:12px;font-weight:700;line-height:20px;flex:none}
 #rfws .rq-title{min-height:36px;display:inline-flex;align-items:center;background:none;border:0;padding:0;font:inherit;font-weight:600;text-align:left;color:var(--ink);cursor:pointer;min-width:0;overflow-wrap:anywhere}
 #rfws .rq-type{border:1px solid var(--line);border-radius:999px;padding:0 10px;font-size:12px;color:var(--mut);line-height:20px;flex:none}
+/* 题型可点击切换：常态卡片上直接展开选题型，选完即可加选项 */
+#rfws .rq-type-wrap{position:relative;flex:none}
+#rfws .rq-type.rq-type-btn{display:inline-flex;align-items:center;gap:4px;cursor:pointer;background:var(--surface)}
+#rfws .rq-type.rq-type-btn:hover{border-color:var(--pri);color:var(--pri)}
+#rfws .rq-type-btn .rf-ico{width:12px;height:12px;margin:0}
+#rfws .rq-type-menu{position:absolute;right:0;top:28px;z-index:35;min-width:150px;background:var(--surface);border:1px solid var(--line2);border-radius:10px;box-shadow:0 8px 22px rgba(11,56,44,.16);padding:6px 0;display:flex;flex-direction:column}
+#rfws .rq-type-menu button{min-height:34px;background:none;border:0;padding:7px 14px;font:inherit;font-size:13px;color:var(--ink);text-align:left;cursor:pointer}
+#rfws .rq-type-menu button:hover{background:var(--wash)}
+#rfws .rq-type-menu button.on{font-weight:700;color:var(--pri)}
+/* 访谈流程结构（右侧大纲）：招募需求「总共 N 人」抬头 + 欢迎消息 + 按环节标甄别/访问 */
+#rfright .rf-total{display:inline-flex;align-items:center;gap:8px;margin:4px 0 8px;padding:6px 10px;border:1px solid var(--line2);border-radius:10px;background:var(--wash)}
+#rfright .rf-total .rf-ico{width:18px;height:18px;color:var(--pri)}
+#rfright .rf-total-n{font-size:20px;font-weight:700;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:2px 10px}
+#rfright .rf-total-u{font-size:14px;color:var(--ink2)}
+#rfright .rf-flow-h{margin-top:20px}
+#rfright .rf-flow-part{display:flex;align-items:center;gap:8px;margin:6px 0;padding:8px 10px;border:1px solid var(--line2);border-radius:10px;background:var(--wash)}
+#rfright .rf-flow-no{flex:none;width:22px;height:22px;border-radius:50%;background:var(--pri);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:700}
+#rfright .rf-welcome{font-size:13px;line-height:1.7;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:4px 0 12px}
+#rfright .rf-flow-step{border:1px solid var(--line);border-radius:10px;margin:8px 0;overflow:hidden}
+#rfright .rf-flow-step-hd{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--wash);border-bottom:1px solid var(--line)}
+#rfright .rf-flow-step-hd b{font-size:13px;color:var(--ink)}
+#rfright .rf-flow-tag{flex:none;font-size:11px;font-weight:700;border-radius:999px;padding:1px 9px;line-height:18px}
+#rfright .rf-flow-tag.scr{background:#FFF4D6;color:#B45309}
+#rfright .rf-flow-tag.acc{background:var(--green-soft);color:var(--green)}
+#rfright .rf-flow-step-bd{padding:8px 12px;font-size:13px;line-height:1.7;color:var(--ink)}
+/* 数据库筛选及发送 */
+.rdb-card{max-width:760px}
+.rdb-tags{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
+.rdb-tag{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line2);border-radius:999px;padding:5px 12px;font-size:13px;color:var(--ink2);background:var(--surface)}
+.rdb-tag b{color:var(--ink);font-weight:700}
+.rdb-x{width:20px;height:20px;border:0;border-radius:50%;background:var(--wash);color:var(--mut);cursor:pointer;font-size:14px;line-height:1;padding:0}
+.rdb-add{border:1px dashed var(--line2);border-radius:999px;padding:5px 12px;font-size:13px;color:var(--mut);background:none;cursor:pointer}
+.rdb-total{display:flex;align-items:center;gap:12px;background:var(--wash);border:1px solid var(--line);border-radius:10px;padding:12px 16px;margin:12px 0}
+.rdb-num{font-size:26px;font-weight:700;color:var(--pri)}
+.rdb-u{font-size:14px;color:var(--ink2)}
+.rdb-total .sp{flex:1}
 #rfws .rq-more{width:36px;height:36px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--mut);cursor:pointer;flex:none;line-height:1}
 #rfws .rq-more:hover{color:var(--ink);border-color:var(--ink2)}
 #rfws .rq-opt{position:relative;display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:3px 0;font-size:13.5px}
 #rfws .rq-ic{width:20px;height:20px;border-radius:50%;display:inline-grid;place-items:center;font-size:12px;font-weight:700;flex:none;color:var(--mut);border:1px solid var(--line)}
 #rfws .rq-ic.y{background:var(--green);border-color:var(--green);color:#fff}
 #rfws .rq-ic.n{background:var(--risk);border-color:var(--risk);color:#fff}
+/* 选项前的 ✓ / ✗ 一键切换：点一下直接写好「通过 / 筛掉」逻辑 */
+#rfws .rq-ic.rq-ic-btn{padding:0;line-height:1;font-family:inherit;cursor:pointer;transition:transform .15s ease,box-shadow .15s ease}
+#rfws .rq-ic.rq-ic-btn:hover{transform:scale(1.18);box-shadow:0 0 0 3px rgba(11,56,44,.12)}
+#rfws .rq-ic.rq-ic-btn:focus-visible{outline:2px solid var(--pri);outline-offset:2px}
+#rfws .rf-pass-tip{display:inline-flex;align-items:center;gap:5px;margin-left:10px;font-size:11.5px;font-weight:400;color:var(--mut);white-space:nowrap}
+#rfws .rf-pass-tip .rq-ic{width:15px;height:15px;font-size:10px;line-height:1}
 #rfws .rq-add{min-height:36px;background:none;border:0;padding:4px 0;color:var(--green);font-size:13px;cursor:pointer;text-align:left}
 #rfws .rq-menu{position:absolute;right:8px;top:44px;z-index:30;min-width:200px;background:var(--surface);border:1px solid var(--line2);border-radius:10px;box-shadow:0 8px 22px rgba(11,56,44,.15);padding:6px 0;display:flex;flex-direction:column}
 #rfws .rq-menu.rq-om{top:26px;right:0}
@@ -95,3 +137,93 @@ html body.rfmode .v11app .body2>main{scrollbar-gutter:auto}
 .rq-pick h3{margin:0 0 4px;font-size:16px}
 .rq-pick label{display:flex;align-items:center;gap:10px;font-size:14px;min-height:36px;cursor:pointer}
 .rq-pick-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:6px}
+
+/* 题旁小对话：每道题右上角的 💬，点开在题目下方展开一个精简对话框，只改这一题 */
+#rfws .rq-ask{width:34px;height:34px;border:1px solid var(--line);border-radius:8px;background:var(--surface);cursor:pointer;flex:none;font-size:15px;line-height:1;color:var(--ink)}
+#rfws .rq-ask:hover{border-color:var(--pri);color:var(--pri)}
+#rfws .rq-askbox{margin:10px 0 4px;border:1px solid var(--line2);border-radius:12px;background:var(--wash);padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+#rfws .rq-askhd{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink)}
+#rfws .rq-askhd b{font-size:13px;font-weight:700}
+#rfws .rq-askhd .s{margin-left:auto}
+#rfws .rq-askbody textarea{width:100%;min-height:52px;resize:vertical;box-sizing:border-box;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font:inherit;font-size:13px;background:var(--surface);color:var(--ink)}
+#rfws .rq-askft{display:flex;align-items:center;gap:10px}
+#rfws .rq-askerr{background:#FDE8E8;color:#B3261E;border:1px solid #F2B8B8;border-radius:8px;padding:6px 10px;font-size:12px}
+
+/* 11 阶段进度条（对话区顶部）：当前阶段橙色加粗，完成打勾可点回，未到灰色 */
+#rfws .rq-stages{display:flex;flex-wrap:wrap;gap:4px;padding:8px 10px;border-bottom:1px solid var(--line);margin-bottom:10px}
+#rfws .rq-stg{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--line);border-radius:999px;background:var(--surface);color:var(--mut);font-size:12px;line-height:22px;padding:0 9px;cursor:pointer;white-space:nowrap}
+#rfws .rq-stg:hover{border-color:var(--ink2);color:var(--ink)}
+#rfws .rq-stg.on{border-color:var(--pri);background:var(--pri);color:#fff;font-weight:700}
+#rfws .rq-stg.done{border-color:var(--line);color:var(--ink2)}
+#rfws .rq-stg.done span{text-decoration:none}
+
+/* 已自动带入的研究背景 / 研究目标（对话区顶部提示卡片） */
+#rfws .rf-brought{margin:0 0 10px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--wash);display:flex;flex-direction:column;gap:6px}
+#rfws .rf-brought .sm.mut{font-size:12px}
+#rfws .rf-br-b{display:flex;flex-wrap:wrap;gap:4px;align-items:flex-start}
+#rfws .rf-br-k{flex:none;font-size:12px;font-weight:700;color:var(--ink2);line-height:20px;margin-right:2px}
+#rfws .rf-br-b>span{font-size:12.5px;line-height:20px;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:0 8px}
+
+/* 访谈总览表（第 6 阶段后、出题/出大纲前）：可编辑表格 + 下载/上传 CSV + 确认继续 */
+#rfws .rf-ov{margin:0 0 10px;border:1px solid var(--line2);border-radius:12px;background:var(--surface);padding:12px 14px;display:flex;flex-direction:column;gap:10px;box-shadow:0 4px 16px rgba(11,56,44,.08)}
+#rfws .rf-ov-hd{display:flex;flex-direction:column;gap:2px}
+#rfws .rf-ov-t{font-size:15px;font-weight:700;color:var(--ink)}
+#rfws .rf-ov-tbl{overflow-x:auto}
+#rfws .rf-ov-tbl table{width:100%;border-collapse:collapse;font-size:13px}
+#rfws .rf-ov-tbl th{text-align:left;font-size:12px;color:var(--mut);font-weight:600;padding:6px 6px;border-bottom:1px solid var(--line);white-space:nowrap}
+#rfws .rf-ov-tbl td{padding:4px 6px;border-bottom:1px solid var(--line);vertical-align:middle}
+#rfws .rf-ov-tbl tr:last-child td{border-bottom:0}
+#rfws .ov-in{width:100%;box-sizing:border-box;border:1px solid transparent;border-radius:6px;background:var(--wash);padding:6px 8px;font:inherit;font-size:13px;color:var(--ink)}
+#rfws .ov-in:hover{border-color:var(--line)}
+#rfws .ov-in:focus{border-color:var(--pri);background:var(--surface);outline:none}
+#rfws .ov-in.ov-ta{resize:none;line-height:1.5;min-height:34px;display:block;overflow:hidden}
+#rfws .rf-ov-ft{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+#rfws .rf-ov-ft .sp{flex:1 1 auto}
+
+/* 招募方式 / 主持方式（「招募问卷」同级的 tab，主内容区里的设置卡片） */
+.rmode-card{max-width:640px}
+.rmode-card .rmode-t{display:flex;flex-direction:column;gap:2px;margin-bottom:6px}
+.rmode-card .rmode-t b{font-size:14px;color:var(--ink);font-weight:700;line-height:1.3}
+.rmode-card .rmode-t .sm{font-size:12px;line-height:1.4}
+.rmode-card .mode2{display:inline-flex;border:1px solid var(--line2);border-radius:8px;overflow:hidden;margin:0}
+.rmode-card .mode2 button{all:unset;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;height:36px;padding:0 18px;font-size:14px;line-height:1;cursor:pointer;color:var(--muted);white-space:nowrap;background:var(--surface)}
+.rmode-card .mode2 button.on{background:var(--orange-soft);color:var(--orange-ink);font-weight:700}
+.rmode-card .mode2 button+button{border-left:1px solid var(--line2)}
+.rmode-card .sm.mut{font-size:12px;line-height:1.5;color:var(--muted)}
+/* 招募方式页：问卷来源（AI 生成 / 直接导入 Confirmit 链接） */
+.rmode-card .rmode-src{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+.rmode-card .rmode-src .rmode-t{margin-bottom:6px}
+.rmode-card .rmode-src input{height:36px;border:1px solid var(--line2);border-radius:8px;padding:0 10px;font:inherit;font-size:13px;background:var(--surface);color:var(--ink);box-sizing:border-box}
+/* 导入链接后：右侧直接展示该问卷的实际在线页面 */
+#rfright .rf-imp-live{margin-top:12px;border:1px solid var(--line2);border-radius:10px;overflow:hidden;background:var(--surface)}
+#rfright .rf-imp-live-hd{display:flex;flex-direction:column;gap:2px;padding:9px 12px;border-bottom:1px solid var(--line);background:var(--wash)}
+#rfright .rf-imp-live-hd b{font-size:13px;color:var(--ink)}
+#rfright .rf-imp-live iframe{display:block;width:100%;height:min(560px,60vh);border:0;background:#fff}
+
+/* 右侧并排的「改这题」栏：点题目右上角 💬，左侧对话栏+问卷栏往里压缩，右侧挤进这栏，不遮罩题目 */
+.rf-main{display:flex;align-items:stretch;gap:0;min-width:0}
+.rf-main .rf-ws{flex:1 1 auto;min-width:0}
+.rf-askpanel{flex:0 0 380px;max-width:min(380px,44vw);min-width:0;min-height:0;border-left:1px solid var(--line2);background:var(--surface);padding:16px 16px 20px;display:flex;flex-direction:column;overflow-y:auto;box-sizing:border-box}
+.rf-askpanel[hidden]{display:none}
+.rf-askpanel .rq-askbox{margin:0;border:0;background:none;padding:0;display:flex;flex-direction:column;gap:12px}
+.rf-askpanel .rq-askhd{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--ink);padding-bottom:12px;border-bottom:1px solid var(--line)}
+.rf-askpanel .rq-askhd b{font-size:15px;font-weight:700}
+.rf-askpanel .rq-askhd .s{margin-left:auto}
+.rf-askpanel .rq-askbody{display:flex;flex-direction:column;gap:8px}
+.rf-askpanel .rq-askbody textarea{width:100%;min-height:90px;resize:vertical;box-sizing:border-box;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font:inherit;font-size:14px;background:var(--bg);color:var(--ink)}
+.rf-askpanel .rq-askft{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.rf-askpanel .rq-askerr{background:#FDE8E8;color:#B3261E;border:1px solid #F2B8B8;border-radius:8px;padding:6px 10px;font-size:12px}
+/* 贴截图 + 语音说明按钮，以及贴出的截图缩略图 */
+.rf-askpanel .rq-asktool{position:relative;display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;padding:0;border-radius:9px;cursor:pointer}
+.rf-askpanel .rq-asktool .rf-ico{width:16px;height:16px}
+.rf-askpanel .rq-asktool input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.rf-askpanel .rq-askimgs{display:flex;flex-wrap:wrap;gap:8px}
+.rf-askpanel .rq-askimg{position:relative;width:72px;height:72px;border-radius:8px;overflow:hidden;border:1px solid var(--line)}
+.rf-askpanel .rq-askimg img{width:100%;height:100%;object-fit:cover;display:block}
+.rf-askpanel .rq-askimg button{position:absolute;top:2px;right:2px;width:20px;height:20px;padding:0;border:0;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer}
+.rf-askpanel .rq-askimg button .rf-ico{width:11px;height:11px}
+/* 语音按钮状态：录音中红色停止圆钮，转写中转圈 */
+.rf-askpanel .rq-askrec-ic{display:inline-flex;align-items:center;justify-content:center}
+.rf-askpanel .rq-askrec-ic.rec .rf-ico{color:var(--risk)}
+.rf-askpanel .rq-askrec-ic.spin .rf-ico{animation:rqspin 1s linear infinite}
+@keyframes rqspin{to{transform:rotate(360deg)}}

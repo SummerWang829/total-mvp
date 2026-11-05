@@ -206,7 +206,7 @@ function shSubHtml(p, active, menu) {
 function shWire(p) {
   const sel = document.getElementById("subsel");
   if (sel) sel.onchange = () => { sessionStorage.setItem("sub_" + p.id, sel.value); render(); };
-  document.querySelectorAll("[data-qmode]").forEach((el) => (el.onclick = () => { sessionStorage.setItem("qmode", el.dataset.qmode); if (location.hash === el.getAttribute("href")) render(); }));
+  document.querySelectorAll("[data-qmode]").forEach((el) => (el.onclick = () => { sessionStorage.setItem("qmode", el.dataset.qmode); sessionStorage.setItem("ptab", "mode"); if (location.hash === el.getAttribute("href")) render(); }));   // 从「深访 / 座谈会」阶段进来，第一个部分一定落在「招募方式」
 }
 
 /** 固定外壳：窄栏、顶部、第二层菜单是三个固定位置的节点；切换页面时没变的不动，只替换内容区。 */

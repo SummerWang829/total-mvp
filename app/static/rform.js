@@ -2,7 +2,7 @@
    左右两个框各自滚动，整页不滚。大纲里每道题也能直接点开手动改（题型、选项、跳转、标签）。切到“测试答题”就是候选人看到的样子；
    写好发布成链接和二维码，候选人在 screen.html 作答，合格的人自动进受访者名单。也可以改成导入在别的系统里做好的 HTML 问卷链接。
    依赖 index.html 里的 api / esc / toast / guard / $ / CONFIG（app.js）和 screen_run.js。 */
-const RF_TYPE = { single: "单选", multi: "多选", text: "文字填空", number: "数字填空" };
+const RF_TYPE = { single: "选择题", multi: "多选题", text: "开放题", number: "数字题", scale: "量表题" };
 const RF_OP = { lt: "小于", lte: "不大于", gt: "大于", gte: "不小于", eq: "等于" };
 const RF_MAX_FILES = 5;
 const RF_IC = {
@@ -18,6 +18,12 @@ const RF_IC = {
   x: '<path d="M18 6 6 18M6 6l12 12"/>',
   send: '<path d="M12 19V5M5 12l7-7 7 7"/>',
   ext: '<path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>',
+  img: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="m21 15-5-5L5 21"/>',
+  mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/>',
+  stop: '<rect x="7" y="7" width="10" height="10" rx="2"/>',
+  stop2: '<circle cx="12" cy="12" r="9"/><rect x="9" y="9" width="6" height="6" rx="1"/>',
+  spin: '<path d="M21 12a9 9 0 1 1-9-9"/><path d="M12 3a9 9 0 0 1 9 9" opacity=".35"/>',
+  users: '<circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c.6-3 3-4.6 5.5-4.6s4.9 1.6 5.5 4.6"/><circle cx="17" cy="9" r="2.6"/><path d="M16 14.8c2.4.2 4.1 1.7 4.5 4.2"/>',
 };
 const rfIcon = (d) => `<svg class="rf-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 const RF_CLIP = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>';
@@ -34,8 +40,18 @@ function rfAutosize(t) {
 }
 
 /** 整个“招募问卷”卡片，返回 { html, wire, fit }。 */
-function rfCard(p, form) {
+function rfCard(p, form, rec) {
   let f = form, mode = form.source === "html" ? "html" : "ai", seg = "outline", Q = JSON.parse(JSON.stringify(form.questions || [])), goals = [...(form.goals || [])], need = form.need || "";
+  const rm = (rec && rec.recruit_mode) || "screen_then_invite", hm = (rec && rec.host_mode) || "human";   // 招募方式 / 主持方式（决定阶段增减）
+  if (rm === "onelink") { mode = "ai"; f = { ...f, source: "ai", source_confirmed: "ai" }; }   // 一站式 = AI 问卷 + AI 访谈，来源锁定为 AI，不弹来源选择、不可切换
+  const stageNow = () => Math.min(STAGES.length, Math.max(2, (f.stage || 2)));   // 5 步主链；研究目标已带入，恒从「受访者与配额」起（显示为已完成）
+  // 流程由 11 阶段重定义为 5 步后，旧项目残留的阶段号不再适用：新会话统一从「受访者与配额」开始（本地立即生效，后端随后同步）
+  const flowKey = "rf_flow_" + p.id;
+  if (sessionStorage.getItem(flowKey) !== "1") {
+    sessionStorage.setItem(flowKey, "1");
+    f = { ...f, stage: 2 };
+    api(`/projects/${p.id}/recruiting/stage`, { method: "PUT", body: { stage: 2 } }).catch(() => {});
+  }
   let timer = null, sending = false, pending = "", hist = [], redo = [], editing = new Set();
   let ver = "", vers = null;   // the language version being looked at (""/the source = the original) and the versions' states (app/static/rtrans.js)
   const isSource = () => !ver || (vers && ver === vers.source);
@@ -44,10 +60,104 @@ function rfCard(p, form) {
   let fail = null;   // fail: the last turn that did not get an answer { ask, text, fatal } (kept here only, never saved)
   let htmlLocked = !!form.html_url;   // the saved link is read-only until 编辑 is pressed (2026-11-03)
   let menu = null;   // the open ⋮ menu of a question ("q:<id>") or an option ("o:<id>:<number>"); one at a time
+  let typeMenuOpen = null;   // 哪道题的题型下拉正打开（qid）
   let busy = false, focusGrip = null;   // busy: a moved card is still landing; focusGrip: the handle to focus after a keyboard move
   let files = [];   // documents read for the next chat message: { name, text, truncated } (kept here only, sent with one message, never saved)
+  let askOpen = null;   // 题旁小对话：正在问的是哪一题（qid），null = 都收起
+  let askBusy = false, askFail = "";   // askBusy: 该题小对话正在等 AI；askFail: 该题上次失败的原因
+  let askImgs = [];   // 该题小对话里贴的截图（dataURL 预览），随消息一起发，当前模型不识别图片、仅作参考附言
+  let askRec = null;   // 该题小对话的录音状态：null 空闲 | { stream, rec, chunks } 录音中 | "busy" 正在转写
+  let ovRows = null, ovConfirming = false;   // 总览表（第4阶段）：null=未生成；rows 数组{stage,ask,n,time,goal}；ovConfirming=正在确认继续
+  const passBack = new Map();   // 选项切红叉前记住原 goto，点回绿时恢复（不污染问卷结构）
+  // AI 询问窗口的 5 步主链（2026-11-05 用户重定义）：研究目标已带入不问；主持已在「招募方式」选定，故删「主持与招募」；
+  // 甄别问卷 / 同意与合规 / 访谈大纲并入「总览表」一并生成；试访 / 发布不属于 AI 询问窗口，去掉。
+  const STAGES = [
+    ["研究目标", true], ["受访者与配额", true], ["形式与语言", true], ["总览表", true], ["重点关注", true]
+  ];
+  // 行文语言（问卷与大纲用哪种语言书写）：必须让用户明确选一种
+  const LANG_OPTS = [
+    ["中文（普通话 · 简体）", "zh-CN"], ["中文（香港繁体）", "zh-HK"],
+    ["中文（粤语口语）", "yue"], ["English（英文）", "en"]
+  ];
+  let chosenLang = "";
+  // 上文摘要：把已自动带入的研究背景 / 研究目标 / 招募需求浓缩，让 AI 建议「根据上讲的来看」
+  const ctxLead = () => {
+    const lines = [...briefLines(), ...(goals || []), ...needLines()].map((x) => String(x).trim()).filter(Boolean);
+    return lines.slice(0, 3).join("；").slice(0, 160);
+  };
+  const withCtx = (t) => t + (ctxLead() ? `\n请依据已带入的上文作答：${ctxLead()}；研究目标：${(goals || []).join("；")}` : "");
+  // 主动性建议：每步 3 条让用户选，文案与回答都基于上文
+  const quotaTips = () => [
+    ["按已带入的研究背景与目的，帮我确定受访者配额和人群拆分", "按目标定配额"],
+    ["结合上文的人群条件，给我 3 种配额分配方案让我选", "给 3 种配额方案"],
+    ["把上文里的筛选条件整理成配额门槛，并确认可招募量", "确认筛选门槛"],
+  ];
+  const focusTips = () => Q.length
+    ? Q.slice(0, 6).map((q, i) => [`第 ${i + 1} 题「${String(q.text || "").slice(0, 18)}」要重点关注什么？帮我逐条列出关注点`, `第 ${i + 1} 题关注点`])
+    : [["请按总览表生成所有题目，再逐题确认关注点", "先生成题目"]];
+  const tipsFor = (n) => n === 2 ? quotaTips() : n === 5 ? focusTips() : [];
   const RF_KIND = { answer: ["回答", "ans"], suggest: ["建议", "sug"], stat: ["统计", "stat"] };
   const aiOk = () => !f.ai || f.ai.ok;
+  // ---------- 总览表（第 6 阶段「形式与语言」之后、第 7 阶段「访谈大纲」之前） ----------
+  // 列：阶段 | 问什么 | 多少题 | 多少时间 | 什么目的。用户可编辑、下载 CSV 改后上传回，确认才继续出题/出大纲。
+  const OV_STAGES = [["甄别问卷", "筛选是否符合受访者条件：常住地区、年龄、身份、消费习惯、到港情况等"], ["访谈大纲 · 甄别追问", "对通过甄别的受访者，分群深挖甄别结果背后的原因"], ["访谈大纲 · 主题追问", "围绕研究目标逐主题展开的开放式追问"]];
+  const ovDefault = () => {
+    const nq = Q.length;
+    const per = nq ? Math.max(1, Math.round(nq / 3)) : 1;   // 粗分三段的题数（无题时给占位 1）
+    return [
+      { stage: "甄别问卷", ask: OV_STAGES[0][1], n: String(nq), time: "5 分钟", goal: "判断受访者是否符合，不符合即筛除" },
+      { stage: "访谈大纲 · 甄别追问", ask: OV_STAGES[1][1], n: "—", time: "10 分钟", goal: "理解甄别选项背后的动机与场景" },
+      { stage: "访谈大纲 · 主题追问", ask: OV_STAGES[2][1], n: "—", time: "15 分钟", goal: "覆盖研究目标，收集可用洞察" },
+    ];
+  };
+  const ovRowsNow = () => ovRows || (ovRows = ovDefault());
+  const ovSet = (rows) => { ovRows = rows; };
+  function ovCsv() {   // 导出 CSV（带 BOM，Excel 可直接打开中文）
+    const head = ["阶段", "问什么", "多少题", "多少时间", "什么目的"];
+    const escCsv = (s) => { s = (s == null ? "" : String(s)); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+    const lines = [head, ...ovRowsNow().map((r) => [r.stage, r.ask, r.n, r.time, r.goal])].map((row) => row.map(escCsv).join(","));
+    return "\uFEFF" + lines.join("\r\n");
+  }
+  function ovParse(text) {   // 解析 CSV（或 TSV）回行数组；列顺序按表头，缺失用空
+    const rows = [], lines = (text || "").replace(/^\uFEFF/, "").split(/\r?\n/).filter((l) => l.trim());
+    for (const line of lines) {
+      const cells = [], m = line.match(/("([^"]|"")*"|[^,]*)(,|$)/g);   // 简单 CSV 解析，支持带引号
+      if (m) for (const c of m) { let v = c.replace(/,$/, ""); if (v.startsWith('"') && v.endsWith('"') && v.length >= 2) v = v.slice(1, -1).replace(/""/g, '"'); cells.push(v); }
+      else cells.push(line);
+      if (!cells.length || !cells.join("").trim()) continue;
+      rows.push(cells);
+    }
+    const head = rows[0] || [];
+    const idx = (names) => { const i = head.findIndex((h) => names.includes((h || "").trim())); return i; };
+    const iStage = idx(["阶段", "stage"]), iAsk = idx(["问什么", "ask"]), iN = idx(["多少题", "n", "题数"]), iTime = idx(["多少时间", "time", "时间"]), iGoal = idx(["什么目的", "goal", "目的"]);
+    const g = (r, i) => (i >= 0 && i < r.length ? (r[i] || "").trim() : "");
+    return rows.slice(1).filter((r) => r.some((c) => c.trim())).map((r) => ({ stage: g(r, iStage) || "阶段", ask: g(r, iAsk), n: g(r, iN), time: g(r, iTime), goal: g(r, iGoal) }));
+  }
+  function ovHtml() {   // 可编辑总览表 + 三个操作按钮
+    const rows = ovRowsNow();
+    const cell = (v, k, r, ph, width, ta) => ta
+      ? `<textarea class="ov-in ov-ta" data-ovk="${k}" data-ovr="${r}" rows="1" placeholder="${ph}" style="width:${width}" aria-label="${ph}">${esc(v || "")}</textarea>`
+      : `<input class="ov-in" data-ovk="${k}" data-ovr="${r}" value="${esc(v || "")}" placeholder="${ph}" style="width:${width}" aria-label="${ph}">`;
+    const body = rows.map((row, r) => `<tr>
+        <td>${cell(row.stage, "stage", r, "阶段", "120px", false)}</td>
+        <td>${cell(row.ask, "ask", r, "问什么", "100%", true)}</td>
+        <td>${cell(row.n, "n", r, "题数", "64px", false)}</td>
+        <td>${cell(row.time, "time", r, "时间", "72px", false)}</td>
+        <td>${cell(row.goal, "goal", r, "目的", "100%", true)}</td>
+        <td><button class="s warn" type="button" data-ovdel="${r}" aria-label="删除这一行" title="删除这一行">×</button></td></tr>`).join("");
+    return `<div class="rf-ov" id="rfov">
+      <div class="rf-ov-hd"><span class="rf-ov-t">📋 访谈总览表</span><span class="sm mut">出题前先对齐：每个阶段问什么、多少题、多长时间、什么目的</span></div>
+      <div class="rf-ov-tbl"><table><thead><tr><th style="width:120px">阶段</th><th>问什么</th><th style="width:64px">多少题</th><th style="width:72px">多少时间</th><th>什么目的</th><th style="width:36px"></th></tr></thead><tbody>${body}</tbody></table></div>
+      <div class="rf-ov-ft">
+        <button class="s" type="button" data-ovadd>＋ 加一行</button>
+        <span class="sp"></span>
+        <button class="s" type="button" data-ovdl>下载 CSV</button>
+        <button class="s" type="button" data-ovup>上传 CSV</button>
+        <input type="file" id="rfovfile" hidden accept=".csv,.txt">
+        <button class="p" type="button" data-ovok ${ovConfirming ? "disabled" : ""}>${ovConfirming ? "确认中…" : "确认，按这个表继续出题"}</button>
+      </div>
+      <div class="sm mut" style="margin-top:6px">可直接在表里改，或下载成 CSV 用 Excel 改完再上传回来；确认后 AI 才按这张表一步步出所有题目和访谈大纲。</div></div>`;
+  }
   const nl = (s) => esc(s).replace(/\n/g, "<br>");
   const sugs = () => f.suggestions || [];
   const sugSeen = () => { try { return sessionStorage.getItem("rf_seen_" + p.id) || ""; } catch { return ""; } };
@@ -66,7 +176,7 @@ function rfCard(p, form) {
   };
   const sugCard = (s) => `<div class="rf-sg"><span class="rf-sgk">${esc(s.label)}${s.qno ? ` · 第 ${s.qno} 题` : ""}</span><div>${esc(s.text)}</div>${chipsOf(s.sources)}
     <div class="rf-sgb"><button class="p s" type="button" data-adopt="${esc(s.sig)}">${esc(s.button || "采纳")}</button><a class="rf-nomore" href="#" data-nomore="${esc(s.sig)}">不再提醒</a></div></div>`;
-  const snap = () => JSON.stringify({ Q, goals, need });
+  const snap = () => JSON.stringify({ Q, goals, need, ov: ovRows });   // 撤销/重做把总览表（ovRows）也一起快照，改总览表也能撤销
   const nextId = () => { let n = 0; Q.forEach((q) => { const m = /^q(\d+)$/.exec(q.id); if (m) n = Math.max(n, +m[1]); }); return "q" + (n + 1); };
   const optId = (q) => { let n = 0; q.options.forEach((o) => { const m = /^o(\d+)$/.exec(o.id); if (m) n = Math.max(n, +m[1]); }); return "o" + (n + 1); };
   const blank = () => [{ id: "o1", text: "", goto: "", tag: "" }, { id: "o2", text: "", goto: "", tag: "" }];
@@ -82,8 +192,8 @@ function rfCard(p, form) {
   // an unfinished option or question is only reported in the status line; publishing checks it again
   const save = () => { clearTimeout(timer); if (incomplete()) return stat("有题目或选项还没写完，写完会自动保存"); timer = setTimeout(async () => { try { f = { ...f, ...(await api(`/projects/${p.id}/recruiting/form`, { method: "PUT", body: body() })) }; stat("已保存"); refreshVers(); } catch (e) { stat("还没保存：" + e.message); } }, 700); stat("保存中…"); };
   const pushHist = () => { hist.push(snap()); if (hist.length > 30) hist.shift(); redo = []; syncUndo(); };
-  const apply = (s) => { const o = JSON.parse(s); Q = o.Q; goals = o.goals; need = o.need; editing = new Set(); };
-  const syncUndo = () => { const u = $("#rfundo"), r = $("#rfredo"); if (u) u.disabled = !hist.length; if (r) r.disabled = !redo.length; };
+  const apply = (s) => { const o = JSON.parse(s); Q = o.Q; goals = o.goals; need = o.need; ovRows = o.ov ?? ovRows; editing = new Set(); };
+  const syncUndo = () => { const u = $("#rfundo"), r = $("#rfredo"); if (u) u.disabled = !hist.length; if (r) r.disabled = !(Q.length || goals.length || need || ovRows || (f.chat && f.chat.length)); };
   const changed = () => { fix(); save(); changedIds = new Set(); drawRight(); drawChat(); };  // after a manual edit: the "刚改" marks go, suggestions about edited questions are gone with the next save
   const openEx = new Set();  // option ids whose 互斥 picker is open
   const code = (q, o) => q.options.findIndex((x) => x.id === o.id) + 1;
@@ -104,6 +214,18 @@ function rfCard(p, form) {
   const badge = (g) => (g === "end_out" ? `<span class="rf-lg out">结束 · 不符合</span>` : g === "end_ok" ? `<span class="rf-lg ok">结束 · 符合</span>` : g ? `<span class="rf-lg jump">${ref(g)}</span>` : "");
 
   /* ---------- left: the conversation ---------- */
+  // 11 阶段进度条（产品文档第 9 章）：当前阶段橙色，完成打勾可跳回，未到灰色；一站式时隐藏第 9 阶段「邀请信」
+  function stageBar() {
+    if (mode === "html") return "";
+    const cur = stageNow(), list = STAGES.map(([n, show], i) => ({ n, i: i + 1, show: show || rm !== "onelink" }));
+    const items = list.filter((s) => s.show);
+    const html = items.map((s) => {
+      const done = s.i < cur, on = s.i === cur;
+      const cls = `rq-stg${done ? " done" : ""}${on ? " on" : ""}`;
+      return `<button type="button" class="${cls}" data-stage="${s.i}" title="${done ? "已完成，点击跳回" : on ? "当前阶段" : "还没到"}" aria-label="阶段 ${s.i} ${s.n}">${done ? "✓" : s.i}<span>${s.n}</span></button>`;
+    }).join("");
+    return `<div class="rq-stages" role="tablist" aria-label="对话阶段">${html}</div>`;
+  }
   function chatHtml() {
     if (mode === "html") return `<div class="rf-msg">问卷已经导入了，这里不用再出题。<div class="sm mut" style="margin-top:6px">下一步是生成访谈大纲：按这份问卷的筛选字段（常住地区、年龄、到港、商圈、收入）搭结构。</div></div>
       <div class="rf-steps">
@@ -112,23 +234,83 @@ function rfCard(p, form) {
         <div><i>3</i><span>Confirmit 数据回来后，在<b>配额与受访者名单</b>里导入甄别数据</span></div>
       </div>
       <div class="row" style="margin:2px 0 10px"><button class="p" type="button" id="rfgooutline">生成访谈大纲 →</button></div>`;
-    const hello = `<div class="rf-msg">您好！我可以根据研究背景和研究库资料协助设计招募问卷，也可以按您的要求修改，例如“年龄放最前面，18 岁以下筛掉”“每天都用的人跳过频率题”“把第 3 题改成多选”。可先说“帮我起草问卷”。</div>`;
+    // 研究目标/背景已自动带入，展示出来即可，不再向用户发问；窗口里只保留主链内容，不出现通用打招呼与收尾建议
+    const bLines = briefLines(), gLines = goals;
+    const brought = (bLines.length || gLines.length) ? `<div class="rf-brought"><div class="sm mut">已自动带入项目的研究背景与研究目标：</div>
+      ${bLines.length ? `<div class="rf-br-b"><span class="rf-br-k">研究背景</span>${bLines.map((l) => `<span>${esc(l)}</span>`).join("")}</div>` : ""}
+      ${gLines.length ? `<div class="rf-br-b"><span class="rf-br-k">研究目标</span>${gLines.map((l) => `<span>${esc(l)}</span>`).join("")}</div>` : ""}
+      </div>` : "";
     const all = f.chat || [], msgs = all.map((m, i) => msgHtml(m, i === all.length - 1 && !fail, i)).join("");
     const failHtml = fail ? `<div class="rf-msg rf-me">${esc(fail.ask)}</div><div class="rf-err" role="alert"><b>本次未能完成回复</b><div>${esc(fail.text)}</div>${fail.fatal ? "" : `<button class="s" type="button" data-chip="retry">重新尝试</button><button class="s" type="button" data-chip="rephrase">调整提问方式</button>`}</div>` : "";
-    const cards = showSug && sugs().length ? `<div class="rf-sgs"><div class="sm mut">建议 ${sugs().length} 条。</div>${sugs().map(sugCard).join("")}</div>` : "";
-    const news = !showSug && sugs().length && sugSeen() !== sugs().map((s) => s.sig).join(",") ? `<button type="button" class="rf-news" data-chip="showsug">有 ${sugs().length} 条建议，点这里查看</button>` : "";
-    const down = aiOk() ? "" : `<div class="rf-bad" role="alert">${esc(f.ai.reason)}</div>`;   // the model cannot be used: the reason stays visible (the chips above it are gone)
-    return down + hello + msgs + cards + failHtml + (pending ? `<div class="rf-msg rf-me">${esc(pending)}</div><div class="rf-msg mut">正在处理…</div>` : news);
+    const down = aiOk() ? "" : `<div class="rf-bad" role="alert">${esc(f.ai.reason)}</div>`;
+    // 选完行文语言后（第 4 阶段「总览表」）才出这张表：连带甄别问卷的访问大纲，确认后才逐步出题/出大纲
+    const ovCard = stageNow() === 4 ? ovHtml() : "";
+    return down + stageBar() + ovCard + brought + msgs + failHtml + (pending ? `<div class="rf-msg rf-me">${esc(pending)}</div><div class="rf-msg mut">正在处理…</div>` : "");
   }
-  function bubbles() {   // the 建议 bubbles above the input: at most three of the actions for the state of the questionnaire; a click sends those words
+  function bubbles() {   // AI 窗口只给主链的主动建议：配额 3 条 / 语言明确询问 / 总览表交表格 / 重点关注逐题
     if (mode === "html") return "";
-    const started = (f.stats && f.stats.started) || 0, why = aiOk() ? "" : ` disabled title="${esc(f.ai.reason)}"`;   // the buttons that need the model are greyed out, with the reason, when it cannot be used
-    const need = (c, label) => `<button class="rq-bub" type="button" data-chip="${c}"${why}>${label}</button>`, free = (c, label) => `<button class="rq-bub" type="button" data-chip="${c}">${label}</button>`;
-    const row = !Q.length ? [need("draft", "帮我起草问卷")] : !started ? [free("review", "检查问卷"), need("goals", "对照研究目标"), need("neutral", "优化措辞的中立性"), free("test", "测试这份问卷")]
-      : [free("review", "检查问卷"), free("rate", "预估通过率"), free("worst", "定位筛除率较高的题目"), need("neutral", "优化措辞的中立性")];
-    return `<span class="rq-bubh">建议</span>${row.slice(0, 3).join("")}`;
+    const why = aiOk() ? "" : ` disabled title="${esc(f.ai.reason)}"`;
+    const cur = stageNow();
+    if (cur === 2) {   // 受访者与配额：根据上文给 3 条主动建议让用户选，三条都可点；点「下一步」才推进
+      return `<span class="rq-bubh">受访者与配额 · 请选一条</span>` + tipsFor(2).map((t, i) => `<button class="rq-bub" type="button" data-tip="2" data-tipi="${i}"${why}>${esc(t[0])}</button>`).join("")
+        + `<button class="s" type="button" data-stage-go="3">下一步：选行文语言 →</button>`;
+    }
+    if (cur === 3) {   // 形式与语言：非常清楚地问「用哪一种行文语言」
+      const label = (LANG_OPTS.find((x) => x[1] === chosenLang) || [])[0];
+      return `<span class="rq-bubh">问卷与大纲用哪一种行文语言？${label ? `（当前：${esc(label)}）` : "请选一种"}</span>` + LANG_OPTS.map(([n, code]) => `<button class="rq-bub${chosenLang === code ? " on" : ""}" type="button" data-lang="${code}">${esc(n)}</button>`).join("");
+    }
+    if (cur === 4) return "";   // 总览表已在对话区，不叠加快捷建议
+    if (cur === 5) {   // 重点关注：针对每一道题问要重点关注什么
+      return `<span class="rq-bubh">重点关注 · 逐题确认</span>` + tipsFor(5).map((t, i) => `<button class="rq-bub" type="button" data-tip="5" data-tipi="${i}"${why}>${esc(t[0])}</button>`).join("");
+    }
+    return "";
   }
-  const drawChat = () => { const c = $("#rfchat"); if (!c) return; c.innerHTML = chatHtml(); c.scrollTop = c.scrollHeight; const b = $("#rfbub"); if (b) b.innerHTML = pending ? "" : bubbles(); wireChips(); const g = $("#rfgooutline"); if (g) g.onclick = goOutline; };
+  const drawChat = () => { const c = $("#rfchat"); if (!c) return; c.innerHTML = chatHtml(); c.scrollTop = c.scrollHeight; const b = $("#rfbub"); if (b) b.innerHTML = pending ? "" : bubbles(); wireChips(); wireOverview(); const g = $("#rfgooutline"); if (g) g.onclick = goOutline; wireStages(); };
+  function wireStages() {   // 点进度条跳回（或前进到）某个阶段：只允许往前跳不超过当前+1，向后随便跳回
+    document.querySelectorAll("#rfchat [data-stage]").forEach((b) => (b.onclick = guard(async () => {
+      const to = +b.dataset.stage, cur = stageNow();
+      if (to < 2) return toast("研究目标与研究背景已自动带入，无需再问", true);
+      if (to > cur + 1) return toast("前面还有未确认的阶段，先完成再往下", true);
+      if (to === cur) return;
+      if (cur === 4 && to > 4) return toast("请先确认「总览表」，再逐题确认重点关注", true);   // 选完语言出总览表，确认后才放行
+      f = { ...f, ...(await api(`/projects/${p.id}/recruiting/stage`, { method: "PUT", body: { stage: to } })) };
+      toast(`已进入第 ${to} 阶段：${(STAGES[to - 1] || ["", ""])[0]}`); drawChat();
+    })));
+  }
+  // 总览表的操作：编辑、加行、删行、下载 CSV、上传 CSV、确认继续（编辑/加行/删行/上传都记入撤销历史）
+  function wireOverview() {
+    const ov = $("#rfov"); if (!ov) return;
+    ov.querySelectorAll(".ov-ta").forEach((t) => rfAutosize(t));   // 长文本 textarea 自适应高度
+    ov.querySelectorAll("[data-ovk]").forEach((inp) => {
+      const k = inp.dataset.ovk, r = +inp.dataset.ovr;
+      let before = null;
+      inp.onfocus = () => { before = snap(); };   // 聚焦时记快照，编辑后离开时若变了才 push，避免每敲一个字都进历史
+      inp.oninput = () => { const rows = ovRowsNow(); if (rows[r]) rows[r][k] = inp.value; };
+      inp.onblur = () => { if (before !== null && before !== snap()) pushHist(); before = null; };
+      inp.onchange = () => { if (before !== null && before !== snap()) pushHist(); before = null; };
+    });
+    ov.querySelectorAll("[data-ovdel]").forEach((b) => (b.onclick = () => {
+      const rows = ovRowsNow(); pushHist(); rows.splice(+b.dataset.ovdel, 1); syncUndo(); drawChat();
+    }));
+    const add = ov.querySelector("[data-ovadd]"); if (add) add.onclick = () => { pushHist(); ovRowsNow().push({ stage: "阶段", ask: "", n: "", time: "", goal: "" }); syncUndo(); drawChat(); };
+    const dl = ov.querySelector("[data-ovdl]"); if (dl) dl.onclick = () => {
+      const blob = new Blob([ovCsv()], { type: "text/csv;charset=utf-8" }), a = document.createElement("a");
+      a.href = URL.createObjectURL(blob); a.download = "访谈总览表.csv"; a.click(); URL.revokeObjectURL(a.href);
+    };
+    const up = ov.querySelector("[data-ovup]"), fin = $("#rfovfile");
+    if (up && fin) { up.onclick = () => fin.click(); fin.onchange = () => { const file = fin.files[0]; fin.value = ""; if (!file) return; const rd = new FileReader(); rd.onload = () => { const rows = ovParse(String(rd.result)); if (!rows.length) return toast("没读到有效行，请检查 CSV 格式（首行列名：阶段,问什么,多少题,多少时间,什么目的）", true); pushHist(); ovSet(rows); syncUndo(); drawChat(); toast(`已读入 ${rows.length} 行`); }; rd.readAsText(file, "utf-8"); }; }
+    const ok = ov.querySelector("[data-ovok]"); if (ok) ok.onclick = guard(async () => {
+      const rows = ovRowsNow(); if (!rows.length) return toast("总览表不能为空", true);
+      ovConfirming = true; drawChat();
+      // 确认后推进到第 5 阶段「重点关注」，AI 按这张表一步步出题/出大纲
+      const to = 5;
+      try {
+        f = { ...f, ...(await api(`/projects/${p.id}/recruiting/stage`, { method: "PUT", body: { stage: to } })) };
+        const brief = rows.map((r) => `${r.stage}：${r.ask}（${r.n ? `${r.n} 题` : ""}${r.time ? ` · ${r.time}` : ""}${r.goal ? ` · ${r.goal}` : ""}）`).join("\n");
+        await send(`请按下面这张总览表，一步步生成所有题目和访谈大纲：\n${brief}`);
+      } finally { ovConfirming = false; drawChat(); }
+    });
+  }
   async function send(text) {
     text = (text || "").trim(); if (!text || sending) return;
     if (incomplete()) return toast("有题目或选项还没写完，先写完再对话", true);
@@ -208,6 +390,24 @@ ${text}
       else if (c === "undo") { const u = $("#rfundo"); if (u && !u.disabled) u.click(); }
       else if (ASK[c]) send(ASK[c]);
     }));
+    // 主链建议（配额 / 重点关注）：只把「根据上文」的建议发出去，不强行推进，三条都可以逐个点；由「下一步」按钮显式推进
+    document.querySelectorAll("[data-tip]").forEach((b) => (b.onclick = guard(async () => {
+      const tip = tipsFor(+b.dataset.tip)[+(b.dataset.tipi || 0)];
+      if (tip) await send(withCtx(tip[0]));
+    })));
+    // 行文语言：明确选一种，选完即进入「总览表」（表格不是聊天，不调 AI）
+    document.querySelectorAll("[data-lang]").forEach((b) => (b.onclick = guard(async () => {
+      chosenLang = b.dataset.lang;
+      const label = (LANG_OPTS.find((x) => x[1] === chosenLang) || [chosenLang])[0];
+      f = { ...f, ...(await api(`/projects/${p.id}/recruiting/stage`, { method: "PUT", body: { stage: 4 } })) };
+      toast(`行文语言：${label}。请确认下面的总览表`); drawChat();
+    })));
+    // 显式「下一步」，把主动权交给用户
+    document.querySelectorAll("[data-stage-go]").forEach((b) => (b.onclick = guard(async () => {
+      const to = +b.dataset.stageGo;
+      f = { ...f, ...(await api(`/projects/${p.id}/recruiting/stage`, { method: "PUT", body: { stage: to } })) };
+      toast(`已进入：${(STAGES[to - 1] || ["", ""])[0]}`); drawChat();
+    })));
     document.querySelectorAll("[data-next]").forEach((b) => (b.onclick = () => { const last = [...(f.chat || [])].reverse().find((m) => m.next && m.next.length); if (last) send(last.next[+b.dataset.next].ask); }));
     document.querySelectorAll("[data-adopt]").forEach((b) => (b.onclick = () => adopt(b.dataset.adopt)));
     document.querySelectorAll("[data-nomore]").forEach((a) => (a.onclick = (e) => { e.preventDefault(); nomore(a.dataset.nomore); }));
@@ -215,7 +415,7 @@ ${text}
 
   /* ---------- right: the outline / the test ---------- */
   function qEditor(q, i) {
-    const opts = q.type === "single" || q.type === "multi";
+    const opts = q.type === "single" || q.type === "multi" || q.type === "scale";
     return `<div class="rf-edit" data-qi="${i}"><div class="row"><b>${i + 1}.</b><select data-f="type" aria-label="第 ${i + 1} 题题型">${Object.entries(RF_TYPE).map(([k, n]) => `<option value="${k}" ${q.type === k ? "selected" : ""}>${n}</option>`).join("")}</select>
       <label class="chk"><input type="checkbox" data-f="required" ${q.required ? "checked" : ""}>必答</label><span class="sp"></span>
       <button class="s" type="button" data-mv="-1" ${i ? "" : "disabled"} aria-label="上移">↑</button><button class="s" type="button" data-mv="1" ${i < Q.length - 1 ? "" : "disabled"} aria-label="下移">↓</button><button class="s warn" type="button" data-del="1">删除</button><button class="s" type="button" data-done="1">完成</button></div>
@@ -318,22 +518,104 @@ ${text}
       <button type="button" role="menuitem" data-mact="single" data-qi="${i}" data-oj="${j}" class="${q.type === "single" ? "on" : ""}">单选</button>
       <button type="button" role="menuitem" data-mact="multi" data-qi="${i}" data-oj="${j}" class="${q.type === "multi" ? "on" : ""}">多选</button>
       ${q.type === "multi" ? `<hr><button type="button" role="menuitem" data-mact="excl" data-qi="${i}" data-oj="${j}">设为互斥项</button>` : ""}</div>`;
-  const optMark = (q, o) => (o.goto === "end_ok" ? `<span class="rq-ic y" title="结束 · 符合" aria-label="结束 · 符合">✓</span>`
-    : o.goto === "end_out" ? `<span class="rq-ic n" title="结束 · 不符合" aria-label="结束 · 不符合">✗</span>` : `<span class="rq-ic">${q.type === "single" ? "○" : "☐"}</span>`);
+  // 绿勾 = 选它不会被甄别 / 拒绝（通过）；红叉 = 会被甄别或拒绝（筛掉）。点一下直接写好 goto，无需再写跳题逻辑。
+  const optMark = (q, o, j) => {
+    const out = o.goto === "end_out";
+    return `<button type="button" class="rq-ic rq-ic-btn ${out ? "n" : "y"}" data-pass="${q.id}" data-pj="${j}"
+      title="${out ? "会被甄别 / 拒绝 · 点一下改为通过" : "不会被甄别 / 拒绝（通过）· 点一下改为筛掉"}"
+      aria-label="${out ? "筛掉，点击改为通过" : "通过，点击改为筛掉"}" aria-pressed="${out}">${out ? "✗" : "✓"}</button>`;
+  };
   const jumpBadge = (g) => (g && !g.startsWith("end_") ? badge(g) : "");   // the two endings show as ✓ / ✗; only a jump to a question needs its own label
+  // 题旁小对话：对这题说一句话，AI 只改这一题（或按范围），先给预览再应用
+  function askBox(q, i) {
+    const idx = i + 1;
+    const imgs = askImgs.map((s, k) => `<span class="rq-askimg"><img src="${s}" alt="截图 ${k + 1}"><button type="button" data-askdelimg="${k}" aria-label="去掉截图 ${k + 1}">${rfIcon(RF_IC.x)}</button></span>`).join("");
+    const recLabel = askRec === "busy" ? "正在识别语音…" : (askRec ? "停止录音" : "语音说明");
+    const recIcon = askRec === "busy" ? `<span class="rq-askrec-ic spin">${rfIcon(RF_IC.spin)}</span>` : askRec ? `<span class="rq-askrec-ic rec">${rfIcon(RF_IC.stop2)}</span>` : rfIcon(RF_IC.mic);
+    return `<div class="rq-askbox" role="dialog" aria-label="对第 ${idx} 题问问 AI"><div class="rq-askhd"><b>改这题 · Q${idx}</b><span class="sm mut">${RF_TYPE[q.type]}${q.required ? " · 必答" : ""}</span><span class="sp"></span><button type="button" class="s" data-askclose="${q.id}">收起</button></div>
+      <div class="rq-askbody">${askFail ? `<div class="rq-askerr" role="alert">${esc(askFail)}</div>` : ""}${imgs ? `<div class="rq-askimgs">${imgs}</div>` : ""}<textarea id="rqask-${q.id}" rows="2" maxlength="1000" placeholder="例如：选项太多，压缩到 4 个；或：改成量表 1-5 分（也可以贴截图、或按语音说明）" aria-label="对这题的要求"></textarea></div>
+      <div class="rq-askft"><button type="button" class="p" data-asksend="${q.id}" ${askBusy ? "disabled" : ""}>${askBusy ? "正在改…" : "改这题"}</button>
+        <button type="button" class="s rq-asktool" data-askimg="${q.id}" aria-label="贴截图" title="贴截图">${rfIcon(RF_IC.img)}<input type="file" accept="image/*" hidden></button>
+        <button type="button" class="s rq-asktool rq-askrec" data-askrec="${q.id}" aria-label="${recLabel}" title="${recLabel}">${recIcon}</button>
+        <span class="sm mut">AI 会先给修改预览，你确认后才应用。</span></div></div>`;
+  }
+  // 右侧并排弹出的「改这题」栏：点题目右上角 💬 时，左侧对话栏+问卷栏往里压缩，右侧并排挤进这栏（不遮罩）
+  function drawAskPanel() {
+    const panel = $("#rfaskpanel"); if (!panel) return;
+    const qi = Q.findIndex((x) => x.id === askOpen);
+    if (qi < 0) { panel.hidden = true; panel.innerHTML = ""; stopAskRec(); return; }
+    panel.innerHTML = `${askBox(Q[qi], qi)}`;
+    panel.hidden = false;
+    const qid = Q[qi].id;
+    const b = panel.querySelector(`[data-askclose="${qid}"]`); if (b) b.onclick = () => { askOpen = null; askFail = ""; askImgs = []; stopAskRec(); drawRight(); };
+    // 贴截图：读成 dataURL 预览，随消息一起发（当前模型不识别图片内容，仅作参考）
+    const img = panel.querySelector(`[data-askimg="${qid}"]`); if (img) { const fin = img.querySelector("input"); img.onclick = () => fin && fin.click(); if (fin) fin.onchange = () => { const file = fin.files[0]; fin.value = ""; if (!file) return; if (askImgs.length >= 4) return toast("最多贴 4 张截图", true); if (!file.type.startsWith("image/")) return toast("只能贴图片", true); const rd = new FileReader(); rd.onload = () => { askImgs.push(String(rd.result)); drawAskPanel(); }; rd.readAsDataURL(file); }; }
+    panel.querySelectorAll("[data-askdelimg]").forEach((x) => (x.onclick = () => { askImgs.splice(+x.dataset.askdelimg, 1); drawAskPanel(); }));
+    // 录音 / 语音说明：录一段，转成文字填进输入框
+    const rec = panel.querySelector(`[data-askrec="${qid}"]`); if (rec) rec.onclick = () => toggleAskRec(qid);
+    const s = panel.querySelector(`[data-asksend="${qid}"]`); if (s) s.onclick = guard(async () => {
+      const qn = qi + 1;
+      const box = $(`#rqask-${qid}`), text = (box ? box.value : "").trim();
+      if (!text && !askImgs.length) return toast("先说要怎么改这题，或贴一张截图", true);
+      if (incomplete()) return toast("有题目或选项还没写完，先写完再对话", true);
+      const withImg = askImgs.length ? `（附 ${askImgs.length} 张截图作为参考）` : "";
+      askBusy = true; askFail = ""; drawRight();
+      try {
+        const r = await api(`/projects/${p.id}/recruiting/form/chat`, { method: "POST", body: { message: `请只修改第 ${qn} 题（id 是 ${qid}），其它题目保持不变。对第 ${qn} 题的要求：${text || "请参考截图"}${withImg}`, questions: Q, goals, need, use_library: useLib } });
+        if (r.changed || JSON.stringify(r.goals) !== JSON.stringify(goals) || r.need !== need) { hist.push(snap()); if (hist.length > 30) hist.shift(); redo = []; }
+        changedIds = r.changed ? diffIds(Q, r.questions) : new Set();
+        f = { ...f, ...r }; Q = JSON.parse(JSON.stringify(r.questions)); goals = [...(r.goals || [])]; need = r.need || ""; editing = new Set();
+        askOpen = null; askImgs = []; syncUndo(); drawChat(); drawRight(); toast(r.changed ? "已按你的要求改好这一题" : (r.reply || "已处理"));
+      } catch (e) { askFail = e.message; askBusy = false; drawRight(); }
+    });
+  }
+  // 录音：MediaRecorder 录一段，停止后上传 /api/attachments/transcribe，转出的文字填进输入框
+  function toggleAskRec(qid) {
+    if (askRec === "busy") return;
+    if (askRec) { stopAskRec(); return; }
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return toast("这个浏览器不支持录音", true);
+    navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
+      const rec = new MediaRecorder(stream), chunks = [];
+      rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+      rec.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        const blob = new Blob(chunks, { type: rec.mimeType || "audio/webm" });
+        askRec = null; drawAskPanel();
+        if (!blob.size) { askFail = "没有录到声音，请允许麦克风权限后再试"; drawAskPanel(); return; }
+        askRec = "busy"; drawAskPanel();
+        try {
+          const form = new FormData(); form.append("file", blob, "voice." + (rec.mimeType && rec.mimeType.includes("ogg") ? "ogg" : rec.mimeType && rec.mimeType.includes("mp4") ? "m4a" : "webm"));
+          const r = await fetch("/api/attachments/transcribe?lang=zh", { method: "POST", headers: { Authorization: "Bearer " + store.get("tt_token") }, body: form });
+          if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.detail || `语音识别失败（${r.status}）`); }
+          const out = await r.json();
+          const text = (out.text || "").trim();
+          if (!text) throw new Error("没有识别出文字，请再说一次或直接打字");
+          const box = $(`#rqask-${qid}`); if (box) box.value = (box.value ? box.value + "\n" : "") + text;
+          askFail = ""; toast("已转成文字，确认后点“改这题”");
+        } catch (e) { askFail = e.message || "语音识别失败"; toast(askFail, true); }
+        askRec = null; drawAskPanel();
+      };
+      askRec = { stream, rec, chunks }; drawAskPanel();
+      rec.start();
+    }).catch(() => { toast("没有麦克风权限，无法录音", true); });
+  }
+  function stopAskRec() {
+    if (askRec && askRec.rec && askRec.rec.state !== "inactive") { try { askRec.rec.stop(); } catch (e) { /* already stopping */ } }
+  }
   function qCard(q, i) {
     if (editing.has(q.id)) return `<div class="rf-q" data-qid="${q.id}" data-qi="${i}">${qEditor(q, i)}</div>`;
-    const qk = "q:" + q.id, choice = q.type === "single" || q.type === "multi";
+    const qk = "q:" + q.id, choice = q.type === "single" || q.type === "multi" || q.type === "scale";
     const opts = choice ? q.options.map((o, j) => {
       const ok = `o:${q.id}:${j}`;
-      return `<div class="rq-opt">${optMark(q, o)}<span>${esc(o.text || "（空选项）")}</span>${jumpBadge(o.goto)}${o.tag ? `<span class="rf-lg jump">标签：${esc(o.tag)}</span>` : ""}${(o.excl || []).length ? `<span class="rf-lg exb">互斥：${exLabel(q, o)}</span>` : ""}<span class="sp"></span>
+      return `<div class="rq-opt">${optMark(q, o, j)}<span>${esc(o.text || "（空选项）")}</span>${jumpBadge(o.goto)}${o.tag ? `<span class="rf-lg jump">标签：${esc(o.tag)}</span>` : ""}${(o.excl || []).length ? `<span class="rf-lg exb">互斥：${exLabel(q, o)}</span>` : ""}<span class="sp"></span>
         <button class="rq-more" type="button" data-menu="${ok}" aria-label="选项 ${j + 1} 菜单" aria-expanded="${menu === ok}">${rfIcon(RF_IC.dots)}</button>${menu === ok ? oMenu(q, i, j) : ""}</div>`;
     }).join("") + `<button class="rq-add" type="button" data-oadd-view="${q.id}">＋ 添加选项</button>` : "";
     const rules = q.type === "number" ? (q.rules || []).map((r) => `<div class="rq-opt">如果数字${RF_OP[r.op]} ${r.value} ${badge(r.goto)}</div>`).join("") : "";
     return `<div class="rf-q${changedIds.has(q.id) ? " rf-hl" : ""}" data-qid="${q.id}" data-qi="${i}" data-selk="q:${q.id}">
       <span class="rq-grip" data-grip="${i}" tabindex="0" role="button" title="按住拖动排序，或用上下方向键移动" aria-label="拖动第 ${i + 1} 题">${rfIcon(RF_IC.grip)}</span>
       <div class="rq-top"><span class="rq-qn">Q${i + 1}</span><button class="rq-title" type="button" data-edit="${q.id}">${esc(q.text || "（还没写题目）")}</button>${qBadge(q)}<span class="sp"></span>
-        <span class="rq-type">${RF_TYPE[q.type]}${q.required ? " · 必答" : ""}</span>
+        <span class="rq-type-wrap"><button class="rq-type rq-type-btn" type="button" data-typetg="${q.id}" aria-haspopup="true" aria-expanded="false" title="点一下切换题型">${RF_TYPE[q.type] || q.type}${q.required ? " · 必答" : ""}${rfIcon(RF_IC.chev)}</button>${typeMenuOpen === q.id ? `<div class="rq-type-menu" role="menu">${Object.entries(RF_TYPE).map(([k, n]) => `<button type="button" role="menuitem" data-typeset="${q.id}" data-t="${k}" class="${q.type === k ? "on" : ""}">${n}</button>`).join("")}</div>` : ""}</span>
+        <button class="rq-ask" type="button" data-ask="${q.id}" aria-label="对这题问问 AI" title="对这题问问 AI">💬</button>
         <button class="rq-more" type="button" data-menu="${qk}" aria-label="题目菜单" aria-expanded="${menu === qk}">${rfIcon(RF_IC.dots)}</button>${menu === qk ? qMenu(q, i) : ""}</div>
       ${opts}${rules}${exWarn(q)}</div>`;
   }
@@ -349,33 +631,68 @@ ${text}
     f = { ...f, brief: text }; stat("研究背景已保存");
   });
   function importedCard() {
+    const u = String(f.html_url || "").trim(), safe = /^https?:\/\//i.test(u) ? esc(u) : "";
+    // 直接映射导入链接的实际在线页面（Confirmit 等）；对方站点若禁止嵌入，仍可「新窗口打开」
+    const live = safe ? `<div class="rf-imp-live">
+        <div class="rf-imp-live-hd"><b>链接的实际展示</b><span class="sm mut">在线问卷页面 · 若对方站点禁止嵌入，请点「新窗口打开」</span></div>
+        <iframe src="${safe}" title="导入的问卷实际页面" loading="lazy" referrerpolicy="no-referrer"></iframe>
+      </div>` : "";
     return `<h3 class="rf-h rq-bold">已导入的问卷</h3>
       <div class="rf-impcard">
         <label class="field"><span>问卷链接（https://）</span><input id="rfurl" type="url" value="${esc(f.html_url)}" placeholder="https://…（在别的系统里做好的问卷）" maxlength="500" ${htmlLocked ? "readonly" : ""}></label>
         <div class="row" style="margin-top:8px">${htmlLocked ? `<span class="tag ok">已锁定</span><button class="s" id="rfedit" type="button">编辑</button>` : `<button class="p" id="rfsave" type="button">保存并锁定</button>`}<button class="s" id="rfopen" type="button" ${f.html_url ? "" : "disabled"}>${rfIcon(RF_IC.ext)}新窗口打开</button></div>
         <div class="sm mut" style="margin-top:8px;line-height:1.7">题目在客户那边作答（Confirmit）。数据回来后，在「配额与受访者名单 → 导入甄别数据」里按 Data Map 批量导入。</div>
       </div>
+      ${live}
       <div class="row" style="margin-top:12px"><button class="s" type="button" id="rfgooutline2">生成访谈大纲 →</button><span class="sm mut">按这份问卷的筛选字段分段追问</span></div>`;
   }
+  // 招募需求下方的「总共 N 人」抬头：N = 各配额 target 之和；没配配额就回退到受访者名单人数
+  const totalHead = () => {
+    const qs = (rec && rec.quotas) || [];
+    const n = qs.length ? qs.reduce((s, q) => s + (q.target || 0), 0) : (rec && rec.participants_count) || 0;
+    return `<div class="rf-total">${rfIcon(RF_IC.users)}<span class="rf-total-n">${n}</span><span class="rf-total-u">人</span></div>`;
+  };
+  // 访谈结构：按总览表一行一环，标出「甄别」还是「访问」
+  const flowStep = (r, i) => {
+    const isScreen = /甄别|筛选|资格/.test(r.stage || "");
+    const tag = isScreen ? `<span class="rf-flow-tag scr">甄别</span>` : `<span class="rf-flow-tag acc">访问</span>`;
+    return `<div class="rf-flow-step">
+      <div class="rf-flow-step-hd"><span class="rf-flow-no">${i + 1}</span><b>${esc(r.stage || "环节")}</b>${tag}<span class="sp"></span><span class="sm mut">${esc(r.n || "—")} 题${r.time ? ` · ${esc(r.time)}` : ""}</span></div>
+      <div class="rf-flow-step-bd"><span class="sm mut">问什么：</span>${esc(r.ask || "—")}${r.goal ? `<div class="sm mut">目的：${esc(r.goal)}</div>` : ""}</div>
+    </div>`;
+  };
   function outline() {
+    const ovRowsArr = ovRowsNow();
+    const flow = ovRowsArr.length
+      ? `<h3 class="rf-h rq-bold">访谈大纲结构</h3>${ovRowsArr.map(flowStep).join("")}`
+      : `<h3 class="rf-h rq-bold">访谈大纲结构</h3><div class="empty"><b>还没有结构</b><span>在左边确认「总览表」后，这里会按环节展示甄别 / 访问。</span></div>`;
     return `<h3 class="rf-h rq-bold">研究背景</h3>${briefHtml()}
       <h3 class="rf-h rq-bold">研究目标</h3>${listHtml("rfgoalsl", goals, "研究目标的一条")}
-      <h3 class="rf-h rq-bold">招募需求</h3>${listHtml("rfneedl", needLines(), "招募需求的一条")}
-      ${mode === "html" ? importedCard() : `<h3 class="rf-h rq-bold">问卷流程（共 ${Q.length} 题）</h3>${Q.length ? Q.map(qCard).join("") : `<div class="empty"><b>还没有题目</b><span>在左边说“帮我起草问卷”，或点下面的按钮自己加。</span></div>`}
-      <div class="row"><button class="s" type="button" data-add="single">+ 单选</button><button class="s" type="button" data-add="multi">+ 多选</button><button class="s" type="button" data-add="text">+ 文字填空</button><button class="s" type="button" data-add="number">+ 数字填空</button></div>`}`;
+      <h3 class="rf-h rq-bold">招募需求</h3>${totalHead()}${listHtml("rfneedl", needLines(), "招募需求的一条")}
+      <h3 class="rf-h rq-bold rf-flow-h">访谈流程</h3>
+      <div class="rf-flow-part"><span class="rf-flow-no">1</span><b>开始 · 欢迎消息</b></div>
+      <div class="rf-welcome">${esc(f.welcome || "您好，感谢参与。本次文字访谈想了解您对相关话题的看法，没有标准答案，请根据实际经历作答；无需提供身份证件、保单、账户等私人资料。")}</div>
+      ${flow}
+      ${mode === "html" ? importedCard() : `<h3 class="rf-h rq-bold">问卷流程（共 ${Q.length} 题）<span class="rf-pass-tip"><span class="rq-ic y">✓</span>通过 <span class="rq-ic n">✗</span>筛掉 · 点图标即可切换，逻辑自动写好</span></h3>${Q.length ? Q.map(qCard).join("") : `<div class="empty"><b>还没有题目</b><span>在左边按引导确认总览表后，AI 会逐题生成。</span></div>`}
+      <div class="row"><button class="s" type="button" data-add="single">+ 单选</button><button class="s" type="button" data-add="multi">+ 多选</button><button class="s" type="button" data-add="scale">+ 量表</button><button class="s" type="button" data-add="text">+ 文字填空</button><button class="s" type="button" data-add="number">+ 数字填空</button></div>`}`;
   }
   const rightHead = () => {
     const live = f.status === "published";
-    if (mode === "html") return `<div class="rf-hd"><span class="pill">已导入</span><span class="sm mut">问卷在客户那边作答，本平台不出题</span><span class="sp"></span><button class="s" type="button" id="rfswitch2">更换来源</button><button class="s" type="button" id="rfcol" aria-label="收起大纲">${rfIcon(RF_IC.collapse)}收起</button></div>`;
+    if (mode === "html") return `<div class="rf-hd"><span class="pill">已导入</span><span class="sm mut">问卷在客户那边作答，本平台不出题</span><span class="sp"></span><button class="s" type="button" id="rfcol" aria-label="收起大纲">${rfIcon(RF_IC.collapse)}收起</button></div>`;
+    // 发布四态（产品文档第 11 章）：①草稿可发布 ②发布中=已锁定(可解锁修改/停止收集) ③已停止可重新发布
+    const pill = live ? `<span class="pill">已锁定 · 第 ${f.version || 1} 版</span>` : f.status === "closed" ? `<span class="pill o">已停止</span>` : `<span class="pill o">编辑中 · 未发布</span>`;
+    const pubBtn = live ? `<button class="s" type="button" id="rfunlock">解锁修改</button><button class="s" type="button" id="rfclose">停止收集</button>`
+      : `<button class="p" type="button" id="rfpub" ${Q.length ? "" : "disabled"}>${f.status === "closed" ? "重新发布" : "发布新版本"}</button>`;
     return `<div class="rf-hd"><div class="rf-seg" role="tablist"><button type="button" role="tab" data-seg="outline" class="${seg === "outline" ? "on" : ""}" aria-selected="${seg === "outline"}">${rfIcon(RF_IC.list)}招募问卷</button><button type="button" role="tab" data-seg="test" class="${seg === "test" ? "on" : ""}" aria-selected="${seg === "test"}">${rfIcon(RF_IC.eye)}测试答题</button></div>
-      <span class="sp"></span>${vers && vers.languages.length > 1 || (vers && vers.languages.length) ? verMenu() : ""}<span class="sm mut" id="rfstat" role="status" aria-live="polite">${f.version ? `第 ${f.version} 版` : ""}</span><span class="pill ${live ? "" : "o"}">${live ? "发布中" : f.status === "closed" ? "已停止" : "草稿"}</span>
-      ${live ? `<button class="s" type="button" id="rfclose">停止收集</button>` : `<button class="p" type="button" id="rfpub" ${Q.length ? "" : "disabled"}>${f.status === "closed" ? "重新发布" : "发布成链接和二维码"}</button>`}<button class="s" type="button" id="rfcol" aria-label="收起大纲">${rfIcon(RF_IC.collapse)}收起</button></div>`;
+      <span class="sp"></span>${vers && vers.languages.length > 1 || (vers && vers.languages.length) ? verMenu() : ""}<span class="sm mut" id="rfstat" role="status" aria-live="polite">${f.version ? `第 ${f.version} 版` : ""}</span>${pill}
+      ${pubBtn}<button class="s" type="button" id="rfcol" aria-label="收起大纲">${rfIcon(RF_IC.collapse)}收起</button></div>`;
   };
   function drawRight() {
     const r = $("#rfright"); if (!r) return;
     const keep = $("#rfout") ? $("#rfout").scrollTop : 0;
     r.innerHTML = rightHead() + `<div class="rf-sc" id="rfout"><div class="rf-col">${seg === "outline" ? (isSource() ? outline() : `<div id="rftr"><div class="mut" style="padding:12px">加载中…</div></div>`) : `<p class="sm mut" style="margin:0">就是候选人看到的样子：直接填写，看会走到哪里。</p><div id="rfrun"></div><div class="note" id="rfresult" role="status" aria-live="polite" hidden></div>`}</div></div>`;
     $("#rfout").scrollTop = keep; wireRight(); wireVer(); syncUndo();
+    drawAskPanel();
     const g2 = $("#rfgooutline2"); if (g2) g2.onclick = goOutline;
   }
   const refreshVers = async () => {   // after the original is saved, other versions may have gone stale: update the menu (the banner shows when you open that version)
@@ -429,6 +746,7 @@ ${text}
     const co = $("#rfcol"); if (co) co.onclick = () => setRight(false);
     document.querySelectorAll("[data-seg]").forEach((b) => (b.onclick = () => { seg = b.dataset.seg; drawRight(); }));
     const pub = $("#rfpub"); if (pub) pub.onclick = publish;
+    const un = $("#rfunlock"); if (un) un.onclick = guard(async () => { f = { ...f, ...(await api(`/projects/${p.id}/recruiting/form/unlock`, { method: "POST" })) }; drawRight(); toast("已解锁，进入编辑中；受访者仍看旧版，改完点「发布新版本」才生效"); });
     const cl = $("#rfclose"); if (cl) cl.onclick = guard(async () => { f = { ...f, ...(await api(`/projects/${p.id}/recruiting/form/close`, { method: "POST" })) }; drawRight(); toast("已停止收集"); });
     if (seg === "test") return retest();
     if (seg === "outline" && !isSource()) return drawTrans();
@@ -437,10 +755,40 @@ ${text}
       taggedPairs(q).forEach(([a, c]) => setExcl(q, a, c, true)); changed();
     }));
     document.querySelectorAll("[data-add]").forEach((b) => (b.onclick = () => {
-      pushHist(); const type = b.dataset.add, q = { id: nextId(), type, text: "", required: true, options: type === "single" || type === "multi" ? blank() : [], rules: [] };
+      pushHist(); const type = b.dataset.add, q = { id: nextId(), type, text: "", required: true, options: type === "single" || type === "multi" || type === "scale" ? blank() : [], rules: [] };
       Q.push(q); editing.add(q.id); changed();
     }));
     document.querySelectorAll("[data-edit]").forEach((b) => (b.onclick = () => { editing.add(b.dataset.edit); drawRight(); }));
+    // 题型下拉：常态卡片上点题型标签展开，选一种即切换题型并重绘（选择题/量表自动带选项，切换后即可「＋添加选项」）
+    document.querySelectorAll("[data-typetg]").forEach((b) => (b.onclick = (e) => {
+      e.stopPropagation(); typeMenuOpen = typeMenuOpen === b.dataset.typetg ? null : b.dataset.typetg; drawRight();
+    }));
+    document.querySelectorAll("[data-typeset]").forEach((b) => (b.onclick = (e) => {
+      e.stopPropagation();
+      const q = Q.find((x) => x.id === b.dataset.typeset), t = b.dataset.t;
+      if (!q || !t || q.type === t) { typeMenuOpen = null; return drawRight(); }
+      pushHist();
+      q.type = t;
+      // 切换到选择题/多选题/量表题：确保有选项（至少两个空选项，便于直接添加/编辑）
+      if (t === "single" || t === "multi" || t === "scale") { if (!q.options || !q.options.length) q.options = blank(); q.options.forEach((o) => { o.excl = t === "multi" ? (o.excl || []) : []; }); }
+      else q.options = [];
+      if (t !== "number") q.rules = [];
+      typeMenuOpen = null; changed(); toast(`已切换为「${RF_TYPE[t]}」`);
+    }));
+    // 绿勾 ⇄ 红叉：点一下直接写好筛选逻辑（通过 / 筛掉），可撤销；原来的跳题 goto 记在 passBack 里，点回绿时恢复
+    document.querySelectorAll("[data-pass]").forEach((b) => (b.onclick = (e) => {
+      e.stopPropagation();
+      const q = Q.find((x) => x.id === b.dataset.pass), j = +b.dataset.pj;
+      if (!q || !q.options[j]) return;
+      const o = q.options[j], key = q.id + "|" + j;
+      pushHist();
+      if (o.goto === "end_out") o.goto = passBack.get(key) || "";
+      else { passBack.set(key, o.goto || ""); o.goto = "end_out"; }
+      changed();
+      toast(o.goto === "end_out" ? "已设为：选这项会被甄别 / 拒绝" : "已设为：选这项通过，不会被拒绝");
+    }));
+    // 题旁小对话：点 💬 展开这题的小对话（右侧弹出面板）；收起、发送由 drawAskPanel 里绑定
+    document.querySelectorAll("[data-ask]").forEach((b) => (b.onclick = (e) => { e.stopPropagation(); stopAskRec(); askOpen = askOpen === b.dataset.ask ? null : b.dataset.ask; askFail = ""; askImgs = []; drawRight(); }));
     const bindBullet = (el, leave) => {   // a bullet list: Enter adds a line after this one; leaving a bullet saves the list, an empty one is dropped
       el.onblur = () => { if (!el.textContent.trim() && el.parentElement.parentElement.children.length > 1) el.parentElement.remove(); leave(); };
       el.onkeydown = (e) => {
@@ -471,7 +819,7 @@ ${text}
       const i = +card.dataset.qi, q = Q[i];
       card.querySelectorAll("[data-f]").forEach((el) => (el.onchange = () => {
         const k = el.dataset.f; pushHist();
-        if (k === "type") { q.type = el.value; if ((q.type === "single" || q.type === "multi") && q.options.length < 2) q.options = blank(); if (q.type !== "number") q.rules = []; if (q.type !== "multi") q.options.forEach((o) => { o.excl = []; }); return changed(); }
+        if (k === "type") { q.type = el.value; if ((q.type === "single" || q.type === "multi" || q.type === "scale") && q.options.length < 2) q.options = blank(); if (q.type !== "number") q.rules = []; if (q.type !== "multi") q.options.forEach((o) => { o.excl = []; }); return changed(); }
         q[k] = k === "required" ? el.checked : el.value; save();
       }));
       card.querySelectorAll("[data-mv]").forEach((b) => (b.onclick = () => { pushHist(); const j = i + +b.dataset.mv; [Q[i], Q[j]] = [Q[j], Q[i]]; changed(); }));
@@ -492,12 +840,12 @@ ${text}
   let rightOpen = sessionStorage.getItem("rf_right") !== "0";  // the outline (right) can be folded away; the choice is kept in this browser
   const setRight = (open) => { rightOpen = open; try { sessionStorage.setItem("rf_right", open ? "1" : "0"); } catch (e) { /* private window */ } const w = $("#rfws"); if (w) w.classList.toggle("rf-collapsed", !open); fit(); };
   function panels() {
-    return `<div class="rf-ws${rightOpen ? "" : " rf-collapsed"}${mode === "html" ? " rf-import" : ""}" id="rfws"><div class="rf-pane"><div class="rf-hd">${mode === "html" ? "" : `<button class="s" type="button" id="rfswitch">更换来源</button>`}<span class="sp"></span><button class="s" type="button" id="rfundo" disabled>${rfIcon(RF_IC.undo)}撤销</button><button class="s" type="button" id="rfredo" disabled>${rfIcon(RF_IC.redo)}重做</button><button class="s" type="button" id="rfexp">${rfIcon(RF_IC.expand)}展开大纲</button></div>
+    return `<div class="rf-main"><div class="rf-ws${rightOpen ? "" : " rf-collapsed"}${mode === "html" ? " rf-import" : ""}" id="rfws"><div class="rf-pane"><div class="rf-hd"><span class="sp"></span><button class="s" type="button" id="rfundo" disabled title="撤销上一次对话带来的改动">${rfIcon(RF_IC.undo)}撤销</button><button class="s" type="button" id="rfredo" disabled title="除研究背景与目标外，清空问卷、需求、总览表与对话，全部重做">${rfIcon(RF_IC.redo)}重做</button><button class="s" type="button" id="rfexp">${rfIcon(RF_IC.expand)}展开大纲</button></div>
       <div class="rf-sc" id="rfchat"></div>
-      <div id="rfsel" hidden></div><div class="rq-bubs" id="rfbub"></div><div class="rf-inp"><div class="rq-files" id="rfarow" hidden></div><div class="rf-box"><button class="rq-clip" type="button" id="rfclip" aria-label="附件" title="附件">${RF_CLIP}</button><input type="file" id="rffile" hidden accept=".pdf,.docx,.txt,.md,.csv,image/*,video/*"><textarea id="rfmsg" rows="2" maxlength="2000" placeholder="请输入修改要求或问题，例如“帮我起草问卷”" aria-label="对话输入"></textarea><button class="p rf-send" type="button" id="rfsend" aria-label="发送">${rfIcon(RF_IC.send)}</button></div><div class="rq-ferr" id="rfferr" role="alert" hidden></div></div></div>
-      <div class="rf-split" id="rfsplit" role="separator" aria-orientation="vertical" aria-label="拖动调整对话和大纲的宽度（双击恢复）" tabindex="0"><i></i></div><div class="rf-pane" id="rfright"></div></div>`;
+      <div id="rfsel" hidden></div><div class="rq-bubs" id="rfbub"></div><div class="rf-inp"><div class="rq-files" id="rfarow" hidden></div><div class="rf-box"><button class="rq-clip" type="button" id="rfclip" aria-label="附件" title="附件">${RF_CLIP}</button><input type="file" id="rffile" hidden accept=".pdf,.docx,.txt,.md,.csv,image/*,video/*"><textarea id="rfmsg" rows="2" maxlength="2000" placeholder="可上传资料、粘贴网页链接，或说“帮我搜索…”，辅助创建大纲" aria-label="对话输入"></textarea><button class="p rf-send" type="button" id="rfsend" aria-label="发送">${rfIcon(RF_IC.send)}</button></div><div class="rq-ferr" id="rfferr" role="alert" hidden></div></div></div>
+      <div class="rf-split" id="rfsplit" role="separator" aria-orientation="vertical" aria-label="拖动调整对话和大纲的宽度（双击恢复）" tabindex="0"><i></i></div><div class="rf-pane" id="rfright"></div></div><div class="rf-askpanel" id="rfaskpanel" hidden></div></div>`;
   }
-  let picking = !(f.source_confirmed || ""), pickMode = f.source === "html" ? "html" : "ai";   // 只在还没选过来源时问一次（选过就记在 source_confirmed 里，从任何入口进来都不再弹）
+  let picking = rm === "onelink" ? false : !(f.source_confirmed || ""), pickMode = f.source === "html" ? "html" : "ai";   // 一站式来源锁定为 AI，不弹选择；其余只在还没选过来源时问一次
   const goOutline = () => { location.hash = `#/p/${p.id}/outline`; };
   const pickHtml = () => !picking ? "" : `<div class="rq-pick-back" id="rfpickback"><div class="rq-pick" role="dialog" aria-modal="true" aria-labelledby="rfpickt">
       <h3 id="rfpickt">这份招募问卷怎么来？</h3>
@@ -505,7 +853,7 @@ ${text}
       <label><input type="radio" name="rfpick" value="html" ${pickMode === "html" ? "checked" : ""}><span><b>导入招募问卷</b><span class="sm mut">客户已在 Confirmit 编好，用链接导入；本平台不出题，数据由 PM 导入</span></span></label>
       <div class="rq-pick-btns"><button class="s" type="button" id="rfpickno">取消</button><button class="p" type="button" id="rfpickok">确定</button></div></div></div>`;
   const draw = () => { $("#rfbody").innerHTML = panels() + pickHtml(); wire(); };
-  const fit = () => { const w = $("#rfws"); if (w && w.offsetParent) w.style.height = Math.max(380, innerHeight - w.getBoundingClientRect().top - 18) + "px"; };
+  const fit = () => { const w = $("#rfws"); if (w && w.offsetParent) { const h = Math.max(380, innerHeight - w.getBoundingClientRect().top - 18); w.style.height = h + "px"; const m = w.parentElement; if (m && m.classList.contains("rf-main")) m.style.height = h + "px"; } };
 
   function wire() {
     document.querySelectorAll("input[name=rfpick]").forEach((r) => (r.onchange = () => { pickMode = r.value; }));
@@ -519,8 +867,7 @@ ${text}
     const pno = $("#rfpickno"); if (pno) pno.onclick = () => { picking = false; draw(); };   // 取消 = 没选过，下次进来还会问
     if (sel) { sel.destroy(); sel = null; }
     drawChat(); drawRight(); fit(); wireSplit();   // 两栏先画出来，两种来源都要画（导入态也有左引导 + 右大纲）
-    const openPick = () => { pickMode = mode; picking = true; draw(); };
-    ["#rfswitch", "#rfswitch2"].forEach((sel) => { const b = $(sel); if (b) b.onclick = openPick; });   // 放在画完之后：导入态的“更换来源”在右栏
+    // 「更换来源」按钮已移除（来源由「招募方式」页统一决定）；导入态的来源切换也一并去掉
     // 导入态右侧链接卡上的三个按钮属于 drawRight 画出来的元素，必须画完再绑
     const sv = $("#rfsave"); if (sv) sv.onclick = guard(async () => { f = { ...f, ...(await api(`/projects/${p.id}/recruiting/form`, { method: "PUT", body: { source: "html", html_url: $("#rfurl").value.trim() } })) }; htmlLocked = true; draw(); toast("链接已保存，已锁定"); });
     const op = $("#rfopen"); if (op) op.onclick = () => window.open(f.html_url, "_blank", "noopener,noreferrer");
@@ -536,15 +883,27 @@ ${text}
     if (window._rfMenuOff) document.removeEventListener("click", window._rfMenuOff);
     window._rfMenuOff = (e) => { if (menu && !e.target.closest("[data-menu], .rq-menu")) { menu = null; drawRight(); } };   // a ⋮ menu closes on a click anywhere else
     document.addEventListener("click", window._rfMenuOff);
+    if (window._rfTypeOff) document.removeEventListener("click", window._rfTypeOff);
+    window._rfTypeOff = (e) => { if (typeMenuOpen && !e.target.closest(".rq-type-wrap")) { typeMenuOpen = null; drawRight(); } };   // 题型下拉点别处关闭
+    document.addEventListener("click", window._rfTypeOff);
     const clip = $("#rfclip"), fin = $("#rffile");
     if (clip && fin) { clip.onclick = () => fin.click(); fin.onchange = () => { const f = fin.files[0]; fin.value = ""; if (f) attach(f); }; }
     drawFiles();
     const m = $("#rfmsg");
     $("#rfsend").onclick = () => send(m.value);
     m.onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(m.value); } };
+    // 撤销 = 撤销上一次对话：回退到最近一次改动（对话 / 手动编辑）之前的状态
     $("#rfundo").onclick = () => { const s = hist.pop(); if (!s) return; redo.push(snap()); apply(s); syncUndo(); changed(); };
     $("#rfexp").onclick = () => setRight(true);
-    $("#rfredo").onclick = () => { const s = redo.pop(); if (!s) return; hist.push(snap()); apply(s); syncUndo(); changed(); };
+    // 重做 = 全部重做：除研究背景与目标外，清空问卷题目、招募需求、总览表与全部对话，一键重新来
+    $("#rfredo").onclick = guard(async () => {
+      if (!confirm("将清空问卷题目、招募需求、总览表与全部对话（保留研究背景和研究目标），确定全部重做吗？")) return;
+      Q = []; goals = []; need = ""; ovRows = null; hist = []; redo = []; editing = new Set(); changedIds = new Set(); fail = null;
+      await api(`/projects/${p.id}/recruiting/form`, { method: "PUT", body: { source: "ai", idea: "", goals: [], need: "", questions: [] } });
+      f = { ...f, questions: [], goals: [], need: "", chat: [], stage: 2 };
+      syncUndo(); drawChat(); drawRight(); toast("已清空，仅保留研究背景与研究目标，可重新开始");
+    });
+    syncUndo();   // 每次重绘（draw）后同步按钮状态，避免按钮停留在旧的 disabled 状态
   }
   const ratioKey = "rf_left_pct", setRatio = (pct) => { const w = $("#rfws"); if (w) w.style.setProperty("--rfl", Math.min(60, Math.max(30, pct)) + "%"); };
   function wireSplit() {  // drag the divider to change the share of the conversation (30% to 60%); double click restores 42%; the choice is kept in this browser

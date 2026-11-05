@@ -137,9 +137,9 @@ async function render() {
       if (page === "people" && (STAFF() || RECRUITER())) return await peopleView(p);
       if (page === "sessions") { location.replace(`#/p/${p.id}/rooms`); return; }  // the sessions-and-invitations page is gone
       if (page === "rooms" && !VIEWER() && !RECRUITER()) return await roomsView(p);
-      if (page === "insights" && !VIEWER() && !RECRUITER()) return await insightsListView(p);
+      if (page === "insights" && !RECRUITER()) return await insightsListView(p);
       if (page === "analysis") { location.replace(`#/p/${p.id}/insights`); return; }  // the coding page is gone
-      if (page === "outline" && STAFF()) return await outlineView(p);
+      if (page === "outline" && (STAFF() || VIEWER())) return await outlineView(p);
       if (page === "members" && STAFF()) return await membersView(p);
       if (page === "listening" && (STAFF() || VIEWER())) return await listeningView(p);
       if (page === "quant" && (STAFF() || VIEWER())) return await quantView(p);
@@ -320,7 +320,7 @@ const RULE_EFFECTS = [["require", "必须满足"], ["exclude", "命中就排除"
 async function peopleView(p) {
   const my = renderSeq;
   let [parts, its, rec, form, lib, impB] = await Promise.all([api(`/projects/${p.id}/participants`), api(`/projects/${p.id}/interviews`), api(`/projects/${p.id}/recruiting`), api(`/projects/${p.id}/recruiting/form`), api(`/projects/${p.id}/recruiting/tags`), api(`/projects/${p.id}/recruiting/import/batches`).catch(() => ({ batches: [], orphans_pending: 0 }))]);
-  const rf = rfCard(p, form), rd = await rdBuild(p, rec);
+  const rf = rfCard(p, form, rec), rd = await rdBuild(p, rec);
   if (stale(my)) return;
   const countries = [...new Set(parts.map((x) => x.country).filter(Boolean))].sort(), langs = [...new Set(parts.map((x) => x.language).filter(Boolean))];
   const srcName = (x) => x.source_name || ({ link: "问卷链接 / 二维码", manual: "手动添加", import: "外部名单", platform: "外部问卷平台" })[x.source] || "未记录来源";
@@ -366,10 +366,34 @@ async function peopleView(p) {
         <td data-l="来源"><span class="sm mut srcname${x.source === "import" ? " imp" : ""}" title="${esc(srcName(x))}">${esc(srcName(x))}</span></td>
         ${RC ? "" : `<td class="acts">${x.anonymized || x.screening !== "eligible" || x.screen_result === "disqualified" ? "" : (() => { const iv = invOf(x); return iv ? `<button class="s" data-upd="${iv.id}"${iv.status === "ended" ? ' disabled title="访谈已结束"' : ""}>更新邀请函</button>${iv.mail_status === "failed" ? `<div class="mailwarn">邮件没发出去 · <a data-resend="${iv.id}" role="button" tabindex="0">重发</a></div>` : ""}` : `<button class="s p" data-inv="${x.id}">发送邀请函</button>`; })()}</td>`}
         ${RC ? "" : `<td class="c">${x.anonymized ? "" : `<button type="button" class="xdel" data-erase="${x.id}" data-name="${esc(x.name)}" aria-label="删除 ${esc(x.name)} 的数据" title="删除数据">×</button>`}</td>`}</tr>`; };
-  const ptab = sessionStorage.getItem("ptab") === "list" ? "list" : "form";  // 招募问卷 is a workspace (the page does not scroll); the quotas and the people are on the other tab
-  shell(`${head("创建访谈", `先做招募问卷，再看配额和名单，最后在「访谈大纲」里安排访谈流程；受访者可来自问卷、手动添加或外部名单。`)}
-    <div class="hubtabs sub" role="tablist" aria-label="创建访谈"><a href="#" role="tab" id="ptab-form-t" class="${ptab === "form" ? "on" : ""}" aria-selected="${ptab === "form"}">招募问卷</a><a href="#" role="tab" id="ptab-list-t" class="${ptab === "list" ? "on" : ""}" aria-selected="${ptab === "list"}">配额与受访者名单</a></div>
-    <div id="ptab-form" ${ptab === "form" ? "" : "hidden"}>${rf.html}</div><div id="ptab-list" ${ptab === "list" ? "" : "hidden"}>
+  const ptab = rm === "onelink" ? (sessionStorage.getItem("ptab") === "db" ? "db" : "form") : (sessionStorage.getItem("ptab") === "list" ? "list" : sessionStorage.getItem("ptab") === "form" ? "form" : sessionStorage.getItem("ptab") === "db" ? "db" : "mode");  // 一站式从「招募问卷」起；先甄别后邀请从「招募方式」起
+  const rm = rec.recruit_mode || "screen_then_invite", hm = rec.host_mode || "human";
+  // 招募方式/主持方式：作为「招募问卷」同级的 tab，排在它上方
+  const modeBar = `<div class="card rmode-card" id="rmode"><h3 style="margin:0 0 12px">招募方式 · 主持方式</h3>
+      <div class="rmode-t"><b>招募方式</b><span class="sm mut">怎么让候选人进入访谈</span></div>
+      <div class="mode2" role="group" aria-label="招募方式"><button type="button" data-rm="screen_then_invite" class="${rm === "screen_then_invite" ? "on" : ""}">先甄别后邀请</button><button type="button" data-rm="onelink" class="${rm === "onelink" ? "on" : ""}">一站式链接</button></div>
+      <div class="rmode-t" style="margin-top:14px"><b>主持方式</b><span class="sm mut">谁来主持访谈</span></div>
+      <div class="mode2" role="group" aria-label="主持方式"><button type="button" data-hm="human" class="${hm === "human" ? "on" : ""}">真人主持</button><button type="button" data-hm="ai" class="${hm === "ai" ? "on" : ""}">AI 主持</button></div>
+      <div class="sm mut" id="rmnote" role="status" style="margin-top:12px">${rm === "onelink" ? "一站式链接只能由 AI 主持：AI 设计问卷 + AI 访谈，下一步直接进入招募问卷。" : hm === "ai" ? "先甄别后邀请，可由 AI 主持访谈。" : "先甄别后邀请，由真人主持访谈。"}</div>
+      ${rm === "screen_then_invite" ? `<div class="rmode-src">
+        <div class="rmode-t"><b>问卷来源</b><span class="sm mut">已有 Confirmit 编好的问卷？在这里直接导入链接，右侧将展示该问卷的实际内容</span></div>
+        <div class="mode2" role="group" aria-label="问卷来源"><button type="button" data-src="ai" class="${form.source === "html" ? "" : "on"}">AI 生成甄别问卷</button><button type="button" data-src="html" class="${form.source === "html" ? "on" : ""}">导入问卷链接</button></div>
+        <div class="row" id="rmsrcurl" style="gap:8px;margin-top:8px" ${form.source === "html" ? "" : "hidden"}><input type="url" id="rmurl" value="${esc(form.html_url || "")}" placeholder="https://…（Confirmit 编好的问卷链接）" style="flex:1;min-width:200px"><button type="button" class="s" id="rmimport">导入</button></div>
+      </div>` : ""}
+      <div class="row" style="margin-top:18px"><button type="button" class="p" id="rmnext">下一页：${rm === "onelink" ? "招募问卷" : "甄别问卷"} →</button></div></div>`;
+  // 数据库筛选及发送：按已有受访者字段筛出目标人群，显示总量，同步发甄别问卷链接邮件
+  const dbTags = [["常住地", "大湾区九市"], ["年龄", "18 岁以上"], ["家庭月收入", "≥ ¥15,000"], ["访港经历", "10.1–10.7 到访"]];
+  const dbTotal = parts.length;   // 先按「当前名单人数」作为筛选总量占位，后续接真实数据库筛选
+  const dbHtml = `<div class="card rdb-card"><h3 style="margin:0 0 8px">数据库筛选</h3>
+      <div class="sm mut" style="margin-bottom:10px">从数据库按条件筛出目标受访者，确认人群总量后，把甄别问卷链接通过邮件同步发送出去。</div>
+      <div class="rdb-tags">${dbTags.map(([k, v]) => `<span class="rdb-tag"><b>${esc(k)}</b>：${esc(v)} <button type="button" class="rdb-x" aria-label="移除 ${esc(k)}">×</button></span>`).join("")}<button type="button" class="rdb-add">＋ 添加筛选条件</button></div>
+      <div class="rdb-total"><span class="rdb-num">${dbTotal}</span><span class="rdb-u">人符合筛选</span><span class="sp"></span><button type="button" class="p" id="dbsend">同步发送甄别问卷链接</button></div>
+      <div class="sm mut">发送后进入「配额及受访者名单」查看回收进度。</div></div>`;
+  shell(`<div class="hubtabs sub" role="tablist" aria-label="创建访谈">${rm === "onelink"
+      ? `<a href="#" role="tab" id="ptab-form-t" class="${ptab === "form" ? "on" : ""}" aria-selected="${ptab === "form"}">招募问卷</a><a href="#" role="tab" id="ptab-db-t" class="${ptab === "db" ? "on" : ""}" aria-selected="${ptab === "db"}">数据库发送</a>`
+      : `<a href="#" role="tab" id="ptab-mode-t" class="${ptab === "mode" ? "on" : ""}" aria-selected="${ptab === "mode"}">招募/主持/问卷</a><a href="#" role="tab" id="ptab-form-t" class="${ptab === "form" ? "on" : ""}" aria-selected="${ptab === "form"}">甄别问卷</a><a href="#" role="tab" id="ptab-db-t" class="${ptab === "db" ? "on" : ""}" aria-selected="${ptab === "db"}">数据库筛选及发送</a><a href="#" role="tab" id="ptab-list-t" class="${ptab === "list" ? "on" : ""}" aria-selected="${ptab === "list"}">配额及受访者名单</a><a href="#" role="tab" id="ptab-outline-t" class="${ptab === "outline" ? "on" : ""}" aria-selected="${ptab === "outline"}">访问大纲生成及邀请</a>`}</div>
+    <div id="ptab-mode" ${ptab === "mode" ? "" : "hidden"}>${modeBar}</div>
+    <div id="ptab-form" ${ptab === "form" ? "" : "hidden"}>${rf.html}</div><div id="ptab-db" ${ptab === "db" ? "" : "hidden"}>${dbHtml}</div><div id="ptab-list" ${ptab === "list" ? "" : "hidden"}>
     ${rd.html}
     ${impBatchBar(impB.batches, impB.orphans_pending)}
     <div class="card" id="plist"><div class="row rd-tool"><h3 style="margin:0">受访者名单 <span class="sm mut" id="plcount">共 ${parts.length} 人${shown.length !== parts.length ? `，当前显示 ${shown.length}` : ""}</span></h3><span class="sp"></span>
@@ -383,15 +407,61 @@ async function peopleView(p) {
       <div class="card empty" id="pempty" ${shown.length ? "hidden" : ""}><b>没有符合筛选条件的人。</b></div>`
       : `<div class="card empty"><b>还没有受访者。</b><span>点“添加受访者”手动添加，“导入名单（外部渠道）”导入别处拿来的名单，或把招募问卷发出去。</span></div>`}
     <div class="lpop" id="lpop" hidden></div></div>`, { active: "people", p });
+  // 一站式：工作区只有「招募问卷」一栏，隐藏静态「访谈大纲」；先甄别后邀请：保留「访谈大纲」+「甄别问卷」两个拆开的栏
+  if (rm === "onelink") document.querySelectorAll('.sub2 .l2slot a.l2e').forEach((a) => { if (/\/outline/.test(a.getAttribute("href") || "")) a.remove(); });
   const showTab = (name) => {
     sessionStorage.setItem("ptab", name);
-    $("#ptab-form").hidden = name !== "form"; $("#ptab-list").hidden = name !== "list";
-    $("#ptab-form-t").classList.toggle("on", name === "form"); $("#ptab-list-t").classList.toggle("on", name === "list");
-    $("#ptab-form-t").setAttribute("aria-selected", name === "form"); $("#ptab-list-t").setAttribute("aria-selected", name === "list");
+    if (name === "outline") { location.hash = `#/p/${p.id}/outline`; return; }   // 访问大纲生成及邀请 = 打开访谈大纲页
+    const set = (id, on) => { const el = $(id); if (el) el.hidden = !on; };
+    set("#ptab-mode", name === "mode"); set("#ptab-form", name === "form"); set("#ptab-db", name === "db"); set("#ptab-list", name === "list");
+    ["mode", "form", "db", "list"].forEach((k) => { const t = $(`#ptab-${k}-t`); if (t) { t.classList.toggle("on", name === k); t.setAttribute("aria-selected", name === k); } });
     document.body.classList.toggle("rfmode", name === "form"); if (name === "form") rf.fit();
   };
+  $("#ptab-mode-t").onclick = (e) => { e.preventDefault(); showTab("mode"); };
   $("#ptab-form-t").onclick = (e) => { e.preventDefault(); showTab("form"); };
+  const ptdb = $("#ptab-db-t"); if (ptdb) ptdb.onclick = (e) => { e.preventDefault(); showTab("db"); };
+  const ptol = $("#ptab-outline-t"); if (ptol) ptol.onclick = (e) => { e.preventDefault(); showTab("outline"); };
   $("#ptab-list-t").onclick = (e) => { e.preventDefault(); showTab("list"); };
+  // 同步发送甄别问卷链接（邮件）
+  const dbsend = $("#dbsend"); if (dbsend) dbsend.onclick = guard(async () => {
+    const n = parts.filter((x) => x.email && !x.anonymized).length;
+    if (!n) return toast("没有可发送的受访者邮箱，请先在名单里补齐邮箱", true);
+    if (!confirm(`将向 ${n} 位受访者发送甄别问卷链接邮件，确定发送吗？`)) return;
+    const r = await api(`/projects/${p.id}/recruiting/screen-invite`, { method: "POST", body: { participant_ids: parts.filter((x) => x.email && !x.anonymized).map((x) => x.id) } });
+    toast(`已发送 ${r.sent} 封，跳过 ${(r.skipped || []).length} 位`);
+    sessionStorage.setItem("ptab", "list"); render();
+  });
+  document.querySelectorAll("#rmode [data-rm]").forEach((b) => (b.onclick = guard(async () => {
+    const nrm = b.dataset.rm; const nhm = nrm === "onelink" ? "ai" : hm;   // 一站式 = AI 问卷 + AI 访谈，主持强制 AI
+    rec.recruit_mode = nrm; rec.host_mode = nhm;
+    await api(`/projects/${p.id}/recruiting/mode`, { method: "PUT", body: { recruit_mode: nrm, host_mode: nhm } });
+    if (nrm === "onelink") await api(`/projects/${p.id}/recruiting/form/source`, { method: "POST", body: { source: "ai" } }).catch(() => {});   // 一站式来源锁定为 AI，无需切换
+    toast(nrm === "onelink" ? "一站式链接：AI 设计问卷 + AI 访谈，来源已锁定为 AI" : "已更新招募方式"); render();
+  })));
+  document.querySelectorAll("#rmode [data-hm]").forEach((b) => (b.onclick = guard(async () => {
+    const nhm = b.dataset.hm; if (rm === "onelink" && nhm !== "ai") { toast("一站式链接只能由 AI 主持", true); return; }
+    rec.host_mode = nhm; await api(`/projects/${p.id}/recruiting/mode`, { method: "PUT", body: { recruit_mode: rm, host_mode: nhm } }); toast("已更新主持方式"); render();
+  })));
+  // 问卷来源：AI 生成 / 导入 Confirmit 链接（只「先甄别后邀请」可选），导入后跳到问卷页由右侧直接展示该链接
+  document.querySelectorAll("#rmode [data-src]").forEach((b) => (b.onclick = guard(async () => {
+    const toHtml = b.dataset.src === "html";
+    document.querySelectorAll("#rmode [data-src]").forEach((x) => x.classList.toggle("on", x === b));
+    const box = $("#rmsrcurl"); if (box) box.hidden = !toHtml;
+    if (!toHtml && form.source === "html") {
+      await api(`/projects/${p.id}/recruiting/form/source`, { method: "POST", body: { source: "ai" } });
+      await api(`/projects/${p.id}/recruiting/form`, { method: "PUT", body: { source: "ai", html_url: "" } });
+      toast("已切回 AI 生成甄别问卷"); render();
+    }
+  })));
+  const imp = $("#rmimport"); if (imp) imp.onclick = guard(async () => {
+    const u = (($("#rmurl") || {}).value || "").trim();
+    if (!/^https?:\/\//i.test(u)) return toast("请填写 https:// 开头的问卷链接", true);
+    await api(`/projects/${p.id}/recruiting/form`, { method: "PUT", body: { source: "html", html_url: u } });
+    await api(`/projects/${p.id}/recruiting/form/source`, { method: "POST", body: { source: "html" } });
+    toast("问卷链接已导入，右侧展示该问卷的实际内容");
+    sessionStorage.setItem("ptab", "form"); render();
+  });
+  const rmNext = $("#rmnext"); if (rmNext) rmNext.onclick = () => { showTab("form"); };
   document.body.classList.toggle("rfmode", ptab === "form");
   document.body.classList.add("pgw");  // this page runs the full width
   // ---- the list: filters, picking, tier, tags, bulk delete ----
