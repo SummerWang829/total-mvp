@@ -35,7 +35,10 @@
 #olws .ol-grip:hover{color:var(--ink2);background:none}
 #olws .ol-top{display:flex;align-items:flex-start;gap:8px;position:relative}
 #olws .ol-top .ol-qt{cursor:text}
-#olws .ol-top .ol-dl,#olws .ol-top .ol-cv,#olws .ol-top .ol-mn{flex:none}
+#olws .ol-top .ol-dl,#olws .ol-top .ol-cv,#olws .ol-top .ol-mn,#olws .ol-top .ol-star{flex:none}
+#olws .ol-star{width:28px;min-height:28px;padding:0;border:0;background:none;color:var(--ink2);font-size:18px;line-height:1;cursor:pointer;border-radius:8px}
+#olws .ol-star:hover:not(:disabled){background:var(--wash);color:var(--orange)}
+#olws .ol-star.on{color:var(--orange)}
 #olws .ol-mn{width:28px;min-height:28px;padding:0;border:0;background:none;color:var(--ink2);font-size:20px;line-height:1;cursor:pointer;border-radius:8px}
 #olws .ol-mn:hover:not(:disabled){background:var(--wash);color:var(--ink)}
 #olws .ol-qmenu{position:absolute;right:0;top:32px;z-index:6;min-width:190px;padding:6px 0;border:1px solid var(--line);border-radius:10px;background:var(--surface);box-shadow:0 8px 22px rgba(11,56,44,.15)}
@@ -80,3 +83,14 @@
 @media (max-width:900px){#olws .ol-att{width:36px;min-height:36px;height:36px}#olws .ol-fl button{width:36px;min-height:36px;height:36px}}
 @media (max-width:600px){#olws .ol-seg button{height:36px;min-height:36px}}
 #olws .ol-seg{margin:0 0 8px}
+
+#olws .ol-exp{position:relative;margin-left:auto}
+#olws .ol-exp>button{height:36px;border-radius:999px;padding:0 14px;white-space:nowrap}
+#olws .ol-exp>button:hover:not(:disabled){color:var(--ink);background:var(--wash);border-color:var(--ink)}
+#olws .ol-exp .ol-pop button{display:block;width:100%;text-align:left;min-height:36px;padding:6px 10px;border-radius:8px;font-weight:500}
+#olws .ol-exp .ol-pop button:hover{background:var(--orange-soft)}
+
+#olws .ol-ro{display:flex;flex-direction:column;gap:6px;padding:14px 16px;border-top:1px solid var(--line);color:var(--mut)}
+#olws .ol-ro b{font-weight:600;color:var(--ink)}
+#olws .ol-ro span{font-size:12px;line-height:1.6}
+#olws .ol-mkby{font-style:normal;font-size:11px;font-weight:600;color:var(--ink);background:var(--orange-soft);border-radius:6px;padding:1px 6px;margin-left:6px;vertical-align:middle}

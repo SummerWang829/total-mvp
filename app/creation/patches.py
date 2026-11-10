@@ -45,7 +45,7 @@ def _form(db: Session, project: Project) -> RecruitForm:
 def snapshot(db: Session, project: Project, state: State) -> str:
     """The parts of the study a stage can change, as JSON (stored on the AI message so the change can be undone)."""
     f = db.get(RecruitForm, project.id)
-    snap = {"brief": project.brief or "", "formats": project.formats or {}, "outline_text": project.outline_text or "", "mode": state.mode, "host": state.host,
+    snap = {"brief": project.brief or "", "formats": project.formats or {}, "outline_text": project.outline_text or "", "mode": state.mode, "host": state.host, "recruit_mode": project.recruit_mode, "host_mode": project.host_mode,
             "decisions": state.decisions, "goals": list(f.goals or []) if f else [], "need": f.need if f else "", "questions": list(f.questions or []) if f else [],
             "has_form": bool(f)}
     out = json.dumps(snap, ensure_ascii=False)
@@ -57,6 +57,7 @@ def restore(db: Session, project: Project, state: State, raw: str) -> None:
     snap = json.loads(raw)
     project.brief, project.formats, project.outline_text = snap["brief"], snap["formats"], snap["outline_text"]
     state.mode, state.host, state.decisions = snap["mode"], snap["host"], snap["decisions"]
+    project.recruit_mode, project.host_mode = snap.get("recruit_mode", project.recruit_mode), snap.get("host_mode", project.host_mode)
     f = _form(db, project) if snap.get("has_form") else db.get(RecruitForm, project.id)   # a form made by the undone change is emptied, not deleted
     if f is not None:
         f.goals, f.need, f.questions, f.updated_at = snap["goals"], snap["need"], snap["questions"], utcnow()
@@ -86,6 +87,7 @@ def apply_mode(db: Session, project: Project, state: State, patch: dict) -> list
     if mode == "one" and host != "ai":
         raise PatchError("the one-stop way only works with an AI host")
     state.mode, state.host = mode, host
+    project.recruit_mode, project.host_mode = ("onelink" if mode == "one" else "screen_then_invite"), host   # the same two fields the 招募方式 page sets
     return ["已设为：" + ("一站式（问卷和访谈一个链接）" if mode == "one" else "先问卷筛选、再邀请") + "，" + ("AI 主持" if host == "ai" else "真人主持")]
 
 

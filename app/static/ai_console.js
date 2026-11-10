@@ -1,11 +1,12 @@
-/* AI 后台（仅管理员）：功能总览 + 调用监控。只显示次数、耗时、错误类型，不显示任何人说的话。数据来自 GET /api/ai-console/overview。 */
+/* AI 后台（仅管理员）：功能总览 + 提示词 + 规范 + 调用监控。只显示次数、耗时、错误类型，不显示任何人说的话。 */
 async function aiConsoleView() {
   if (ME.role !== "admin") { location.hash = "#/projects"; return; }
-  let tab = ["log", "prompt"].includes(sessionStorage.getItem("ai_tab")) ? sessionStorage.getItem("ai_tab") : "over";
+  let tab = ["log", "prompt", "rules"].includes(sessionStorage.getItem("ai_tab")) ? sessionStorage.getItem("ai_tab") : "over";
   let plist = null, pkey = "", pd = null, shown = "built", draft = "", pnote = "";   // 提示词页：功能列表、当前功能、它的版本、正在看的版本（"built" = 内置）、文本框里的字、说明
   let hours = Number(sessionStorage.getItem("ai_hours")) || 24;
   let data = null;
-  const TABS = [["over", "功能总览"], ["prompt", "提示词"], ["log", "调用监控"]], WINDOWS = [[24, "24 小时"], [168, "7 天"]];
+  let rdata = null, rshown = "built", rdraft = "", rnote = "", rsource = "";   // 规范页：数据、正在看的版本、文本框里的字、说明、来源
+  const TABS = [["over", "功能总览"], ["prompt", "提示词"], ["rules", "规范"], ["log", "调用监控"]], WINDOWS = [[24, "24 小时"], [168, "7 天"]];
   const secs = (ms) => (ms ? (ms / 1000).toFixed(1) + " 秒" : "—");
   const rate = (f) => (f.calls ? Math.round(((f.calls - f.failed) / f.calls) * 1000) / 10 : null);
   const winLabel = () => (WINDOWS.find((w) => w[0] === hours) || WINDOWS[0])[1];
@@ -72,18 +73,53 @@ async function aiConsoleView() {
     const go = $("#aiplive"); if (go) go.onclick = guard(async () => afterChange(await api(`${url}/live`, { method: "POST", body: { version: shown === "built" ? null : shown } }), shown === "built" ? "已回到内置提示词" : `已上线 v${shown}`));
     document.querySelectorAll("[data-live]").forEach((b) => (b.onclick = guard(async () => afterChange(await api(`${url}/live`, { method: "POST", body: { version: +b.dataset.live } }), `已上线 v${b.dataset.live}`))));
   }
+
+  // ===== 规范层 (task 13) =====
+  const rstateName = { live: "上线", draft: "草稿", retired: "已停用" };
+  function rulesHtml() {
+    if (!rdata) return `<div class="card empty"><b>加载中…</b></div>`;
+    const live = rdata.live, vs = rdata.versions, cur = rshown === "built" ? null : vs.find((v) => v.version === rshown);
+    const opts = [`<option value="built"${rshown === "built" ? " selected" : ""}>基础规范${live === null ? "（当前）" : ""}</option>`].concat(vs.map((v) => `<option value="${v.version}"${v.version === rshown ? " selected" : ""}>v${v.version}${v.state === "live" ? "（当前）" : v.state === "draft" ? " · 草稿" : ""}</option>`)).join("");
+    const base = cur ? cur.text : "", changed = rdraft.trim() !== base.trim();
+    const isLive = rshown === "built" ? live === null : cur && cur.state === "live";
+    const rows = vs.map((v) => `<tr><td>v${v.version}</td><td><span class="tag${v.state === "live" ? " ai-live" : ""}">${rstateName[v.state]}</span></td><td class="mut">${esc(v.note || "—")}</td><td class="mut">${esc(v.source || "—")}</td><td class="mut">${esc(v.by || "—")}</td><td class="mut">${esc(when(v.at))}</td><td>${v.state === "live" ? "" : `<button class="s" type="button" data-rlive="${v.version}">上线</button>`}</td></tr>`).join("");
+    const builtCard = `<div class="card"><div class="row"><b>${esc(rdata.built_in_label)}</b><span class="tag">系统内置 · 只读</span></div><pre class="ai-rule-pre">${esc(rdata.built_in)}</pre></div>`;
+    const editCard = `<div class="card"><div class="row"><b>我的补充规范</b><span class="tag${live === null ? "" : " ai-live"}">${live === null ? "未上线" : "上线 v" + live}</span><span class="sp"></span><label class="mut">查看 <select id="airpv" aria-label="版本">${opts}</select></label></div>
+      <div class="sm mut" style="margin:4px 0 8px">外部 Skill 或资料不得原样塞进产品：导入前请确认已读过原文、用自己话改写、并通过红线检查。</div>
+      <textarea id="airpt" class="ai-ta" spellcheck="false" aria-label="补充规范">${esc(rdraft)}</textarea>
+      <div class="row" style="margin-top:10px"><input id="airpn" maxlength="80" placeholder="改了什么（选填）" aria-label="改了什么" value="${esc(rnote)}" style="flex:1;min-width:120px"><input id="airsrc" maxlength="20" placeholder="来源（导入的文件名，选填）" aria-label="来源" value="${esc(rsource)}" style="flex:1;min-width:120px"><button class="s" type="button" id="airsave"${changed ? "" : " disabled"}>保存为新版本（草稿）</button>${isLive ? "" : `<button class="p" type="button" id="airlive">${rshown === "built" ? "回到仅基础规范" : "上线 v" + rshown}</button>`}</div>
+      <div class="row" style="margin-top:8px"><input type="file" id="airimp" accept=".md,.txt" style="flex:1"><span class="sm mut">导入 .md / .txt（≤100KB）</span></div></div>`;
+    return `${builtCard}${editCard}${vs.length ? `<div class="card scroll" style="padding:6px 10px"><table class="tbl"><thead><tr><th>版本</th><th>状态</th><th>改动说明</th><th>来源</th><th>作者</th><th>时间</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>` : ""}`;
+  }
+  const settleRules = (r, pick) => { rdata = r; rshown = pick || (r.live === null ? "built" : r.live); const v = r.versions.find((x) => x.version === rshown); rdraft = v ? v.text : ""; rnote = ""; rsource = v ? v.source : ""; };
+  const afterRule = (r, msg, pick) => { settleRules(r, pick); toast(msg); draw(); };
+  function wireRules() {
+    const sel = $("#airpv"); if (!sel) return;
+    $("#airpt").oninput = (e) => { rdraft = e.target.value; const base = rshown === "built" ? "" : rdata.versions.find((v) => v.version === rshown).text; $("#airsave").disabled = rdraft.trim() === base.trim(); };
+    $("#airpn").oninput = (e) => { rnote = e.target.value; };
+    $("#airsrc").oninput = (e) => { rsource = e.target.value; };
+    sel.onchange = () => { rshown = sel.value === "built" ? "built" : +sel.value; const v = rdata.versions.find((x) => x.version === rshown); rdraft = v ? v.text : ""; rsource = v ? v.source : ""; draw(); };
+    $("#airsave").onclick = guard(async () => { const r = await api("/ai-console/rules/versions", { method: "POST", body: { text: rdraft, note: rnote, source: rsource } }); afterRule(r, "已保存为新版本草稿，上线后才会生效", r.versions[0].version); });
+    const go = $("#airlive"); if (go) go.onclick = guard(async () => afterRule(await api("/ai-console/rules/live", { method: "POST", body: { version: rshown === "built" ? null : rshown } }), rshown === "built" ? "已回到仅基础规范" : `已上线 v${rshown}`));
+    document.querySelectorAll("[data-rlive]").forEach((b) => (b.onclick = guard(async () => afterRule(await api("/ai-console/rules/live", { method: "POST", body: { version: +b.dataset.rlive } }), `已上线 v${b.dataset.rlive}`))));
+    const imp = $("#airimp"); if (imp) imp.onchange = () => { const f = imp.files && imp.files[0]; if (!f) return; if (f.size > 100000) { toast("文件太大了（最多 100KB）"); return; } const rd = new FileReader(); rd.onload = () => { rdraft = String(rd.result || ""); rsource = f.name.replace(/\.(md|txt)$/i, ""); draw(); }; rd.readAsText(f); };
+  }
   function draw() {
     $("#aitabs").innerHTML = TABS.map(([k, n]) => `<a href="#" role="tab" data-k="${k}" class="${tab === k ? "on" : ""}" aria-selected="${tab === k}">${n}</a>`).join("") + `<span class="sp"></span>${winPick()}`;
-    $("#aipanel").innerHTML = tab === "prompt" ? promptHtml() : data ? (tab === "over" ? overHtml() : logHtml()) : `<div class="card empty"><b>加载中…</b></div>`;
+    $("#aipanel").innerHTML = tab === "prompt" ? promptHtml() : tab === "rules" ? rulesHtml() : data ? (tab === "over" ? overHtml() : logHtml()) : `<div class="card empty"><b>加载中…</b></div>`;
+
     if (tab === "prompt") wirePrompt();
+    if (tab === "rules") wireRules();
     document.querySelectorAll("#aipanel [data-go]").forEach((r) => (r.onclick = () => { tab = "prompt"; sessionStorage.setItem("ai_tab", tab); if (!plist) loadList(); openPrompt(r.dataset.go); }));
-    document.querySelectorAll("#aitabs [data-k]").forEach((a) => (a.onclick = (e) => { e.preventDefault(); tab = a.dataset.k; sessionStorage.setItem("ai_tab", tab); if (tab === "prompt" && !plist) loadList(); draw(); }));
+    document.querySelectorAll("#aitabs [data-k]").forEach((a) => (a.onclick = (e) => { e.preventDefault(); tab = a.dataset.k; sessionStorage.setItem("ai_tab", tab); if (tab === "prompt" && !plist) loadList(); if (tab === "rules" && !rdata) loadRules(); draw(); }));
     $("#aiwin").onchange = (e) => { hours = Number(e.target.value); sessionStorage.setItem("ai_hours", hours); load(); };
   }
 
   const load = guard(async () => { data = await api(`/ai-console/overview?hours=${hours}`); draw(); });
+  const loadRules = guard(async () => { rdata = await api("/ai-console/rules"); settleRules(rdata); draw(); });
   shell(`${head("AI 后台", "")}<div class="hubtabs sub ai-tabs" id="aitabs" role="tablist" aria-label="AI 后台"></div><div id="aipanel"></div>`, { active: "ai", title: "AI 后台" });
   draw();
   load();
   if (tab === "prompt") loadList();
+  if (tab === "rules") loadRules();
 }

@@ -1,11 +1,11 @@
 """The 访谈 page's interview outline: read it, save a hand edit, talk to the AI to change it. Staff only (it holds the research goal); nothing here reaches participants."""
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from .. import formats, guide_text, library_context, outline, outline_translate, outline_versions, project_langs, assistant_identity
+from .. import formats, guide_text, library_context, outline, outline_export, outline_translate, outline_versions, project_context as pctx, project_langs, assistant_identity
 from .. import methods as methods_mod
 from ..audit import audit
 from ..config import settings
@@ -27,7 +27,7 @@ class OutlineBody(BaseModel):
 
 
 class EditBody(BaseModel):
-    op: Literal["set", "delete", "add", "insert", "dup", "move", "rename", "del_part", "add_part", "meta"]
+    op: Literal["set", "delete", "add", "insert", "dup", "move", "rename", "del_part", "add_part", "meta", "mark"]
     kind: Literal["warmup", "topic", "stimulus"] = "topic"
     ref: int = Field(default=0, ge=0, le=50)
     index: int = Field(default=0, ge=0, le=100)
@@ -93,6 +93,36 @@ def _translator():
     return get_moderator_chat()
 
 
+def _screener_of(db: Session, proj: Project) -> dict:
+    """The LATEST recruiting questionnaire, so 逐题分析 never shows an old draft's questions."""
+    f = db.get(RecruitForm, proj.id)
+    if f is None:
+        return {"questions": [], "version": 0, "status": "", "published_at": None, "source": ""}
+    qs = [str(q.get("text") or "").strip() for q in (f.questions or []) if isinstance(q, dict)]
+    return {"questions": [q for q in qs if q], "version": int(f.version or 0), "status": f.status or "",
+            "published_at": f.published_at.isoformat() if f.published_at else None, "source": f.source or ""}
+
+
+def _versions_of(proj: Project, meta: dict) -> list[dict]:
+    """Version names follow the project's real languages and formats, not platform defaults."""
+    fam = meta["formats"]["family_labels"]
+    langs = set(meta["language_codes"])
+    many = len(outline_versions.families_of(proj)) > 1
+    base = outline_versions.base_key(proj)
+    out = []
+    for row in outline_versions.listing(proj):
+        # Only the languages / format families the project overview actually configured.
+        if row["key"] != base and (row["lang"] not in langs or row["family"] not in fam):
+            continue
+        v = dict(row)
+        fl = fam.get(v["family"]) or outline_versions.FAMILY_NAMES.get(v["family"], "")
+        v["lang_name"] = pctx.lang_label(v["lang"])
+        v["format_label"] = fl
+        v["name"] = v["lang_name"] + (f" · {fl}" if many and fl else "")
+        out.append(v)
+    return out
+
+
 def _out(proj: Project, db: Session, key: str | None = None, ctx: Ctx | None = None) -> dict:
     key = _version(proj, key)
     text = outline_versions.text_of(proj, key)
@@ -101,21 +131,29 @@ def _out(proj: Project, db: Session, key: str | None = None, ctx: Ctx | None = N
     base = outline_versions.base_key(proj)
     base_sum = outline.summary_of(outline_versions.text_of(proj, base)) if key != base else None
     info = project_langs.info(db, proj)
+    meta = pctx.meta(db, proj)
     can_edit = bool(ctx and (ctx.user.role in ("admin", "recruiter") or _can_manage(db, ctx, proj.id)))
+    readonly = bool(ctx and ctx.user.role == "viewer")
     return {"text": text, "problem": outline.problem_of(text), "summary": summary, "warning": outline.warning_of(text),
-            "v": key, "base": base, "versions": outline_versions.listing(proj), "families": outline_versions.families_of(proj),
+            "readonly": readonly, "role": ctx.user.role if ctx else "researcher",
+            "v": key, "base": base, "versions": _versions_of(proj, meta), "families": list(meta["formats"]["family_labels"]),
             "family_names": outline_versions.FAMILY_NAMES, "lang": outline_versions.split(key)[0],
+            "setup": {"source": meta["source"], "country": meta["country"], "language": meta["language"],
+                      "languages": meta["languages"], "formats": meta["formats"]["names"],
+                      "format_label": meta["formats"]["label"], "formats_source": meta["formats"]["source"]},
+            "screener": _screener_of(db, proj),
             "ref": [[{"text": q["text"], "cover": bool(q.get("cover"))} for q in part["questions"]] for part in base_sum["parts"]] if base_sum else None,
             "settings": {"title": summary["topic"] if summary else "", "minutes": summary["minutes"] if summary else outline.DEFAULT_MINUTES, "brief": proj.brief or "", "goals": _goals(db, proj.id),
-                         "languages": [{"code": r["code"], "name": r["name"], "on": r["on"], "default": r["default"], "in_use": r["in_use"]} for r in info["rows"]],
-                         "formats": formats.of(proj.formats, methods_mod.of(proj)).get("depth", []), "format_names": formats.FORMATS, "can_edit_langs": can_edit},
+                         "languages": [{"code": r["code"], "name": pctx.lang_label(r["code"]), "on": r["on"], "default": r["default"], "in_use": r["in_use"]}
+                                       for c in meta["language_codes"] for r in info["rows"] if r["code"] == c],
+                         "formats": meta["formats"]["codes"], "format_names": formats.FORMATS, "can_edit_langs": can_edit},
             "context": {"brief": bool((proj.brief or "").strip()), "library_docs": len(library_context.project_documents(db, proj.id)), "parts": len(summary["parts"]) if summary else 0,
                         "questions": summary["question_count"] if summary else 0},
             "model": _model_label(), "ai_local": local, "ai_vendor": "" if local else settings.moderator_vendor.strip()}
 
 
 @router.get("/projects/{pid}/outline")
-def get_outline(pid: str, v: str | None = None, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+def get_outline(pid: str, v: str | None = None, ctx: Ctx = Depends(require_roles(*STAFF, "viewer")), db: Session = Depends(get_db)):
     return _out(_project(db, ctx, pid), db, v, ctx)
 
 
@@ -132,14 +170,23 @@ def put_outline(pid: str, body: OutlineBody, ctx: Ctx = Depends(require_roles(*S
 
 
 @router.post("/projects/{pid}/outline/edit")
-def edit_outline(pid: str, body: EditBody, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+def edit_outline(pid: str, body: EditBody, ctx: Ctx = Depends(require_roles(*STAFF, "viewer")), db: Session = Depends(get_db)):
     """Change one question or part from the outline view (the text is rewritten from the guide, so the two always agree)."""
     proj = _project(db, ctx, pid)
     key = _version(proj, body.v)
+    # A client (viewer) may only mark / unmark a question as 重点关注 (and write the reason); every other edit is staff-only.
+    if ctx.user.role == "viewer" and body.op != "mark":
+        raise HTTPException(403, "客户只能标注重点关注，不能修改大纲")
     others = outline_versions.targets_for(proj, key, body.sync)
     translating = body.op in outline_versions.WORDING and any(outline_versions.split(k)[0] != outline_versions.split(key)[0] for k in others)
+    value = body.value
+    if body.op == "mark":
+        by = "client" if ctx.user.role == "viewer" else "researcher"
+        parts = value.strip().split("|")
+        # value is "<flag>[|<reason>]" -> append the author role as a third segment.
+        value = f"{parts[0]}|{parts[1] if len(parts) > 1 else ''}|{by}"
     try:
-        sync = outline_versions.edit(proj, key, body.sync, body.op, body.kind, body.ref, body.index, body.value, _translator() if translating else None)
+        sync = outline_versions.edit(proj, key, body.sync, body.op, body.kind, body.ref, body.index, value, _translator() if translating else None)
     except outline.EditError as e:
         raise HTTPException(422, str(e)) from e
     except (outline_translate.TranslateError, ChatFatalError) as e:
@@ -217,3 +264,19 @@ def put_settings(pid: str, body: SettingsBody, ctx: Ctx = Depends(require_roles(
     return {**_out(proj, db, key, ctx), "sync": sync}
 
 
+@router.get("/projects/{pid}/outline/export")
+def export_outline(pid: str, format: str = "md", v: str | None = None, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    """The outline as a finished document (任务包 11): Markdown or a printable HTML. Research team only; clients get an outward version through the report."""
+    proj = _project(db, ctx, pid)
+    key = _version(proj, v)
+    summary = outline.summary_of(outline_versions.text_of(proj, key))
+    if summary is None:
+        raise HTTPException(422, "提纲还不完整，先把它写好再导出")
+    form = db.get(RecruitForm, pid)
+    if format == "html":
+        body = outline_export.build_html(summary, proj, db, form, key)
+        name = f"{(proj.name or 'outline')[:40]}-{key}.html"
+        return Response(body, media_type="text/html; charset=utf-8", headers={"Content-Disposition": f'attachment; filename="{name}"'})
+    body = outline_export.build_markdown(summary, proj, db, form, key)
+    name = f"{(proj.name or 'outline')[:40]}-{key}.md"
+    return Response(body, media_type="text/markdown; charset=utf-8", headers={"Content-Disposition": f'attachment; filename="{name}"'})

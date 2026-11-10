@@ -49,6 +49,13 @@ SLOTS: dict[str, Slot] = {
     "creation.chat": Slot("app.creation.specs", "SYSTEM", True),
     "creation.outline_spec": Slot("app.creation.specs", "OUTLINE_SPEC"),
     "creation.recruit_spec": Slot("app.creation.specs", "RECRUIT_SPEC"),
+    "interview.qa_group": Slot("app.interview_detail_ai", "SEGMENT_SYSTEM"),
+    "interview.translate": Slot("app.interview_detail_ai", "TRANSLATE_SYSTEM"),
+    "interview.summary": Slot("app.interview_detail_ai", "SUMMARY_SYSTEM"),
+    "interview.profile_tags": Slot("app.interview_detail_ai", "TAGS_SYSTEM"),
+    "interview.quality": Slot("app.interview_detail_ai", "QUALITY_SYSTEM"),
+    "interview.transcript_fix": Slot("app.interview_detail_ai", "FIX_SYSTEM"),
+    "interview.export": Slot("app.interview_detail_ai", "EXPORT_SYSTEM"),
 }
 
 

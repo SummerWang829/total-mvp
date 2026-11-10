@@ -6,7 +6,8 @@ moderator or device (the team's own details), the same as the interview list.
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .models import Clip, Consent, Evidence, Insight, Interview, TranscriptSegment
+from . import project_context as pctx
+from .models import Clip, Consent, Evidence, Insight, Interview, Project, TranscriptSegment
 
 MAX_QUOTES = 2
 MAX_SUMMARY = 2
@@ -57,12 +58,17 @@ def row(db: Session, itv: Interview, code: str, team: bool, moderator_name: str)
     consent = db.scalar(select(Consent.id).where(Consent.interview_id == itv.id).limit(1)) is not None
     words, share = _talk(db, itv.id)
     p = itv.participant
+    # The hover card must show the project's real market, not a legacy SG/zh participant code.
+    proj = db.get(Project, itv.project_id)
+    m = pctx.meta(db, proj) if proj is not None else {}
+    loc = (f"{m.get('country') or pctx.market_label(p.country)} · "
+           f"{m.get('language') or pctx.lang_label(p.language or itv.language)}")
     steps = [True, consent, itv.entered_at is not None, itv.status == "ended", segs > 0, len(ins) > 0]
     out = {"id": itv.id, "code": code, "status": itv.status, "kind": itv.kind, "started_at": (itv.started_at or itv.scheduled_at).isoformat() if (itv.started_at or itv.scheduled_at) else None,
            "scheduled": itv.started_at is None, "minutes": _minutes(itv), "purged": itv.purged_at is not None,
            "insights": len(ins), "approved": sum(1 for i in ins if i.status == "approved"), "review": sum(1 for i in ins if i.status == "needs_review"), "clips": clips,
            "summary": [i.statement[:SUMMARY_CHARS] for i in ins[:MAX_SUMMARY]],
-           "card": {"loc": f"{p.country or '—'} · {p.language or itv.language}", "words": words, "talk": share, "steps": steps, "step_names": STEP_NAMES,
+           "card": {"loc": loc, "words": words, "talk": share, "steps": steps, "step_names": STEP_NAMES,
                     "quotes": _quotes(db, ins), "scheduled_at": itv.scheduled_at.isoformat() if itv.scheduled_at else None}}
     out["transcript_state"] = "ready" if segs else ("waiting" if itv.status == "ended" and itv.entered_at else "none")
     if team:

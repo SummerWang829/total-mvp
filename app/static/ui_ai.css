@@ -25,3 +25,4 @@ nav.side a.nv[href$="#/ai"] .ic{--ico:url("data:image/svg+xml,%3Csvg xmlns='http
 .ai-live{background:var(--green-soft);color:var(--brand)}
 @media (max-width:900px){.ai-pg{grid-template-columns:1fr}}
 .ai-pi>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.ai-rule-pre{white-space:pre-wrap;word-break:break-word;font:13px/1.7 ui-monospace,Consolas,monospace;color:var(--ink);background:var(--wash,#F7F8FA);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin:10px 0 0;max-height:420px;overflow-y:auto}

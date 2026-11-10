@@ -127,7 +127,7 @@ class Rule(BaseModel):
 class Question(BaseModel):
     model_config = ConfigDict(extra="forbid")
     id: str = Field(default="", max_length=20)
-    type: Literal["single", "multi", "text", "number"]
+    type: Literal["single", "multi", "text", "number", "scale"]
     text: str = Field(min_length=1, max_length=300)
     required: bool = True
     options: list[Option] = Field(default_factory=list, max_length=MAX_OPTIONS)
@@ -142,9 +142,9 @@ class Question(BaseModel):
 
     @model_validator(mode="after")
     def _shape(self):
-        if self.type in ("single", "multi") and len(self.options) < 2:
+        if self.type in ("single", "multi", "scale") and len(self.options) < 2:
             raise ValueError("a choice question needs at least 2 options")
-        if self.type not in ("single", "multi"):
+        if self.type not in ("single", "multi", "scale"):
             self.options = []
         if self.type != "number":
             self.rules = []
@@ -285,7 +285,7 @@ def _check_answer(q: Question, raw) -> object:
             raise AnswerError("required")
         return None
     ids = {o.id for o in q.options}
-    if q.type == "single":
+    if q.type in ("single", "scale"):
         if not isinstance(raw, str) or raw not in ids:
             raise AnswerError("option")
         return raw
@@ -316,7 +316,7 @@ def _action(q: Question, ans, pos: dict[str, int]) -> str:
         return next((r.goto for r in q.rules if r.fits(ans)), "")
     if q.type == "text":
         return ""
-    chosen = [o for o in q.options if o.id == ans] if q.type == "single" else [o for o in q.options if o.id in ans]
+    chosen = [o for o in q.options if o.id == ans] if q.type in ("single", "scale") else [o for o in q.options if o.id in ans]
     gotos = [o.goto for o in chosen if o.goto]
     if END_OUT in gotos:
         return END_OUT

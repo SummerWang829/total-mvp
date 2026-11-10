@@ -30,7 +30,7 @@ HEADER_KEYS = {"目标": "research_goal", "goal": "research_goal", "受访者话
                "语言": "language", "language": "language", "时长": "duration_min", "minutes": "duration_min"}
 LIST_SECTIONS = {"暖场": "warmup_questions", "warmup": "warmup_questions", "假设": "hypotheses", "hypotheses": "hypotheses", "禁谈": "forbidden_topics", "forbidden": "forbidden_topics",
                  "品牌": "client_brand_names", "brands": "client_brand_names", "产品事实": "product_facts", "facts": "product_facts"}
-NOTE_KEYS = {"追问": "depth", "follow": "depth", "指引": "guide", "guidance": "guide"}
+NOTE_KEYS = {"追问": "depth", "follow": "depth", "指引": "guide", "guidance": "guide", "重点关注": "mark", "关注原因": "reason", "关注人": "mark_by"}
 SECTION_GUIDE_KEYS = ("环节指引", "section_guide")  # under a "## 话题" line, before its first question
 TOPIC_WORDS, STIMULUS_WORDS = ("话题", "topic"), ("素材", "stimulus")
 COVER_WORDS = ("了解", "cover")
@@ -43,7 +43,7 @@ MAX_NOTE = 500
 
 def blank_meta() -> dict:
     """What a question has until the researcher says otherwise."""
-    return {"depth": DEFAULT_DEPTH, "guide": ""}
+    return {"depth": DEFAULT_DEPTH, "guide": "", "mark": False, "reason": "", "mark_by": ""}
 
 
 class GuideTextError(ValueError):
@@ -128,6 +128,12 @@ def parse_guide_text(text: str) -> dict:
         elif last is not None and (kv := _split_key(line)) and kv[0] in NOTE_KEYS:
             if NOTE_KEYS[kv[0]] == "guide":
                 last["guide"] = kv[1][:MAX_NOTE]
+            elif NOTE_KEYS[kv[0]] == "reason":
+                last["reason"] = kv[1][:MAX_NOTE]
+            elif NOTE_KEYS[kv[0]] == "mark_by":
+                last["mark_by"] = kv[1].strip().lower()
+            elif NOTE_KEYS[kv[0]] == "mark":
+                last["mark"] = kv[1].strip().lower() in ("1", "是", "true", "yes", "★")
             elif (d := DEPTH_WORDS.get(kv[1], kv[1].lower())) in DEPTHS:
                 last["depth"] = d
             else:
@@ -162,6 +168,12 @@ def _questions(questions: list[str], metas: list[dict] | None, one) -> list[str]
             out.append(f"  追问: {m['depth']}")
         if (m.get("guide") or "").strip():
             out.append(f"  指引: {one(m['guide'])[:MAX_NOTE]}")
+        if m.get("mark"):
+            out.append("  重点关注: ★")
+            if (m.get("reason") or "").strip():
+                out.append(f"  关注原因: {one(m['reason'])[:MAX_NOTE]}")
+            if (m.get("mark_by") or "").strip():
+                out.append(f"  关注人: {one(m['mark_by'])}")
     return out
 
 

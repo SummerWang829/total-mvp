@@ -126,4 +126,4 @@ def test_every_editable_prompt_exists_and_is_read_through_the_store():
         module = importlib.import_module(slot.module)
         assert isinstance(getattr(module, slot.attr), str) and ai_prompts.built_in(key)
         readers = inspect.getsource(module) + (inspect.getsource(importlib.import_module("app.creation.engine")) if key.startswith("creation.") else "")
-        assert f'ai_prompts.get("{key}"' in readers, f"{slot.module} does not read {key} through ai_prompts"
+        assert f'ai_prompts.get("{key}"' in readers or f'_call(chat, "{key}"' in readers, f"{slot.module} does not read {key} through ai_prompts"

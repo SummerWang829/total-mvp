@@ -59,6 +59,8 @@ def _view(db: Session, proj: Project, state: stages.State) -> dict:
 
 
 def _turn(db: Session, ctx: Ctx, proj: Project, state: stages.State, text: str, material: str = "") -> None:
+    if state.mode or proj.recruit_mode == "onelink" or proj.host_mode == "ai":   # the project holds the truth: the 招募方式 page may have changed it (still undecided = left for the dialog to ask)
+        state.mode, state.host = ("one" if proj.recruit_mode == "onelink" else "two"), (proj.host_mode or "human")
     try:
         engine.run_turn(db, _chat(), proj, state, text, material)
     except ChatFatalError as e:

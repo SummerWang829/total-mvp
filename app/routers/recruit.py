@@ -124,7 +124,44 @@ def _overview(db: Session, proj: Project) -> dict:
     s = _settings(db, proj)
     people = db.scalars(select(Participant.screen_result).where(Participant.project_id == proj.id, Participant.anonymized_at.is_(None))).all()
     return {"rules": s.rules or [], "rules_version": s.rules_version, "quotas": recruit.quota_progress(db, proj.id, s.quotas or []),
-            "counts": {k: people.count(k) for k in ("qualified", "disqualified", "review")} | {"not_screened": people.count("")}}
+            "counts": {k: people.count(k) for k in ("qualified", "disqualified", "review")} | {"not_screened": people.count("")},
+            "recruit_mode": proj.recruit_mode or "screen_then_invite", "host_mode": proj.host_mode or "human"}
+
+
+class ModeBody(BaseModel):
+    recruit_mode: Literal["onelink", "screen_then_invite"] = "screen_then_invite"
+    host_mode: Literal["ai", "human"] = "human"
+
+
+@router.put("/projects/{pid}/recruiting/mode")
+def set_mode(pid: str, body: ModeBody, ctx: Ctx = Depends(require_roles(*RECRUITERS)), db: Session = Depends(get_db)):
+    """Set how candidates are recruited and who runs the interview. A one-link journey can only be run by the AI moderator (the server enforces it)."""
+    proj = get_project(db, ctx, pid)
+    if body.recruit_mode == "onelink" and body.host_mode != "ai":
+        raise HTTPException(422, "一站式链接只能由 AI 主持访谈；选「先甄别后邀请」才能用真人主持")
+    proj.recruit_mode = body.recruit_mode
+    proj.host_mode = body.host_mode
+    audit(db, ctx.org_id, ctx.actor, "recruit.mode", proj.id, recruit_mode=body.recruit_mode, host_mode=body.host_mode)
+    db.commit()
+    return {"recruit_mode": proj.recruit_mode, "host_mode": proj.host_mode}
+
+
+class StageBody(BaseModel):
+    stage: int = Field(ge=1, le=11)
+
+
+@router.put("/projects/{pid}/recruiting/stage")
+def set_stage(pid: str, body: StageBody, ctx: Ctx = Depends(require_roles(*RECRUITERS)), db: Session = Depends(get_db)):
+    """The conversation advances in 11 stages (see the product doc, ch. 9); the team can jump back to any earlier one. The stage is kept with the form."""
+    proj = get_project(db, ctx, pid)
+    f = db.get(RecruitForm, proj.id)
+    if f is None:
+        f = RecruitForm(project_id=proj.id, org_id=proj.org_id)
+        db.add(f)
+    f.stage = body.stage
+    audit(db, ctx.org_id, ctx.actor, "recruit.stage", proj.id, stage=body.stage)
+    db.commit()
+    return {"stage": f.stage}
 
 
 @router.post("/projects/{pid}/participants/import")
@@ -159,11 +196,11 @@ def recruiting(pid: str, ctx: Ctx = Depends(require_roles(*RECRUITERS)), db: Ses
 def _form_out(f: RecruitForm | None) -> dict:
     if f is None:
         return {"source": "ai", "source_confirmed": "", "idea": "", "html_url": "", "questions": [], "version": 0, "generated_by": "", "status": "draft", "link": "", "stats": {"qualified": 0, "out": 0, "out_by": {}},
-                "goals": [], "need": ""}
+                "goals": [], "need": "", "stage": 1}
     return {"source": f.source, "source_confirmed": f.source_confirmed or "", "idea": f.idea, "html_url": f.html_url, "questions": [q.model_dump() for q in recruit_form.load(f.questions)], "version": f.version, "generated_by": f.generated_by,
             "goals": f.goals or [], "need": f.need or "",
             "status": f.status or "draft", "link": f"/screen.html?t={f.token}" if f.token else "", "published_at": f.published_at.isoformat() if f.published_at else None,
-            "stats": {"started": f.n_started or 0, "qualified": f.n_qualified or 0, "out": f.n_out or 0, "out_by": f.out_by or {}}}
+            "stats": {"started": f.n_started or 0, "qualified": f.n_qualified or 0, "out": f.n_out or 0, "out_by": f.out_by or {}}, "stage": f.stage or 1}
 
 
 def _full(db: Session, proj: Project, f: RecruitForm | None) -> dict:
@@ -221,6 +258,19 @@ def close_form(pid: str, ctx: Ctx = Depends(require_roles(*RECRUITERS)), db: Ses
         raise HTTPException(409, "问卷没有在发布中")
     f.status, f.updated_at = "closed", utcnow()
     audit(db, ctx.org_id, ctx.actor, "recruit.form_close", proj.id)
+    db.commit()
+    return _form_out(f)
+
+
+@router.post("/projects/{pid}/recruiting/form/unlock")
+def unlock_form(pid: str, ctx: Ctx = Depends(require_roles(*RECRUITERS)), db: Session = Depends(get_db)):
+    """Unlock a published questionnaire to edit it again: the status goes back to draft (editing). The public link keeps showing the last published version until it is published again."""
+    proj = get_project(db, ctx, pid)
+    f = db.get(RecruitForm, proj.id)
+    if f is None or f.status != "published":
+        raise HTTPException(409, "问卷没有在发布中，无需解锁")
+    f.status, f.updated_at = "draft", utcnow()
+    audit(db, ctx.org_id, ctx.actor, "recruit.form_unlock", proj.id)
     db.commit()
     return _form_out(f)
 
@@ -544,3 +594,44 @@ def batch_invite(pid: str, body: BatchBody, ctx: Ctx = Depends(require_roles(*ST
             continue
         made.append({"participant_id": p.id, "name": p.name, "interview_id": out["id"], "invite_path": out["invite_path"]})
     return {"invites": made, "skipped": skipped}
+
+
+class ScreenInviteBody(BaseModel):
+    participant_ids: list[str] = Field(min_length=1, max_length=MAX_BATCH)
+
+
+@router.post("/projects/{pid}/recruiting/screen-invite")
+def screen_invite(pid: str, body: ScreenInviteBody, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    """Send the screening-questionnaire link by email to the selected people (数据库筛选及发送：同步发送甄别问卷链接)."""
+    from .. import mailer
+    from ..config import settings
+
+    proj = get_project(db, ctx, pid)
+    f = db.get(RecruitForm, proj.id)
+    if f is None or not f.token:
+        raise HTTPException(422, "还没有发布甄别问卷，先发布后再发送")
+    link = f"{settings.public_base_url}/screen.html?t={f.token}"
+    if not mailer.configured():
+        raise HTTPException(503, "还没有配置发件邮箱，无法用邮件发送")
+    sent, skipped = [], []
+    for part_id in dict.fromkeys(body.participant_ids):
+        p = db.get(Participant, part_id)
+        if not p or p.project_id != proj.id or p.org_id != ctx.org_id:
+            continue
+        email = (p.email or "").strip()
+        if not email:
+            skipped.append({"participant_id": p.id, "name": p.name, "why": "没有邮箱"})
+            continue
+        subject = "邀请你填写甄别问卷 / Screening questionnaire"
+        zh = f"{p.name}：你好，诚邀你填写这份甄别问卷（约几分钟）。点下面的链接开始：\n\n{link}\n\n感谢参与。"
+        en = f"Hi {p.name}, you are invited to fill in this screening questionnaire (a few minutes). Open the link below to start:\n\n{link}\n\nThank you."
+        body_text = f"{zh}\n\n----\n\n{en}\n"
+        try:
+            mailer.queue(db, email, "screen_invite", body_text, org_id=ctx.org_id, subject=subject, ref_id=proj.id)
+        except RuntimeError:
+            skipped.append({"participant_id": p.id, "name": p.name, "why": "发件邮箱未配置"})
+            continue
+        sent.append({"participant_id": p.id, "name": p.name, "email": email})
+    audit(db, ctx.org_id, ctx.actor, "recruit.screen_invite", proj.id, sent=len(sent), skipped=len(skipped))
+    db.commit()
+    return {"sent": len(sent), "skipped": skipped}

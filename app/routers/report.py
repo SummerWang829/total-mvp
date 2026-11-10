@@ -8,7 +8,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from .. import docx_writer, ratelimit, report, report_analysis
+from .. import docx_writer, project_context as pctx, ratelimit, report, report_analysis
 from ..audit import audit
 from ..db import get_db
 from ..deps import READERS, STAFF, Ctx, require_roles
@@ -73,9 +73,12 @@ def analysis(pid: str, ctx: Ctx = Depends(require_roles(*READERS)), db: Session 
     """The report page: analysis cards counted from the interviews, with the template's block list (team only) and whether a model can write the readings."""
     proj = get_project(db, ctx, pid)
     data = report_analysis.build(db, proj, client=ctx.user.role == "viewer")
+    proj_meta = pctx.meta(db, proj)
     st = _status()
     db.commit()
-    return {**data, "ai": {"ready": st["ready"] and not st["mock"], "mock": st["mock"], "vendor": st["vendor"], "local": st["local"], "message": st["message"]}}
+    return {**data, "meta": {k: proj_meta[k] for k in
+                             ("country", "language", "languages", "topic", "purpose", "objectives", "duration", "source")},
+            "ai": {"ready": st["ready"] and not st["mock"], "mock": st["mock"], "vendor": st["vendor"], "local": st["local"], "message": st["message"]}}
 
 
 @router.put("/projects/{pid}/report/template")

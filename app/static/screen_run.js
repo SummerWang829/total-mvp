@@ -14,16 +14,16 @@ function scrRunner(host, { step, onEnd, lang = "en", onStep }) {
   const pre = (q) => (answers[q.id] !== undefined ? answers[q.id] : draft.id === q.id ? draft.v : undefined);
   const label = (q) => (L.label ? L.label(q.index, q.total) : zh ? `第 ${q.index} 题 / 共 ${q.total} 题` : `Question ${q.index} of ${q.total}`);
   function field(q) {
-    if (q.type === "single" || q.type === "multi") {
-      const kind = q.type === "single" ? "radio" : "checkbox";
-      return `<div class="rf-opts" role="${q.type === "single" ? "radiogroup" : "group"}" aria-label="${esc(q.text)}">${q.options.map((o) => `<label class="chk"><input type="${kind}" name="scr_${q.id}" value="${esc(o.id)}" ${(q.type === "single" ? pre(q) === o.id : (pre(q) || []).includes(o.id)) ? "checked" : ""}><span>${esc(o.text)}</span></label>`).join("")}</div>`;
+    if (q.type === "single" || q.type === "multi" || q.type === "scale") {
+      const kind = q.type === "multi" ? "checkbox" : "radio";
+      return `<div class="rf-opts" role="${q.type === "multi" ? "group" : "radiogroup"}" aria-label="${esc(q.text)}">${q.options.map((o) => `<label class="chk"><input type="${kind}" name="scr_${q.id}" value="${esc(o.id)}" ${(q.type === "multi" ? (pre(q) || []).includes(o.id) : pre(q) === o.id) ? "checked" : ""}><span>${esc(o.text)}</span></label>`).join("")}</div>`;
     }
     if (q.type === "number") return `<input type="number" step="any" name="scr_${q.id}" aria-label="${esc(q.text)}" value="${pre(q) ?? ""}">`;
     return `<textarea rows="3" name="scr_${q.id}" aria-label="${esc(q.text)}" placeholder="${L.type}">${esc(pre(q) ?? "")}</textarea>`;
   }
   function read(q) {
     const els = [...host.querySelectorAll(`[name=scr_${q.id}]`)];
-    if (q.type === "single") return (els.find((e) => e.checked) || {}).value ?? null;
+    if (q.type === "single" || q.type === "scale") return (els.find((e) => e.checked) || {}).value ?? null;
     if (q.type === "multi") return els.filter((e) => e.checked).map((e) => e.value);
     const v = (els[0] || {}).value ?? "";
     return q.type === "number" ? (v === "" ? null : Number(v)) : v;
@@ -31,7 +31,7 @@ function scrRunner(host, { step, onEnd, lang = "en", onStep }) {
   function draw() {
     const q = cur;
     host.innerHTML = `<div class="rf-q"><div class="sm mut">${label(q)}${q.required ? "" : L.optional || (zh ? "（选填）" : " (optional)")}</div><b>${esc(q.text)}</b>
-      <div class="sm mut">${q.type === "single" ? L.pick : q.type === "multi" ? L.pickMany : ""}</div>${field(q)}<div class="note" id="screrr" role="alert" hidden></div>
+      <div class="sm mut">${q.type === "single" || q.type === "scale" ? L.pick : q.type === "multi" ? L.pickMany : ""}</div>${field(q)}<div class="note" id="screrr" role="alert" hidden></div>
       <div class="row">${trail.length ? `<button type="button" id="scrback">${L.back}</button>` : ""}<button class="p" type="button" id="scrnext">${L.next}</button></div></div>`;
     host.querySelector("#scrnext").onclick = go;
     const b = host.querySelector("#scrback"); if (b) b.onclick = back;

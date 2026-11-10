@@ -186,7 +186,7 @@ function shSubMenu(p, active) {
       const merged = active === "people" || active === "outline";   // 这两页共用“创建访谈”一个入口
       head = { ic: SH_STAGE_ICON[cur] || "chat", title: SH_KIND[cur] || "深访", meta: kinds.length > 1 ? `阶段 ${kinds.indexOf(cur) + 1} · ${stLabel}` : stLabel };
       items = SH_HUBS[2].tabs.filter((t) => t[0] !== "studies" && t[0] !== "outline" && shPageOk(t[0], p)).map(([k, n]) => it(k, n));
-      if (merged) { onKey = "people"; extra = [{ href: `/p/${p.id}/outline`, label: "访谈大纲", on: active === "outline" }]; }
+      if (merged) { onKey = "people"; }   // 「访谈大纲」已并入「创建访谈」下的「访问大纲生成及邀请」tab，不再单独加菜单项
     }
     else head = { ic: hub === "qt" ? "pie" : hub === "cr" ? "listen" : "spark", title: hub === "qt" ? "定量" : hub === "cr" ? "舆情采集" : "异步研究", meta: stLabel };
     return { head, items, staff: true, extra, onKey };
@@ -206,7 +206,7 @@ function shSubHtml(p, active, menu) {
 function shWire(p) {
   const sel = document.getElementById("subsel");
   if (sel) sel.onchange = () => { sessionStorage.setItem("sub_" + p.id, sel.value); render(); };
-  document.querySelectorAll("[data-qmode]").forEach((el) => (el.onclick = () => { sessionStorage.setItem("qmode", el.dataset.qmode); if (location.hash === el.getAttribute("href")) render(); }));
+  document.querySelectorAll("[data-qmode]").forEach((el) => (el.onclick = () => { sessionStorage.setItem("qmode", el.dataset.qmode); sessionStorage.setItem("ptab", "mode"); if (location.hash === el.getAttribute("href")) render(); }));   // 从「深访 / 座谈会」阶段进来，第一个部分一定落在「招募方式」
 }
 
 /** 固定外壳：窄栏、顶部、第二层菜单是三个固定位置的节点；切换页面时没变的不动，只替换内容区。 */

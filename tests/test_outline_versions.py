@@ -68,8 +68,8 @@ def cloud(monkeypatch):
 def test_versions_are_listed_and_a_missing_one_can_be_made(org, pid):
     d = get(org, pid)
     keys = {v["key"]: v for v in d["versions"]}
-    assert d["v"] == d["base"] == "zh|live" and list(keys) == ["zh|live", "zh|text", "en|live", "en|text"]
-    assert keys["zh|live"]["exists"] and not keys["en|live"]["exists"] and d["families"] == ["live", "text"]
+    assert d["v"] == d["base"] == "zh|live" and list(keys) == ["zh|live", "zh|text"]   # the list follows the languages the plan (项目总览) really has, not Project.languages
+    assert keys["zh|live"]["exists"] and "en|live" not in keys and d["families"] == ["live", "text"]
     en = make(org, pid, "en|live")
     assert en["v"] == "en|live" and en["lang"] == "en" and len(questions(en)) == 3 and questions(en)[0].startswith("[EN] ")
     assert en["ref"] and en["ref"][1][0]["text"].startswith("你上一次")  # the main version is sent along for the side-by-side view
@@ -154,7 +154,7 @@ def test_the_model_translates_in_one_call_and_the_shape_must_match(org, pid, clo
 
 def test_the_settings_page_reads_and_writes_the_projects_own_data(org, pid):
     s = get(org, pid)["settings"]
-    assert s["title"] == "防晒习惯" and s["minutes"] == 45 and s["formats"] == ["video", "text"] and sorted(x["code"] for x in s["languages"] if x["on"]) == ["en", "zh"]
+    assert s["title"] == "防晒习惯" and s["minutes"] == 45 and s["formats"] == ["video", "text"] and sorted(x["code"] for x in s["languages"] if x["on"]) == ["zh"]
     r = org.c.put(url(pid, "/settings"), headers=org.h(), json={"brief": "新的研究背景", "goals": ["了解认知", "", "比较差异"], "minutes": 30, "title": "防晒"})
     assert r.status_code == 200, r.text
     d = r.json()

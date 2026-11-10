@@ -59,6 +59,7 @@ def _words(lang: str) -> dict:
     zh = {
         "subject": "访谈邀请：{when}（新加坡时间）", "subject_any": "访谈邀请", "subject_update": "访谈安排有更新：{when}（新加坡时间）", "subject_update_any": "访谈安排有更新",
         "hi": "您好，{name}：", "intro": "感谢您参加我们的调研。我们诚挚地邀请您参加一次一对一的访谈，所有内容将严格保密。",
+        "topic": "访谈主题",
         "intro_update": "您的访谈安排有更新，最新的信息如下。",
         "when": "时间", "anytime": "随时可进入（我们会再和您确认具体时间）", "sgt": "新加坡时间，SGT", "moderator": "主持人", "later": "稍后通知",
         "human": "真人主持", "ai": "AI 主持（文字聊天，有同事在旁盯着）", "format": "访谈方式", "video": "在线视频访谈，用电脑或手机的浏览器进入，无需安装软件",
@@ -69,6 +70,7 @@ def _words(lang: str) -> dict:
     en = {
         "subject": "Interview invitation: {when} (Singapore time)", "subject_any": "Interview invitation", "subject_update": "Your interview details changed: {when} (Singapore time)",
         "subject_update_any": "Your interview details changed", "hi": "Hello {name},",
+        "topic": "Topic",
         "intro": "Thank you for taking part in our research. We would like to invite you to a one-to-one interview. Everything you say is kept confidential.",
         "intro_update": "The details of your interview have changed. The latest are below.",
         "when": "When", "anytime": "Any time (we will confirm the exact time with you)", "sgt": "Singapore time, SGT", "moderator": "Moderator", "later": "to be announced",
@@ -95,12 +97,15 @@ def compose(itv: Interview, part: Participant, moderator_name: str, link: str | 
     when = local_time(itv.scheduled_at, lang)
     subject = (w["subject_update" if update else "subject"].format(when=when) if when else w["subject_update_any" if update else "subject_any"])
     ai = itv.moderation == "ai"
+    topic = (itv.participant_topic or "").strip() or (itv.title or "").strip()
     rows = [
+        (w["topic"], topic) if topic else None,
         (w["when"], f"{when}（{w['sgt']}）" if when else w["anytime"]),
         (w["moderator"], f"{moderator_name or w['later']}（{w['ai'] if ai else w['human']}）" if moderator_name or ai else f"{w['later']}（{w['human']}）"),
         (w["format"], w["text"] if ai else formats_text(itv.format, lang, w["video"])),
         (w["length"], w["minutes"].format(n=itv.duration_min or 45)),
     ]
+    rows = [r for r in rows if r]
     lines = [w["hi"].format(name=part.name), "", w["intro_update" if update else "intro"], ""] + [f"{k}：{v}" if lang == "zh" else f"{k}: {v}" for k, v in rows]
     lines += ["", (f"{w['link']}：{link}" if lang == "zh" else f"{w['link']}: {link}") if link else w["same_link"], "", f"① {w['n1']}", f"② {w['n2']}", f"③ {w['n3']}", "", w["bye"], ""]
     return subject, "\n".join(lines)

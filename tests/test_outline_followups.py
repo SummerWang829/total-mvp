@@ -7,7 +7,8 @@ NOTED = TEXT.replace("- 你平时是怎么防晒的？\n", "- 你平时是怎么
 
 def metas(text):
     m = guide_text.parse_guide_text(text)["meta"]
-    return m["warmup"], m["topics"][0]
+    keep = lambda rows: [{k: r[k] for k in ("depth", "guide")} for r in rows]   # the 重点关注 fields have their own tests
+    return keep(m["warmup"]), keep(m["topics"][0])
 
 
 def test_text_format_round_trips_and_defaults_stay_unwritten():

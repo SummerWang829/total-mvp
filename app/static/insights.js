@@ -2,7 +2,7 @@
    受访者数据：三个数字 + 受访者表，鼠标移到某一行出详细卡片（手机上点一下）；报告：整个项目的研究报告（页面里看 + 下载 Word）；
    问题分析：按“访谈”页大纲里的每个问题归纳回答；精彩片段：片段卡片墙 + 集锦；对话：只围绕本项目的 AI 提问（引文由服务器从转写里原样取）。
    依赖 index.html 里的 api / esc / toast / guard / $ / STAFF / ME / STATUS / CONFIG / reelsSection / shell。 */
-const INS_TABS = [["r", "回复"], ["p", "报告"], ["q", "逐题分析"], ["v", "片段"], ["c", "AI 对话"]];   // A 案命名（用户 2026-11-04 定）
+const INS_TABS = [["r", "回复"], ["p", "报告"], ["q", "逐题分析"], ["v", "片段"], ["b", "看板"], ["c", "AI 对话"]];   // A 案命名（用户 2026-11-04 定）
 const insClock = (ms) => { const s = Math.max(0, Math.round((ms || 0) / 1000)); return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`; };
 const insAiNotice = () => "";   // the notice about where questions go was removed (user and legal, 2026-11-01)
 const insDownload = (p, url, name) => guard(async () => {  // a download needs the login header, so fetch it and hand the browser a file
@@ -15,20 +15,29 @@ const insEvidence = (hits) => hits.map((h) => `<div class="ins-q" data-nosel>“
 const insAnswer = (r) => (r.insufficient ? `<div class="mut">${esc(r.message)}</div>` : r.answer.map((c, ci) => `<div class="ins-claim"><div data-selk="c:${ci}">${esc(c.text)}</div>${insEvidence(c.evidence)}</div>`).join(""));
 
 async function insightsHub(p, my) {
-  const team = STAFF(), tabs = team ? INS_TABS : [INS_TABS[0]];
-  let tab = sessionStorage.getItem("itab") || "r"; if (!tabs.some((t) => t[0] === tab)) tab = "r";
+  const team = STAFF(), tabs = team ? INS_TABS : [["b", "看板"]];   // a client sees only the focus board (aggregated, de-identified)
+  let tab = sessionStorage.getItem("itab") || (team ? "r" : "b"); if (!tabs.some((t) => t[0] === tab)) tab = tabs[0][0];
+  let themesBackfilled = false;   // one automatic theme-label backfill per page load, before the table is drawn
   shell(`${team ? `<div class="hubtabs sub" id="itabs" role="tablist" aria-label="洞察">${team ? `<span class="l2grp">洞察 · AI 分析</span>` : ""}${tabs.map(([k, n]) => `<a href="#" role="tab" data-k="${k}">${n}</a>`).join("")}</div>` : ""}<div id="ipanel" class="ins ins-ws"></div>`, { active: "insights", p });
   document.body.classList.add("rfmode", "pgw");   // the page itself does not scroll: each tab's content scrolls inside its own box
   const fit = () => { const b = $("#ipanel"); if (b && b.offsetParent) b.style.height = Math.max(320, innerHeight - b.getBoundingClientRect().top - 18) + "px"; };
   fit(); pageOn("fit", window, "resize", fit);
   const drawTabs = () => document.querySelectorAll("#itabs a").forEach((a) => { const on = a.dataset.k === tab; a.classList.toggle("on", on); a.setAttribute("aria-selected", on); });
   let selOff = null;   // takes the text-selection helper of the open tab down (see chatsel.js)
-  const show = async (k) => { if (selOff) { selOff(); selOff = null; } tab = k; sessionStorage.setItem("itab", k); drawTabs(); const box = $("#ipanel"); box.innerHTML = `<div class="mut" style="padding:16px">加载中…</div>`; try { await ({ r: respondents, p: report, q: questions, v: reels, c: chat })[k](box); } catch (e) { if (!stale(my)) box.innerHTML = `<div class="card empty"><b>${esc(e.message)}</b></div>`; } };
+  const show = async (k) => { if (selOff) { selOff(); selOff = null; } tab = k; sessionStorage.setItem("itab", k); drawTabs(); const box = $("#ipanel"); box.innerHTML = `<div class="mut" style="padding:16px">加载中…</div>`; try { await ({ r: respondents, p: report, q: questions, v: reels, b: board, c: chat })[k](box); } catch (e) { if (!stale(my)) box.innerHTML = `<div class="card empty"><b>${esc(e.message)}</b></div>`; } };
   document.querySelectorAll("#itabs a").forEach((a) => (a.onclick = (e) => { e.preventDefault(); show(a.dataset.k); }));
   show(tab);
 
   /* ---------- 受访者数据 ---------- */
   async function respondents(box) {
+    // 列名含「· 主题」的列：已有逐题回答但没标签时，先接模型补齐，再画表（只补标签，回答原文一律不动）
+    if (team && !themesBackfilled) {
+      themesBackfilled = true;
+      try {
+        const r = await api(`/projects/${p.id}/insights/themes/backfill`, { method: "POST" });
+        if (r && r.updated) toast(`已补齐 ${r.labels} 道题的主题`);
+      } catch (_) { /* 主题补不上也要正常显示表格 */ }
+    }
     const d = await api(`/projects/${p.id}/insights/overview`); if (stale(my)) return;
     const k = d.kpi, rows = d.rows.filter((r) => r.status === "ended"), showTags = d.rows.length ? "tags" in d.rows[0] : team;   // only finished interviews are listed
     const SEP = "、";
@@ -79,7 +88,18 @@ async function insightsHub(p, my) {
         if (!r.qa) return `<span class="mut">${r.transcript_state === "ready" ? "还没整理" : "—"}</span>`;
         return q && q.state === "empty" ? `<span class="mut">受访者没有回答</span>` : `<span class="tag o" title="有转写，但没认出主持人哪句话问的是这一题（主持人换了说法，或语言和大纲不一样）">没匹配到这一题</span>`;
       }
-      if (c.type === "choice") return asList(v, c).map((x) => `<span class="tag">${esc(x)}</span>`).join("") || `<span class="mut">—</span>`;
+      if (c.type === "choice") {
+        const list = asList(v, c);
+        if (list.length) return list.map((x) => `<span class="tag">${esc(x)}</span>`).join("");
+        if (/^t\d+$/.test(c.id) && /·\s*主题/.test(c.label || "")) {
+          const q = r.qa && r.qa["a" + c.id.slice(1)];
+          if (r.transcript_state === "waiting") return `<span class="mut">待转写</span>`;
+          if (q && q.state === "empty") return `<span class="mut">受访者没有回答</span>`;
+          if (q && q.state === "unmatched") return `<span class="mut">没匹配到这一题</span>`;
+          return `<span class="mut">待整理主题</span>`;
+        }
+        return `<span class="mut">—</span>`;
+      }
       return v ? `<div class="ins-cl" tabindex="0" role="button" data-ttl="${esc(r.code + " · " + c.label)}" data-tip="${esc(String(v))}">${esc(String(v))}</div>` : `<span class="mut">—</span>`;
     };
     const tw = (t) => [...String(t)].reduce((a, ch) => a + (ch.charCodeAt(0) > 255 ? 14 : 7.5), 0);
@@ -101,7 +121,9 @@ async function insightsHub(p, my) {
     if (ME.role !== "observer" && $("#xw")) { $("#xw").onclick = insDownload(p, `/api/projects/${p.id}/insights/export?format=docx`, `${p.name}-洞察.docx`); $("#xc").onclick = insDownload(p, `/api/projects/${p.id}/insights/export?format=csv`, `${p.name}-洞察.csv`); }
     const gen = $("#igen");
     if (gen) gen.onclick = guard(async () => {   // the answers of every finished interview, one after the other (each call reads one transcript)
-      const todo = rows.filter((r) => r.status === "ended" && !r.purged && r.kind !== "group"), st = $("#igen-st"); gen.disabled = true; let n = 0, skip = "";
+      // 转写段已不在库里时不能重算：那会把已存的逐题回答清空。主题标签由上面的 backfill 单独补。
+      const todo = rows.filter((r) => r.status === "ended" && !r.purged && r.kind !== "group" && r.transcript_state === "ready"), st = $("#igen-st"); gen.disabled = true; let n = 0, skip = "";
+      if (!todo.length) { gen.disabled = false; toast("没有可整理的转写，已保留现有回答；主题标签会自动补齐", true); return; }
       for (const r of todo) { st.textContent = `整理中 ${n}/${todo.length}…`; try { const out = await api(`/interviews/${r.id}/answers/generate`, { method: "POST" }); skip = out.themes_skipped_reason || skip; } catch (e) { toast(e.message, true); break; } n++; }
       st.textContent = `已整理 ${n}/${todo.length}`; if (skip) toast(skip, true); await show("r");
     });
@@ -199,6 +221,7 @@ async function insightsHub(p, my) {
   /* ---------- 报告：带框的分析卡片 + 文字解读；点图表，右侧看对应受访者的回答；分析块可开关、排序 ---------- */
   async function report(box) {
     const d = await api(`/projects/${p.id}/report/analysis`); if (stale(my)) return;
+    const rm = d.meta || {};   // 项目真实设定（国家/语言/研究目标），不再显示 SG / zh 这类原始码
     const team = STAFF(), wantApp = !team || d.blocks.some((b) => b.id === "appendix" && b.on);
     const oldBlocks = wantApp ? (await api(`/projects/${p.id}/report?format=json`).catch(() => ({ blocks: [] }))).blocks : [];
     if (stale(my)) return;
@@ -208,15 +231,17 @@ async function insightsHub(p, my) {
       ${c.bars.map((b, i) => `<div role="button" tabindex="0" class="rp-row${sel && sel.c === c.id && sel.i === i ? " on" : ""}" data-c="${esc(c.id)}" data-i="${i}"><span class="rp-h"><span class="rp-label">${esc(b.label)}</span><span class="rp-count">${b.k} / ${b.n}</span></span><span class="rp-tr"><span class="rp-f" style="width:${b.n ? Math.round(b.k * 100 / b.n) : 0}%"></span></span><span class="rp-chevron" aria-hidden="true">›</span></div>`).join("")}</div>${noteHtml(c.note)}`;
     const appendix = () => {
       let html = "", list = false;
+      const closeList = () => { if (list) { html += "</ul>"; list = false; } };
       oldBlocks.slice(2).forEach((b) => {
-        if (b[0] !== "bullet" && list) { html += "</ul>"; list = false; }
-        if (b[0] === "h1") html += `<h4 class="ins-h1">${esc(b[1])}</h4>`;
-        else if (b[0] === "h2") html += `<h5 class="ins-h2">${esc(b[1])}</h5>`;
-        else if (b[0] === "p") html += `<p>${esc(b[1])}</p>`;
-        else if (b[0] === "note") html += `<p class="mut sm">${esc(b[1])}</p>`;
-        else if (b[0] === "bullet") { if (!list) { html += "<ul>"; list = true; } html += `<li>${esc(b[1])}</li>`; }
-        else if (b[0] === "quote") html += `<div class="ins-q">${esc(b[1])}</div>`;
-        else if (b[0] === "table") html += `<div class="scroll"><table class="tbl"><thead><tr>${b[1].map((h) => `<th>${esc(h)}</th>`).join("")}</tr></thead><tbody>${b[2].map((r) => `<tr>${r.map((x) => `<td>${esc(x)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+        if (b[0] !== "bullet") closeList();
+        if (b[0] === "h1") html += `<h4 class="ins-h1 rp-app-h1">${esc(b[1])}</h4>`;
+        else if (b[0] === "h2") html += `<h5 class="ins-h2 rp-app-h2">${esc(b[1])}</h5>`;
+        else if (b[0] === "p") html += /^受访者共\s*\d+\s*人/.test(b[1])
+          ? `<p class="rp-app-stat">${esc(b[1])}</p>` : `<p class="rp-app-p">${esc(b[1])}</p>`;
+        else if (b[0] === "note") html += `<p class="rp-app-note">${esc(b[1])}</p>`;
+        else if (b[0] === "bullet") { if (!list) { html += `<ul class="rp-app-list">`; list = true; } html += `<li>${esc(b[1])}</li>`; }
+        else if (b[0] === "quote") html += `<div class="rp-app-quote">${esc(b[1])}</div>`;
+        else if (b[0] === "table") html += `<div class="rp-app-tbl"><table class="tbl cols${b[1].length}"><thead><tr>${b[1].map((h) => `<th>${esc(h)}</th>`).join("")}</tr></thead><tbody>${b[2].map((r) => `<tr>${r.map((x) => `<td>${esc(x)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
       });
       return list ? html + "</ul>" : html;
     };
@@ -234,14 +259,14 @@ async function insightsHub(p, my) {
         <span class="rp-mv"><button type="button" class="s" data-up="${i}" aria-label="上移" ${i === 0 ? "disabled" : ""}>↑</button><button type="button" class="s" data-dn="${i}" aria-label="下移" ${i === d.blocks.length - 1 ? "disabled" : ""}>↓</button></span></div>`).join("")}
       <button type="button" class="rp-add" id="rpadd">＋ 自己加一块：写一句想看什么</button>`;
     box.innerHTML = `<article class="rp-editorial" aria-label="研究报告">
-      <header class="rp-hero"><div><div class="rp-eyebrow">研究报告 · ${esc(p.market || "")} · 深访</div><h1 class="ins-rt">${esc(p.name)}</h1>
-        <p class="rp-meta">${d.n} 位受访者 · 数据截至已结束且可分析的访谈</p><div class="rp-eyebrow"><i>01</i>总体结论</div>
+      <header class="rp-hero"><div><div class="rp-eyebrow">研究报告 · ${esc(rm.country || p.market || "")} · ${esc(rm.language || "")} · 深访</div><h1 class="ins-rt">${esc(p.name)}</h1>
+        <p class="rp-meta">${d.n} 位受访者 · 数据截至已结束且可分析的访谈${rm.topic ? ` · 受访者话题「${esc(rm.topic)}」` : ""}${rm.source ? ` · 信息同步自${esc(rm.source)}` : ""}</p><div class="rp-eyebrow"><i>01</i>总体结论</div>
         <p class="rp-summary">${esc(d.summary.t)}${d.summary.ai ? ` <span class="tag">小星星助手的判断</span>` : ""}</p>
         <div class="rp-kpis"><div><b>${d.n}</b><span>报告样本</span></div><div><b>${d.cards.length}</b><span>已开启分析图表</span></div><div><b>${topTheme ? `${topTheme.k}/${topTheme.n}` : "—"}</b><span>${topTheme ? `最高提及 · ${esc(topTheme.label)}` : "暂无主题统计"}</span></div></div></div>
         <div><div class="rp-actions">${team ? `<button type="button" id="rpimp">导入报告模版</button>` : ""}<button type="button" class="p" id="rpdl">下载 Word</button></div>
         ${team ? `<div class="rp-blocks" id="rpblocks"></div>` : ""}</div></header>
       <div class="rp-body"><div class="rp-sections">${docHtml}</div>${team ? `<aside class="rp-side" id="rpside" aria-live="polite"></aside>` : ""}</div>
-      ${oldBlocks.length ? `<details class="rp-appendix"><summary>附录：研究背景、方法与样本</summary>${appendix()}</details>` : ""}</article>`;
+      ${oldBlocks.length ? `<details class="rp-appendix"><summary><span class="rp-app-badge">附录</span><span class="rp-app-title">研究背景、目的与目标、方法与样本</span><span class="rp-app-chev" aria-hidden="true">⌄</span></summary><div class="rp-app-body">${appendix()}</div></details>` : ""}</article>`;
     const ids = d.blocks.map((b) => b.id), onIds = () => d.blocks.filter((b) => b.on).map((b) => b.id);
     const save = guard(async (order, on, off) => { await api(`/projects/${p.id}/report/template`, { method: "PUT", body: { order, on, off } }); await report(box); });
     const wire = () => {
@@ -288,26 +313,54 @@ async function insightsHub(p, my) {
   async function questions(box) {
     const vkey = "ol_v_" + p.id;   // the same key the 访谈 page keeps its open version in: change it in either place and the other follows
     const fetchOutline = async (k) => { try { return await api(`/projects/${p.id}/outline${k ? `?v=${encodeURIComponent(k)}` : ""}`); } catch (e) { if (k) return fetchOutline(""); throw e; } };
-    let o = await fetchOutline(sessionStorage.getItem(vkey) || ""); if (stale(my)) return;
+    // 先读项目当前最新的主版本；浏览器里缓存的旧版本 key 只有在仍属于项目设定时才沿用。
+    let o = await fetchOutline(""); if (stale(my)) return;
+    const saved = sessionStorage.getItem(vkey);
+    if (saved && saved !== o.base && (o.versions || []).some((x) => x.key === saved && x.exists !== false)) {
+      o = await fetchOutline(saved); if (stale(my)) return;
+    }
+    const setup = o.setup || {}, scr = o.screener || {};
+    const scrLabel = `甄别问卷${scr.version ? ` · v${scr.version}` : ""}${scr.status === "published" ? " · 已发布" : ""}`;
     const qsOf = () => (o.summary ? o.summary.parts.flatMap((x) => x.questions.filter((y) => !y.cover).map((y) => y.text)) : []);
-    let qs = qsOf(), cur = 0, menu = false;
+    // 题目跟着「当前最新甄别问卷」+「当前打开的那版访问大纲」，切版本时一起跟着变。
+    const itemsOf = () => {
+      const vn = ((o.versions || []).find((x) => x.key === o.v) || {}).name || "当前版本";
+      return [...(scr.questions || []).map((t) => ({ text: t, group: scrLabel })),
+              ...qsOf().map((t) => ({ text: t, group: `访问大纲 · ${vn}` }))];
+    };
+    let items = itemsOf(), qs = items.map((x) => x.text), cur = 0, menu = false;
     if (!qs.length && !(o.versions || []).length) { box.innerHTML = `<div class="card empty"><b>还没有访谈大纲。</b><span>先到“访谈”页写好大纲，这里会按每个问题归纳回答。</span><a class="btn p" href="#/p/${p.id}/outline">去访谈页</a></div>`; return; }
     const verBar = () => { const vs = (o.versions || []).filter((x) => x.exists !== false); if (vs.length < 2) return "";
       const c = vs.find((x) => x.key === o.v) || vs[0];
-      return `<div class="row ins-tool"><span class="sm mut">访谈大纲版本</span><div class="rf-ver"><button type="button" id="qver" aria-haspopup="true" aria-expanded="${menu}">${esc(c.name)} ▾</button>${menu ? `<div class="rf-vm" role="menu">${vs.map((x) => `<button type="button" class="rf-vi${x.key === c.key ? " on" : ""}" role="menuitemradio" aria-checked="${x.key === c.key}" data-qv="${esc(x.key)}"><span>${esc(x.name)}${x.base ? "（原文）" : ""}</span></button>`).join("")}</div>` : ""}</div></div>`; };
+      return `<div class="row ins-tool"><span class="sm mut">访谈大纲版本</span><div class="rf-ver"><button type="button" id="qver" aria-haspopup="true" aria-expanded="${menu}">${esc(c.name)} ▾</button>${menu ? `<div class="rf-vm" role="menu">${vs.map((x) => `<button type="button" class="rf-vi${x.key === c.key ? " on" : ""}" role="menuitemradio" aria-checked="${x.key === c.key}" data-qv="${esc(x.key)}"><span>${esc(x.name)}${x.base ? "（原文）" : ""}</span></button>`).join("")}</div>` : ""}</div>${setup.source ? `<span class="sm mut" style="margin-left:auto">${esc(setup.country || "")} · 语言与形式同步自${esc(setup.source)}：${esc(setup.language || "")} · ${esc(setup.format_label || "")}</span>` : ""}</div>`; };
     const right = () => {
       const q = qs[cur], r = done[q];
       if (!q) { $("#qapane").innerHTML = `<div class="card empty"><b>这个版本的大纲里还没有问题</b><a class="btn p" href="#/p/${p.id}/outline">去访谈页</a></div>`; return; }
-      $("#qapane").innerHTML = `<div class="row ins-tool"><b>问题 ${cur + 1}</b><span class="sp"></span><button type="button" class="p" id="qago">${r ? "重新生成这题的分析" : "生成这题的分析"}</button></div><div class="card"><div><b>${esc(q)}</b></div>${insAiNotice()}</div>
+      $("#qapane").innerHTML = `<div class="row ins-tool"><b>问题 ${cur + 1}</b>${items[cur] ? `<span class="sm mut">${esc(items[cur].group)}</span>` : ""}<span class="sp"></span><button type="button" class="p" id="qago">${r ? "重新生成这题的分析" : "生成这题的分析"}</button></div><div class="card"><div><b>${esc(q)}</b></div>${insAiNotice()}</div>
         ${r ? `<div class="card"><h4 style="margin:0 0 6px">受访者怎么回答的</h4>${insAnswer(r)}</div>` : `<div class="card empty"><b>还没有分析</b><span>点右上角的按钮，按已有的转写归纳这一题。</span></div>`}`;
       $("#qago").onclick = guard(async () => { const b = $("#qago"); b.disabled = true; b.textContent = "正在分析…"; try { done[q] = await api("/repo/ask", { method: "POST", body: { question: `受访者是怎么回答这个问题的：${q}`, project_id: p.id } }); } finally { right(); list(); } });
     };
-    const list = () => { $("#qalist").innerHTML = qs.map((q, i) => `<div role="button" tabindex="0" class="ins-ql${i === cur ? " on" : ""}" data-qi="${i}"><span>${i + 1}</span><div>${esc(q)}</div>${done[q] ? `<em>已分析</em>` : ""}</div>`).join(""); document.querySelectorAll("[data-qi]").forEach((b) => { const go = () => { cur = +b.dataset.qi; list(); right(); }; b.onclick = go; b.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } }; }); };
+    const list = () => {
+      let last = "", html = "";
+      qs.forEach((q, i) => {
+        const g = (items[i] && items[i].group) || "";
+        if (g !== last) { html += `<div class="sm mut" style="margin:10px 0 4px">${esc(g)}</div>`; last = g; }
+        html += `<div role="button" tabindex="0" class="ins-ql${i === cur ? " on" : ""}" data-qi="${i}"><span>${i + 1}</span><div>${esc(q)}</div>${done[q] ? `<em>已分析</em>` : ""}</div>`;
+      });
+      $("#qalist").innerHTML = html;
+      document.querySelectorAll("[data-qi]").forEach((b) => { const go = () => { cur = +b.dataset.qi; list(); right(); }; b.onclick = go; b.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } }; });
+    };
+    // 版本菜单是纯浮层：直接出示在最上层，下方题目区保持原位、不产生任何位移。
+    const refreshVer = () => {
+      const bar = $("#qverbar"); if (!bar) return;
+      bar.style.removeProperty("padding-bottom");   // 清掉可能残留的旧版推开样式
+      bar.innerHTML = verBar();
+      wireVer();
+    };
     const draw = () => {
       if (selOff) { selOff(); selOff = null; }
-      box.innerHTML = `<div id="qverbar">${verBar()}</div><div class="ins-qa"><div><div class="sm mut" style="margin:0 0 6px">访谈大纲里的问题</div><div id="qalist" class="ins-qls"></div></div><div><div id="qbar" hidden></div><div id="qapane"></div></div></div>`;
-      const vb = $("#qver"); if (vb) vb.onclick = (e) => { e.stopPropagation(); menu = !menu; $("#qverbar").innerHTML = verBar(); wireVer(); };
-      list(); right();
+      box.innerHTML = `<div id="qverbar"></div><div class="ins-qa"><div><div class="sm mut" style="margin:0 0 6px">题目同步自当前甄别问卷${scr.version ? ` · v${scr.version}` : ""}${scr.status === "published" ? " · 已发布" : ""} 与当前访问大纲${setup.country ? ` · ${esc(setup.country)} · ${esc(setup.language || "")} · ${esc(setup.format_label || "")}` : ""}</div><div id="qalist" class="ins-qls"></div></div><div><div id="qbar" hidden></div><div id="qapane"></div></div></div>`;
+      refreshVer(); list(); right();
       const ask = (body) => api("/repo/ask", { method: "POST", body: { ...body, project_id: p.id } });
       const sel = ChatSel.attach({ roots: [$("#qapane")], bar: $("#qbar"), label: (k) => `第 ${+k.split(":")[1] + 1} 句`,
         ask: async ({ quote, text }) => { const r = await ask({ question: `关于“${quote.slice(0, 120)}”：${text}`.slice(0, 480) }); return r.insufficient ? r.message : r.answer.map((c) => c.text).join("\n"); },
@@ -315,14 +368,14 @@ async function insightsHub(p, my) {
       selOff = () => sel.destroy();
     };
     const wireVer = () => {
-      const vb = $("#qver"); if (vb) vb.onclick = (e) => { e.stopPropagation(); menu = !menu; $("#qverbar").innerHTML = verBar(); wireVer(); };
+      const vb = $("#qver"); if (vb) vb.onclick = (e) => { e.stopPropagation(); menu = !menu; refreshVer(); };
       box.querySelectorAll("[data-qv]").forEach((b) => (b.onclick = guard(async () => {
         const k = b.dataset.qv; menu = false; try { sessionStorage.setItem(vkey, k); } catch { /* no storage: this page only */ }
-        o = await fetchOutline(k); qs = qsOf(); cur = 0; draw(); wireVer();
+        o = await fetchOutline(k); items = itemsOf(); qs = items.map((x) => x.text); cur = 0; draw();
       })));
     };
-    pageOn("ins-qv", document, "click", () => { if (menu && $("#qverbar")) { menu = false; $("#qverbar").innerHTML = verBar(); wireVer(); } });
-    draw(); wireVer();
+    pageOn("ins-qv", document, "click", () => { if (menu && $("#qverbar")) { menu = false; refreshVer(); } });
+    draw();
   }
 
   /* ---------- 精彩片段 ---------- */
@@ -332,6 +385,23 @@ async function insightsHub(p, my) {
       : `<div class="card empty"><b>还没有片段。</b><span>在单场页面把洞察剪成片段，就会出现在这里。</span></div>`}
       <div class="group"><h2>集锦</h2></div><div id="reels"></div>`;
     reelsSection(p, my);
+  }
+
+  /* ---------- 综合看板：把大纲里标了 ★ 重点关注 的问题，从所有已完成访谈里聚合到一起看 ---------- */
+  async function board(box) {
+    const d = await api(`/projects/${p.id}/board`); if (stale(my)) return;
+    const k = d.kpi;
+    const themeBar = (label, n, total) => `<div class="bd-tr"><span class="bd-label">${esc(label)}</span><span class="bd-f" style="width:${total ? Math.round(n * 100 / total) : 0}%"></span><span class="bd-n">${n}</span></div>`;
+    const byLabel = (mb) => mb === "client" ? "客户" : mb === "moderator" ? "主持人" : "";
+    const card = (r) => `<div class="card bd-card">
+      <div class="bd-head"><span class="bd-star">★</span><span class="bd-q">Q${r.num}　${esc(r.q)}</span><span class="bd-ans">已回答 ${r.answered} / ${r.total}</span></div>
+      ${r.reason ? `<div class="bd-reason">关注原因${byLabel(r.mark_by) ? `（${byLabel(r.mark_by)}）` : ""}：${esc(r.reason)}</div>` : ""}
+      ${r.themes.length ? `<div class="bd-themes">${r.themes.map((t) => themeBar(t.label, t.n, r.answered)).join("")}</div>` : (r.answered ? `<div class="mut sm">还没有主题标签（访谈答案尚未归纳）。</div>` : "")}
+      ${r.quotes.length ? `<div class="bd-quotes"><span class="sm mut">原话（服务器从转写复制）</span>${r.quotes.map((q) => `<div class="ins-q">“${esc(q)}”</div>`).join("")}</div>` : ""}
+    </div>`;
+    box.innerHTML = `<div class="row ins-tool"><b>综合看板</b><span class="sp"></span><span class="sm mut">按“访谈”页大纲里 ★ 重点关注 的问题汇总</span></div>
+      <div class="rp-kpis bd-kpis"><div><b>${k.live}</b><span>进行中</span></div><div><b>${k.done} / ${k.total}</b><span>已完成</span></div><div><b>${k.focus}</b><span>关注点</span></div></div>
+      ${d.rows.length ? d.rows.map(card).join("") : `<div class="card empty"><b>还没有关注点。</b><span>到“访谈”页，在题目上点 ★ 标为重点关注（可写一句关注原因），这里就会按它聚合所有受访者的回答。</span><a class="btn p" href="#/p/${p.id}/outline">去访谈页</a></div>`}`;
   }
 
   /* ---------- 对话：研究助手（接已配置的 AI 模型；回答 / 引用原话 / 建议 分开显示） ---------- */
