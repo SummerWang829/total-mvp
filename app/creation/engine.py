@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from .. import ai_prompts, assistant_identity, library_context
 from ..models import Project, RecruitForm
 from ..moderator.providers import ChatError, ChatFatalError, ChatFormatError, ModeratorChatProvider
-from . import patches, specs
+from . import checks, patches, specs
 from .stages import LABELS, TASKS, Stage, State, message
 
 log = logging.getLogger(__name__)
@@ -81,7 +81,7 @@ def converse(chat: ModeratorChatProvider, db: Session, project: Project, state: 
     """
     history = [{"role": m["role"], "text": m["text"]} for m in state.msgs if m.get("stage") == state.stage.value][-HISTORY:]
     payload = {"CURRENT_STAGE": state.stage.value, "STAGE_TASK": TASKS[state.stage], "DOCUMENT": document(db, project, state), "DECISIONS": state.decisions, "HISTORY": history,
-               "USER": text, "MATERIAL": material[:30000], "LIBRARY": library_context.library_text(db, project.id)[0], "LANGUAGE": project.language}
+               "USER": text, "CHECKS": [f["text"] for f in checks.run(project, db.get(RecruitForm, project.id), state)][:8], "MATERIAL": material[:30000], "LIBRARY": library_context.library_text(db, project.id)[0], "LANGUAGE": project.language}
     if problem:
         payload["YOUR_PREVIOUS_ANSWER_WAS_REJECTED"] = problem
     raw = chat.complete([{"role": "system", "content": system_prompt()}, {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}], temperature=0.4)

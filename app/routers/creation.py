@@ -11,11 +11,11 @@ from sqlalchemy.orm import Session
 from .. import assistant_identity, web_reader
 from ..audit import audit
 from ..config import settings
-from ..creation import engine, patches, stages
+from ..creation import checks, engine, patches, stages
 from ..creation.stages import LABELS, Stage
 from ..db import get_db
 from ..deps import STAFF, Ctx, ensure_project, require_roles
-from ..models import Project
+from ..models import Project, RecruitForm
 from ..moderator.compliance import moderator_runs_locally
 from ..moderator.providers import ChatFatalError, get_moderator_chat
 from ..recruit_form import MSG_VENDOR_MISSING
@@ -50,11 +50,12 @@ def _chat():
     return get_moderator_chat()
 
 
-def _view(state: stages.State) -> dict:
+def _view(db: Session, proj: Project, state: stages.State) -> dict:
     last_change = next((m["id"] for m in reversed(state.msgs) if m["role"] == "ai" and m.get("snapshot")), "")
     msgs = [{k: v for k, v in m.items() if k != "snapshot"} | {"can_undo": m["id"] == last_change} if m["role"] == "ai" else m for m in state.msgs[-SHOWN_MESSAGES:]]
     return {"stage": state.stage.value, "label": LABELS[state.stage], "mode": state.mode, "host": state.host, "progress": stages.progress(state), "decisions": state.decisions,
-            "messages": msgs, "model": "演示模式" if settings.moderator_provider == "mock" else assistant_identity.NAME}
+            "messages": msgs, "model": "演示模式" if settings.moderator_provider == "mock" else assistant_identity.NAME,
+            "checks": checks.run(proj, db.get(RecruitForm, proj.id), state)}
 
 
 def _turn(db: Session, ctx: Ctx, proj: Project, state: stages.State, text: str, material: str = "") -> None:
@@ -76,7 +77,7 @@ def get_creation(pid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Sessio
     state = stages.load(proj)
     if not state.msgs:
         _turn(db, ctx, proj, state, engine.START)
-    return _view(state)
+    return _view(db, proj, state)
 
 
 @router.post("/projects/{pid}/creation/message")
@@ -94,7 +95,7 @@ def post_message(pid: str, body: MessageBody, ctx: Ctx = Depends(require_roles(*
             material += f"\n\n【网页读取失败：{host}：{e}】"
         audit(db, ctx.org_id, ctx.actor, "creation.web", host)   # the address itself may carry a token: only the host is written down
     _turn(db, ctx, proj, state, body.message.strip(), material[:30500])
-    return _view(state)
+    return _view(db, proj, state)
 
 
 @router.post("/projects/{pid}/creation/stage")
@@ -112,7 +113,7 @@ def go_to_stage(pid: str, body: StageBody, ctx: Ctx = Depends(require_roles(*STA
             state.done.append(state.stage.value)   # moving on counts as finishing the stage you leave
         state.stage = target
         _turn(db, ctx, proj, state, engine.START)
-    return _view(state)
+    return _view(db, proj, state)
 
 
 @router.post("/projects/{pid}/creation/advance")
@@ -127,7 +128,7 @@ def advance(pid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = D
         state.done.append(state.stage.value)
     state.stage = nxt
     _turn(db, ctx, proj, state, engine.START)
-    return _view(state)
+    return _view(db, proj, state)
 
 
 @router.post("/projects/{pid}/creation/undo/{mid}")
@@ -143,4 +144,4 @@ def undo(pid: str, mid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Sess
     stages.save(proj, state)
     audit(db, ctx.org_id, ctx.actor, "creation.undo", proj.id)
     db.commit()
-    return _view(state)
+    return _view(db, proj, state)

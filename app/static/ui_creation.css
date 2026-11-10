@@ -43,3 +43,10 @@
 .cc-st.current::before{background:var(--badge,#C2500A);color:#fff}
 .cc-st:hover:not(.current){color:var(--ink);background:var(--wash)}
 @media (max-width:900px){.cc-st{min-height:36px}.cc-opts button{min-height:36px}.cc-att,.cc-send{width:36px;min-height:36px;height:36px}}
+.cc-ck{min-height:28px;padding:2px 12px;border:1px solid var(--line);border-radius:999px;background:var(--surface);color:var(--muted);font-size:13px;font-weight:500;box-shadow:none}
+.cc-ck.on{border-color:var(--badge,#C2500A);color:var(--badge,#C2500A);font-weight:700}
+.cc-cklist{flex:none;max-height:34%;overflow:auto;margin:0 14px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--surface);display:flex;flex-direction:column;gap:8px}
+.cc-ci{display:flex;gap:10px;align-items:center;justify-content:space-between;font-size:13.5px}
+.cc-ci.warn>span::before{content:"⚠ ";color:var(--badge,#C2500A)}
+.cc-ci button{flex:none}
+.cc-hd .sp{flex:1}

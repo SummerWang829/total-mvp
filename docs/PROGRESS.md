@@ -9,6 +9,13 @@
 
 
 
+
+## 2026-11-10 · 创建访谈 · 第 D 批：检查提示（程序规则，不用模型）
+- `app/creation/checks.py`：对正在做的研究逐项检查，每条说“哪里不对 + 让助手怎么修”：没有研究目标；大纲里带引导的题（是不是/对吧/难道…）、一句话问两件事、题太长（>70 字）、要深追却没写访谈指引、环节没有环节指引、大纲估算时长和计划差太多（>115% 或 <60%）、研究目标没有任何题覆盖（用词重叠判断，只是提示）；甄别问卷超过 10 题、收入题没写税前税后/个人家庭口径、写了“大湾区”但没约定城市、没有任何选项会筛掉人；各组人数加起来对不上总数。
+- 对话顶部多了“检查提示 N”按钮：点开看清单，每条有“让小星星助手修”（等于替你发了一句话）；这些提示也会随每一轮发给模型，让它在对应阶段主动提出来。
+- 测试：`tests/test_creation_checks.py` 6 项、`tests/test_creation.py` 14 项全过；`QA_EARLY=creation_section` 45 项全过。
+- 还没做：模拟试访（用真实受访者说话风格走一遍大纲、报告时长和卡点）；AI 主持人选追问方式的程序规则（模糊词请对方定义、说尽后问“还有想补充的吗”）；部署词。
+
 ## 2026-11-10 · 创建访谈 · 第 C 批：删掉旧对话的后端
 - 删除：`app/outline_chat.py`、`app/recruit_review.py`，`recruit_form.py` 里的 AI 起草/对话部分（`generate`、`chat_turn`、两条旧提示词等），接口 `POST /outline/chat`、`/outline/chat/{mid}`、`/recruiting/form/chat|stats|review|generate|suggestions/adopt|dismiss`；AI 后台“提示词”里对应的 4 条（大纲对话、问卷起草、问卷对话、检查与建议），现在是 13 条可编辑（含新的 3 条创建规范）、功能总览 18 个；数据库里旧的对话记录列（`projects.outline_chat`、`recruit_forms.chat/ai_items/dismissed`）保留但不再使用。`GET /outline` 不再返回 `chat`。
 - 对话里问“你是什么模型/谁做的”，由程序直接回答“我是小星星助手”（不问模型），和以前一样。
