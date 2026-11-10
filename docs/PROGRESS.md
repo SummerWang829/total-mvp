@@ -10,6 +10,15 @@
 
 
 
+## 2026-11-11 · 部署 c497149 完成（创建访谈，基于 WorkBuddy 最新线；用户指示直接部署）
+- 背景：部署前线上版本不是 WorkBuddy 最新线 d4d6b79，而是 11-10 退回后的版本（和 d4d6b79 有 36 个文件不同）。用户确认：直接部署。
+- 备份：数据库 `total-20261110-163428.db.gz`，异地 COS 上传成功。回滚材料：线上目录 `/opt/rollback-live-20261111.tgz`（不含 deploy/.env、secrets、数据库），镜像标签 `total-app:rollback-live-20261111`。
+- 部署：`git archive c497149 | tar -x` 覆盖 `/opt/total-mvp`（deploy/.env、secrets 保留）；`docker compose up -d --build --no-deps app`。删掉了两个旧对话文件 `app/outline_chat.py`、`app/recruit_review.py`（c497149 已删）。
+- 核对：c497149 的全部 275 个 app 文件与线上一致；app healthy；日志 cannot add / error / traceback 为 0；启动后 `projects.creation_json`、`projects.recruit_mode` 列都存在；`/api/health`、`/api/public/config`、`/index.html`、`/shell.js`、`/ui_v11.css`、`/creation.js`、`/voice.js` 本机 200；公网 HTTPS `/api/health` 200；`app.doctor` 没有必须解决的问题；ffmpeg 可用。
+- 线上残留：19 个不在 c497149 里的旧文件仍在服务器上（不被新代码引用，未删；清单见服务器上的回滚归档）。
+- 未测：部署词第五节的真人测试（访谈页 AI 开场和自己进入下一步、甄别问卷页、招募方式联动、粘贴公网/内网链接、语音输入、原有功能、AI 后台 creation 槽位、问“你是什么模型”）。浏览器检查里有一段还在找已删阶段按钮，会失败（部署词已说明）。
+- 还差：WorkBuddy 线与线上版本的差异还没对齐；真实模型下的完整流程待测。
+
 ## 2026-11-10 · 3c1ad27 已从线上退回，恢复部署前的线上版本（用户指示）
 - 原因：用户不同意部署 3c1ad27（线上原版本不在 origin/main 上，覆盖前只做了备份）。
 - 做了什么：从 `/opt/rollback-live-20261110.tgz` 恢复线上目录（不含 deploy/.env、secrets、数据库）；删掉 3c1ad27 带来的新文件（这一步误删了 9 个原本就在线上的文件，已从归档补回）；`docker compose up -d --build --no-deps app` 重建。
