@@ -301,7 +301,7 @@ async function outlineView(p) {
   document.addEventListener("click", window._olOff);
 
   /* ---------- the whole page ---------- */
-  shell(`<div class="cc-steps" id="ccsteps" role="tablist" aria-label="创建访谈的阶段" data-subrow></div><div class="rf" style="padding:0"><div class="rf-ws" id="olws"><div class="rf-pane">${RO() ? `<div class="ol-ro"><b>只读 · 客户视图</b><span>你可以在这里给问题标 ★ 重点关注、写关注原因；研究团队会在综合看板里看到。</span></div>` : `<div class="cc" id="ccroot"></div>`}</div>
+  shell(`<div class="rf" style="padding:0"><div class="rf-ws" id="olws"><div class="rf-pane">${RO() ? `<div class="ol-ro"><b>只读 · 客户视图</b><span>你可以在这里给问题标 ★ 重点关注、写关注原因；研究团队会在综合看板里看到。</span></div>` : `<div class="cc" id="ccroot"></div>`}</div>
       <div class="rf-split" id="olsplit" role="separator" aria-orientation="vertical" aria-label="拖动调整对话和大纲的宽度（双击恢复）" tabindex="0"><i></i></div><div class="rf-pane" id="olright"></div></div></div>`, { active: "outline", p });
   document.body.classList.add("rfmode", "pgw");
   const ws = $("#olws"), fit = () => { if (ws && ws.offsetParent) ws.style.height = Math.max(380, innerHeight - ws.getBoundingClientRect().top - 18) + "px"; };

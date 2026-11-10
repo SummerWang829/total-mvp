@@ -6,7 +6,6 @@ const CreationChat = (() => {
   const MAX_FILES = 3, MAX_MATERIAL = 30000;
   const path = (x = "") => `/projects/${p.id}/creation${x}`;
   const lastAi = () => [...(S ? S.messages : [])].reverse().find((m) => m.role === "ai");
-  const stepsHtml = () => S.progress.map((s, i) => `<button type="button" role="tab" class="cc-st ${s.state}" data-st="${s.stage}" data-n="${s.state === "done" ? "✓" : i + 1}" aria-selected="${s.state === "current"}">${esc(s.label)}</button>`).join("");
   const aiHtml = (m, live) => {
     let h = `<div class="cc-tx">${esc(m.text)}</div>`;
     if ((m.actions || []).length) h += `<ul class="cc-acts">${m.actions.map((a) => `<li>${esc(a)}</li>`).join("")}</ul>`;
@@ -21,14 +20,13 @@ const CreationChat = (() => {
   const filesHtml = () => files.map((f, i) => `<span class="cc-fl" title="${esc(f.name)}"><span>${esc(f.name)}${f.truncated ? "（只读了前面一部分）" : ""}</span><button type="button" data-fx="${i}" aria-label="去掉这个文件">×</button></span>`).join("") + (reading ? `<span class="cc-fl mut">正在读文件…</span>` : "");
   const checksHtml = () => `<div class="cc-cklist" role="region" aria-label="检查提示">${(S.checks || []).map((c) => `<div class="cc-ci ${c.level}"><span>${esc(c.text)}</span><button type="button" class="s" data-fix="${esc(c.fix)}">让小星星助手修</button></div>`).join("") || `<div class="mut">现在没有需要处理的提示</div>`}</div>`;
   const html = () => {
-    const last = lastAi(), stages = S.progress, i = stages.findIndex((s) => s.state === "current"), nx = stages[i + 1];
+    const last = lastAi();
     const msgs = S.messages.map((m) => (m.role === "user" ? `<div class="cc-me">${esc(m.text)}</div>` : `<div class="cc-ai" data-selk="m:${m.id}">${aiHtml(m, m === last && !busy)}</div>`)).join("");
     const sug = !busy && last && (last.suggestions || []).length ? `<div class="cc-sl">建议</div>${last.suggestions.map((s) => `<button type="button" class="cc-sb" data-sug="${esc(s)}">${esc(s)}</button>`).join("")}` : "";
-    return `<div class="cc-hd"><b>${esc(S.label)}</b><span class="mut">阶段 ${i + 1} / ${stages.length} · ${esc(S.model)}</span><span class="sp"></span><button type="button" class="cc-ck${(S.checks || []).length ? " on" : ""}" id="ccck" aria-expanded="${showChecks}">检查提示 ${(S.checks || []).length}</button></div>
+    return `<div class="cc-hd"><b>与小星星助手共同创建</b><span class="mut">${esc(S.model)}</span><span class="sp"></span><button type="button" class="cc-ck${(S.checks || []).length ? " on" : ""}" id="ccck" aria-expanded="${showChecks}">检查提示 ${(S.checks || []).length}</button></div>
       ${showChecks ? checksHtml() : ""}
       <div class="cc-sc" id="ccscroll">${msgs}${busy ? `<div class="cc-me">${esc(pending)}</div><div class="cc-ai mut">正在思考…</div>` : ""}</div>
       <div class="cc-sug" id="ccsug">${sug}</div>
-      ${nx ? `<button type="button" class="cc-next${last && last.ready ? " ready" : ""}" id="ccnext">进入下一阶段：${esc(nx.label)} →</button>` : ""}
       <div class="cc-files" id="ccfiles">${filesHtml()}</div>
       <div class="cc-box"><textarea id="ccmsg" rows="2" maxlength="1000" placeholder="说一句话，或点上面的建议……" aria-label="对话输入"></textarea>
         <button class="cc-att" type="button" id="ccatt" aria-label="添加附件（PDF、Word、文字文件）" title="添加附件"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21.4 11.1l-9.2 9.2a5 5 0 0 1-7.1-7.1l9.2-9.2a3.3 3.3 0 0 1 4.7 4.7l-9.2 9.2a1.7 1.7 0 0 1-2.4-2.4l8.5-8.5"/></svg></button>
@@ -49,11 +47,8 @@ const CreationChat = (() => {
     root.querySelectorAll("[data-opt]").forEach((b) => (b.onclick = () => say(b.dataset.opt)));
     root.querySelectorAll("[data-undo]").forEach((b) => (b.onclick = () => call(`/undo/${b.dataset.undo}`)));
     root.querySelectorAll("[data-fx]").forEach((b) => (b.onclick = () => { files.splice(+b.dataset.fx, 1); draw(true); }));
-    const nx = $("#ccnext"); if (nx) nx.onclick = () => call("/advance");
     const ck = $("#ccck"); if (ck) ck.onclick = () => { showChecks = !showChecks; draw(true); };
     root.querySelectorAll("[data-fix]").forEach((b) => (b.onclick = () => { showChecks = false; say(b.dataset.fix); }));
-    const st = $("#ccsteps");   // 页面一开始就放好的空容器（外壳在页面画出来时把它搬进第二层菜单），这里只往里填
-    if (st) { st.innerHTML = stepsHtml(); st.querySelectorAll("[data-st]").forEach((b) => (b.onclick = () => b.dataset.st !== S.stage && call("/stage", { stage: b.dataset.st }))); }
   }
   async function call(sub, body) {
     if (busy) return false;

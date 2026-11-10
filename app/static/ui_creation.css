@@ -20,8 +20,6 @@
 .cc-sb{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;min-height:36px;padding:6px 12px;border:1px solid #BFD9CC;border-radius:10px;background:var(--green-soft);color:var(--brand);font-size:14px;font-weight:500;text-align:left;box-shadow:none;white-space:nowrap}
 .cc-sb:hover:not(:disabled){border-color:var(--brand)}
 .cc-sb::after{content:"›";flex:none;font-size:18px}
-.cc-next{flex:none;margin:8px 14px 0;min-height:40px;border:1px solid var(--badge,#C2500A);border-radius:10px;background:var(--surface);color:var(--badge,#C2500A);font-weight:700}
-.cc-next.ready{background:var(--badge,#C2500A);color:#fff}
 .cc-files{flex:none;padding:6px 14px 0;display:flex;flex-wrap:wrap;gap:6px}
 .cc-files:empty{display:none}
 .cc-fl{display:inline-flex;align-items:center;gap:6px;max-width:100%;padding:2px 4px 2px 10px;border:1px solid var(--line);border-radius:999px;background:var(--wash);font-size:13px}
@@ -33,15 +31,6 @@
 .cc-att svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .cc-send{position:absolute;right:8px;bottom:8px;width:32px;min-height:32px;height:32px;padding:0;border-radius:50%}
 /* 阶段进度：外壳把它搬进第二层菜单以后是一列 */
-.cc-steps{display:flex;flex-direction:column;gap:1px;padding-bottom:6px;margin-bottom:6px;border-bottom:1px solid var(--line)}
-.cc-steps::before{content:"创建进度";padding:2px 8px 4px;font-size:12px;color:var(--muted)}
-.cc-st{display:flex;align-items:center;gap:8px;width:100%;min-height:30px;padding:3px 8px;border:0;border-radius:8px;background:none;color:var(--muted);font-size:13.5px;font-weight:400;text-align:left;box-shadow:none;cursor:pointer;white-space:nowrap}
-.cc-st::before{content:attr(data-n);flex:none;display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--wash);color:var(--ink2);font-size:12px;font-weight:600}
-.cc-st.done{color:var(--ink)}
-.cc-st.done::before{background:var(--ok,#1F6B54);color:#fff}
-.cc-st.current{color:var(--badge,#C2500A);font-weight:700}
-.cc-st.current::before{background:var(--badge,#C2500A);color:#fff}
-.cc-st:hover:not(.current){color:var(--ink);background:var(--wash)}
 @media (max-width:900px){.cc-st{min-height:36px}.cc-opts button{min-height:36px}.cc-att,.cc-send{width:36px;min-height:36px;height:36px}}
 .cc-ck{min-height:28px;padding:2px 12px;border:1px solid var(--line);border-radius:999px;background:var(--surface);color:var(--muted);font-size:13px;font-weight:500;box-shadow:none}
 .cc-ck.on{border-color:var(--badge,#C2500A);color:var(--badge,#C2500A);font-weight:700}

@@ -45,6 +45,8 @@ function rfCard(p, form, rec) {
   let timer = null, hist = [], redo = [], editing = new Set();
   let ver = "", vers = null;   // the language version being looked at (""/the source = the original) and the versions' states (app/static/rtrans.js)
   const isSource = () => !ver || (vers && ver === vers.source);
+  let olSum = null;   // the interview outline as the 访谈 page has it (summary), shown on the right as the 访谈大纲结构
+  const loadOl = () => api(`/projects/${p.id}/outline`).then((r) => { olSum = r.summary || null; drawRight(); }).catch(() => {});
   let changedIds = new Set();   // the questions the last change of the dialog touched ("刚改")
   const diffIds = (before, after) => { const b = Object.fromEntries(before.map((q) => [q.id, JSON.stringify(q)])); return new Set(after.filter((q) => b[q.id] !== JSON.stringify(q)).map((q) => q.id)); };
   let htmlLocked = !!form.html_url;   // the saved link is read-only until 编辑 is pressed (2026-11-03)
@@ -99,7 +101,7 @@ function rfCard(p, form, rec) {
   const reload = guard(async () => {   // the dialog changed the study: read the questionnaire again and mark the questions it touched
     const before = JSON.parse(JSON.stringify(Q));
     f = { ...f, ...(await api(`/projects/${p.id}/recruiting/form`)) }; Q = JSON.parse(JSON.stringify(f.questions || [])); goals = [...(f.goals || [])]; need = f.need || ""; editing = new Set();
-    changedIds = diffIds(before, Q); drawRight();
+    changedIds = diffIds(before, Q); drawRight(); loadOl();
   });
   const drawLeft = () => {
     const c = $("#ccroot"); if (!c) return;
@@ -269,6 +271,26 @@ function rfCard(p, form, rec) {
     const n = qs.length ? qs.reduce((s, q) => s + (q.target || 0), 0) : (rec && rec.participants_count) || 0;
     return `<div class="rf-total">${rfIcon(RF_IC.users)}<span class="rf-total-n">${n}</span><span class="rf-total-u">人</span></div>`;
   };
+  // 访谈大纲结构：甄别问卷一行，再按访谈大纲的每个环节一行（读的是访谈页里的同一份大纲）
+  const flowRows = () => {
+    const rows = [{ stage: "甄别问卷", ask: Q.slice(0, 3).map((q) => q.text).join("；"), n: String(Q.length), time: Q.length ? `${Math.max(1, Math.round(Q.length / 2))} 分钟` : "", goal: "判断受访者是否符合，不符合即筛除" }];
+    if (olSum) {
+      const total = Math.max(1, olSum.question_count);
+      olSum.parts.forEach((x) => {
+        const qs = x.questions.filter((q) => !q.cover), cov = x.questions.filter((q) => q.cover);
+        rows.push({ stage: x.title, ask: qs.slice(0, 2).map((q) => q.text).join("；"), n: String(qs.length), time: `${Math.max(1, Math.round(olSum.minutes * qs.length / total))} 分钟`, goal: cov.map((q) => q.text).join("；") });
+      });
+    }
+    return rows;
+  };
+  const flowStep = (r, i) => {
+    const isScreen = /甄别|筛选|资格/.test(r.stage || "");
+    const tag = isScreen ? `<span class="rf-flow-tag scr">甄别</span>` : `<span class="rf-flow-tag acc">访问</span>`;
+    return `<div class="rf-flow-step">
+      <div class="rf-flow-step-hd"><span class="rf-flow-no">${i + 1}</span><b>${esc(r.stage || "环节")}</b>${tag}<span class="sp"></span><span class="sm mut">${esc(r.n || "—")} 题${r.time ? ` · ${esc(r.time)}` : ""}</span></div>
+      <div class="rf-flow-step-bd"><span class="sm mut">问什么：</span>${esc(r.ask || "—")}${r.goal ? `<div class="sm mut">目的：${esc(r.goal)}</div>` : ""}</div>
+    </div>`;
+  };
   function outline() {
     return `<h3 class="rf-h rq-bold">研究背景</h3>${briefHtml()}
       <h3 class="rf-h rq-bold">研究目标</h3>${listHtml("rfgoalsl", goals, "研究目标的一条")}
@@ -276,6 +298,7 @@ function rfCard(p, form, rec) {
       <h3 class="rf-h rq-bold rf-flow-h">访谈流程</h3>
       <div class="rf-flow-part"><span class="rf-flow-no">1</span><b>开始 · 欢迎消息</b></div>
       <div class="rf-welcome">${esc(f.welcome || "您好，感谢参与。本次文字访谈想了解您对相关话题的看法，没有标准答案，请根据实际经历作答；无需提供身份证件、保单、账户等私人资料。")}</div>
+      <h3 class="rf-h rq-bold">访谈大纲结构</h3>${flowRows().map(flowStep).join("")}
       ${mode === "html" ? importedCard() : `<h3 class="rf-h rq-bold">问卷流程（共 ${Q.length} 题）<span class="rf-pass-tip"><span class="rq-ic y">✓</span>通过 <span class="rq-ic n">✗</span>筛掉 · 点图标即可切换，逻辑自动写好</span></h3>${Q.length ? Q.map(qCard).join("") : `<div class="empty"><b>还没有题目</b><span>在左边和小星星助手聊到“甄别”阶段，它会逐题生成。</span></div>`}
       <div class="row"><button class="s" type="button" data-add="single">+ 单选</button><button class="s" type="button" data-add="multi">+ 多选</button><button class="s" type="button" data-add="scale">+ 量表</button><button class="s" type="button" data-add="text">+ 文字填空</button><button class="s" type="button" data-add="number">+ 数字填空</button></div>`}`;
   }
@@ -440,7 +463,7 @@ function rfCard(p, form, rec) {
   let rightOpen = sessionStorage.getItem("rf_right") !== "0";  // the outline (right) can be folded away; the choice is kept in this browser
   const setRight = (open) => { rightOpen = open; try { sessionStorage.setItem("rf_right", open ? "1" : "0"); } catch (e) { /* private window */ } const w = $("#rfws"); if (w) w.classList.toggle("rf-collapsed", !open); fit(); };
   function panels() {
-    return `<div class="rf-ws${rightOpen ? "" : " rf-collapsed"}${mode === "html" ? " rf-import" : ""}" id="rfws"><div class="rf-pane"><div class="rf-hd">${mode === "html" ? "" : `<button class="s" type="button" id="rfswitch">更换来源</button>`}<span class="sp"></span><button class="s" type="button" id="rfundo" disabled>${rfIcon(RF_IC.undo)}撤销</button><button class="s" type="button" id="rfredo" disabled>${rfIcon(RF_IC.redo)}重做</button><button class="s" type="button" id="rfexp">${rfIcon(RF_IC.expand)}展开大纲</button></div>
+    return `<div class="rf-ws${rightOpen ? "" : " rf-collapsed"}${mode === "html" ? " rf-import" : ""}" id="rfws"><div class="rf-pane"><div class="rf-hd"><span class="sp"></span><button class="s" type="button" id="rfundo" disabled>${rfIcon(RF_IC.undo)}撤销</button><button class="s" type="button" id="rfredo" disabled>${rfIcon(RF_IC.redo)}重做</button><button class="s" type="button" id="rfexp">${rfIcon(RF_IC.expand)}展开大纲</button></div>
       <div class="cc" id="ccroot"></div></div>
       <div class="rf-split" id="rfsplit" role="separator" aria-orientation="vertical" aria-label="拖动调整对话和大纲的宽度（双击恢复）" tabindex="0"><i></i></div><div class="rf-pane" id="rfright"></div></div>`;
   }
@@ -464,9 +487,7 @@ function rfCard(p, form, rec) {
       mode = s; picking = false; draw();
     });
     const pno = $("#rfpickno"); if (pno) pno.onclick = () => { picking = false; draw(); };   // 取消 = 没选过，下次进来还会问
-    drawLeft(); drawRight(); fit(); wireSplit();   // 两栏先画出来，两种来源都要画（导入态也有左引导 + 右大纲）
-    const openPick = () => { pickMode = mode; picking = true; draw(); };
-    ["#rfswitch", "#rfswitch2"].forEach((sel) => { const b = $(sel); if (b) b.onclick = openPick; });   // 放在画完之后：导入态的“更换来源”在右栏
+    drawLeft(); drawRight(); fit(); wireSplit(); loadOl();   // 两栏先画出来，两种来源都要画（导入态也有左引导 + 右大纲）
     // 导入态右侧链接卡上的三个按钮属于 drawRight 画出来的元素，必须画完再绑
     const sv = $("#rfsave"); if (sv) sv.onclick = guard(async () => { f = { ...f, ...(await api(`/projects/${p.id}/recruiting/form`, { method: "PUT", body: { source: "html", html_url: $("#rfurl").value.trim() } })) }; htmlLocked = true; draw(); toast("链接已保存，已锁定"); });
     const op = $("#rfopen"); if (op) op.onclick = () => window.open(f.html_url, "_blank", "noopener,noreferrer");
@@ -510,6 +531,6 @@ function rfCard(p, form, rec) {
     s.onkeydown = (e) => { if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return; e.preventDefault(); const cur = parseFloat(w.style.getPropertyValue("--rfl")) || 42; setRatio(cur + (e.key === "ArrowRight" ? 2 : -2)); try { localStorage.setItem(ratioKey, parseFloat(w.style.getPropertyValue("--rfl")) || 42); } catch { /* no storage */ } };
   }
   pageOn("rf-fit", window, "resize", fit);
-  const html = `<div class="cc-steps" id="ccsteps" role="tablist" aria-label="创建访谈的阶段" data-subrow></div><div class="rf" style="padding:0"><div id="rfbody">${panels()}${pickHtml()}</div></div>`;
+  const html = `<div class="rf" style="padding:0"><div id="rfbody">${panels()}${pickHtml()}</div></div>`;
   return { html, wire, fit };
 }

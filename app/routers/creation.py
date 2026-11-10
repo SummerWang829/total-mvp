@@ -63,6 +63,13 @@ def _turn(db: Session, ctx: Ctx, proj: Project, state: stages.State, text: str, 
         state.mode, state.host = ("one" if proj.recruit_mode == "onelink" else "two"), (proj.host_mode or "human")
     try:
         engine.run_turn(db, _chat(), proj, state, text, material)
+        last = state.msgs[-1] if state.msgs else {}
+        nxt = stages.next_after(state) if text != engine.START and last.get("role") == "ai" and last.get("ready") else None
+        if nxt:   # the stage is finished: the assistant moves on by itself and opens the next one (there is no stage list for the team to click)
+            if state.stage.value not in state.done:
+                state.done.append(state.stage.value)
+            state.stage = nxt
+            engine.run_turn(db, _chat(), proj, state, engine.START)
     except ChatFatalError as e:
         raise HTTPException(502, f"小星星助手暂时不可用：{e.reason}") from e
     except engine.CreationError as e:
