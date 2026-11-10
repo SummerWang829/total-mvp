@@ -4,7 +4,7 @@ import pytest
 
 from app import assistant_identity
 from app.config import settings
-from app.routers import outline as outline_router
+from app.routers import creation as creation_router
 
 
 @pytest.mark.parametrize("text", ["你是什么模型？", "您是谁", "你用的是哪个模型", "什么模型在回答？", "你是ChatGPT吗", "谁开发了你",
@@ -27,15 +27,13 @@ class NoCall:
         raise AssertionError("the model must not be asked who it is")
 
 
-def test_outline_chat_answers_identity_without_the_model(org, monkeypatch):
-    monkeypatch.setattr(settings, "moderator_provider", "deepseek")
-    monkeypatch.setattr(settings, "moderator_vendor", "TestVendor")
-    monkeypatch.setattr(outline_router, "get_moderator_chat", lambda: NoCall())
+def test_the_creation_dialog_answers_identity_without_the_model(org, monkeypatch):
+    monkeypatch.setattr(creation_router, "_chat", lambda: NoCall())
     pid = org.project(language="zh")
-    r = org.c.post(f"/api/projects/{pid}/outline/chat", headers=org.h(), json={"message": "你是什么模型？"})
+    r = org.c.post(f"/api/projects/{pid}/creation/message", headers=org.h(), json={"message": "你是什么模型？"})
     assert r.status_code == 200
-    body = r.json()
-    assert body["chat"][-1]["text"] == "我是小星星助手。" and body["model"] == "小星星助手" and "TestVendor" not in body["chat"][-1]["text"]
+    last = r.json()["messages"][-1]
+    assert last["text"] == "我是小星星助手。" and r.json()["model"] and not last["actions"]
 
 
 def test_library_ask_answers_identity(org):
@@ -44,6 +42,7 @@ def test_library_ask_answers_identity(org):
 
 
 def test_prompts_carry_the_identity_rule():
-    from app import insight_chat, outline_chat, recruit_form
-    for prompt in (recruit_form.CHAT_SYSTEM, outline_chat.SYSTEM, insight_chat.SYSTEM):
+    from app import insight_chat
+    from app.creation import specs
+    for prompt in (specs.SYSTEM, insight_chat.SYSTEM):
         assert "小星星助手" in prompt

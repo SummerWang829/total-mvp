@@ -36,12 +36,8 @@ class Slot:
 
 
 SLOTS: dict[str, Slot] = {
-    "outline.chat": Slot("app.outline_chat", "SYSTEM", True),
     "outline.translate": Slot("app.outline_translate", "SYSTEM"),
     "study.draft": Slot("app.study_draft", "SYSTEM"),
-    "recruit.draft": Slot("app.recruit_form", "SYSTEM"),
-    "recruit.chat": Slot("app.recruit_form", "CHAT_SYSTEM", True),
-    "recruit.review": Slot("app.recruit_review", "REVIEW_SYSTEM"),
     "recruit.translate": Slot("app.recruit_translate", "SYSTEM"),
     "recruit.insights": Slot("app.recruit_insights", "SUMMARY_SYSTEM"),
     "plan.suggest": Slot("app.plan_suggest", "SYSTEM"),

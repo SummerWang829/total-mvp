@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from .. import formats, guide_text, library_context, outline, outline_chat, outline_translate, outline_versions, project_langs, assistant_identity
+from .. import formats, guide_text, library_context, outline, outline_translate, outline_versions, project_langs, assistant_identity
 from .. import methods as methods_mod
 from ..audit import audit
 from ..config import settings
@@ -42,14 +42,6 @@ class BatchBody(BaseModel):
     depth: str = Field(default="", max_length=10)
     v: str | None = Field(default=None, max_length=20)
     sync: list[str] = Field(default_factory=list, max_length=20)
-
-
-class ChatBody(BaseModel):
-    message: str = Field(min_length=1, max_length=4000)  # a message built from several selected passages is long
-    use_library: bool = True
-    material: str = Field(default="", max_length=30500)  # text read from an attached file (POST /api/attachments/extract): given to the AI with this one message, never stored or logged
-    ask_only: bool = False  # answer only: change nothing, keep nothing (a question about one selected passage)
-    v: str | None = Field(default=None, max_length=20)
 
 
 class SettingsBody(BaseModel):
@@ -105,14 +97,12 @@ def _out(proj: Project, db: Session, key: str | None = None, ctx: Ctx | None = N
     key = _version(proj, key)
     text = outline_versions.text_of(proj, key)
     local = settings.moderator_provider == "mock" or moderator_runs_locally()
-    history = outline_chat.load(proj.outline_chat)
     summary = outline.summary_of(text)
     base = outline_versions.base_key(proj)
     base_sum = outline.summary_of(outline_versions.text_of(proj, base)) if key != base else None
     info = project_langs.info(db, proj)
     can_edit = bool(ctx and (ctx.user.role in ("admin", "recruiter") or _can_manage(db, ctx, proj.id)))
     return {"text": text, "problem": outline.problem_of(text), "summary": summary, "warning": outline.warning_of(text),
-            "chat": outline_chat.view(history, text), "marks": outline_chat.marks(history, text),
             "v": key, "base": base, "versions": outline_versions.listing(proj), "families": outline_versions.families_of(proj),
             "family_names": outline_versions.FAMILY_NAMES, "lang": outline_versions.split(key)[0],
             "ref": [[{"text": q["text"], "cover": bool(q.get("cover"))} for q in part["questions"]] for part in base_sum["parts"]] if base_sum else None,
@@ -227,69 +217,3 @@ def put_settings(pid: str, body: SettingsBody, ctx: Ctx = Depends(require_roles(
     return {**_out(proj, db, key, ctx), "sync": sync}
 
 
-class ActBody(BaseModel):
-    action: Literal["adopt", "dismiss", "undo"]
-    sid: str = Field(default="", max_length=20)
-    v: str | None = Field(default=None, max_length=20)
-
-
-@router.post("/projects/{pid}/outline/chat")
-def chat_outline(pid: str, body: ChatBody, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
-    """One turn with the assistant: it answers, suggests, or (when asked) changes the outline at once. Both messages are kept with the project. The research background (and, if asked, the library) goes to the AI service."""
-    proj = _project(db, ctx, pid)
-    key = _version(proj, body.v)
-    if assistant_identity.asks_identity(body.message):   # "你是什么模型": 小星星助手 answers here; no model is asked and the outline stays as it is
-        if body.ask_only:
-            return {"reply": assistant_identity.REPLY}
-        history, _ = outline_chat.record_turn(outline_chat.load(proj.outline_chat), body.message.strip(), {"reply": assistant_identity.REPLY, "mode": "answer"}, "")
-        proj.outline_chat = outline_chat.dump(history)
-        db.commit()
-        return _out(proj, db, key, ctx)
-    mock = settings.moderator_provider == "mock"
-    if not mock and not moderator_runs_locally() and not settings.moderator_vendor.strip():
-        raise HTTPException(409, MSG_VENDOR_MISSING)
-    chat = None if mock else get_moderator_chat()
-    library = library_context.library_text(db, pid)[0] if body.use_library else ""
-    text = outline_versions.text_of(proj, key)
-    lang, minutes = outline_versions.split(key)[0], outline.settings_of(text, proj.language)[1]
-    goals = _goals(db, pid)
-    background = (proj.brief or "") + (("\n研究目标：" + "；".join(goals)) if goals else "")
-    history, message = outline_chat.load(proj.outline_chat), body.message.strip()
-    if body.ask_only:
-        try:
-            reply = outline_chat.answer_only(chat, text, message, background, library, lang, minutes, body.material)
-        except ChatFatalError as e:
-            raise HTTPException(502, f"小星星助手暂时不可用：{e.reason}") from e
-        except DraftError as e:
-            raise HTTPException(502, str(e)) from e
-        audit(db, ctx.org_id, ctx.actor, "outline.ask", pid, model="mock" if chat is None else chat.name)
-        db.commit()
-        return {"reply": reply}
-    try:
-        result = outline_chat.converse(chat, history, text, message, background, library, lang, minutes, body.material)
-    except ChatFatalError as e:
-        raise HTTPException(502, f"小星星助手暂时不可用：{e.reason}") from e
-    except DraftError as e:
-        raise HTTPException(502, str(e)) from e
-    history, new_text = outline_chat.record_turn(history, message, result, text)
-    outline_versions.put_text(proj, key, new_text)
-    proj.outline_chat = outline_chat.dump(history)
-    audit(db, ctx.org_id, ctx.actor, "outline.chat", pid, model="mock" if chat is None else chat.name, mode=result["mode"])  # who, which model and what it did; never the message
-    db.commit()
-    return _out(proj, db, key, ctx)
-
-
-@router.post("/projects/{pid}/outline/chat/{mid}")
-def act_on_chat(pid: str, mid: str, body: ActBody, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
-    """Adopt or drop a suggestion, or undo a change (refused when the outline was edited after that change, so no hand edit is lost)."""
-    proj = _project(db, ctx, pid)
-    key = _version(proj, body.v)
-    try:
-        history, text = outline_chat.act(outline_chat.load(proj.outline_chat), mid, body.action, body.sid, outline_versions.text_of(proj, key))
-    except outline_chat.ActError as e:
-        raise HTTPException(e.status, str(e)) from e
-    outline_versions.put_text(proj, key, text)
-    proj.outline_chat = outline_chat.dump(history)
-    audit(db, ctx.org_id, ctx.actor, "outline.act", pid, what=body.action)
-    db.commit()
-    return _out(proj, db, key, ctx)

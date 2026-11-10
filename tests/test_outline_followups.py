@@ -57,30 +57,16 @@ def test_the_edit_api_sets_depth_and_translates_guidance_for_another_language(or
     assert get(org, pid, "en|live")["summary"]["parts"][1]["questions"][0]["depth"] == "deep" and r.json()["summary"]["parts"][1]["questions"][0]["depth"] == "none"
 
 
-def test_a_new_version_carries_the_guidance_and_the_draft_writes_it(org):
-    pid = org.project(language="zh")
-    r = org.c.post(url(pid, "/chat"), headers=org.h(), json={"message": "帮我起草大纲"})
-    assert r.status_code == 200
-    qs = [q for p in r.json()["summary"]["parts"] for q in p["questions"] if not q.get("cover")]
-    assert qs and all(q["guide"] and q["depth"] == "shallow" for q in qs)  # the offline draft writes guidance for every question
-
-
-def test_ask_only_answers_without_changing_or_keeping_anything(org, pid):
-    before = get(org, pid)
-    r = org.c.post(url(pid, "/chat"), headers=org.h(), json={"message": "针对这一处：“你平时是怎么防晒的？”\n这句话好吗？\n请只回答，不要修改大纲。", "ask_only": True})
-    assert r.status_code == 200 and r.json()["reply"] and "summary" not in r.json()
-    after = get(org, pid)
-    assert after["text"] == before["text"] and after["chat"] == before["chat"]  # nothing changed, nothing saved in the conversation
-
-
-def test_a_long_message_from_several_selected_passages_is_accepted(org, pid):
-    msg = "请一次性修改以下 3 处，其余保持不变：\n" + "\n".join(f"{i}. “{'问题' * 40}”——要求：更口语" for i in range(1, 4))
-    assert 1000 < len(msg + "x" * 900) <= 4000
-    r = org.c.post(url(pid, "/chat"), headers=org.h(), json={"message": msg + "x" * 900})
-    assert r.status_code == 200
-
-
 # ---------- question cards: copy, insert above / below, drag to reorder ----------
+DRAFT = chr(10).join(["目标: 了解购物习惯", "受访者话题: 购物习惯", "语言: zh", "时长: 45", "", "## 暖场", "- 先简单介绍一下你自己吧？", "", "## 话题: 现状与习惯", "- 你最近一次遇到这类需求时，是怎么做的？",
+                     "* 了解: 现状", "", "## 话题: 选择与考虑", "- 当时你是怎么做出选择的？", "* 了解: 选择", "", "## 话题: 困扰与期待", "- 这个过程中有没有让你觉得麻烦的地方？", "* 了解: 困扰", ""])
+
+
+def draft(org, pid):
+    """A small saved outline: a warm-up and three topics of one question each."""
+    assert org.c.put(f"/api/projects/{pid}/outline", headers=org.h(), json={"text": DRAFT}).status_code == 200
+
+
 def _q(org, pid, **b):
     r = org.c.post(f"/api/projects/{pid}/outline/edit", headers=org.h(), json=b)
     return r
@@ -88,7 +74,7 @@ def _q(org, pid, **b):
 
 def test_copy_insert_and_move_keep_each_questions_depth_and_guidance(org):
     pid = org.project()
-    org.c.post(f"/api/projects/{pid}/outline/chat", headers=org.h(), json={"message": "帮我起草大纲"})
+    draft(org, pid)
     topic = 0
     for text in ("第二个问题？", "第三个问题？", "第四个问题？"):
         assert _q(org, pid, op="add", kind="topic", ref=topic, value=text).status_code == 200
@@ -110,7 +96,7 @@ def test_copy_insert_and_move_keep_each_questions_depth_and_guidance(org):
 
 def test_a_question_can_be_dragged_into_another_part_and_an_emptied_part_goes(org):
     pid = org.project()
-    org.c.post(f"/api/projects/{pid}/outline/chat", headers=org.h(), json={"message": "帮我起草大纲"})
+    draft(org, pid)
     parts = org.c.get(f"/api/projects/{pid}/outline", headers=org.h()).json()["summary"]["parts"]
     n = sum(len([q for q in x["questions"] if not q.get("cover")]) for x in parts)
     r = _q(org, pid, op="move", kind="topic", ref=0, index=0, value="warmup:0:1")

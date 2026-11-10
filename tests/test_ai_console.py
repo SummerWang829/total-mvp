@@ -11,7 +11,7 @@ from app.config import settings
 from app.db import SessionLocal
 from app.models import utcnow
 from app.moderator.providers import ChatError, ChatFatalError, ChatFormatError, OpenAICompatModeratorChat, _TransientChatError
-from app.routers import outline as outline_router
+from app.routers import creation as creation_router
 
 SECRET = "我的电话是 91234567，我讨厌这个牌子"
 
@@ -23,7 +23,7 @@ def converse(chat, messages):
 
 @pytest.fixture
 def registered(monkeypatch):
-    monkeypatch.setitem(ai_registry._BY_SITE, (__name__, "converse"), "outline.chat")
+    monkeypatch.setitem(ai_registry._BY_SITE, (__name__, "converse"), "creation.chat")
 
 
 def provider(handler):
@@ -47,7 +47,7 @@ def test_a_good_call_is_logged_under_the_feature_that_asked(registered):
     with ai_calls.org_scope("org-1"):
         assert converse(chat, [{"role": "user", "content": SECRET}]) == {"ok": True}
     (r,) = rows()
-    assert (r.feature, r.status, r.error_type, r.org_id, r.model) == ("outline.chat", "ok", "", "org-1", "云端模型")
+    assert (r.feature, r.status, r.error_type, r.org_id, r.model) == ("creation.chat", "ok", "", "org-1", "云端模型")
     assert r.prompt_version == "内置" and r.duration_ms >= 0
 
 
@@ -91,17 +91,17 @@ def test_a_broken_log_never_breaks_the_call(registered, monkeypatch):
 def test_a_request_to_a_real_endpoint_is_logged_for_the_requesters_company(org, monkeypatch):
     monkeypatch.setattr(settings, "moderator_provider", "openai")
     monkeypatch.setattr(settings, "moderator_vendor", "TestVendor")
-    monkeypatch.setattr(outline_router, "get_moderator_chat", lambda: provider(reply("not json at all")))
+    monkeypatch.setattr(creation_router, "_chat", lambda: provider(reply("not json at all")))
     pid = org.project()
-    r = org.c.post(f"/api/projects/{pid}/outline/chat", headers=org.h("admin"), json={"message": "帮我起草大纲"})
+    r = org.c.post(f"/api/projects/{pid}/creation/message", headers=org.h("admin"), json={"message": "帮我整理目标"})
     assert r.status_code in (502, 409, 422, 400), r.text
     mine = rows()
-    assert mine and {x.feature for x in mine} == {"outline.chat"} and all(x.org_id and x.error_type == "格式错误" for x in mine)
+    assert mine and {x.feature for x in mine} == {"creation.chat"} and all(x.org_id and x.error_type == "格式错误" for x in mine)
     other = org.c.post("/api/auth/register", json={"org_name": "Other", "name": "A", "email": "a@other.com", "password": "password123"}).json()["token"]
     seen = org.c.get("/api/ai-console/overview", headers={"Authorization": f"Bearer {other}"}).json()
     assert all(f["calls"] == 0 for f in seen["features"])
     mine_view = org.c.get("/api/ai-console/overview", headers=org.h("admin")).json()
-    assert {f["key"]: f["failed"] for f in mine_view["features"]}["outline.chat"] == len(mine)
+    assert {f["key"]: f["failed"] for f in mine_view["features"]}["creation.chat"] == len(mine)
 
 
 def test_only_admins_see_the_overview(org):
@@ -117,12 +117,12 @@ def test_the_overview_lists_every_feature_with_numbers_and_never_a_key_or_a_vend
     with SessionLocal() as db:
         oid = db.execute(__import__("sqlalchemy").text("select id from orgs limit 1")).scalar()
         for ms, status, err in ((1000, "ok", ""), (3000, "ok", ""), (500, "error", "格式错误")):
-            db.add(AiCallLog(org_id=oid, feature="recruit.chat", prompt_version="内置", model="云端模型", duration_ms=ms, status=status, error_type=err, at=utcnow()))
+            db.add(AiCallLog(org_id=oid, feature="recruit.insights", prompt_version="内置", model="云端模型", duration_ms=ms, status=status, error_type=err, at=utcnow()))
         db.commit()
     body = org.c.get("/api/ai-console/overview", headers=org.h("admin")).json()
     by = {f["key"]: f for f in body["features"]}
     assert len(by) == len(ai_registry.FEATURES)
-    assert (by["recruit.chat"]["calls"], by["recruit.chat"]["failed"], by["recruit.chat"]["errors"]) == (3, 1, {"格式错误": 1})
+    assert (by["recruit.insights"]["calls"], by["recruit.insights"]["failed"], by["recruit.insights"]["errors"]) == (3, 1, {"格式错误": 1})
     assert by["moderator.speak"]["prompt"] and by["asr"]["model"] == "语音识别" and by["asr"]["tracked"] is False
     assert body["recent_failures"][0]["error"] == "格式错误"
     text = json.dumps(body, ensure_ascii=False)

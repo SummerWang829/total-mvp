@@ -52,11 +52,3 @@ def test_a_reply_cut_off_at_the_output_limit_is_named_and_not_retried(monkeypatc
         _chat(monkeypatch).complete([])
     assert len(calls) == 1
     assert recruit_form.chat_reason(e.value) == "回复太长，被截断了（可以让它只改其中一部分）"
-
-
-def test_a_cut_off_reply_is_not_asked_again_by_the_questionnaire_chat():
-    recruit_form.clear_fatal()
-    bot = MockModeratorChat(script=[ChatError("reply was cut off at the output limit")])
-    with pytest.raises(recruit_form.ChatUnavailable) as e:
-        recruit_form.chat_turn(bot, "检查问卷", [], [], [], "", "zh")
-    assert e.value.reason == "回复太长，被截断了（可以让它只改其中一部分）" and len(bot.calls) == 1

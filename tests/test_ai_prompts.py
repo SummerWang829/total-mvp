@@ -20,27 +20,27 @@ def api(org, method, path, **kw):
 
 
 def test_without_a_live_version_the_prompt_in_the_code_is_used(org):
-    assert ai_prompts.get("recruit.review", "CODE") == "CODE"
+    assert ai_prompts.get("recruit.insights", "CODE") == "CODE"
     with ai_calls.org_scope(org_id(org)):
-        assert ai_prompts.get("recruit.review", "CODE") == "CODE"
-        assert api(org, "post", "/prompts/recruit.review/versions", json={"text": "my own JSON prompt"}).status_code == 201
-        assert ai_prompts.get("recruit.review", "CODE") == "CODE"   # a draft changes nothing
+        assert ai_prompts.get("recruit.insights", "CODE") == "CODE"
+        assert api(org, "post", "/prompts/recruit.insights/versions", json={"text": "my own JSON prompt"}).status_code == 201
+        assert ai_prompts.get("recruit.insights", "CODE") == "CODE"   # a draft changes nothing
 
 
 def test_a_live_version_replaces_it_for_that_company_only_and_going_back_restores_it(org):
-    base = ai_prompts.built_in("recruit.review")
+    base = ai_prompts.built_in("recruit.insights")
     text = base + "\nExtra rule: answer briefly."
-    assert api(org, "post", "/prompts/recruit.review/versions", json={"text": text, "note": "更短"}).json()["versions"][0]["version"] == 1
-    assert api(org, "post", "/prompts/recruit.review/live", json={"version": 1}).json()["live"] == 1
+    assert api(org, "post", "/prompts/recruit.insights/versions", json={"text": text, "note": "更短"}).json()["versions"][0]["version"] == 1
+    assert api(org, "post", "/prompts/recruit.insights/live", json={"version": 1}).json()["live"] == 1
     with ai_calls.org_scope(org_id(org)):
-        assert ai_prompts.get("recruit.review", "CODE") == text
+        assert ai_prompts.get("recruit.insights", "CODE") == text
     with ai_calls.org_scope("another-company"):
-        assert ai_prompts.get("recruit.review", "CODE") == "CODE"
-    view = api(org, "post", "/prompts/recruit.review/live", json={"version": None}).json()
+        assert ai_prompts.get("recruit.insights", "CODE") == "CODE"
+    view = api(org, "post", "/prompts/recruit.insights/live", json={"version": None}).json()
     assert view["live"] is None and [v["state"] for v in view["versions"]] == ["retired"]
     with ai_calls.org_scope(org_id(org)):
-        assert ai_prompts.get("recruit.review", "CODE") == "CODE"
-    assert api(org, "post", "/prompts/recruit.review/live", json={"version": 1}).json()["live"] == 1   # an older version can come back
+        assert ai_prompts.get("recruit.insights", "CODE") == "CODE"
+    assert api(org, "post", "/prompts/recruit.insights/live", json={"version": 1}).json()["live"] == 1   # an older version can come back
 
 
 def test_only_one_version_is_live_and_the_previous_one_is_kept(org):
@@ -54,27 +54,27 @@ def test_only_one_version_is_live_and_the_previous_one_is_kept(org):
 
 
 def test_the_assistant_identity_line_cannot_be_edited_away(org):
-    text = ai_prompts.built_in("outline.chat")
+    text = ai_prompts.built_in("creation.chat")
     assert assistant_identity.PROMPT_LINE not in text
-    api(org, "post", "/prompts/outline.chat/versions", json={"text": text})
-    api(org, "post", "/prompts/outline.chat/live", json={"version": 1})
+    api(org, "post", "/prompts/creation.chat/versions", json={"text": text})
+    api(org, "post", "/prompts/creation.chat/live", json={"version": 1})
     with ai_calls.org_scope(org_id(org)):
-        assert ai_prompts.get("outline.chat", "CODE").endswith(assistant_identity.PROMPT_LINE)
-    assert assistant_identity.PROMPT_LINE in importlib.import_module("app.outline_chat").SYSTEM   # the built-in one has it too
+        assert ai_prompts.get("creation.chat", "CODE").endswith(assistant_identity.PROMPT_LINE)
+    assert assistant_identity.PROMPT_LINE in importlib.import_module("app.creation.specs").SYSTEM   # the built-in one has it too
 
 
 def test_a_prompt_that_would_break_the_feature_is_refused(org):
-    base = ai_prompts.built_in("outline.chat")
-    for bad, why in (("   ", "空"), (base.replace("{language}", "zh"), "{language}"), (base.replace("JSON", "text"), "JSON"), ("x" * (ai_prompts.MAX_PROMPT_CHARS + 1), "太长")):
-        r = api(org, "post", "/prompts/outline.chat/versions", json={"text": bad})
+    base = ai_prompts.built_in("creation.chat")
+    for bad, why in (("   ", "空"), (base.replace("{outline_spec}", "x"), "{outline_spec}"), (base.replace("JSON", "text"), "JSON"), ("x" * (ai_prompts.MAX_PROMPT_CHARS + 1), "太长")):
+        r = api(org, "post", "/prompts/creation.chat/versions", json={"text": bad})
         assert r.status_code == 422 and why in r.json()["detail"], (why, r.text)
-    assert api(org, "get", "/prompts/outline.chat").json()["versions"] == []
+    assert api(org, "get", "/prompts/creation.chat").json()["versions"] == []
 
 
 def test_only_admins_edit_prompts_and_the_moderator_is_not_among_them(org):
     for role in ("researcher", "moderator", "observer"):
         assert org.c.get("/api/ai-console/prompts", headers=org.h(role)).status_code == 403
-        assert org.c.post("/api/ai-console/prompts/recruit.review/versions", headers=org.h(role), json={"text": "x JSON"}).status_code == 403
+        assert org.c.post("/api/ai-console/prompts/recruit.insights/versions", headers=org.h(role), json={"text": "x JSON"}).status_code == 403
     assert api(org, "get", "/prompts/moderator.speak").status_code == 404
     assert api(org, "post", "/prompts/moderator.speak/live", json={"version": None}).status_code == 404
     keys = [f["key"] for f in api(org, "get", "/prompts").json()["features"]]
@@ -82,16 +82,16 @@ def test_only_admins_edit_prompts_and_the_moderator_is_not_among_them(org):
 
 
 def test_other_companies_do_not_see_each_others_versions(org, client):
-    api(org, "post", "/prompts/recruit.review/versions", json={"text": ai_prompts.built_in("recruit.review")})
+    api(org, "post", "/prompts/recruit.insights/versions", json={"text": ai_prompts.built_in("recruit.insights")})
     other = client.post("/api/auth/register", json={"org_name": "Other", "name": "A", "email": "a@other.com", "password": "password123"}).json()["token"]
-    r = client.get("/api/ai-console/prompts/recruit.review", headers={"Authorization": f"Bearer {other}"})
+    r = client.get("/api/ai-console/prompts/recruit.insights", headers={"Authorization": f"Bearer {other}"})
     assert r.status_code == 200 and r.json()["versions"] == []
 
 
 def test_the_audit_trail_names_the_version_but_never_the_text(org):
-    secret = ai_prompts.built_in("recruit.review") + " SECRET-RULE-TEXT"
-    api(org, "post", "/prompts/recruit.review/versions", json={"text": secret})
-    api(org, "post", "/prompts/recruit.review/live", json={"version": 1})
+    secret = ai_prompts.built_in("recruit.insights") + " SECRET-RULE-TEXT"
+    api(org, "post", "/prompts/recruit.insights/versions", json={"text": secret})
+    api(org, "post", "/prompts/recruit.insights/live", json={"version": 1})
     with SessionLocal() as db:
         rows = db.query(AuditLog).filter(AuditLog.action.like("ai.prompt.%")).all()
     assert {r.action for r in rows} == {"ai.prompt.save", "ai.prompt.live"} and "SECRET-RULE-TEXT" not in str([r.meta for r in rows])

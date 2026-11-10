@@ -16,7 +16,7 @@ TEXT = """目标: 了解新加坡年轻人如何选购防晒霜
 def test_empty_outline_then_save_and_read(org):
     pid = org.project()
     r = org.c.get(f"/api/projects/{pid}/outline", headers=org.h())
-    assert r.status_code == 200 and r.json()["text"] == "" and r.json()["summary"] is None and r.json()["chat"] == []
+    assert r.status_code == 200 and r.json()["text"] == "" and r.json()["summary"] is None
     r = org.c.put(f"/api/projects/{pid}/outline", headers=org.h(), json={"text": TEXT})
     assert r.status_code == 200 and r.json()["problem"] == ""
     s = r.json()["summary"]
@@ -29,17 +29,6 @@ def test_a_broken_edit_is_kept_and_explained(org):
     r = org.c.put(f"/api/projects/{pid}/outline", headers=org.h(), json={"text": "- 没有放在任何一段里的问题？"})
     assert r.status_code == 200 and r.json()["problem"] and r.json()["summary"] is None
     assert org.c.get(f"/api/projects/{pid}/outline", headers=org.h()).json()["text"].startswith("- 没有")
-
-
-def test_chat_drafts_when_empty_and_keeps_the_conversation(org):
-    pid = org.project()
-    r = org.c.post(f"/api/projects/{pid}/outline/chat", headers=org.h(), json={"message": "帮我起草一份 45 分钟的大纲"})
-    assert r.status_code == 200, r.text
-    d = r.json()
-    assert d["summary"] and d["summary"]["question_count"] >= 3 and d["problem"] == ""
-    assert [m["role"] for m in d["chat"]] == ["user", "ai"] and d["chat"][0]["text"].startswith("帮我起草")
-    r2 = org.c.post(f"/api/projects/{pid}/outline/chat", headers=org.h(), json={"message": "再加一个追问", "use_library": False})
-    assert r2.status_code == 200 and r2.json()["text"] == d["text"] and len(r2.json()["chat"]) == 4  # the offline mock never rewrites an existing outline
 
 
 def test_staff_only_and_other_companies_cannot_see_it(org):

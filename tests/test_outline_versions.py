@@ -5,7 +5,21 @@ from app.config import settings
 from app.models import Project, RecruitForm
 from app.moderator.providers import ChatFatalError
 from app.routers import outline as outline_router
-from test_outline_chat import FakeChat
+
+
+class FakeChat:
+    """A model that answers with what the test needs."""
+    name = "fake"
+
+    def __init__(self, *replies):
+        self.replies, self.calls = list(replies), []
+
+    def complete(self, messages, temperature=0.0):
+        self.calls.append(messages)
+        r = self.replies.pop(0)
+        if isinstance(r, Exception):
+            raise r
+        return r
 
 TEXT = chr(10).join(["目标: 了解防晒习惯", "受访者话题: 防晒习惯", "语言: zh", "时长: 45", "", "## 暖场", "- 你平时是怎么防晒的？", "", "## 话题: 选购",
                      "- 你上一次买防晒霜是怎么选的？", "- 当时最看重哪一点？", "* 了解: 选购时看重什么", ""])
@@ -163,10 +177,3 @@ def test_title_and_length_follow_the_choice_in_sync(org, pid):
     r = org.c.put(url(pid, "/settings"), headers=org.h(), json={"title": "防晒生活", "minutes": 40, "sync": ["en|live"]})
     en = get(org, pid, "en|live")["settings"]
     assert r.json()["sync"]["synced"] == ["en|live"] and en["minutes"] == 40 and en["title"] == "[EN] 防晒生活"
-
-
-def test_the_chat_works_on_the_version_that_is_open(org, pid):
-    make(org, pid, "en|live")
-    r = org.c.post(url(pid, "/chat"), headers=org.h(), json={"message": "帮我起草大纲", "v": "en|live"})
-    assert r.status_code == 200 and r.json()["v"] == "en|live"
-    assert get(org, pid)["text"] == TEXT  # the main version was not touched

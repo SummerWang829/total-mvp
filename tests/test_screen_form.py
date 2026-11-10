@@ -161,75 +161,9 @@ def test_the_research_background_goes_to_the_library_and_from_there_to_the_ai(or
     assert n == 1 and "改了一版" in text
 
 
-def test_the_ai_draft_combines_the_idea_the_plan_background_and_the_library(org):
-    from app import library_context
-    from app.moderator.providers import MockModeratorChat
-    from app.recruit_form import generate
-    chat = MockModeratorChat(script=[{"questions": [{"type": "text", "text": "好的问题？"}]}])
-    generate(chat, "补充：重点看购买渠道", "zh", library="## 旧报告\n去年的发现", brief="新品防晒霜进入新加坡市场")
-    prompt = chat.calls[0][1]["content"]
-    assert "补充：重点看购买渠道" in prompt and "新品防晒霜进入新加坡市场" in prompt and "去年的发现" in prompt
-    from test_plans import draft, plan
-    pid = draft(org)["id"]
-    cfg = plan(org, pid)["config"]
-    assert org.c.post(f"/api/projects/{pid}/recruiting/form/generate", headers=org.h(), json={"idea": ""}).status_code == 422  # nothing written anywhere
-    org.c.put(f"/api/projects/{pid}/plan", headers=org.h(), json={"brief": "新品防晒霜进入新加坡市场，了解年轻人的购买决策", "config": cfg})
-    r = org.c.post(f"/api/projects/{pid}/recruiting/form/generate", headers=org.h(), json={"idea": ""})  # the background alone is enough
-    assert r.status_code == 200 and r.json()["questions"]
-    assert library_context.BRIEF_TITLE  # (the background reaches the library through the wizard; the library text is always handed over)
-
-
 # ---------- the conversation that edits the questionnaire ----------
 def chat(org, pid, message, questions=None, **kw):
     return org.c.post(url(pid, "/chat"), headers=org.h(), json={"message": message, "questions": questions if questions is not None else [], **kw})
-
-
-def test_the_conversation_drafts_the_questionnaire_and_keeps_the_history(org):
-    pid = org.project()
-    r = chat(org, pid, "帮我起草问卷").json()
-    assert r["changed"] is True and len(r["questions"]) >= 5 and r["goals"] and r["need"] and r["version"] == 1
-    assert [m["role"] for m in r["chat"]] == ["user", "ai"] and r["chat"][0]["text"] == "帮我起草问卷"
-    again = chat(org, pid, "删除最后一题", r["questions"], goals=r["goals"], need=r["need"]).json()
-    assert len(again["questions"]) == len(r["questions"]) - 1 and again["goals"] == r["goals"] and again["need"] == r["need"] and len(again["chat"]) == 4
-    saved = org.c.get(url(pid), headers=org.h()).json()
-    assert saved["questions"] == again["questions"] and len(saved["chat"]) == 4 and saved["goals"] == r["goals"]  # the conversation and the result are kept with the form
-    nothing = chat(org, pid, "随便说说", again["questions"]).json()
-    assert nothing["changed"] is False and nothing["questions"] == again["questions"]  # the offline assistant only does what it can; nothing else changes
-
-
-def test_the_conversation_takes_the_manual_edits_as_they_are_and_refuses_bad_input(org):
-    pid = org.project()
-    mine = [{"id": "x1", "type": "text", "text": "我自己写的题？"}]
-    r = chat(org, pid, "随便说说", mine, goals=["目标一"], need="需求一").json()
-    assert [q["id"] for q in r["questions"]] == ["x1"] and r["goals"] == ["目标一"] and r["need"] == "需求一"  # the page's own state is what is edited
-    assert chat(org, pid, "", mine).status_code == 422
-    assert chat(org, pid, "好", [{"type": "single", "text": "只有一个选项？", "options": [{"text": "是"}]}]).status_code == 422
-    assert org.c.post(url(pid, "/chat"), headers=org.h("observer"), json={"message": "hi"}).status_code == 403
-
-
-def test_goals_and_need_are_saved_with_the_form_and_the_history_is_capped(org):
-    pid = org.project()
-    org.c.put(url(pid), headers=org.h(), json={"source": "ai", "questions": qs(), "goals": ["  一 ", "", "二"], "need": "新加坡 18-34 岁"})
-    f = org.c.get(url(pid), headers=org.h()).json()
-    assert f["goals"] == ["一", "二"] and f["need"] == "新加坡 18-34 岁" and f["brief"] == ""
-    for i in range(25):
-        r = chat(org, pid, f"第 {i} 句", qs()).json()
-    assert len(r["chat"]) == 40 and r["chat"][-2]["text"] == "第 24 句"
-
-
-def test_the_ai_conversation_gets_the_background_the_library_the_questionnaire_and_the_history():
-    from app.moderator.providers import MockModeratorChat
-    from app.recruit_form import chat_turn, normalize
-    current = normalize({"questions": qs()}).questions
-    bot = MockModeratorChat(script=[{"reply": "已把年龄题放最前面。", "questions": [q.model_dump() for q in current[::-1][:1]] , "goals": None, "need": None}])
-    out = chat_turn(bot, "把最后一题留下", [{"role": "user", "text": "先前说过的话"}, {"role": "ai", "text": "先前的回答"}], current, ["目标"], "需求", "zh", brief="新品防晒霜", library="## 旧报告\n去年的发现")
-    sent = " ".join(m["content"] for m in bot.calls[0])
-    assert "新品防晒霜" in sent and "去年的发现" in sent and "age" in sent and "先前说过的话" in sent and "把最后一题留下" in sent  # everything the AI needs is in the request
-    assert out.reply == "已把年龄题放最前面。" and len(out.questions) == 1
-    # an unusable change is asked for again once, then dropped with an honest reply (the questionnaire stays as it is)
-    bad = MockModeratorChat(script=[{"reply": "x", "questions": [{"type": "single", "text": "?", "options": [{"text": "a"}]}]}])
-    gone = chat_turn(bad, "改一下", [], current, [], "", "zh")
-    assert gone.questions is None and "没有改动" in gone.reply and len(bad.calls) == 2
 
 
 # ---------- options that cannot be chosen together ----------

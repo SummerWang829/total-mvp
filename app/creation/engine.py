@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 
 from sqlalchemy.orm import Session
 
-from .. import ai_prompts, library_context
+from .. import ai_prompts, assistant_identity, library_context
 from ..models import Project, RecruitForm
 from ..moderator.providers import ChatError, ChatFatalError, ChatFormatError, ModeratorChatProvider
 from . import patches, specs
@@ -95,6 +95,11 @@ def run_turn(db: Session, chat: ModeratorChatProvider | None, project: Project, 
         CreationError: no usable answer after MAX_ATTEMPTS.
         ChatFatalError: the service refused; nothing was changed.
     """
+    if text != START and assistant_identity.asks_identity(text):   # "你是什么模型": 小星星助手 answers here, no model is asked and the study stays as it is
+        state.msgs.append(message("user", state.stage, text))
+        ai = message("ai", state.stage, assistant_identity.REPLY, actions=[], advice="", needs=[], suggestions=[], ready=False, snapshot="")
+        state.msgs.append(ai)
+        return ai
     problem, reply, actions, snap = "", None, [], ""
     for attempt in range(MAX_ATTEMPTS):
         try:

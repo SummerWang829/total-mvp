@@ -419,7 +419,7 @@ def outline_section(br, D):
     pg.screenshot(path=os.path.join(ROOT, "qa_shots", "outline_question_1280.png"))
     pg.select_option(".ol-dp", "deep"); ok(wait_until(lambda: "深度追问" in pg.locator(".ol-q").nth(2).inner_text() and pg.locator(".ol-ex").count() == 1, 5), "[outline] choosing a depth saves it and keeps the question open")
     pg.fill(".ol-gt", "新的指引：多问取舍"); pg.locator(".ol-gt").dispatch_event("change")
-    ok(wait_until(lambda: "多问取舍" in pg.locator(".ol-gt").input_value() and "深度追问" in pg.locator(".ol-q").nth(2).inner_text(), 5), "[outline] the guidance is saved with the question")
+    ok(wait_until(lambda: "多问取舍" in pg.locator(".ol-gt").input_value() and "深度追问" in pg.locator(".ol-q").nth(2).inner_text(), 10), "[outline] the guidance is saved with the question")
     pg.locator(".ol-cv").nth(2).click(); ok(pg.locator(".ol-ex").count() == 0, "[outline] the arrow closes it again")
     n1 = pg.locator(".ol-q").count(); good0 = call(f"/projects/{pid}/outline", None, adm)["text"]
     pg.click("[data-bt]"); pg.wait_for_selector(".ol-bt")
@@ -606,7 +606,7 @@ def insights_section(br, D):
     """The insights page's five tabs: respondent data (numbers, table, hover card, search), report, question analysis, highlight wall, chat; a client observer only gets the table."""
     adm, pid = D["tok"]["admin"], D["pid"]
     PICK_I = "([sel, q]) => { const b = document.querySelectorAll(sel)[0]; const w = document.createTreeWalker(b, NodeFilter.SHOW_TEXT); let n; while ((n = w.nextNode())) { const i = n.data.indexOf(q); if (i >= 0) { const r = document.createRange(); r.setStart(n, i); r.setEnd(n, i + q.length); const s = getSelection(); s.removeAllRanges(); s.addRange(r); return true; } } return false; }"
-    call(f"/projects/{pid}/outline/chat", {"message": "帮我起草一份大纲"}, adm)  # so the question tab has questions
+    call(f"/projects/{pid}/outline", {"text": SAMPLE}, adm, method="PUT")  # so the question tab has questions
     for it in call(f"/projects/{pid}/interviews", None, adm):   # work out the answers of finished interviews, so the table has answer cells
         if it["status"] == "ended":
             try:
