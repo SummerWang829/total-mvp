@@ -121,7 +121,7 @@ def test_the_overview_lists_every_feature_with_numbers_and_never_a_key_or_a_vend
         db.commit()
     body = org.c.get("/api/ai-console/overview", headers=org.h("admin")).json()
     by = {f["key"]: f for f in body["features"]}
-    assert len(by) == len(ai_registry.FEATURES) == 19
+    assert len(by) == len(ai_registry.FEATURES)
     assert (by["recruit.chat"]["calls"], by["recruit.chat"]["failed"], by["recruit.chat"]["errors"]) == (3, 1, {"格式错误": 1})
     assert by["moderator.speak"]["prompt"] and by["asr"]["model"] == "语音识别" and by["asr"]["tracked"] is False
     assert body["recent_failures"][0]["error"] == "格式错误"

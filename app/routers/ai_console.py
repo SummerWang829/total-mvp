@@ -38,8 +38,8 @@ def overview(hours: int = Query(24, ge=1, le=720), ctx: Ctx = Depends(require_ro
     features = []
     for f in FEATURES:
         s = numbers.get(f.key, empty)
-        features.append({"key": f.key, "domain": f.domain, "name": f.name, "page": f.page, "prompt": ai_prompts.live_label(db, ctx.org_id, f.key) if f.key in ai_prompts.SLOTS else prompt_version(f), "model": "语音识别" if f.key == "asr" else model["alias"],
-                         "tracked": f.key != "asr", "editable": f.key in ai_prompts.SLOTS, **s})
+        features.append({"key": f.key, "domain": f.domain, "name": f.name, "page": f.page, "prompt": ai_prompts.live_label(db, ctx.org_id, f.key) if f.key in ai_prompts.SLOTS else prompt_version(f), "model": "语音识别" if f.key == "asr" else model["alias"] if f.sites else "—",
+                         "tracked": bool(f.sites), "editable": f.key in ai_prompts.SLOTS, **s})
     other = numbers.get(OTHER_KEY)
     recent = db.execute(select(AiCallLog.at, AiCallLog.feature, AiCallLog.error_type, AiCallLog.duration_ms).where(AiCallLog.org_id == ctx.org_id, AiCallLog.status == "error")
                         .order_by(AiCallLog.at.desc()).limit(RECENT_FAILURES)).all()

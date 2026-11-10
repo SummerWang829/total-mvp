@@ -30,6 +30,7 @@ class GuideTopic(BaseModel):
     title: str = Field(min_length=1, max_length=120)
     questions: list[str] = Field(min_length=1)
     must_cover: list[MustCoverItem] = Field(default_factory=list)
+    section_guide: str = Field(default="", max_length=500)  # 环节指引: for the AI moderator only (what to learn here, what to probe, what not to ask); never shown to the participant
     weight: float = Field(default=1.0, gt=0, le=10)
 
 

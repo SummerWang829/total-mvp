@@ -31,6 +31,7 @@ HEADER_KEYS = {"目标": "research_goal", "goal": "research_goal", "受访者话
 LIST_SECTIONS = {"暖场": "warmup_questions", "warmup": "warmup_questions", "假设": "hypotheses", "hypotheses": "hypotheses", "禁谈": "forbidden_topics", "forbidden": "forbidden_topics",
                  "品牌": "client_brand_names", "brands": "client_brand_names", "产品事实": "product_facts", "facts": "product_facts"}
 NOTE_KEYS = {"追问": "depth", "follow": "depth", "指引": "guide", "guidance": "guide"}
+SECTION_GUIDE_KEYS = ("环节指引", "section_guide")  # under a "## 话题" line, before its first question
 TOPIC_WORDS, STIMULUS_WORDS = ("话题", "topic"), ("素材", "stimulus")
 COVER_WORDS = ("了解", "cover")
 MAX_CHARS = 20_000
@@ -122,6 +123,8 @@ def parse_guide_text(text: str) -> dict:
                 cur_meta.append(last)
             else:
                 raise GuideTextError(f"第 {n} 行：这一行不属于任何小节，请先写“## 暖场”或“## 话题: …”")
+        elif cur is not None and "must_cover" in cur and not cur["questions"] and (kv := _split_key(line)) and kv[0] in SECTION_GUIDE_KEYS:
+            cur["section_guide"] = kv[1][:MAX_NOTE]
         elif last is not None and (kv := _split_key(line)) and kv[0] in NOTE_KEYS:
             if NOTE_KEYS[kv[0]] == "guide":
                 last["guide"] = kv[1][:MAX_NOTE]
@@ -173,7 +176,7 @@ def guide_to_text(guide: dict) -> str:
     meta = guide.get("meta") or {}
     out += _questions(guide["warmup_questions"], meta.get("warmup"), one)
     for i, t in enumerate(guide["topics"]):
-        out += ["", f"## 话题: {one(t['title'])}"] + _questions(t["questions"], (meta.get("topics") or [[]] * (i + 1))[i], one) + [f"* 了解: {one(m['text'])}" for m in t.get("must_cover", [])]
+        out += ["", f"## 话题: {one(t['title'])}"] + ([f"环节指引: {one(t['section_guide'])[:MAX_NOTE]}"] if (t.get("section_guide") or "").strip() else []) + _questions(t["questions"], (meta.get("topics") or [[]] * (i + 1))[i], one) + [f"* 了解: {one(m['text'])}" for m in t.get("must_cover", [])]
     for i, st in enumerate(guide.get("stimuli", [])):
         out += ["", f"## 素材: {one(st['id'])} | {one(st['description'])}"] + _questions(st["questions"], (meta.get("stimuli") or [[]] * (i + 1))[i], one)
     for title, key in (("假设", "hypotheses"), ("禁谈", "forbidden_topics"), ("品牌", "client_brand_names"), ("产品事实", "product_facts")):

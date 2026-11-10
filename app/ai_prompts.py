@@ -25,7 +25,7 @@ MAX_PROMPT_CHARS = 20000
 MAX_NOTE_CHARS = 80
 LIVE, DRAFT, RETIRED = "live", "draft", "retired"
 BUILT_IN_LABEL = "内置"
-PLACEHOLDERS = ("{language}", "{max_topics}", "{minutes}")
+PLACEHOLDERS = ("{language}", "{max_topics}", "{minutes}", "{outline_spec}", "{recruit_spec}")
 
 
 @dataclass(frozen=True)
@@ -50,6 +50,9 @@ SLOTS: dict[str, Slot] = {
     "answers.match": Slot("app.interview_answers", "MATCH_SYSTEM"),
     "report.pick": Slot("app.report_analysis", "PICK_SYSTEM"),
     "report.note": Slot("app.report_analysis", "NOTE_SYSTEM"),
+    "creation.chat": Slot("app.creation.specs", "SYSTEM", True),
+    "creation.outline_spec": Slot("app.creation.specs", "OUTLINE_SPEC"),
+    "creation.recruit_spec": Slot("app.creation.specs", "RECRUIT_SPEC"),
 }
 
 

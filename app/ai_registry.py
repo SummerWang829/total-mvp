@@ -39,6 +39,9 @@ FEATURES: tuple[Feature, ...] = (
     Feature("answers.match", "洞察", "整理回答：对题", "受访者数据", (("app.interview_answers", "model_match"),)),
     Feature("report.pick", "洞察", "报告：挑对比", "报告", (("app.report_analysis", "pick"),)),
     Feature("report.note", "洞察", "报告：解读", "报告", (("app.report_analysis", "write_notes"),)),
+    Feature("creation.chat", "创建访谈", "阶段式对话", "创建访谈 · 左侧对话", (("app.creation.engine", "converse"),)),
+    Feature("creation.outline_spec", "创建访谈", "大纲设计规范", "创建访谈 · 大纲阶段", ()),
+    Feature("creation.recruit_spec", "创建访谈", "招募筛选规范", "创建访谈 · 甄别阶段", ()),
     Feature("asr", "语音", "实时字幕 / 转写", "房间字幕、转写", (), ""),
 )
 
