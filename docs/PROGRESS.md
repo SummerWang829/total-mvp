@@ -10,6 +10,14 @@
 
 
 
+## 2026-11-10 · 3c1ad27 已从线上退回，恢复部署前的线上版本（用户指示）
+- 原因：用户不同意部署 3c1ad27（线上原版本不在 origin/main 上，覆盖前只做了备份）。
+- 做了什么：从 `/opt/rollback-live-20261110.tgz` 恢复线上目录（不含 deploy/.env、secrets、数据库）；删掉 3c1ad27 带来的新文件（这一步误删了 9 个原本就在线上的文件，已从归档补回）；`docker compose up -d --build --no-deps app` 重建。
+- 核对：线上 app 目录与部署前逐个文件 hash 一致（261 个，和 11-10 部署前的记录一致）；归档与线上目录文件清单完全一致；app healthy；日志 cannot add / error / traceback 为 0；`/api/health`、`/api/public/config`、`/index.html`、`/shell.js`、`/ui_v11.css` 本机 200；公网 HTTPS `/api/health` 200。
+- 数据库：备份 `total-20261110-154124.db.gz`（异地 COS 已上传）。3c1ad27 启动时加的列 `projects.creation_json` 留在库里（空列，无害，旧代码不读）。
+- 没有动 git 上的 main。3c1ad27 的部署记录在本条之上一条，已作废。
+- 还差：线上原版本来源未确认（不在 origin/main，可能是 WorkBuddy 线）；创建访谈的部署要等来源确认后再做。
+
 ## 2026-11-10 · 部署 3c1ad27 完成（创建访谈阶段式对话，SW 指令，已在线上核对）
 - 本批（相对线上基线）：2242bc5 第 A 批（后端 11 阶段引擎、规范、修改提议与撤销）、46d70c7 第 B 批（访谈页和招募问卷页的阶段式对话、网页链接读取、删旧对话前端）、8e7d5ff 第 C 批（删旧对话后端）、7289778 第 D 批（检查提示）、ebcab0a（语音输入）、c39b3c1（恢复 AI 后台/附件路由）、8cbc723 和 b89aff4（主持人提示词 v011/v012 候选，默认仍 v010）。新列 `projects.creation_json`，启动时已自动补上。
 - 线上核对：部署前线上代码既不是 0c70dc7，也不是 d309169，也和 origin/main 最近 40 个提交都对不上；另外有约 46 个 app 之外或 app 内的文件不在 3c1ad27 里（如 app/ai_rules.py、app/routers/board.py、docs/RULES.md 等，来源不明，可能是另一条线 WorkBuddy 上的版本，文件日期 11-04）。用户确认：先备份再覆盖。没有排期中或进行中的访谈，录制和后台任务为空。
