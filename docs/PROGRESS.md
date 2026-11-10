@@ -10,6 +10,15 @@
 
 
 
+## 2026-11-10 · 部署 3c1ad27 完成（创建访谈阶段式对话，SW 指令，已在线上核对）
+- 本批（相对线上基线）：2242bc5 第 A 批（后端 11 阶段引擎、规范、修改提议与撤销）、46d70c7 第 B 批（访谈页和招募问卷页的阶段式对话、网页链接读取、删旧对话前端）、8e7d5ff 第 C 批（删旧对话后端）、7289778 第 D 批（检查提示）、ebcab0a（语音输入）、c39b3c1（恢复 AI 后台/附件路由）、8cbc723 和 b89aff4（主持人提示词 v011/v012 候选，默认仍 v010）。新列 `projects.creation_json`，启动时已自动补上。
+- 线上核对：部署前线上代码既不是 0c70dc7，也不是 d309169，也和 origin/main 最近 40 个提交都对不上；另外有约 46 个 app 之外或 app 内的文件不在 3c1ad27 里（如 app/ai_rules.py、app/routers/board.py、docs/RULES.md 等，来源不明，可能是另一条线 WorkBuddy 上的版本，文件日期 11-04）。用户确认：先备份再覆盖。没有排期中或进行中的访谈，录制和后台任务为空。
+- 备份：数据库 `total-20261110-154124.db.gz`，异地 COS 上传成功。回滚材料：整个线上目录 `/opt/rollback-live-20261110.tgz`（不含 deploy/.env、secrets、数据库），镜像标签 `total-app:rollback-live-20261110`。
+- 部署：`git archive 3c1ad27 | tar -x` 覆盖 `/opt/total-mvp`（deploy/.env、secrets 保留）；`docker compose up -d --build --no-deps app`。**没有删除那 46 个不在 3c1ad27 里的文件**，它们留在服务器上、不被新代码引用；要不要清理等用户决定（清理前先确认它们不是另一条线在用）。
+- 部署后核对：3c1ad27 的 250 个 app 文件全部与服务器一致；app healthy；日志 cannot add / error / traceback 为 0；启动日志显示 `added column projects.creation_json`，列已存在；`/api/health`、`/api/public/config`、`/index.html`、`/shell.js`、`/ui_v11.css`、`/rform.js`、`/outline.js`、`/creation.js`、`/voice.js` 本机 200；公网 HTTPS `/api/health` 200；`app.doctor` 没有必须解决的问题；服务器 ffmpeg 7.1.5 可用；`MODERATOR_VENDOR` 已配置（只检查是否存在，未读值）。
+- 未测：部署词第五节的上线后检查（需要研究员账号在浏览器里走：阶段式对话开场、撤销、大纲、网页链接读取、麦克风输入、招募问卷各功能、AI 后台的 creation 槽位、问“你是什么模型”的回答）。字体检查本次没有按部署词要求执行。
+- 还差：用户走一遍上线后检查；决定那 46 个多余文件怎么处理；马来语、泰米尔语文案待复核。
+
 ## 2026-11-10 AI 主持人 · 模糊词请对方说清楚（v012 候选版，未上线）
 - 改了：分析结果多一个可选字段 `vague_term`（答案靠一个意思不清的词，如“还行”）；有它且允许追问时，追问方式选“澄清”（`operators.choose_operator`）；新提示词 `prompts/v012.json`（默认仍是 v010，不自动上线）。
 - 测了：moderator 相关 pytest 136 个通过（含新增 1 个）。没测：真实模型对比 v010（需余额与长时间，待用户确认后跑）。
