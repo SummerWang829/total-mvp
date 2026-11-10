@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>创建访问 · 改版预览 · 星桐 TOTAL</title>
+<!-- 外壳样式直接引用正式网站的真实 CSS，不做任何改动 -->
+<link rel="stylesheet" href="/ui_v11.css">
+<style>
+/* 只补「改版预览」内容区专用样式；顶部通栏 / 窄栏 / 第二层菜单全部沿用 ui_v11.css */
+.rv-wrap{max-width:1180px;margin:0 auto}
+.rv-head{display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap;margin-bottom:8px}
+.rv-head h1{margin:0;font-size:clamp(17px,2.4vw,23px);font-weight:700;color:var(--ink);white-space:nowrap}
+.rv-badge{font-size:11.5px;padding:3px 11px;border-radius:999px;background:var(--chip);color:var(--muted);white-space:nowrap}
+.rv-badge.hot{background:var(--pri);color:#fff;font-weight:600}
+.rv-lead{color:var(--muted);font-size:13.2px;line-height:1.85;margin:0;max-width:960px}
+.rv-tools{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin:18px 0 14px}
+.rv-tools b{font-size:13.5px;color:var(--ink);white-space:nowrap}
+.rv-tools .sp{flex:1}
+.rv-input{border:1px solid var(--line2);background:var(--surface);color:var(--ink);border-radius:8px;padding:7px 12px;font:inherit;font-size:12.8px;width:210px;outline:none}
+.rv-input:focus{border-color:var(--pri)}
+.rv-btn{border:1px solid var(--line2);background:var(--surface);color:var(--ink);border-radius:8px;padding:7px 13px;font:inherit;font-size:12.5px;cursor:pointer;white-space:nowrap}
+.rv-btn.on{background:var(--pri);border-color:var(--pri);color:#fff;font-weight:600}
+.rv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(292px,1fr));gap:12px}
+.rv-card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 15px;cursor:pointer;transition:.16s;position:relative;box-shadow:0 1px 3px rgba(11,56,44,.04)}
+.rv-card:hover{border-color:var(--pri);transform:translateY(-2px);box-shadow:0 8px 24px rgba(11,56,44,.10)}
+.rv-card .no{position:absolute;right:13px;top:12px;font-size:10.5px;color:var(--muted)}
+.rv-card .hd{display:flex;gap:10px;align-items:center;padding-right:30px}
+.rv-card .ic{width:32px;height:32px;flex:none;border-radius:8px;background:var(--pri);color:#fff;display:grid;place-items:center;font-size:12.5px;font-weight:800}
+.rv-card h3{margin:0;font-size:clamp(12.5px,2.1vw,14.5px);font-weight:700;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rv-card .tag{font-size:10.8px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rv-card p{margin:10px 0 9px;font-size:12.3px;color:var(--ink2);line-height:1.62}
+.rv-card .meta{font-size:11px;color:var(--muted);border-top:1px dashed var(--line);padding-top:8px;line-height:1.6}
+.rv-card .meta b{color:var(--warn,#9A4208);font-weight:600}
+.rv-card .go{margin-top:10px;font-size:11.8px;font-weight:600;color:var(--pri)}
+.rv-empty{padding:28px;text-align:center;color:var(--muted);font-size:12.8px;border:1px dashed var(--line2);border-radius:12px}
+.rv-crumb{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.rv-crumb .bk{font-size:12.5px;color:var(--pri);cursor:pointer;font-weight:600}
+.rv-crumb h2{margin:0;font-size:16px;color:var(--ink);white-space:nowrap}
+.rv-crumb .sp{flex:1}
+.rv-frame{width:100%;height:calc(100vh - 208px);min-height:540px;border:1px solid var(--line2);border-radius:12px;background:var(--surface);display:block}
+.rv-note{border-left:3px solid var(--pri);background:var(--wash);color:var(--ink2);border-radius:0 9px 9px 0;padding:10px 14px;font-size:12.5px;line-height:1.8;margin:14px 0}
+.rv-box{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:15px 18px;margin-top:16px}
+.rv-box h2{margin:0 0 10px;font-size:14.5px;color:var(--ink)}
+.rv-table{width:100%;border-collapse:collapse;font-size:12px}
+.rv-table th{text-align:left;color:var(--muted);font-weight:600;padding:7px 6px;border-bottom:1px solid var(--line)}
+.rv-table td{padding:7px 6px;border-bottom:1px solid var(--line);vertical-align:top;color:var(--ink2)}
+.rv-table td.f{color:var(--muted);font-size:11px}
+/* 三级菜单：只在「创建访问 → 创建页合并壳」下示范，整体保持两层为主 */
+.sub2 .l2slot .rv-l3{margin:2px 0 7px 30px;padding-left:12px;border-left:2px solid var(--line2);display:flex;flex-direction:column;gap:1px}
+.sub2 .l2slot .rv-l3 a{display:block;padding:5px 10px;border-radius:7px;font-size:12px;color:var(--muted);white-space:nowrap;text-decoration:none}
+.sub2 .l2slot .rv-l3 a:hover{background:var(--chip);color:var(--ink)}
+.rv-menu-cap{font-size:10.8px;color:var(--muted);letter-spacing:.6px;padding:12px 10px 4px}
+@media(max-width:900px){.rv-frame{height:70vh}}
+</style>
+</head>
+<body class="v11">
+<div class="v11app" id="app">
+
+  <!-- 最左窄栏：与正式网站完全一致，未改动 -->
+  <nav class="rail2" aria-label="主导航" id="rail"></nav>
+
+  <div class="v11main">
+    <!-- 顶部通栏：与正式网站完全一致，未改动 -->
+    <header class="top2" id="top"></header>
+
+    <div class="body2">
+      <!-- 第二层菜单：框架不动，只做菜单项加减 + 二级 / 三级 -->
+      <aside class="sub2" aria-label="本页菜单" id="sub"></aside>
+
+      <!-- 内容区：切换只替换这里，和正式网站 SPA 行为一致 -->
+      <main id="rvMain"></main>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ---------- 图标：沿用正式网站那套细线几何图标 ---------- */
+var P = {
+  folder:'M3.5 8a2 2 0 0 1 2-2h3.6l2 2.2h7.4a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z',
+  book:'M4 5.5c2.7-.6 5.3-.2 8 1.5v12c-2.7-1.7-5.3-2.1-8-1.5zM20 5.5c-2.7-.6-5.3-.2-8 1.5v12c2.7-1.7 5.3-2.1 8-1.5z',
+  gear:'M4 7h9M17 7h3M4 17h3M11 17h9',
+  grid:'M4 4h6.5v6.5H4zM13.5 4H20v6.5h-6.5zM4 13.5h6.5V20H4zM13.5 13.5H20V20h-6.5z',
+  chat:'M5 5.5h14a1.5 1.5 0 0 1 1.5 1.5v8a1.5 1.5 0 0 1-1.5 1.5h-8l-4 3v-3H5A1.5 1.5 0 0 1 3.5 15V7A1.5 1.5 0 0 1 5 5.5z',
+  user:'M3.5 19.5a6 6 0 0 1 12 0M9.5 5.3a3.2 3.2 0 1 1 0 6.4 3.2 3.2 0 0 1 0-6.4z',
+  spark:'M12 3.5l2 5.5 5.5 2-5.5 2-2 5.5-2-5.5-5.5-2 5.5-2z',
+  bulb:'M12 3.5a5.5 5.5 0 0 0-3.2 10c.8.6 1.2 1.4 1.2 2.4V16h4v-.1c0-1 .4-1.8 1.2-2.4A5.5 5.5 0 0 0 12 3.5zM10 19h4M10.8 21h2.4',
+  cam:'M3.5 6.5h11v11h-11zM14.5 11l6-3.2v8.4l-6-3.2z',
+  live:'M7.5 7.5a6.4 6.4 0 0 0 0 9M16.5 7.5a6.4 6.4 0 0 1 0 9',
+  pie:'M12 3.5v8.5h8.5A8.5 8.5 0 1 1 12 3.5z',
+  doc:'M6 3.5h8l4 4v12a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-15a1 1 0 0 1 1-1zM14 3.5v4h4M8.5 12.5h7M8.5 16h5'
+};
+function ic(k,sz){return '<svg class="vi" viewBox="0 0 24 24" aria-hidden="true" style="width:'+(sz||20)+'px;height:'+(sz||20)+'px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round"><path d="'+(P[k]||P.grid)+'"/></svg>'}
+function esc(s){return String(s).replace(/[&<>\"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]})}
+
+/* ---------- 13 个任务包（按开工顺序） ---------- */
+var DATA=[
+{n:"13",g:"AI 后台",name:"AI 后台 · 规范",fn:"t13_ai_rules.html",files:"ai_console.js / ai_prompts.py",dep:"独立，可最先做",pts:"页签名与位置、规范份数、许可核实、试一试是否调模型、导入格式、标签范围、代码基准",desc:"两层规范：系统内置基础规范只读；我的补充规范可编辑、存版本、上线、回退、导入。附上线前检查与来源许可红线。"},
+{n:"1",g:"创建访问",name:"创建页合并壳",fn:"t01_create_shell.html",files:"rform.js / outline.js / 页签配置",dep:"—",pts:"单页结构与四页签、旧三决策如何融合、筛选逻辑只在服务器",desc:"甄别设定 + 访谈合并为单页「创建」；左 AI 对话、右文档；右上四页签；文档顶部研究背景、目标、招募需求三块浅底卡。"},
+{n:"2",g:"创建访问",name:"模式字段",fn:"t02_modes.html",files:"models.py / routers/plans.py",dep:"1",pts:"三种组合命名、两个新字段、切换组合后已写内容是否保留",desc:"新增 recruit_mode / host_mode；A 一站式、B1 先甄别后邀请 + AI 主持、B2 + 真人主持；一站式只能配 AI 主持，服务器校验。"},
+{n:"6",g:"创建访问",name:"发布 / 不发布 / 锁定",fn:"t06_publish.html",files:"outline_versions.py / recruit_form.py",dep:"1",pts:"四态按钮文案、检查提示、版本可见性",desc:"右上按钮四态；版本条与检查提示；受访者只看已锁定并发布的版本，编辑中不可见。"},
+{n:"7",g:"创建访问",name:"题旁对话框",fn:"t07_question_chat.html",files:"outline_chat.py / chatsel.js",dep:"1",pts:"修改预览、应用范围四档、与主对话的关系",desc:"每题旁一句指令，AI 先给修改预览，再选应用范围：只这一题 / 本环节同类 / 勾选的题 / 全部同类。"},
+{n:"8",g:"创建访问",name:"题型扩展",fn:"t08_question_types.html",files:"guide_text.py / recruit_form.py",dep:"1",pts:"第一版 6 类题型、概念测试素材区、量表与追问深度",desc:"第一版 6 类题型、量表题、追问深度 4 档、概念测试素材区与展示模式。"},
+{n:"3",g:"创建访问",name:"对话阶段推进",fn:"t03_stages.html",files:"outline_chat.py / recruit_review.py",dep:"2",pts:"11 阶段顺序、可跳回、一站式隐藏第 9 阶段",desc:"目标到发布共 11 个对话阶段，可跳回；三种组合的阶段差异；一站式隐藏「邀请信」阶段。"},
+{n:"12",g:"邀请与执行",name:"协作邀请与权限",fn:"t12_collab.html",files:"项目成员 scopes / routers/team",dep:"1",pts:"客户可修改、定量研究员无权限、多人编辑标记",desc:"邀请协作者、角色权限矩阵、多人编辑头像叠放、修改记录留痕。"},
+{n:"5",g:"邀请与执行",name:"邀请信对外版",fn:"t05_invite.html",files:"invites.py / slots.py / mailer.py",dep:"2",pts:"对外版只含四样、法律条款模板、沿用现有邀请函窗口",desc:"受访者端邮件样式；对外版只含访谈主题、预计时长、房间链接、统一必勾法律条款。"},
+{n:"4",g:"邀请与执行",name:"一站式链接流程",fn:"t04_onelink.html",files:"screen_public.py / routers/public.py",dep:"2",pts:"链接有效期与单场时长两个保险、合格者路径、筛掉只记匿名人数",desc:"A 组合受访者旅程、合格与筛掉两条分支；链接有效期、单场最长时长两个待定保险。"},
+{n:"9",g:"洞察与看板",name:"重点关注标记",fn:"t09_highlights.html",files:"大纲 meta / 新表",dep:"7",pts:"标记范围、谁能标、与看板联动",desc:"重点标记：关注原因、提出人角色、字段建议；与 AI 主持综合看板联动。"},
+{n:"10",g:"洞察与看板",name:"AI 主持综合看板",fn:"t10_board.html",files:"新路由 / rooms.js / ai_room.py",dep:"4、9",pts:"看板位置、引用并追问、客户悄悄话",desc:"KPI、告警置顶、按关注点聚合、AI 判断、原话逐字复制、引用并追问、悄悄话、接管、钻取场次。"},
+{n:"11",g:"洞察与看板",name:"导出",fn:"t11_export.html",files:"export.py",dep:"8、9",pts:"格式与内容、客户只导对外版、多语言",desc:"Word / PDF / Markdown 三种格式、导出内容清单、客户只导对外版、多语言待确认。"}
+];
+var GROUPS=[
+ {k:"创建访问",ic:"chat",sub:["1","2","6","7","8","3"]},
+ {k:"邀请与执行",ic:"user",sub:["12","5","4"]},
+ {k:"洞察与看板",ic:"bulb",sub:["9","10","11"]},
+ {k:"AI 后台",ic:"spark",sub:["13"]}
+];
+var byN={};DATA.forEach(function(m){byN[m.n]=m});
+
+/* ---------- 顶部通栏（照搬正式网站结构，不改） ---------- */
+document.getElementById("top").innerHTML =
+  '<span class="ptile" aria-hidden="true">星</span>'+
+  '<div class="pinfo"><span class="bc"><a href="/">项目列表</a> / 2026P001</span>'+
+  '<div class="r2"><span class="nm">创建访问 · 改版预览</span><span class="pill o">修改中</span></div></div>'+
+  '<div class="mods" role="navigation" aria-label="项目模块">'+
+    '<a class="mod" href="#">'+ic("grid",16)+'<span>立项向导</span></a>'+
+    '<a class="mod" href="#">'+ic("folder",16)+'<span>项目总览</span></a>'+
+    '<span class="mod stg on" aria-current="page">'+ic("chat",16)+'<span>深访</span></span>'+
+  '</div>'+
+  '<div class="tr"><label class="ctx-sub"><span>子项目</span><select aria-label="切换子项目"><option>总项目（全部 1 个）</option></select></label>'+
+  '<span class="who">Summer · 管理员 · 甲业科技</span>'+
+  '<div class="me2"><button type="button" class="av" aria-label="账号">S</button></div></div>';
+
+/* ---------- 最左窄栏（照搬正式网站结构，不改） ---------- */
+document.getElementById("rail").innerHTML =
+  '<a class="rk on" href="#" data-tip="项目" aria-label="项目">'+ic("folder",20)+'<span>项目</span></a>'+
+  '<a class="rk" href="#" data-tip="研究库" aria-label="研究库">'+ic("book",20)+'<span>研究库</span></a>'+
+  '<div class="gap"></div>'+
+  '<a class="rk" href="#" data-tip="设置" aria-label="设置">'+ic("gear",20)+'<span>设置</span></a>'+
+  '<div class="me2"><button type="button" class="av" aria-label="账号">S</button></div>';
+
+/* ---------- 第二层菜单：框架不动，只加减项 + 二级 / 三级 ---------- */
+function subHtml(){
+  var h='<div class="rv-menu-cap">改版后的导航（菜单项可加减、支持二级三级）</div><div class="mn">';
+  GROUPS.forEach(function(g,gi){
+    var on=gi===0;
+    h+='<a class="l1'+(on?' on':'')+'" href="#" data-g="'+esc(g.k)+'" data-tip="'+esc(g.k)+'"><span class="it">'+ic(g.ic,18)+'</span><span class="tx">'+esc(g.k)+'</span></a>';
+    h+='<div class="l2slot" data-slot="'+esc(g.k)+'"'+(on?'':' hidden')+'>';
+    g.sub.forEach(function(n){
+      var m=byN[n];
+      h+='<a class="l2e" href="#" data-open="'+n+'" data-tip="'+esc(m.name)+'">任务包 '+n+' · '+esc(m.name)+'</a>';
+      if(n==="1"){
+        h+='<div class="rv-l3"><a>文档</a><a>受访者端预览</a><a>邀请信</a><a>设置</a></div>';
+      }
+    });
+    h+='</div>';
+  });
+  h+='</div><div class="bot"></div>';
+  return h;
+}
+var sub=document.getElementById("sub");sub.innerHTML=subHtml();
+sub.addEventListener("click",function(e){
+  var t=e.target.closest("[data-g]");
+  if(t){e.preventDefault();
+    document.querySelectorAll("#sub .l1").forEach(function(a){a.classList.toggle("on",a===t)});
+    document.querySelectorAll("#sub .l2slot").forEach(function(s){s.hidden=(s.getAttribute("data-slot")!==t.getAttribute("data-g"))});
+    return;
+  }
+  var o=e.target.closest("[data-open]");
+  if(o){e.preventDefault();showPage(byN[o.getAttribute("data-open")]);}
+});
+
+/* ---------- 内容区：概览 / 单张效果图 ---------- */
+var main=document.getElementById("rvMain"), cards=[];
+function cardHtml(m,i){
+  return '<div class="rv-card" data-open="'+m.n+'" data-k="'+esc((m.n+" "+m.name+" "+m.files+" "+m.pts+" "+m.desc).toLowerCase())+'">'+
+    '<div class="no">第 '+(i+1)+' 张 / 13</div>'+
+    '<div class="hd"><div class="ic">'+m.n+'</div><div><h3>'+esc(m.name)+'</h3><div class="tag">'+esc(m.g)+' · '+esc(m.files)+'</div></div></div>'+
+    '<p>'+esc(m.desc)+'</p>'+
+    '<div class="meta">依赖 <b>'+esc(m.dep)+'</b> · 待确认：'+esc(m.pts)+'</div>'+
+    '<div class="go">在内容区打开 &rarr;</div></div>';
+}
+function tableHtml(){
+  var rows=DATA.map(function(m){return '<tr><td><b>'+m.n+'</b></td><td>'+esc(m.name)+'</td><td class="f">'+esc(m.files)+'</td><td>'+esc(m.dep)+'</td><td>'+esc(m.pts)+'</td></tr>'}).join("");
+  return '<div class="rv-box"><h2>待确认汇总</h2><table class="rv-table"><thead><tr><th style="width:46px">包</th><th style="width:160px">名称</th><th style="width:210px">主要涉及文件</th><th style="width:64px">依赖</th><th>要你确认的</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+}
+function showHome(){
+  var g='<div class="rv-wrap">'+
+    '<div class="rv-head"><h1>创建访问 · 改版预览</h1><span class="rv-badge hot">效果图 · 代码未改</span><span class="rv-badge">基于正式网站 UI</span></div>'+
+    '<p class="rv-lead">这一页按正式网站的真实外壳渲染：顶部通栏、最左窄栏与线上完全一致、未改动；第二层菜单只做了加减并加了二级 / 三级。点左侧菜单或下方卡片，内容区会像正式网站那样直接切换，不重建外壳。</p>'+
+    '<div class="rv-tools"><b>13 张效果图</b><span class="rv-badge" id="rvCnt">按开工顺序</span><div class="sp"></div>'+
+      '<input class="rv-input" id="rvQ" placeholder="搜名称 / 文件 / 确认点" autocomplete="off">'+
+      '<button class="rv-btn" data-theme="light">浅色</button><button class="rv-btn" data-theme="orange">橙色</button><button class="rv-btn" data-theme="dark">深色</button>'+
+    '</div>'+
+    '<div class="rv-grid" id="rvGrid">'+DATA.map(cardHtml).join("")+'</div>'+
+    '<div class="rv-empty" id="rvEmpty" hidden>没有匹配的效果图，换个关键词试试。</div>'+
+    '<div class="rv-note">看完按「图号 + 哪块不对 + 期望改成什么」记下来发回即可。产品代码（含顶部通栏、左栏）一行未动；确认后才会按任务包逐包实施。</div>'+
+    tableHtml()+
+  '</div>';
+  main.innerHTML=g;
+  cards=[].slice.call(main.querySelectorAll(".rv-card"));
+  cards.forEach(function(c){c.onclick=function(){showPage(byN[c.getAttribute("data-open")])}});
+  main.querySelector("#rvQ").oninput=function(){
+    var k=this.value.trim().toLowerCase(),n=0;
+    cards.forEach(function(c){var hit=!k||c.getAttribute("data-k").indexOf(k)>=0;c.hidden=!hit;if(hit)n++});
+    main.querySelector("#rvEmpty").hidden=(n!==0);
+    main.querySelector("#rvCnt").textContent=k?("匹配 "+n+" / 13 张"):"按开工顺序";
+  };
+  [].slice.call(main.querySelectorAll("[data-theme]")).forEach(function(b){
+    b.onclick=function(){document.documentElement.dataset.theme=b.getAttribute("data-theme");
+      [].slice.call(main.querySelectorAll("[data-theme]")).forEach(function(x){x.classList.toggle("on",x===b)})};
+  });
+  var cur=document.documentElement.dataset.theme||"light";
+  [].slice.call(main.querySelectorAll("[data-theme]")).forEach(function(b){b.classList.toggle("on",b.getAttribute("data-theme")===cur)});
+  main.scrollTop=0;
+}
+function showPage(m){
+  main.innerHTML='<div class="rv-wrap">'+
+    '<div class="rv-crumb"><span class="bk" id="rvBack">&larr; 返回概览</span><h2>任务包 '+m.n+' · '+esc(m.name)+'</h2><div class="sp"></div>'+
+      '<a class="rv-btn" href="'+m.fn+'" target="_blank" rel="noopener">全屏打开 &nearr;</a></div>'+
+    '<div class="rv-note">待确认：'+esc(m.pts)+'　|　涉及文件：'+esc(m.files)+'　|　依赖：'+esc(m.dep)+'</div>'+
+    '<iframe class="rv-frame" src="'+m.fn+'" title="'+esc(m.name)+'" loading="lazy"></iframe>'+
+  '</div>';
+  main.querySelector("#rvBack").onclick=showHome;
+  document.querySelectorAll("#sub .l2e").forEach(function(a){a.classList.toggle("on",a.getAttribute("data-open")===m.n)});
+  main.scrollTop=0;
+}
+showHome();
+</script>
+</body>
+</html>

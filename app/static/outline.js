@@ -19,6 +19,7 @@ async function outlineView(p) {
   V = S.v;
   let seg = sessionStorage.getItem("ol_seg") || "outline", sending = false, pending = "", editing = "", qmenu = "", viewer = "host", step = 0, pop = "", L = new Set(), F = new Set(), opened = new Set(), batch = false, picked = new Set(), autoPend = new Set(), autoFail = new Set();
   let files = [], reading = false;   // 附件：已读出文字的文件 {name, text, chars, truncated}
+  const RO = () => !!S.readonly;   // a client (viewer) sees the outline read-only but may still mark 重点关注
   if (!["outline", "settings", "test"].includes(seg)) seg = "outline";
   const stat = (t) => { const s = $("#olstat"); if (s) s.textContent = t; else if (t) toast(t); };
   const take = (r) => { S = { ...S, ...r }; V = S.v; try { sessionStorage.setItem("ol_v_" + p.id, V); } catch { /* no storage */ } };
@@ -98,6 +99,7 @@ async function outlineView(p) {
   const fixMessage = () => `请帮我修好大纲文字里的这个问题：${S.problem}。如果修不了，就按研究背景重新整理一份大纲。`.slice(0, 900);
   const drawChat = () => {
     const c = $("#olchat"); if (!c) return;
+    if (RO()) { c.innerHTML = ""; return; }   // a client (viewer) sees no AI thread
     c.innerHTML = chatHtml(); c.scrollTop = c.scrollHeight;
     const sg = $("#olsug"); if (sg) sg.innerHTML = sugHtml();
     document.querySelectorAll("#olsug [data-chip]").forEach((b) => (b.onclick = () => send(QUICK[b.dataset.chip] || b.dataset.chip)));
@@ -145,24 +147,25 @@ async function outlineView(p) {
     const key = `${part.kind}:${part.ref}:${qi}`;
     if (editing === key) return `<div class="row" style="margin:4px 0"><input class="olq" data-key="${key}" value="${esc(q.text)}" maxlength="300" aria-label="问题" style="flex:1;min-width:160px"><button class="p" type="button" data-ok="${key}">保存</button><button class="s" type="button" data-no="1">取消</button></div>`;
     if (batch) return `<label class="ol-q ol-bq"><input type="checkbox" class="ol-pk" data-pk="${key}" ${picked.has(key) ? "checked" : ""} aria-label="选择这个问题"><span class="rf-n">${label}</span><span class="ol-qt">${esc(q.text)}${refOf(pi, qi)}</span><span class="ol-dl" data-d="${q.depth || "shallow"}">${DEPTH[q.depth || "shallow"][0]}</span></label>`;
-    const mk = (S.marks || {})[q.text], on = opened.has(key), depth = q.depth || "shallow", menu = qmenu === key;
-    const panel = !on ? "" : `<div class="ol-ex" data-ex="${key}"><div class="ol-exr"><label for="d-${key}">追问深度</label><select id="d-${key}" class="ol-dp" data-dp-sel="${key}" aria-label="追问深度">${Object.entries(DEPTH).map(([k, v]) => `<option value="${k}"${k === depth ? " selected" : ""}>${v[0]} · ${v[1]}</option>`).join("")}</select></div><label for="g-${key}" class="ol-gl">访谈指引</label><textarea id="g-${key}" class="ol-gt" data-gt="${key}" maxlength="500" rows="3" aria-label="访谈指引">${esc(q.guide || "")}</textarea><div class="ol-gc"><span data-gc>${(q.guide || "").length}</span> / 500</div></div>`;
-    const menuHtml = !menu ? "" : `<div class="ol-qmenu" role="menu"><button type="button" role="menuitem" data-mdup="${key}">复制</button><button type="button" role="menuitem" data-mins="${key}:0">在上方添加问题</button><button type="button" role="menuitem" data-mins="${key}:1">在下方添加问题</button><hr><button type="button" role="menuitem" class="del" data-rm="${key}">删除</button></div>`;
+    const mk = (S.marks || {})[q.text], on = opened.has(key), depth = q.depth || "shallow", menu = qmenu === key, star = !!q.mark, ro = RO();
+    const panel = !on ? "" : `<div class="ol-ex" data-ex="${key}">${ro ? "" : `<div class="ol-exr"><label for="d-${key}">追问深度</label><select id="d-${key}" class="ol-dp" data-dp-sel="${key}" aria-label="追问深度">${Object.entries(DEPTH).map(([k, v]) => `<option value="${k}"${k === depth ? " selected" : ""}>${v[0]} · ${v[1]}</option>`).join("")}</select></div><label for="g-${key}" class="ol-gl">访谈指引</label><textarea id="g-${key}" class="ol-gt" data-gt="${key}" maxlength="500" rows="3" aria-label="访谈指引">${esc(q.guide || "")}</textarea><div class="ol-gc"><span data-gc>${(q.guide || "").length}</span> / 500</div>`}<label for="r-${key}" class="ol-gl">关注原因</label><textarea id="r-${key}" class="ol-gt" data-reason="${key}" maxlength="500" rows="2" aria-label="关注原因" placeholder="想知道什么，给综合看板用">${esc(q.reason || "")}</textarea></div>`;
+    const menuHtml = !menu || ro ? "" : `<div class="ol-qmenu" role="menu"><button type="button" role="menuitem" data-mdup="${key}">复制</button><button type="button" role="menuitem" data-mins="${key}:0">在上方添加问题</button><button type="button" role="menuitem" data-mins="${key}:1">在下方添加问题</button><hr><button type="button" role="menuitem" class="del" data-rm="${key}">删除</button></div>`;
     const above = editing === `ins:${key}:0` ? insRow(part, qi) : "", below = editing === `ins:${key}:1` ? insRow(part, qi + 1) : "";
-    return `${above}<div class="ol-q ol-card2${mk ? " ol-" + mk : ""}" data-card="${key}"><button class="ol-grip" type="button" data-grip="${key}" aria-label="拖动排序（也可以用上下方向键）">⋮⋮</button>
-      <div class="ol-top"><span class="rf-n">${label}</span><span class="ol-qt" data-selk="q:${key}" data-ed="${key}" title="点一下修改">${esc(q.text)}${mk ? `<em class="ol-mk">${mk === "new" ? "新增" : "已修改"}</em>` : ""}${refOf(pi, qi)}</span><span class="ol-dl" data-d="${depth}">${DEPTH[depth][0]}</span>
-        <button class="ol-cv${on ? " on" : ""}" type="button" data-tg="${key}" aria-expanded="${on}" aria-label="${on ? "收起" : "展开"}这个问题的设置">›</button><button class="ol-mn" type="button" data-qm="${key}" aria-haspopup="true" aria-expanded="${menu}" aria-label="更多">⋮</button>${menuHtml}</div>${panel}</div>${below}`;
+    const markBy = q.mark && q.mark_by ? `<em class="ol-mkby">${q.mark_by === "client" ? "客户" : q.mark_by === "moderator" ? "主持人" : ""}</em>` : "";
+    return `${above}<div class="ol-q ol-card2${mk ? " ol-" + mk : ""}" data-card="${key}">${ro ? "" : `<button class="ol-grip" type="button" data-grip="${key}" aria-label="拖动排序（也可以用上下方向键）">⋮⋮</button>`}
+      <div class="ol-top"><span class="rf-n">${label}</span><button class="ol-star${star ? " on" : ""}" type="button" data-mk="${key}" aria-pressed="${star}" aria-label="${star ? "取消重点关注" : "标为重点关注"}" title="重点关注">${star ? "★" : "☆"}</button><span class="ol-qt"${ro ? "" : ` data-selk="q:${key}" data-ed="${key}" title="点一下修改"`}>${esc(q.text)}${mk ? `<em class="ol-mk">${mk === "new" ? "新增" : "已修改"}</em>` : ""}${markBy}${refOf(pi, qi)}</span><span class="ol-dl" data-d="${depth}">${DEPTH[depth][0]}</span>
+        <button class="ol-cv${on ? " on" : ""}" type="button" data-tg="${key}" aria-expanded="${on}" aria-label="${on ? "收起" : "展开"}这个问题的设置">›</button>${ro ? "" : `<button class="ol-mn" type="button" data-qm="${key}" aria-haspopup="true" aria-expanded="${menu}" aria-label="更多">⋮</button>`}${menuHtml}</div>${panel}</div>${below}`;
   };
   const partCard = (part, mins, pi, n0) => {
     let k = n0; const live = cur().family === "live";
     const real = part.questions.filter((q) => !q.cover).length;
     const tkey = `title:${part.kind}:${part.ref}`, kindName = part.kind === "stimulus" ? "素材" : part.kind === "warmup" ? "" : "话题";
     const title = editing === tkey ? `<input class="olt" data-key="${tkey}" value="${esc(part.title)}" maxlength="120" aria-label="话题名称" style="flex:1;min-width:140px"><button class="p" type="button" data-tok="${tkey}">保存</button><button class="s" type="button" data-no="1">取消</button>`
-      : `<span class="ol-pn">环节 ${pi + 1}</span><b>${kindName ? kindName + "：" : ""}${esc(part.title)}</b><span class="sp"></span><span class="sm mut">${real} 题${live ? ` · 约 ${mins} 分钟` : ""}</span>${part.kind === "topic" ? `<button class="s" type="button" data-rn="${tkey}">改名</button>` : ""}<button class="s" type="button" data-dp="${part.kind}:${part.ref}" aria-label="删除这一段">删除这一段</button>`;
+      : `<span class="ol-pn">环节 ${pi + 1}</span><b>${kindName ? kindName + "：" : ""}${esc(part.title)}</b><span class="sp"></span><span class="sm mut">${real} 题${live ? ` · 约 ${mins} 分钟` : ""}</span>${RO() ? "" : `${part.kind === "topic" ? `<button class="s" type="button" data-rn="${tkey}">改名</button>` : ""}<button class="s" type="button" data-dp="${part.kind}:${part.ref}" aria-label="删除这一段">删除这一段</button>`}`;
     const covers = S.lang === "zh" ? "" : part.questions.map((q, qi) => (q.cover ? `<div class="rf-o mut">· ${esc(q.text)}${refOf(pi, qi)}</div>` : "")).join("");
     return `<div class="rf-q" data-part="${part.kind}:${part.ref}" data-n="${real}"><div class="row">${title}</div>${covers}${part.questions.map((q, qi) => questionRow(part, q, qi, q.cover ? "" : "Q" + (++k), pi)).join("")}
       ${editing === `add:${part.kind}:${part.ref}` ? `<div class="row" data-addrow style="margin:4px 0"><input class="olq" data-add-key="${part.kind}:${part.ref}" maxlength="300" placeholder="新问题（一句话，以问号结尾）" aria-label="新问题" style="flex:1;min-width:160px"><button class="p" type="button" data-addok="${part.kind}:${part.ref}">添加</button><button class="s" type="button" data-no="1">取消</button></div>`
-        : `<div data-addrow><button class="s" type="button" data-add="${part.kind}:${part.ref}">＋ 添加问题</button></div>`}</div>`;
+        : RO() ? "" : `<div data-addrow><button class="s" type="button" data-add="${part.kind}:${part.ref}">＋ 添加问题</button></div>`}</div>`;
   };
   const famRow = () => {   // 访谈形式：语音/视频和文字访谈各有一份大纲，点一下切换（还没有的先生成）
     if (S.families.length < 2) return "";
@@ -176,10 +179,10 @@ async function outlineView(p) {
     let n0 = 0; const cards = sum.parts.map((x, i) => { const c = partCard(x, mins[i], i, n0); n0 += x.questions.filter((q) => !q.cover).length; return c; });
     const real = sum.parts.flatMap((x, i) => x.questions.map((q, qi) => (q.cover ? null : `${x.kind}:${x.ref}:${qi}`))).filter(Boolean), n = syncKeys().length + 1;
     const bar = batch ? `<div class="ol-bt" role="toolbar" aria-label="批量操作"><label class="ol-ba"><input type="checkbox" data-pkall="1" ${picked.size && picked.size === real.length ? "checked" : ""}>全选</label><span class="sp">已选 ${picked.size} 题${n > 1 ? ` · 将改到 ${n} 个版本` : ""}</span><select data-bdepth aria-label="追问深度" class="ol-bs"><option value="">追问深度 ▾</option>${Object.entries(DEPTH).map(([k, v]) => `<option value="${k}">${v[0]} · ${v[1]}</option>`).join("")}</select><button type="button" class="ol-bd" data-bdel="1">删除</button><button type="button" class="ol-bx" data-bt="1">完成</button></div>` : "";
-    return `${famRow()}<div class="row ol-hr"><h3 class="rf-h">共 ${sum.parts.length} 段 · ${sum.question_count} 题 · ${live ? `约 ${sum.minutes} 分钟` : "不计时长"}</h3><span class="sp"></span>${batch ? "" : `<button class="s" type="button" data-bt="1">批量</button>`}</div>${bar}
+    return `${famRow()}<div class="row ol-hr"><h3 class="rf-h">共 ${sum.parts.length} 段 · ${sum.question_count} 题 · ${live ? `约 ${sum.minutes} 分钟` : "不计时长"}</h3><span class="sp"></span>${RO() || batch ? "" : `<button class="s" type="button" data-bt="1">批量</button>`}</div>${bar}
       ${live ? `<div class="ol-bar" role="img" aria-label="各段时间分配">${sum.parts.map((x, i) => `<i style="flex:${mins[i]};background:${cols[i % cols.length]}" title="${esc(x.title)} ${mins[i]} 分钟"></i>`).join("")}</div>` : ""}
       ${cards.join("")}
-      <div class="row" style="margin-top:8px"><input id="olnewt" maxlength="60" placeholder="新话题的名字" aria-label="新话题的名字" style="flex:1;min-width:120px"><input id="olnewq" maxlength="300" placeholder="第一个问题" aria-label="第一个问题" style="flex:2;min-width:160px"><button class="s" type="button" id="oladdp">＋ 添加话题</button></div>`;
+      ${RO() ? "" : `<div class="row" style="margin-top:8px"><input id="olnewt" maxlength="60" placeholder="新话题的名字" aria-label="新话题的名字" style="flex:1;min-width:120px"><input id="olnewq" maxlength="300" placeholder="第一个问题" aria-label="第一个问题" style="flex:2;min-width:160px"><button class="s" type="button" id="oladdp">＋ 添加话题</button></div>`}`;
   }
   const settingsHtml = () => {
     const s = S.settings, ed = s.can_edit_langs, ok = !!S.summary;
@@ -226,10 +229,12 @@ async function outlineView(p) {
     const rows = S.versions.map((x) => `<button type="button" class="rf-vi${x.key === V ? " on" : ""}" role="menuitemradio" aria-checked="${x.key === V}" data-ver="${x.key}"><span>${esc(x.name)}${x.base ? "（原文）" : ""}</span>${x.exists ? "" : autoPend.has(x.key) ? `<span class="rt-st o">正在生成…</span>` : autoFail.has(x.key) ? `<span class="rt-st r">生成失败 · 重试</span>` : `<span class="rt-st o">等待生成</span>`}</button>`).join("");
     return `<div class="rf-ver"><button type="button" data-pop="ver" aria-haspopup="true" aria-expanded="${pop === "ver"}">版本：${esc(c.name)} ▾</button>${pop === "ver" ? `<div class="rf-vm" role="menu">${rows}</div>` : ""}</div>`;
   };
-  const segHtml = () => [["outline", "大纲"], ["settings", "设置"], ["test", "预览测试"]].map(([k, n]) => `<button type="button" role="tab" data-seg="${k}" class="${seg === k ? "on" : ""}" aria-selected="${seg === k}">${n}</button>`).join("");   // 大纲/设置/预览测试：放在外壳固定的二级行里（#olseg 带 data-subrow），这里只更新里面的按钮
-  const rightHead = () => S.versions.length < 2 ? "" : `<div class="rf-hd ol-hd"><span class="sp"></span><span class="sm mut" id="olstat" role="status" aria-live="polite"></span>${capsule()}${verMenu()}</div>`;
+  const segHtml = () => (RO() ? [["outline", "大纲"]] : [["outline", "大纲"], ["settings", "设置"], ["test", "预览测试"]]).map(([k, n]) => `<button type="button" role="tab" data-seg="${k}" class="${seg === k ? "on" : ""}" aria-selected="${seg === k}">${n}</button>`).join("");   // 大纲/设置/预览测试：放在外壳固定的二级行里（#olseg 带 data-subrow），这里只更新里面的按钮
+  const rightHead = () => `<div class="rf-hd ol-hd"><span class="sp"></span><span class="sm mut" id="olstat" role="status" aria-live="polite"></span>${RO() ? "" : capsule()}${verMenu()}${RO() ? "" : exportMenu()}</div>`;
+  const exportMenu = () => `<span class="ol-exp"><button type="button" data-pop="exp" aria-haspopup="true" aria-expanded="${pop === "exp"}" title="导出整份大纲">导出 ▾</button>${pop === "exp" ? `<div class="rf-vm ol-pop" role="menu"><button type="button" role="menuitem" data-exp="md">Markdown（.md）</button><button type="button" role="menuitem" data-exp="html">可打印网页（转 PDF / Word）</button></div>` : ""}</span>`;
   function drawRight() {
     const r = $("#olright"); if (!r) return;
+    if (RO() && seg !== "outline") seg = "outline";
     const sg = $("#olseg"); if (sg) sg.innerHTML = segHtml();
     const keep = $("#olout") ? $("#olout").scrollTop : 0;
     const body = seg === "outline" ? outlineHtml() : seg === "settings" ? settingsHtml() : testHtml();
@@ -297,6 +302,13 @@ async function outlineView(p) {
     document.querySelectorAll("[data-fixnote]").forEach((b) => (b.onclick = () => send(fixMessage())));
     document.querySelectorAll("[data-pop]").forEach((b) => (b.onclick = (e) => { e.stopPropagation(); pop = pop === b.dataset.pop ? "" : b.dataset.pop; drawRight(); }));
     document.querySelectorAll("[data-ver]").forEach((b) => (b.onclick = () => { if (b.dataset.ver === V) { pop = ""; drawRight(); } else goto(b.dataset.ver); }));
+    document.querySelectorAll("[data-exp]").forEach((b) => (b.onclick = guard(async () => {   // 导出：下载需要登录头，取回后交给浏览器保存
+      const fmt = b.dataset.exp, ext = fmt === "html" ? "html" : "md";
+      const r = await fetch(`/api/projects/${p.id}/outline/export?format=${fmt}&v=${encodeURIComponent(V)}`, { headers: { Authorization: "Bearer " + store.get("tt_token") } });
+      if (!r.ok) { const t = await r.text(); throw new Error(t ? (JSON.parse(t).detail || "导出失败") : "导出失败，请稍后再试"); }
+      const a = document.createElement("a"); a.href = URL.createObjectURL(await r.blob()); a.download = `${(S.summary && S.summary.topic) || p.name || "访谈大纲"}-${V}.${ext}`; document.body.appendChild(a); a.click(); a.remove();
+      toast(fmt === "html" ? "已导出可打印网页（浏览器打印即转 PDF）" : "已导出 Markdown");
+    })));
     const picks = (set, code, on) => { if (on) set.add(code); else set.delete(code); drawRight(); };
     document.querySelectorAll("[data-lang]").forEach((i) => (i.onchange = () => picks(L, i.dataset.lang, i.checked)));
     document.querySelectorAll("[data-fam]").forEach((i) => (i.onchange = () => picks(F, i.dataset.fam, i.checked)));
@@ -344,9 +356,11 @@ async function outlineView(p) {
     document.querySelectorAll("[data-bdepth]").forEach((s) => (s.onchange = () => { if (!s.value) return; if (!picked.size) { s.value = ""; return toast("先勾选要改的问题", true); } doBatch("depth", s.value); }));
     document.querySelectorAll("[data-bdel]").forEach((b) => (b.onclick = () => { if (!picked.size) return toast("先勾选要删除的问题", true); doBatch("delete"); }));
     document.querySelectorAll("[data-tg]").forEach((b) => (b.onclick = () => { const k = b.dataset.tg; opened.has(k) ? opened.delete(k) : opened.add(k); drawRight(); }));
-    const saveMeta = (key) => { const box = document.querySelector(`[data-ex="${key}"]`), [kind, ref, idx] = keyOf(key); edit({ op: "meta", kind, ref: +ref, index: +idx, value: `${box.querySelector("select").value}|${box.querySelector("textarea").value}` }); };
+    const saveMeta = (key) => { const box = document.querySelector(`[data-ex="${key}"]`), [kind, ref, idx] = keyOf(key); const r = box.querySelector("[data-reason]"), reason = r ? r.value.trim() : ""; edit({ op: "meta", kind, ref: +ref, index: +idx, value: `${box.querySelector("select").value}|${box.querySelector("textarea").value}` }).then(() => { if (reason) edit({ op: "mark", kind, ref: +ref, index: +idx, value: `1|${reason}` }); }); };
     document.querySelectorAll("[data-dp-sel]").forEach((s) => (s.onchange = () => saveMeta(s.dataset.dpSel)));
     document.querySelectorAll("[data-gt]").forEach((a) => { a.oninput = () => { const c = a.parentElement.querySelector("[data-gc]"); if (c) c.textContent = a.value.length; }; a.onchange = () => saveMeta(a.dataset.gt); });
+    document.querySelectorAll("[data-reason]").forEach((a) => (a.onchange = () => { const key = a.dataset.reason, [kind, ref, idx] = keyOf(key); const on = a.closest("[data-ex]") ? true : false; edit({ op: "mark", kind, ref: +ref, index: +idx, value: `${on ? "1" : "0"}|${a.value.trim()}` }); }));
+    document.querySelectorAll("[data-mk]").forEach((b) => (b.onclick = () => { const [kind, ref, idx] = keyOf(b.dataset.mk); const cur = b.classList.contains("on"); edit({ op: "mark", kind, ref: +ref, index: +idx, value: cur ? "0" : "1" }); }));
     document.querySelectorAll("[data-no]").forEach((b) => (b.onclick = () => { editing = ""; drawRight(); }));
     document.querySelectorAll("[data-ok]").forEach((b) => (b.onclick = () => { const [kind, ref, idx] = keyOf(b.dataset.ok), v = document.querySelector(".olq").value; edit({ op: "set", kind, ref: +ref, index: +idx, value: v }); }));
     document.querySelectorAll(".olq").forEach((i) => (i.onkeydown = (e) => { if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); (document.querySelector("[data-ok]") || document.querySelector("[data-insok]") || document.querySelector("[data-addok]")).click(); } else if (e.key === "Escape") { editing = ""; drawRight(); } }));
@@ -366,7 +380,7 @@ async function outlineView(p) {
   /* ---------- the whole page ---------- */
   shell(`<div class="rf-seg" id="olseg" role="tablist" aria-label="大纲视图" data-subrow></div><div class="rf" style="padding:0"><div class="rf-ws" id="olws"><div class="rf-pane">
       <div class="rf-sc" id="olchat"></div>
-      <div id="olsel" hidden></div><div class="ol-sug" id="olsug"></div><div class="ol-files" id="olfiles"></div><div class="rf-inp"><div class="rf-box"><textarea id="olmsg" rows="2" maxlength="1000" placeholder="说说你想怎么改，或者直接问我问题……" aria-label="对话输入"></textarea><button class="ol-att" type="button" id="olatt" aria-label="添加附件（PDF、Word、文字文件）" title="添加附件"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#olclip"/></svg></button><input type="file" id="olfile" hidden accept=".pdf,.docx,.txt,.md,.csv,.png,.jpg,.jpeg,.webp,.mp4,.mov"><button class="p rf-send" type="button" id="olsend" aria-label="发送">↑</button></div></div></div>
+      <div id="olsel" hidden></div><div class="ol-sug" id="olsug"></div><div class="ol-files" id="olfiles"></div>${RO() ? `<div class="ol-ro"><b>只读 · 客户视图</b><span>你可以在这里给问题标 ★ 重点关注、写关注原因；研究团队会在综合看板里看到。</span></div>` : `<div class="rf-inp"><div class="rf-box"><textarea id="olmsg" rows="2" maxlength="1000" placeholder="说说你想怎么改，或者直接问我问题……" aria-label="对话输入"></textarea><button class="ol-att" type="button" id="olatt" aria-label="添加附件（PDF、Word、文字文件）" title="添加附件"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#olclip"/></svg></button><input type="file" id="olfile" hidden accept=".pdf,.docx,.txt,.md,.csv,.png,.jpg,.jpeg,.webp,.mp4,.mov"><button class="p rf-send" type="button" id="olsend" aria-label="发送">↑</button></div></div>`}</div>
       <div class="rf-split" id="olsplit" role="separator" aria-orientation="vertical" aria-label="拖动调整对话和大纲的宽度（双击恢复）" tabindex="0"><i></i></div><div class="rf-pane" id="olright"></div></div></div>`, { active: "outline", p });
   document.body.classList.add("rfmode", "pgw");
   if (!document.getElementById("olclip")) document.body.insertAdjacentHTML("beforeend", `<svg width="0" height="0" style="position:absolute" aria-hidden="true"><symbol id="olclip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21.4 11.1l-9.2 9.2a5 5 0 0 1-7.1-7.1l9.2-9.2a3.3 3.3 0 0 1 4.7 4.7l-9.2 9.2a1.7 1.7 0 0 1-2.4-2.4l8.5-8.5"/></symbol></svg>`);
@@ -374,10 +388,12 @@ async function outlineView(p) {
   fit(); pageOn("fit", window, "resize", fit);
   resetSync(); drawChat(); drawRight(); wireSel(); autoGen();
   const m = $("#olmsg");
-  $("#olsend").onclick = () => send(m.value);
-  $("#olatt").onclick = () => $("#olfile").click();
-  $("#olfile").onchange = (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) addFile(f); };
-  m.onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(m.value); } };
+  if (m) {   // a client (viewer) has no chat input
+    $("#olsend").onclick = () => send(m.value);
+    $("#olatt").onclick = () => $("#olfile").click();
+    $("#olfile").onchange = (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) addFile(f); };
+    m.onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(m.value); } };
+  }
   const key = "ol_left_pct", setRatio = (pct) => ws.style.setProperty("--rfl", Math.min(60, Math.max(30, pct)) + "%");
   let saved = 42; try { saved = +localStorage.getItem(key) || 42; } catch { /* no storage: the default */ }
   setRatio(saved);

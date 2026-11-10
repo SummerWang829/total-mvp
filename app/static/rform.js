@@ -539,11 +539,42 @@ ${text}
         <button type="button" class="s rq-asktool rq-askrec" data-askrec="${q.id}" aria-label="${recLabel}" title="${recLabel}">${recIcon}</button>
         <span class="sm mut">AI 会先给修改预览，你确认后才应用。</span></div></div>`;
   }
+  // 「改这题」栏与所点题目顶端对齐：面板内容从那道题的顶边开始，滚动题目列表时跟着走
+  let askScrollBound = false, askScrollRaf = 0;
+  function alignAskPanel(bringIntoView) {
+    const panel = $("#rfaskpanel"); if (!panel || panel.hidden || !askOpen) return;
+    const box = panel.querySelector(".rq-askbox"), out = $("#rfout");
+    if (!box || !out) return;
+    const key = (typeof CSS !== "undefined" && CSS.escape) ? CSS.escape(askOpen) : askOpen;
+    const card = out.querySelector(`.rf-q[data-qid="${key}"]`);
+    if (!card) { panel.style.paddingTop = ""; return; }
+    const or = out.getBoundingClientRect();
+    let cr = card.getBoundingClientRect();
+    if (bringIntoView && (cr.top < or.top + 4 || cr.top > or.bottom - 60)) {
+      out.scrollTop = Math.max(0, out.scrollTop + cr.top - or.top - 12);
+      cr = card.getBoundingClientRect();
+    }
+    panel.style.paddingTop = "16px"; panel.scrollTop = 0;
+    const d0 = Math.round(cr.top - box.getBoundingClientRect().top);
+    const max = Math.max(0, Math.round(panel.getBoundingClientRect().height - 160));
+    panel.style.paddingTop = (16 + Math.max(0, Math.min(d0, max))) + "px";
+  }
+  function bindAskScroll() {
+    if (askScrollBound) return; askScrollBound = true;
+    document.addEventListener("scroll", (e) => {
+      if (!askOpen) return;
+      const t = e.target;
+      if (!t || t.nodeType !== 1) return;
+      if (t.id !== "rfout" && !t.closest("#rfout") && !t.querySelector("#rfout")) return;
+      if (askScrollRaf) return;
+      askScrollRaf = requestAnimationFrame(() => { askScrollRaf = 0; alignAskPanel(false); });
+    }, true);
+  }
   // 右侧并排弹出的「改这题」栏：点题目右上角 💬 时，左侧对话栏+问卷栏往里压缩，右侧并排挤进这栏（不遮罩）
   function drawAskPanel() {
     const panel = $("#rfaskpanel"); if (!panel) return;
     const qi = Q.findIndex((x) => x.id === askOpen);
-    if (qi < 0) { panel.hidden = true; panel.innerHTML = ""; stopAskRec(); return; }
+    if (qi < 0) { panel.hidden = true; panel.innerHTML = ""; panel.style.paddingTop = ""; stopAskRec(); return; }
     panel.innerHTML = `${askBox(Q[qi], qi)}`;
     panel.hidden = false;
     const qid = Q[qi].id;
@@ -568,6 +599,7 @@ ${text}
         askOpen = null; askImgs = []; syncUndo(); drawChat(); drawRight(); toast(r.changed ? "已按你的要求改好这一题" : (r.reply || "已处理"));
       } catch (e) { askFail = e.message; askBusy = false; drawRight(); }
     });
+    bindAskScroll(); alignAskPanel(true);
   }
   // 录音：MediaRecorder 录一段，停止后上传 /api/attachments/transcribe，转出的文字填进输入框
   function toggleAskRec(qid) {
@@ -611,7 +643,7 @@ ${text}
         <button class="rq-more" type="button" data-menu="${ok}" aria-label="选项 ${j + 1} 菜单" aria-expanded="${menu === ok}">${rfIcon(RF_IC.dots)}</button>${menu === ok ? oMenu(q, i, j) : ""}</div>`;
     }).join("") + `<button class="rq-add" type="button" data-oadd-view="${q.id}">＋ 添加选项</button>` : "";
     const rules = q.type === "number" ? (q.rules || []).map((r) => `<div class="rq-opt">如果数字${RF_OP[r.op]} ${r.value} ${badge(r.goto)}</div>`).join("") : "";
-    return `<div class="rf-q${changedIds.has(q.id) ? " rf-hl" : ""}" data-qid="${q.id}" data-qi="${i}" data-selk="q:${q.id}">
+    return `<div class="rf-q${changedIds.has(q.id) ? " rf-hl" : ""}${askOpen === q.id ? " rf-ask-target" : ""}" data-qid="${q.id}" data-qi="${i}" data-selk="q:${q.id}">
       <span class="rq-grip" data-grip="${i}" tabindex="0" role="button" title="按住拖动排序，或用上下方向键移动" aria-label="拖动第 ${i + 1} 题">${rfIcon(RF_IC.grip)}</span>
       <div class="rq-top"><span class="rq-qn">Q${i + 1}</span><button class="rq-title" type="button" data-edit="${q.id}">${esc(q.text || "（还没写题目）")}</button>${qBadge(q)}<span class="sp"></span>
         <span class="rq-type-wrap"><button class="rq-type rq-type-btn" type="button" data-typetg="${q.id}" aria-haspopup="true" aria-expanded="false" title="点一下切换题型">${RF_TYPE[q.type] || q.type}${q.required ? " · 必答" : ""}${rfIcon(RF_IC.chev)}</button>${typeMenuOpen === q.id ? `<div class="rq-type-menu" role="menu">${Object.entries(RF_TYPE).map(([k, n]) => `<button type="button" role="menuitem" data-typeset="${q.id}" data-t="${k}" class="${q.type === k ? "on" : ""}">${n}</button>`).join("")}</div>` : ""}</span>

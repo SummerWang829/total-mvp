@@ -186,7 +186,7 @@ function shSubMenu(p, active) {
       const merged = active === "people" || active === "outline";   // 这两页共用“创建访谈”一个入口
       head = { ic: SH_STAGE_ICON[cur] || "chat", title: SH_KIND[cur] || "深访", meta: kinds.length > 1 ? `阶段 ${kinds.indexOf(cur) + 1} · ${stLabel}` : stLabel };
       items = SH_HUBS[2].tabs.filter((t) => t[0] !== "studies" && t[0] !== "outline" && shPageOk(t[0], p)).map(([k, n]) => it(k, n));
-      if (merged) { onKey = "people"; extra = [{ href: `/p/${p.id}/outline`, label: "访谈大纲", on: active === "outline" }]; }
+      if (merged) { onKey = "people"; }   // 「访谈大纲」已并入「创建访谈」下的「访问大纲生成及邀请」tab，不再单独加菜单项
     }
     else head = { ic: hub === "qt" ? "pie" : hub === "cr" ? "listen" : "spark", title: hub === "qt" ? "定量" : hub === "cr" ? "舆情采集" : "异步研究", meta: stLabel };
     return { head, items, staff: true, extra, onKey };

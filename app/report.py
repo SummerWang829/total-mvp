@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from . import methods as methods_mod
 from . import pool
+from . import project_context as pctx
 from .groups import speaker_label
 from .models import AiSession, Evidence, Insight, Interview, Mention, Participant, Project, QuantSurvey, TranscriptSegment
 from .repo.search import _codes
@@ -55,9 +56,15 @@ def build(db: Session, project: Project, now: datetime, client: bool = False) ->
     items = pool.gather(db, project, include_notes=not client)
     findings = pool.group(items)
 
-    blocks: list[tuple] = [("title", project.name), ("subtitle", f"研究报告 · {now.strftime('%Y-%m-%d')} · {project.market} · {', '.join(methods_mod.LABELS[m] for m in used)}")]
+    # One source of truth: the country / language / purpose / objectives of THIS project, read
+    # from the published plan instead of the legacy Project.market code.
+    meta = pctx.meta(db, project)
+    method_names = ", ".join(methods_mod.LABELS[m] for m in used)
+    blocks: list[tuple] = [("title", project.name),
+                           ("subtitle", f"研究报告 · {now.strftime('%Y-%m-%d')} · {meta['country']} · {meta['language']} · {method_names}")]
 
-    summary = []
+    summary = [f"项目设定：{meta['country']} · {meta['language']}" +
+               (f" · 受访者话题「{meta['topic']}」" if meta["topic"] else "") + "。"]
     if live:
         summary.append(f"访谈：共 {len(live)} 场，已结束 {sum(i.status == 'ended' for i in live)} 场。")
     if asyncs:
@@ -74,7 +81,19 @@ def build(db: Session, project: Project, now: datetime, client: bool = False) ->
         summary.append(f"共整理出 {len(findings)} 条发现，目前还没有被两种以上来源印证的。")
     blocks += [("h1", "摘要")] + ([("bullet", s) for s in summary] if summary else [("p", "这个项目还没有可汇总的数据。")])
 
-    blocks += [("h1", "研究背景"), ("p", project.brief.strip() or "（项目没有填写研究背景）")]
+    # 研究背景 / 目的 / 目标 / 受访者条件：全部来自本项目立项数据与大纲，不再用占位文案。
+    blocks += [("h1", "研究背景与目的")]
+    if meta["purpose"]:
+        blocks += [("h2", "研究目的"), ("p", meta["purpose"])]
+    if meta["objectives"]:
+        blocks += [("h2", "研究目标")] + [("bullet", o) for o in meta["objectives"]]
+    if meta["criteria"]:
+        blocks += [("h2", "受访者条件"), ("table", ["条件", "项目设定"], meta["criteria"])]
+    setup = [["执行国家 / 地区", meta["country"]], ["访问语言", meta["language"]],
+             ["受访者话题", meta["topic"] or "—"],
+             ["预计访问时长", f"{meta['duration']} 分钟" if meta["duration"] else "—"]]
+    blocks += [("h2", "访问设定"), ("table", ["项目", "设定"], setup),
+               ("note", "研究背景原文：" + (meta["brief"] or "（项目没有填写研究背景）") + f"　〔信息同步自{meta['source']}〕")]
 
     rows = []
     for m in used:
@@ -90,8 +109,13 @@ def build(db: Session, project: Project, now: datetime, client: bool = False) ->
             rows.append([label, f"{len(surveys)} 份问卷，{sum(s.respondents for s in surveys)} 份有效回答"])
     blocks += [("h1", "研究方法与样本"), ("table", ["方法", "规模"], rows)]
     if people:
-        c, lg = Counter(p.country or "未知" for p in people), Counter(p.language or "未知" for p in people)
-        blocks += [("p", f"受访者共 {len(people)} 人。"), ("table", ["国家 / 地区", "人数"], [[k, str(v)] for k, v in c.most_common()]), ("table", ["语言", "人数"], [[k, str(v)] for k, v in lg.most_common()])]
+        # Respondents of one project belong to that project's market; legacy SG/zh codes are
+        # resolved to readable names so a client never sees a raw code in the sample table.
+        c = Counter(pctx.participant_market(p, meta) for p in people)
+        lg = Counter(pctx.participant_language(p, meta, getattr(p, "language", "")) for p in people)
+        blocks += [("p", f"受访者共 {len(people)} 人。"),
+                   ("table", ["执行国家 / 地区", "人数"], [[k, str(v)] for k, v in c.most_common()]),
+                   ("table", ["访问语言", "人数"], [[k, str(v)] for k, v in lg.most_common()])]
 
     blocks.append(("h1", "核心发现"))
     if not findings:

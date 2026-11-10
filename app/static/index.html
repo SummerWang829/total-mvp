@@ -20,6 +20,7 @@
 <script src="/ai_console.js"></script>
 <script src="/insights.js"></script>
 <script src="/respondent.js"></script>
+<script src="/respondent_v2.js"></script>
 <script src="/rooms.js"></script>
 <script src="/invite.js"></script>
 <script src="/imports.js"></script>
@@ -366,8 +367,8 @@ async function peopleView(p) {
         <td data-l="来源"><span class="sm mut srcname${x.source === "import" ? " imp" : ""}" title="${esc(srcName(x))}">${esc(srcName(x))}</span></td>
         ${RC ? "" : `<td class="acts">${x.anonymized || x.screening !== "eligible" || x.screen_result === "disqualified" ? "" : (() => { const iv = invOf(x); return iv ? `<button class="s" data-upd="${iv.id}"${iv.status === "ended" ? ' disabled title="访谈已结束"' : ""}>更新邀请函</button>${iv.mail_status === "failed" ? `<div class="mailwarn">邮件没发出去 · <a data-resend="${iv.id}" role="button" tabindex="0">重发</a></div>` : ""}` : `<button class="s p" data-inv="${x.id}">发送邀请函</button>`; })()}</td>`}
         ${RC ? "" : `<td class="c">${x.anonymized ? "" : `<button type="button" class="xdel" data-erase="${x.id}" data-name="${esc(x.name)}" aria-label="删除 ${esc(x.name)} 的数据" title="删除数据">×</button>`}</td>`}</tr>`; };
-  const ptab = rm === "onelink" ? (sessionStorage.getItem("ptab") === "db" ? "db" : "form") : (sessionStorage.getItem("ptab") === "list" ? "list" : sessionStorage.getItem("ptab") === "form" ? "form" : sessionStorage.getItem("ptab") === "db" ? "db" : "mode");  // 一站式从「招募问卷」起；先甄别后邀请从「招募方式」起
   const rm = rec.recruit_mode || "screen_then_invite", hm = rec.host_mode || "human";
+  const ptab = ["list", "form", "db"].includes(sessionStorage.getItem("ptab")) ? sessionStorage.getItem("ptab") : "mode";  // 从「深访」进来第一个部分一定是「招募/主持/问卷」（可返回改招募方式）；只有在本页内切过其他 tab 才记住
   // 招募方式/主持方式：作为「招募问卷」同级的 tab，排在它上方
   const modeBar = `<div class="card rmode-card" id="rmode"><h3 style="margin:0 0 12px">招募方式 · 主持方式</h3>
       <div class="rmode-t"><b>招募方式</b><span class="sm mut">怎么让候选人进入访谈</span></div>
@@ -380,18 +381,29 @@ async function peopleView(p) {
         <div class="mode2" role="group" aria-label="问卷来源"><button type="button" data-src="ai" class="${form.source === "html" ? "" : "on"}">AI 生成甄别问卷</button><button type="button" data-src="html" class="${form.source === "html" ? "on" : ""}">导入问卷链接</button></div>
         <div class="row" id="rmsrcurl" style="gap:8px;margin-top:8px" ${form.source === "html" ? "" : "hidden"}><input type="url" id="rmurl" value="${esc(form.html_url || "")}" placeholder="https://…（Confirmit 编好的问卷链接）" style="flex:1;min-width:200px"><button type="button" class="s" id="rmimport">导入</button></div>
       </div>` : ""}
-      <div class="row" style="margin-top:18px"><button type="button" class="p" id="rmnext">下一页：${rm === "onelink" ? "招募问卷" : "甄别问卷"} →</button></div></div>`;
-  // 数据库筛选及发送：按已有受访者字段筛出目标人群，显示总量，同步发甄别问卷链接邮件
-  const dbTags = [["常住地", "大湾区九市"], ["年龄", "18 岁以上"], ["家庭月收入", "≥ ¥15,000"], ["访港经历", "10.1–10.7 到访"]];
-  const dbTotal = parts.length;   // 先按「当前名单人数」作为筛选总量占位，后续接真实数据库筛选
-  const dbHtml = `<div class="card rdb-card"><h3 style="margin:0 0 8px">数据库筛选</h3>
-      <div class="sm mut" style="margin-bottom:10px">从数据库按条件筛出目标受访者，确认人群总量后，把甄别问卷链接通过邮件同步发送出去。</div>
-      <div class="rdb-tags">${dbTags.map(([k, v]) => `<span class="rdb-tag"><b>${esc(k)}</b>：${esc(v)} <button type="button" class="rdb-x" aria-label="移除 ${esc(k)}">×</button></span>`).join("")}<button type="button" class="rdb-add">＋ 添加筛选条件</button></div>
-      <div class="rdb-total"><span class="rdb-num">${dbTotal}</span><span class="rdb-u">人符合筛选</span><span class="sp"></span><button type="button" class="p" id="dbsend">同步发送甄别问卷链接</button></div>
-      <div class="sm mut">发送后进入「配额及受访者名单」查看回收进度。</div></div>`;
-  shell(`<div class="hubtabs sub" role="tablist" aria-label="创建访谈">${rm === "onelink"
+      <div class="row" style="margin-top:18px"><button type="button" class="p" id="rmnext">下一步 →</button></div></div>`;
+  // 数据库发送：人群圈选与假名化（复刻参考页功能）+ 保留原有「N 人符合筛选 / 同步发送甄别问卷链接」
+  const dbTotal = parts.length;
+  const dbHtml = `<div class="card rdb-card au-card">
+    <div class="au-pageh"><div><h2>人群圈选与假名化</h2><div class="sm mut">受众圈选条件、假名化处理、留痕</div></div><span class="sp"></span><span class="au-mod">数据库发送</span></div>
+    <section class="au-grp">
+      <div class="au-grphd"><b>人群定义</b><span class="au-pill v">v1</span><span class="au-pill draft">草稿</span><span class="au-pill unsaved" id="ausaved">未保存</span><span class="sp"></span><span class="sm mut">锁定前均可修改 ⓘ</span></div>
+      <div class="au-row"><div class="au-lb">圈选描述</div><div class="au-fld"><textarea class="au-ta" id="aubrief" maxlength="2000" placeholder="用一句话描述目标人群"></textarea><div class="au-cnt"><span id="aucnt">0</span> / 2000</div></div></div>
+      <div class="au-row"><div class="au-lb">标签</div><div class="au-fld">
+        <div class="au-tags" id="autags"></div>
+        <div class="au-ops"><button type="button" class="au-lnk" data-au="extract">✧ 根据描述提取标签</button><button type="button" class="au-lnk" data-au="clear">⌫ 清空标签</button><span class="sp"></span><span class="sm mut">按描述自动生成推荐，可再手动增删</span></div>
+        <div class="au-tip"><span class="au-spark">✧</span><span id="autip">仅依据圈选描述推导标签，不引入描述之外的条件。</span></div>
+      </div></div>
+      <div class="au-row"><div class="au-lb">执行国家</div><div class="au-fld au-country"><span class="au-countryval" id="aucountryval"><span class="sm mut">同步项目总览…</span></span><span class="sp"></span>
+        <button type="button" class="s" data-au="save" id="ausave">保存</button><button type="button" class="s" data-au="lock" id="aulock">🔒 锁定人群</button></div></div>
+    </section>
+    <section class="au-grp au-est"><div class="au-esthd"><b>人群规模估算</b><span class="au-status" id="aueststatus">尚未估算</span><span class="sp"></span><button type="button" class="s" data-au="estimate" id="auestbtn">▦ 人群规模估算</button></div>
+      <div class="sm mut au-estnote" id="auestnote">点右上角「人群规模估算」，结果出来后会自动同步到下方「N 人符合筛选」。</div></section>
+    <div class="au-keep"><div class="rdb-total"><span class="rdb-num" id="dbnum">${dbTotal}</span><span class="rdb-u">人符合筛选</span><span class="sp"></span><button type="button" class="p" id="dbsend">同步发送甄别问卷链接</button></div></div>
+  </div>`;
+  shell(`<div class="hubtabs sub" role="tablist" aria-label="创建访谈"><a href="#" role="tab" id="ptab-mode-t" class="${ptab === "mode" ? "on" : ""}" aria-selected="${ptab === "mode"}">招募/主持/问卷</a>${rm === "onelink"
       ? `<a href="#" role="tab" id="ptab-form-t" class="${ptab === "form" ? "on" : ""}" aria-selected="${ptab === "form"}">招募问卷</a><a href="#" role="tab" id="ptab-db-t" class="${ptab === "db" ? "on" : ""}" aria-selected="${ptab === "db"}">数据库发送</a>`
-      : `<a href="#" role="tab" id="ptab-mode-t" class="${ptab === "mode" ? "on" : ""}" aria-selected="${ptab === "mode"}">招募/主持/问卷</a><a href="#" role="tab" id="ptab-form-t" class="${ptab === "form" ? "on" : ""}" aria-selected="${ptab === "form"}">甄别问卷</a><a href="#" role="tab" id="ptab-db-t" class="${ptab === "db" ? "on" : ""}" aria-selected="${ptab === "db"}">数据库筛选及发送</a><a href="#" role="tab" id="ptab-list-t" class="${ptab === "list" ? "on" : ""}" aria-selected="${ptab === "list"}">配额及受访者名单</a><a href="#" role="tab" id="ptab-outline-t" class="${ptab === "outline" ? "on" : ""}" aria-selected="${ptab === "outline"}">访问大纲生成及邀请</a>`}</div>
+      : `<a href="#" role="tab" id="ptab-form-t" class="${ptab === "form" ? "on" : ""}" aria-selected="${ptab === "form"}">甄别问卷</a><a href="#" role="tab" id="ptab-db-t" class="${ptab === "db" ? "on" : ""}" aria-selected="${ptab === "db"}">数据库筛选及发送</a><a href="#" role="tab" id="ptab-list-t" class="${ptab === "list" ? "on" : ""}" aria-selected="${ptab === "list"}">配额及受访者名单</a><a href="#" role="tab" id="ptab-outline-t" class="${ptab === "outline" ? "on" : ""}" aria-selected="${ptab === "outline"}">访问大纲生成及邀请</a>`}</div>
     <div id="ptab-mode" ${ptab === "mode" ? "" : "hidden"}>${modeBar}</div>
     <div id="ptab-form" ${ptab === "form" ? "" : "hidden"}>${rf.html}</div><div id="ptab-db" ${ptab === "db" ? "" : "hidden"}>${dbHtml}</div><div id="ptab-list" ${ptab === "list" ? "" : "hidden"}>
     ${rd.html}
@@ -407,8 +419,8 @@ async function peopleView(p) {
       <div class="card empty" id="pempty" ${shown.length ? "hidden" : ""}><b>没有符合筛选条件的人。</b></div>`
       : `<div class="card empty"><b>还没有受访者。</b><span>点“添加受访者”手动添加，“导入名单（外部渠道）”导入别处拿来的名单，或把招募问卷发出去。</span></div>`}
     <div class="lpop" id="lpop" hidden></div></div>`, { active: "people", p });
-  // 一站式：工作区只有「招募问卷」一栏，隐藏静态「访谈大纲」；先甄别后邀请：保留「访谈大纲」+「甄别问卷」两个拆开的栏
-  if (rm === "onelink") document.querySelectorAll('.sub2 .l2slot a.l2e').forEach((a) => { if (/\/outline/.test(a.getAttribute("href") || "")) a.remove(); });
+  // 兜底：若二级菜单里还有指向 outline 的静态项，一律移除（大纲已统一由「访问大纲生成及邀请」tab 承载）
+  document.querySelectorAll('.sub2 .l2slot a.l2e').forEach((a) => { if (/\/outline/.test(a.getAttribute("href") || "")) a.remove(); });
   const showTab = (name) => {
     sessionStorage.setItem("ptab", name);
     if (name === "outline") { location.hash = `#/p/${p.id}/outline`; return; }   // 访问大纲生成及邀请 = 打开访谈大纲页
@@ -417,20 +429,124 @@ async function peopleView(p) {
     ["mode", "form", "db", "list"].forEach((k) => { const t = $(`#ptab-${k}-t`); if (t) { t.classList.toggle("on", name === k); t.setAttribute("aria-selected", name === k); } });
     document.body.classList.toggle("rfmode", name === "form"); if (name === "form") rf.fit();
   };
-  $("#ptab-mode-t").onclick = (e) => { e.preventDefault(); showTab("mode"); };
-  $("#ptab-form-t").onclick = (e) => { e.preventDefault(); showTab("form"); };
+  const tMode = $("#ptab-mode-t"); if (tMode) tMode.onclick = (e) => { e.preventDefault(); showTab("mode"); };
+  const tForm = $("#ptab-form-t"); if (tForm) tForm.onclick = (e) => { e.preventDefault(); showTab("form"); };
   const ptdb = $("#ptab-db-t"); if (ptdb) ptdb.onclick = (e) => { e.preventDefault(); showTab("db"); };
   const ptol = $("#ptab-outline-t"); if (ptol) ptol.onclick = (e) => { e.preventDefault(); showTab("outline"); };
-  $("#ptab-list-t").onclick = (e) => { e.preventDefault(); showTab("list"); };
-  // 同步发送甄别问卷链接（邮件）
+  const tList = $("#ptab-list-t"); if (tList) tList.onclick = (e) => { e.preventDefault(); showTab("list"); };
+  // 同步发送甄别问卷链接（邮件）+ 假名化留痕（失败不影响发送）
   const dbsend = $("#dbsend"); if (dbsend) dbsend.onclick = guard(async () => {
-    const n = parts.filter((x) => x.email && !x.anonymized).length;
+    const ids = parts.filter((x) => x.email && !x.anonymized).map((x) => x.id);
+    const n = ids.length;
     if (!n) return toast("没有可发送的受访者邮箱，请先在名单里补齐邮箱", true);
     if (!confirm(`将向 ${n} 位受访者发送甄别问卷链接邮件，确定发送吗？`)) return;
-    const r = await api(`/projects/${p.id}/recruiting/screen-invite`, { method: "POST", body: { participant_ids: parts.filter((x) => x.email && !x.anonymized).map((x) => x.id) } });
+    const r = await api(`/projects/${p.id}/recruiting/screen-invite`, { method: "POST", body: { participant_ids: ids } });
+    api(`/projects/${p.id}/audience/record-send`, { method: "POST", body: { participant_ids: ids } }).catch(() => {});
     toast(`已发送 ${r.sent} 封，跳过 ${(r.skipped || []).length} 位`);
     sessionStorage.setItem("ptab", "list"); render();
   });
+  // 人群圈选与假名化：加载 / 保存 / AI 提取标签 / 锁定 / 规模估算（结果同步到「N 人符合筛选」）
+  (() => {
+    const box = $("#ptab-db"), tagsEl = $("#autags");
+    if (!box || !tagsEl) return;
+    const st = { id: "", tags: [], conditions: [], saved: false, locked: false };
+    // 执行国家/访问语言跟着「项目总览」里当前选中的子项目，页面不写死任何国家
+    const subId = () => sessionStorage.getItem("sub_" + p.id) || "";
+    const subQ = () => { const s = subId(); return s && s !== "all" ? "?sub_id=" + encodeURIComponent(s) : ""; };
+    const drawCountry = (m) => {
+      const el = $("#aucountryval"); if (!el || !m) return;
+      el.innerHTML = `<span class="au-flag">${esc(m.flag || "🏳")}</span><b>${esc(m.country || "—")}</b><span class="au-dot">·</span><span>${esc(m.language || "—")}</span><span class="au-lock">🔒</span><span class="au-sync">随项目总览自动同步</span>`;
+    };
+    const briefTip = (t) => t ? `仅依据圈选描述「${t.slice(0, 60)}」推导标签，可归纳联想，但不引入描述中没有出现过的条件。` : "先写下圈选描述，再按描述推导标签。";
+    const drawTags = () => {
+      tagsEl.innerHTML = st.tags.map((t, i) => `<span class="au-tag">${esc(t)}<button type="button" class="au-x" data-autag="${i}" aria-label="移除标签">×</button></span>`).join("")
+        + `<input class="au-taginput" id="autaginput" placeholder="输入后回车添加…" maxlength="40"><button type="button" class="au-addcond" data-au="addcond">＋ 添加筛选条件</button>`;
+    };
+    const badge = () => {
+      const el = $("#ausaved"); if (!el) return;
+      el.textContent = st.locked ? "已锁定" : (st.saved ? "已保存" : "未保存");
+      el.className = "au-pill " + (st.locked ? "locked" : (st.saved ? "saved" : "unsaved"));
+    };
+    const showEst = (e) => {
+      const s = $("#aueststatus"), n = $("#auestnote"); if (!s || !n) return;
+      const done = e && e.status === "done", busy = e && (e.status === "pending" || e.status === "running");
+      s.className = "au-status" + (busy ? " busy" : done ? " done" : "");
+      s.innerHTML = busy ? `<span class="au-spin"></span>正在请求中…` : done ? "已完成" : (e && e.status === "failed" ? "估算失败" : "尚未估算");
+      if (done) {
+        const num = $("#dbnum"); if (num && e.matched_count != null) num.textContent = e.matched_count;
+        n.textContent = `人群规模估算完成：${e.matched_count} 人，已同步到下方「N 人符合筛选」。`;
+      } else if (busy) n.textContent = "已提交估算请求，结果出来后会自动同步到下方「N 人符合筛选」。你可以先离开，稍后回来查看。";
+      else if (e && e.status === "failed") n.textContent = "估算失败，可点右上角重试。";
+      else n.textContent = "点右上角「人群规模估算」，结果出来后会自动同步到下方「N 人符合筛选」。";
+    };
+    let timer = 0;
+    const poll = async () => {
+      try {
+        const e = await api(`/projects/${p.id}/audience/estimate`); showEst(e);
+        if (e.status === "pending" || e.status === "running") timer = setTimeout(poll, 1500);
+      } catch (_) { /* 静默：页面保持可用 */ }
+    };
+    const startEst = async (auto) => {
+      try {
+        const e = await api(`/projects/${p.id}/audience/estimate`, { method: "POST", body: {} });
+        showEst(e); if (!auto) toast("已提交人群规模估算"); timer = setTimeout(poll, 1500);
+      } catch (_) { if (!auto) toast("估算提交失败", true); }
+    };
+    const load = async () => {
+      drawTags();
+      try {
+        const d = await api(`/projects/${p.id}/audience/definition${subQ()}`);
+        st.id = d.id || ""; st.tags = [...(d.tags || [])]; st.conditions = [...(d.conditions || [])];
+        st.saved = !!d.saved; st.locked = d.status === "locked";
+        const b = $("#aubrief"); if (b) b.value = d.brief_text || "";
+        const c = $("#aucnt"); if (c) c.textContent = (d.brief_text || "").length;
+        const tip = $("#autip"); if (tip) tip.textContent = briefTip(d.brief_text || "");
+        drawCountry(d.market || d); drawTags(); badge(); showEst(d.estimate);
+        if (d.estimate && (d.estimate.status === "pending" || d.estimate.status === "running")) timer = setTimeout(poll, 1200);
+        else if (!d.estimate || d.estimate.status === "none") startEst(true);
+      } catch (_) { badge(); showEst(null); }
+    };
+    tagsEl.addEventListener("click", (ev) => {
+      const x = ev.target.closest("[data-autag]");
+      if (x) { st.tags.splice(+x.dataset.autag, 1); drawTags(); }
+    });
+    tagsEl.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter" && ev.target.id === "autaginput") {
+        ev.preventDefault(); const v = ev.target.value.trim();
+        if (v) { st.tags.push(v); drawTags(); const i = $("#autaginput"); if (i) i.focus(); }
+      }
+    });
+    const brief = $("#aubrief");
+    if (brief) brief.oninput = () => {
+      const c = $("#aucnt"); if (c) c.textContent = brief.value.length;
+      const tip = $("#autip"); if (tip) tip.textContent = briefTip(brief.value);
+    };
+    box.addEventListener("click", (ev) => {
+      const b = ev.target.closest("[data-au]"); if (!b) return;
+      const act = b.dataset.au;
+      if (act === "addcond") { const i = $("#autaginput"); if (i) i.focus(); return; }
+      if (act === "clear") { st.tags = []; drawTags(); return; }
+      if (act === "estimate") return startEst(false);
+      if (act === "extract") return guard(async () => {
+        const t = $("#aubrief") ? $("#aubrief").value : "";
+        const r = await api(`/projects/${p.id}/audience/extract-tags`, { method: "POST", body: { brief_text: t, sub_id: subId() } });
+        st.tags = r.tags || []; drawTags();
+        const tip = $("#autip"); if (tip && r.summary) tip.textContent = r.summary;
+        toast(`已按圈选描述提取 ${st.tags.length} 个标签`);
+      })();
+      if (act === "save") return guard(async () => {
+        const t = $("#aubrief") ? $("#aubrief").value : "";
+        const r = await api(`/projects/${p.id}/audience/definition`, { method: "POST", body: { brief_text: t, tags: st.tags, conditions: st.conditions, sub_id: subId() } });
+        st.id = r.id; st.saved = true; if (r.market) drawCountry(r.market); badge(); toast("人群定义已保存");
+      })();
+      if (act === "lock") return guard(async () => {
+        if (!st.saved) return toast("先点「保存」再锁定人群", true);
+        await api(`/projects/${p.id}/audience/lock`, { method: "POST", body: {} });
+        st.locked = true; badge(); toast("人群已锁定，后续发送会留痕");
+      })();
+    });
+    load();
+  })();
   document.querySelectorAll("#rmode [data-rm]").forEach((b) => (b.onclick = guard(async () => {
     const nrm = b.dataset.rm; const nhm = nrm === "onelink" ? "ai" : hm;   // 一站式 = AI 问卷 + AI 访谈，主持强制 AI
     rec.recruit_mode = nrm; rec.host_mode = nhm;
@@ -447,7 +563,10 @@ async function peopleView(p) {
     const toHtml = b.dataset.src === "html";
     document.querySelectorAll("#rmode [data-src]").forEach((x) => x.classList.toggle("on", x === b));
     const box = $("#rmsrcurl"); if (box) box.hidden = !toHtml;
-    if (!toHtml && form.source === "html") {
+    if (toHtml) {
+      form.source = "html";   // 本地先标记为「导入链接」，下一步据此跳到数据库筛选及发送
+    } else if (form.source === "html") {
+      form.source = "ai";
       await api(`/projects/${p.id}/recruiting/form/source`, { method: "POST", body: { source: "ai" } });
       await api(`/projects/${p.id}/recruiting/form`, { method: "PUT", body: { source: "ai", html_url: "" } });
       toast("已切回 AI 生成甄别问卷"); render();
@@ -458,10 +577,12 @@ async function peopleView(p) {
     if (!/^https?:\/\//i.test(u)) return toast("请填写 https:// 开头的问卷链接", true);
     await api(`/projects/${p.id}/recruiting/form`, { method: "PUT", body: { source: "html", html_url: u } });
     await api(`/projects/${p.id}/recruiting/form/source`, { method: "POST", body: { source: "html" } });
-    toast("问卷链接已导入，右侧展示该问卷的实际内容");
-    sessionStorage.setItem("ptab", "form"); render();
+    form.source = "html"; form.html_url = u;   // 本地同步来源，停留在招募方式页，由「下一步」跳到数据库筛选及发送
+    document.querySelectorAll("#rmode [data-src]").forEach((x) => x.classList.toggle("on", x.dataset.src === "html"));
+    const box = $("#rmsrcurl"); if (box) box.hidden = false;
+    toast("问卷链接已导入，点「下一步」进入数据库筛选及发送");
   });
-  const rmNext = $("#rmnext"); if (rmNext) rmNext.onclick = () => { showTab("form"); };
+  const rmNext = $("#rmnext"); if (rmNext) rmNext.onclick = () => { showTab(rm === "onelink" ? "form" : (form.source === "html" ? "db" : "form")); };
   document.body.classList.toggle("rfmode", ptab === "form");
   document.body.classList.add("pgw");  // this page runs the full width
   // ---- the list: filters, picking, tier, tags, bulk delete ----
@@ -584,8 +705,8 @@ async function peopleView(p) {
     if (!busy && !$("#bdelcf, #libcf") ?.offsetParent) refreshPeople().catch(() => {});
   }, 10000);
   if (MENU_OPEN) { const el = app.querySelector(`.msel[data-key=${MENU_OPEN}]`); if (el) { el.querySelector(".msm").hidden = false; el.querySelector(".msb").setAttribute("aria-expanded", "true"); } MENU_OPEN = ""; }
-  $("#imp2").onclick = () => importModal(p);
-  $("#imp3").onclick = () => openImportWizard(p);
+  const imp2 = $("#imp2"); if (imp2) imp2.onclick = () => importModal(p);
+  const imp3 = $("#imp3"); if (imp3) imp3.onclick = () => openImportWizard(p);
   document.querySelectorAll("[data-opopen]").forEach((b) => (b.onclick = () => openOrphanPool(p)));
   document.querySelectorAll("[data-opundo]").forEach((b) => (b.onclick = guard(() => impRollback(p, b.dataset.opundo))));
   rf.wire(); rd.wire();
@@ -611,9 +732,9 @@ async function peopleView(p) {
     }));
   }
   const rl = $("#rules"); if (rl) rl.onclick = () => rulesModal(p, rec);
-  $("#quotas").onclick = () => quotasModal(p, rec);
+  const quotasBtn = $("#quotas"); if (quotasBtn) quotasBtn.onclick = () => quotasModal(p, rec);
   const ra = $("#reapply"); if (ra) ra.onclick = guard(async () => { await api(`/projects/${p.id}/recruiting/apply`, { method: "POST" }); toast("已重新筛选"); render(); });
-  $("#np").onclick = () => {
+  const npBtn = $("#np"); if (npBtn) npBtn.onclick = () => {
     const m = modal(`<h2>添加受访者</h2><form id="f"><label class="f"><span>姓名</span><input name="name" required></label><label class="f"><span>邮箱（选填）</span><input name="email" type="email"></label>
       <label class="f"><span>所在国家</span><select name="country">${openCountryOpts(p.market)}</select></label><label class="f"><span>语言</span><select name="language">${langOpts(p.language)}</select></label>
       <label class="f"><span>甄别问卷答案（选填，每行一题，写成“题目：答案”）</span><textarea name="screener_text" rows="6" placeholder="多久使用一次护肤品：每天&#10;主要在哪里购买：屈臣氏"></textarea></label>

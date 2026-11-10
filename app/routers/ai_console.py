@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import ai_prompts
+from .. import ai_prompts, ai_rules
 from ..ai_calls import AiCallLog, stats
 from ..ai_registry import FEATURES, OTHER_KEY, feature_by_key, prompt_version
 from ..audit import audit
@@ -112,3 +112,60 @@ def prompt_live(key: str, body: LiveBody, ctx: Ctx = Depends(require_roles("admi
     audit(db, ctx.org_id, ctx.actor, "ai.prompt.live", key, version=label)
     db.commit()
     return _prompt_view(db, ctx, key)
+
+
+# ===================== 规范层 (task 13) =====================
+
+class RuleBody(BaseModel):
+    text: str = Field(max_length=ai_rules.MAX_RULE_CHARS + 2000)
+    note: str = Field(default="", max_length=ai_rules.MAX_NOTE_CHARS)
+    source: str = Field(default="", max_length=20)
+
+
+class RuleLiveBody(BaseModel):
+    version: int | None = Field(default=None, ge=1)  # None = 回到只有基础规范
+
+
+def _rules_view(db: Session, ctx: Ctx) -> dict:
+    names = {u.id: u.name for u in db.scalars(select(User).where(User.org_id == ctx.org_id))}
+    rows = ai_rules.versions(db, ctx.org_id)
+    live = ai_rules.live_version(db, ctx.org_id)
+    return {
+        "built_in": ai_rules.BUILT_IN_RULES,
+        "built_in_label": ai_rules.BUILT_IN_LABEL,
+        "live": live.version if live else None,
+        "max_chars": ai_rules.MAX_RULE_CHARS,
+        "max_import_chars": ai_rules.MAX_IMPORT_CHARS,
+        "versions": [{"version": r.version, "state": r.state, "text": r.text, "note": r.note, "source": r.source, "by": names.get(r.created_by, ""), "at": r.created_at.isoformat(),
+                      "live_at": r.live_at.isoformat() if r.live_at else None} for r in rows],
+    }
+
+
+@router.get("/rules")
+def rules_view(ctx: Ctx = Depends(require_roles("admin")), db: Session = Depends(get_db)):
+    """The rules layer: built-in read-only rules plus the company's versioned supplements."""
+    return _rules_view(db, ctx)
+
+
+@router.post("/rules/versions", status_code=201)
+def rules_save(body: RuleBody, ctx: Ctx = Depends(require_roles("admin")), db: Session = Depends(get_db)):
+    """Save the text as a new supplement version (a draft)."""
+    try:
+        row = ai_rules.save_draft(db, ctx.org_id, ctx.user.id, body.text, body.note, body.source)
+    except ai_rules.RuleError as e:
+        raise HTTPException(422, str(e)) from e
+    audit(db, ctx.org_id, ctx.actor, "ai.rule.save", version=row.version)
+    db.commit()
+    return _rules_view(db, ctx)
+
+
+@router.post("/rules/live")
+def rules_live(body: RuleLiveBody, ctx: Ctx = Depends(require_roles("admin")), db: Session = Depends(get_db)):
+    """Put a saved supplement version live, or go back to built-in only (version null)."""
+    try:
+        label = ai_rules.set_live(db, ctx.org_id, body.version)
+    except ai_rules.RuleError as e:
+        raise HTTPException(404, str(e)) from e
+    audit(db, ctx.org_id, ctx.actor, "ai.rule.live", version=label)
+    db.commit()
+    return _rules_view(db, ctx)

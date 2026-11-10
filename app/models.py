@@ -80,6 +80,8 @@ class Project(Base):
     outline_chat: Mapped[str] = mapped_column(Text, default="")  # the conversation with the AI that shaped it (JSON list of {role, text}); empty = none yet
     outline_versions: Mapped[dict] = mapped_column(JSON, default=dict)  # the outline in the other languages / format families: "<lang>|<live or text>" -> outline text (app/outline_versions.py); the main version stays in outline_text
     retention_days: Mapped[int] = mapped_column(Integer, default=180)  # chosen in the plan (30/60/120/180, never above the platform's); the consent text names it
+    recruit_mode: Mapped[str] = mapped_column(String(20), default="screen_then_invite")  # how candidates are recruited: onelink (one link, screen and interview in one journey) | screen_then_invite (screen first, then invite)
+    host_mode: Mapped[str] = mapped_column(String(10), default="human")  # who runs the interview: ai (AI moderator) | human (a person). onelink can only pair with ai (server enforces)
     created_by: Mapped[str] = mapped_column(String(32))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
@@ -269,6 +271,7 @@ class TranscriptSegment(Base):
     end_ms: Mapped[int] = mapped_column(Integer)
     text_orig: Mapped[str] = mapped_column(Text)
     text_zh: Mapped[str] = mapped_column(Text, default="")
+    text_en: Mapped[str] = mapped_column(Text, default="")
     lang: Mapped[str] = mapped_column(String(10), default="")
 
 
@@ -734,6 +737,7 @@ class RecruitForm(Base):
     dismissed: Mapped[list] = mapped_column(JSON, default=list)  # signatures of suggestions the team chose not to be reminded of again
     translations: Mapped[dict] = mapped_column(JSON, default=dict)  # language code -> {question id: {text, options: {option id: text}, fp, state}} (app/recruit_translate.py)
     chat: Mapped[list] = mapped_column(JSON, default=list)  # the conversation with the AI that edits the questionnaire: [{"role": "user" | "ai", "text"}], the latest 40
+    stage: Mapped[int] = mapped_column(Integer, default=1)  # 对话推进到第几个阶段（1..11，按招募/主持方式增减；见产品文档第 9 章）
 
 
 class ListeningSource(Base):
@@ -995,3 +999,103 @@ class RecruitDataMap(Base):
     mapping: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+# --- 人群圈选与假名化（「数据库发送」页，2026-11-06）---------------------------------
+# The audience definition is versioned: a draft can be edited until it is locked, and every
+# later estimate / send keeps the definition id so the researcher can prove who was targeted.
+
+class AudienceDefinition(Base):
+    """One saved audience definition for a project (draft -> locked)."""
+    __tablename__ = "audience_definitions"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
+    org_id: Mapped[str] = mapped_column(String(32), index=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    status: Mapped[str] = mapped_column(String(12), default="draft")  # draft | locked
+    brief_text: Mapped[str] = mapped_column(Text, default="")
+    country: Mapped[str] = mapped_column(String(40), default="")   # snapshot of the project overview's sub-project
+    language: Mapped[str] = mapped_column(String(40), default="")  # snapshot of its interview language
+    created_by: Mapped[str] = mapped_column(String(100), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    locked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class AudienceTag(Base):
+    """A semantic tag of the definition, either written by the model or by hand."""
+    __tablename__ = "audience_tags"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
+    org_id: Mapped[str] = mapped_column(String(32), index=True)
+    definition_id: Mapped[str] = mapped_column(String(32), index=True)
+    name: Mapped[str] = mapped_column(String(120), default="")
+    source: Mapped[str] = mapped_column(String(12), default="manual")  # ai | manual
+    order_no: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class AudienceCondition(Base):
+    """A structured filter behind a tag; known field keys are pushed down into the count SQL."""
+    __tablename__ = "audience_conditions"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
+    org_id: Mapped[str] = mapped_column(String(32), index=True)
+    definition_id: Mapped[str] = mapped_column(String(32), index=True)
+    field_key: Mapped[str] = mapped_column(String(60), default="")
+    op: Mapped[str] = mapped_column(String(20), default="eq")
+    value: Mapped[str] = mapped_column(String(200), default="")
+
+
+class AudienceEstimate(Base):
+    """One asynchronous audience-size estimate; its result is shown as 「N 人符合筛选」."""
+    __tablename__ = "audience_estimates"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
+    org_id: Mapped[str] = mapped_column(String(32), index=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
+    definition_id: Mapped[str] = mapped_column(String(32), default="", index=True)
+    status: Mapped[str] = mapped_column(String(12), default="pending")  # pending | done | failed
+    matched_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    error: Mapped[str] = mapped_column(String(300), default="")
+    eta_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class ParticipantPseudonym(Base):
+    """Pseudonymisation trail: outward exports use the pseudonym, never the person's name or e-mail."""
+    __tablename__ = "participant_pseudonyms"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
+    org_id: Mapped[str] = mapped_column(String(32), index=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
+    definition_id: Mapped[str] = mapped_column(String(32), index=True)
+    participant_id: Mapped[str] = mapped_column(String(32), index=True)
+    pseudonym: Mapped[str] = mapped_column(String(40), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class InterviewTimeline(Base):
+    """The model-made question slices of one continuous recording, cached here so the model runs once.
+
+    The whole interview is one video starting at second 0; "slices" are logical spans over its
+    caption track. Every at_ms/end_ms is copied from transcript_segments, never written by a model.
+    """
+    __tablename__ = "interview_timelines"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
+    org_id: Mapped[str] = mapped_column(String(32), index=True)
+    interview_id: Mapped[str] = mapped_column(String(32), index=True, unique=True)
+    segments: Mapped[list] = mapped_column(JSON, default=list)
+    caption_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_by: Mapped[str] = mapped_column(String(32), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class InterviewDetail(Base):
+    """Model-made extras of one respondent (translation, summary, tags, quality), cached so the
+    model runs once per transcript version. An admin edits the prompts in the AI console."""
+    __tablename__ = "interview_details"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
+    org_id: Mapped[str] = mapped_column(String(32), index=True)
+    interview_id: Mapped[str] = mapped_column(String(32), index=True, unique=True)
+    data: Mapped[dict] = mapped_column(JSON, default=dict)
+    caption_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_by: Mapped[str] = mapped_column(String(32), default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

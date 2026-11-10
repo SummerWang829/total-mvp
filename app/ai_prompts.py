@@ -50,6 +50,13 @@ SLOTS: dict[str, Slot] = {
     "answers.match": Slot("app.interview_answers", "MATCH_SYSTEM"),
     "report.pick": Slot("app.report_analysis", "PICK_SYSTEM"),
     "report.note": Slot("app.report_analysis", "NOTE_SYSTEM"),
+    "interview.qa_group": Slot("app.interview_detail_ai", "SEGMENT_SYSTEM"),
+    "interview.translate": Slot("app.interview_detail_ai", "TRANSLATE_SYSTEM"),
+    "interview.summary": Slot("app.interview_detail_ai", "SUMMARY_SYSTEM"),
+    "interview.profile_tags": Slot("app.interview_detail_ai", "TAGS_SYSTEM"),
+    "interview.quality": Slot("app.interview_detail_ai", "QUALITY_SYSTEM"),
+    "interview.transcript_fix": Slot("app.interview_detail_ai", "FIX_SYSTEM"),
+    "interview.export": Slot("app.interview_detail_ai", "EXPORT_SYSTEM"),
 }
 
 

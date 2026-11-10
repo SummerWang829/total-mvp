@@ -128,7 +128,18 @@ def edit(text: str, op: str, kind: str, ref: int, index: int, value: str) -> str
                 raise EditError("追问深度不对")
             if not 0 <= index < len(qs):
                 raise IndexError
-            ms[index] = {"depth": depth, "guide": " ".join(note.split())[:guide_text.MAX_NOTE]}
+            ms[index] = {**ms[index], "depth": depth, "guide": " ".join(note.split())[:guide_text.MAX_NOTE]}
+        elif op == "mark":
+            if not 0 <= index < len(qs):
+                raise IndexError
+            parts = value.strip().split("|")
+            flag = parts[0].strip().lower()
+            on = flag in ("1", "是", "true", "yes", "★")
+            reason = " ".join(parts[1].split())[:guide_text.MAX_NOTE] if on and len(parts) > 1 else ""
+            by = parts[2].strip().lower() if len(parts) > 2 else ""
+            if not by:
+                by = ms[index].get("mark_by", "")
+            ms[index] = {**ms[index], "mark": on, "reason": reason, "mark_by": by if on else ""}
         elif op == "depth":
             if value not in guide_text.DEPTHS:
                 raise EditError("追问深度不对")
