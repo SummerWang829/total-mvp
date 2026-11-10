@@ -1962,6 +1962,34 @@ def requests_get(path, tok):
         return e.code
 
 
+def voice_section(br, D):
+    """Voice input: focusing a text box in the team's pages shows a small microphone; one click starts, the next stops and puts the recognised words into the box (not sent)."""
+    adm, pid = D["tok"]["admin"], D["pid"]
+    ctx, pg, errs = new_page(br, 1280, h=900, token=adm)
+    pg.add_init_script("""navigator.mediaDevices.getUserMedia = async () => { const ac = new AudioContext(); const o = ac.createOscillator(); const d = ac.createMediaStreamDestination(); o.connect(d); o.start(); return d.stream; };""")
+    pg.goto(B + f"/#/p/{pid}/outline"); pg.wait_for_selector("#olmsg")
+    ok(pg.locator("#vmic").count() == 0 or pg.locator("#vmic").is_hidden(), "[voice] no microphone is showing before a box is focused")
+    pg.click("#olmsg"); pg.wait_for_selector("#vmic:not([hidden])")
+    box, mic = pg.locator("#olmsg").bounding_box(), pg.locator("#vmic").bounding_box()
+    ok(box["x"] <= mic["x"] <= box["x"] + box["width"] and box["y"] <= mic["y"] <= box["y"] + 40, f"[voice] the microphone sits inside the box, at its top right (box {box}, mic {mic})")
+    audit_page(pg, "voice mic/desktop", errs)
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "voice_mic.png"), clip={"x": 0, "y": 560, "width": 700, "height": 340})
+    pg.click("#vmic .vm-b"); ok(wait_until(lambda: pg.locator("#vmic.rec").count() == 1, 4), "[voice] one click starts recording (the button turns red and counts seconds)")
+    pg.wait_for_timeout(1800); pg.click("#vmic .vm-b")
+    ok(wait_until(lambda: "示例文字" in pg.input_value("#olmsg"), 8), "[voice] the second click stops, the clip is recognised and the words land in the box")
+    ok(pg.locator("#olchat .rf-me").count() == 0 and pg.locator("#vmic.rec").count() == 0, "[voice] nothing is sent by itself and the recording state is over")
+    pg.fill("#olmsg", ""); pg.click("#vmic .vm-l")
+    ok(pg.inner_text("#vmic .vm-l").strip() == "EN", "[voice] the language chip switches between 中 and EN")
+    pg.click("#vmic .vm-l")
+    pg.goto(B + "/#/projects"); pg.wait_for_selector(".card")
+    pg.locator("input[type=text], input[type=search], textarea").first.click() if pg.locator("input[type=text], input[type=search], textarea").count() else None
+    ctx.close()
+    ctx, pg, errs = new_page(br, 1280, h=900, token=D["tok"]["observer"])
+    pg.goto(B + f"/#/p/{pid}"); pg.wait_for_selector("main")
+    ok(pg.evaluate("() => !document.getElementById('vmic') || document.getElementById('vmic').hidden"), "[voice] other roles (observer) never get the microphone")
+    ctx.close()
+
+
 def main():
     global QA_DB
     tmp = tempfile.mkdtemp()
@@ -2752,6 +2780,7 @@ def run():
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "phone_room_section": guard_section(phone_room_section, br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "group_section": guard_section(group_section, br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "outline_section": guard_section(outline_section, br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "voice_section": guard_section(voice_section, br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "tabs_section": guard_section(tabs_section, br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "shell_behaviour_section": guard_section(shell_behaviour_section, br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "fill_section": guard_section(fill_section, br, D)

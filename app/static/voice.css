@@ -1,0 +1,13 @@
+/* 语音输入的小麦克风（voice.js）：浮在输入框右上角 */
+#vmic{position:fixed;z-index:2147483000;display:flex;align-items:center;gap:2px;height:28px}
+#vmic[hidden]{display:none}
+#vmic button{min-height:0;height:28px;border:0;border-radius:14px;background:var(--surface,#fff);color:var(--ink2,#51675D);box-shadow:0 0 0 1px var(--line,#C9D4CD);cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center;gap:4px;font-size:12px;font-weight:600}
+#vmic .vm-l{width:26px}
+#vmic .vm-b{min-width:30px;padding:0 6px}
+#vmic svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+#vmic .vm-b:hover{background:var(--wash,#F3F5F4);color:var(--ink,#0B2E25)}
+#vmic.rec .vm-b{background:#C0392B;color:#fff;box-shadow:none;animation:vmpulse 1.2s ease-in-out infinite}
+#vmic.busy .vm-b{opacity:.55;cursor:wait}
+@keyframes vmpulse{50%{box-shadow:0 0 0 5px rgba(192,57,43,.22)}}
+@media (prefers-reduced-motion:reduce){#vmic.rec .vm-b{animation:none}}
+@media (max-width:900px){#vmic,#vmic button{height:36px}#vmic .vm-l{width:36px}#vmic .vm-b{min-width:40px}}
