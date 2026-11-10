@@ -17,8 +17,7 @@ async function outlineView(p) {
   let S; try { S = await api(`/projects/${p.id}/outline${V ? "?v=" + encodeURIComponent(V) : ""}`); } catch { S = await api(`/projects/${p.id}/outline`); }
   if (stale(my)) return;
   V = S.v;
-  let seg = sessionStorage.getItem("ol_seg") || "outline", sending = false, pending = "", editing = "", qmenu = "", viewer = "host", step = 0, pop = "", L = new Set(), F = new Set(), opened = new Set(), batch = false, picked = new Set(), autoPend = new Set(), autoFail = new Set();
-  let files = [], reading = false;   // 附件：已读出文字的文件 {name, text, chars, truncated}
+  let seg = sessionStorage.getItem("ol_seg") || "outline", editing = "", qmenu = "", viewer = "host", step = 0, pop = "", L = new Set(), F = new Set(), opened = new Set(), batch = false, picked = new Set(), autoPend = new Set(), autoFail = new Set();
   if (!["outline", "settings", "test"].includes(seg)) seg = "outline";
   const stat = (t) => { const s = $("#olstat"); if (s) s.textContent = t; else if (t) toast(t); };
   const take = (r) => { S = { ...S, ...r }; V = S.v; try { sessionStorage.setItem("ol_v_" + p.id, V); } catch { /* no storage */ } };
@@ -34,7 +33,7 @@ async function outlineView(p) {
       return;
     }
     take(await api(`/projects/${p.id}/outline?v=${encodeURIComponent(key)}`));
-    pop = ""; editing = ""; step = 0; picked.clear(); resetSync(); drawRight(); drawChat();
+    pop = ""; editing = ""; step = 0; picked.clear(); resetSync(); drawRight();
   });
   const autoGen = async () => {   // 项目的语言和访谈形式定了，缺的版本自动在后台生成（一个接一个）
     if (autoGen.busy || !S.versions.some((x) => x.exists)) return;
@@ -54,88 +53,14 @@ async function outlineView(p) {
   };
   const resetSyncKeep = () => { const c = cur(); if (!c) return; L = new Set([...L].filter((x) => S.versions.some((v) => v.lang === x))); F = new Set([...F].filter((x) => S.families.includes(x))); L.add(c.lang); F.add(c.family); };
 
-  /* ---------- left: the conversation ---------- */
-  const QUICK = { "给每个核心问题补追问": "给每个核心问题都补一个追问", "检查有没有引导性问题": "检查有没有引导性或带倾向的问题，有就改掉", "缩短到 30 分钟": "把整个访谈缩短到 30 分钟左右", "帮我起草大纲": "帮我起草大纲" };
-  const aiBody = (m) => {   // an assistant message: its words, then a change card (with undo) or the suggestions (adopt / skip)
-    let h = `<div class="ol-tx">${esc(m.text)}</div>`;
-    if (m.kind === "edit") {
-      h += `<div class="ol-chg${m.undone ? " off" : ""}"><b>${m.undone ? "这次修改已撤销" : "已更新大纲"}</b><ul>${m.changes.map((c) => `<li>${esc(c)}</li>`).join("")}</ul>`
-        + (m.can_undo ? `<div class="row"><button class="s" type="button" data-undo="${m.id}">撤销这次修改</button></div>` : m.undone ? "" : `<div class="sm mut">之后大纲又改过，不能直接撤销（会丢掉后面的改动）。</div>`) + `</div>`;
-    }
-    if (m.kind === "suggest") {
-      h += m.suggestions.map((s) => `<div class="ol-sg"><div>${esc(s.title)}</div>${s.state === "open" ? `<div class="row"><button class="p" type="button" data-adopt="${m.id}:${s.id}">采纳</button><button class="s" type="button" data-skip="${m.id}:${s.id}">先不用</button></div>`
-        : `<div class="sm mut">${s.state === "adopted" ? "已采纳" : "已略过"}</div>`}</div>`).join("");
-    }
-    return h;
-  };
-  const chatHtml = () => {
-    const hello = `<div class="rf-msg">你好！我是访谈大纲助手。你可以让我起草大纲，也可以直接问我问题、让我解释或给建议；你说“帮我改成……”我就直接改，并写清楚改了什么，不满意可以一键撤销。</div>`;
-    const msgs = S.chat.map((m, i) => (m.role === "user" ? `<div class="rf-msg rf-me">${esc(m.text)}</div>` : `<div class="rf-msg" data-selk="m:${i}">${aiBody(m)}</div>`)).join("");
-    const fix = S.problem && !pending ? `<div class="rf-msg"><div class="ol-tx">我发现大纲文字里有一处写得不对，系统看不懂：</div><div class="ol-sg"><div>${esc(S.problem)}</div></div><div class="row"><button class="p" type="button" data-fix="1">帮我修好</button></div></div>` : "";
-    return hello + msgs + fix + (pending ? `<div class="rf-msg rf-me">${esc(pending)}</div><div class="rf-msg mut">正在思考…</div>` : "");
-  };
-  const sugHtml = () => {   // 输入框上方的“建议”气泡：点一下就把这句话发出去；有没有大纲，建议不一样
-    if (pending) return "";
-    const chips = S.summary ? ["给每个核心问题补追问", "检查有没有引导性问题", "缩短到 30 分钟"] : ["帮我起草大纲"];
-    return `<div class="ol-sl">建议</div>${chips.map((c) => `<button class="ol-sb" type="button" data-chip="${esc(c)}">${esc(c)}</button>`).join("")}`;
-  };
-  const MAX_MATERIAL = 30000, MAX_FILES = 3;
-  const filesHtml = () => files.map((f, i) => `<span class="ol-fl" title="${esc(f.name)}"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#olclip"/></svg><span>${esc(f.name)}${f.truncated ? "（太长，只读了前面一部分）" : ""}</span><button type="button" data-fx="${i}" aria-label="去掉这个文件">×</button></span>`).join("") + (reading ? `<span class="ol-fl mut">正在读文件…</span>` : "");
-  const drawFiles = () => { const b = $("#olfiles"); if (!b) return; b.innerHTML = filesHtml(); b.querySelectorAll("[data-fx]").forEach((x) => (x.onclick = () => { files.splice(+x.dataset.fx, 1); drawFiles(); })); };
-  const addFile = async (file) => {
-    if (files.length >= MAX_FILES) return toast(`一次最多带 ${MAX_FILES} 个文件`, true);
-    reading = true; drawFiles();
-    try {
-      const fd = new FormData(); fd.append("file", file);
-      const r = await fetch("/api/attachments/extract", { method: "POST", headers: { Authorization: "Bearer " + store.get("tt_token") }, body: fd });
-      const d = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(typeof d.detail === "string" ? d.detail : "这个文件读不了");
-      files.push({ name: file.name, text: d.text, chars: d.chars, truncated: !!d.truncated });
-    } catch (e) { toast(e.message, true); }
-    reading = false; drawFiles();
-  };
-  const materialText = () => files.map((f) => `【文件：${f.name}】\n${f.text}`).join("\n\n").slice(0, MAX_MATERIAL);
-  const fixMessage = () => `请帮我修好大纲文字里的这个问题：${S.problem}。如果修不了，就按研究背景重新整理一份大纲。`.slice(0, 900);
-  const drawChat = () => {
-    const c = $("#olchat"); if (!c) return;
-    c.innerHTML = chatHtml(); c.scrollTop = c.scrollHeight;
-    const sg = $("#olsug"); if (sg) sg.innerHTML = sugHtml();
-    document.querySelectorAll("#olsug [data-chip]").forEach((b) => (b.onclick = () => send(QUICK[b.dataset.chip] || b.dataset.chip)));
-    c.querySelectorAll("[data-undo]").forEach((b) => (b.onclick = () => act(b.dataset.undo, { action: "undo" })));
-    c.querySelectorAll("[data-adopt]").forEach((b) => (b.onclick = () => { const [mid, sid] = b.dataset.adopt.split(":"); act(mid, { action: "adopt", sid }); }));
-    c.querySelectorAll("[data-skip]").forEach((b) => (b.onclick = () => { const [mid, sid] = b.dataset.skip.split(":"); act(mid, { action: "dismiss", sid }); }));
-    c.querySelectorAll("[data-fix]").forEach((b) => (b.onclick = () => send(fixMessage())));
-  };
-  const act = guard(async (mid, body) => { take(await api(`/projects/${p.id}/outline/chat/${mid}`, { method: "POST", body: { ...body, v: V } })); drawChat(); drawRight(); });
-  async function send(text) {
-    text = (text || "").trim(); if (!text || sending) return false;
-    let done = true;
-    sending = true; pending = text; $("#olmsg").value = ""; $("#olsend").disabled = true; drawChat();
-    try { take(await api(`/projects/${p.id}/outline/chat`, { method: "POST", body: { message: text, use_library: true, v: V, material: materialText() } })); files = []; drawFiles(); }
-    catch (e) { done = false; S = { ...S, chat: [...S.chat, { role: "user", text }, { role: "ai", kind: "answer", text: "没有成功：" + e.message, changes: [], suggestions: [] }] }; toast(e.message, true); }
-    sending = false; pending = ""; const b = $("#olsend"); if (b) b.disabled = false; drawChat(); drawRight(); autoGen();
-    return done;
-  }
-  const selLabel = (key) => {   // “第 N 题”：右边大纲里这道题现在的题号
-    const m = /^q:(\w+):(\d+):(\d+)$/.exec(key || ""); if (!m || !S.summary) return "";
-    let n = 0;
-    for (const part of S.summary.parts) for (let qi = 0; qi < part.questions.length; qi++) { if (part.questions[qi].cover) continue; n++; if (part.kind === m[1] && String(part.ref) === m[2] && String(qi) === m[3]) return `第 ${n} 题`; }
-    return "";
-  };
-  const wireSel = () => {   // 选中文字 → 弹窗对话 / 加入修改清单（共用组件 chatsel.js）；“一起修改”走原来的对话（出变更卡、可撤销）
-    if (window._olSel) window._olSel.destroy();
-    window._olSel = ChatSel.attach({
-      roots: [$("#olchat"), $("#olright")], bar: $("#olsel"), label: selLabel,
-      ask: async ({ quote, text }) => (await api(`/projects/${p.id}/outline/chat`, { method: "POST", body: { message: `针对这一处：“${quote}”\n${text}\n请只回答，不要修改大纲。`, use_library: true, v: V, ask_only: true } })).reply,
-      send: async ({ text }) => { const box = $("#olmsg"), draft = box ? box.value : ""; const ok = await send(text); if (box && draft) box.value = draft; return ok; },
-    });
-  };
+  /* ---------- left: the stage-by-stage dialog (creation.js) is shared with the questionnaire page; here it only has to say what to do when it changed the study ---------- */
+  const reload = guard(async () => { take(await api(`/projects/${p.id}/outline?v=${encodeURIComponent(V)}`)); drawRight(); autoGen(); });
 
   /* ---------- right: outline / text / settings / test ---------- */
-  const edit = guard(async (body) => { const r = await api(`/projects/${p.id}/outline/edit`, { method: "POST", body: { ...body, v: V, sync: syncKeys() } }); take(r); editing = ""; drawRight(); drawChat(); syncNote(r.sync); });
-  const putSettings = guard(async (body) => { const r = await api(`/projects/${p.id}/outline/settings`, { method: "PUT", body: { ...body, v: V, sync: syncKeys() } }); take(r); resetSync(); drawRight(); drawChat(); syncNote(r.sync); if (!(r.sync && r.sync.synced.length)) stat("已保存"); if (body.languages || body.formats) autoGen(); });
-  const notes = () => `${S.problem ? `<div class="rf-warn" role="alert">${esc(S.problem)}<button class="s" type="button" data-fixnote="1">帮我修好</button></div>` : ""}${S.warning ? `<div class="rf-warn" role="note">${esc(S.warning)}</div>` : ""}`;
-  const drawNotes = () => { const n = $("#olnotes"); if (n) { n.innerHTML = notes(); n.querySelectorAll("[data-fixnote]").forEach((b) => (b.onclick = () => send(fixMessage()))); } };
+  const edit = guard(async (body) => { const r = await api(`/projects/${p.id}/outline/edit`, { method: "POST", body: { ...body, v: V, sync: syncKeys() } }); take(r); editing = ""; drawRight(); syncNote(r.sync); });
+  const putSettings = guard(async (body) => { const r = await api(`/projects/${p.id}/outline/settings`, { method: "PUT", body: { ...body, v: V, sync: syncKeys() } }); take(r); resetSync(); drawRight(); syncNote(r.sync); if (!(r.sync && r.sync.synced.length)) stat("已保存"); if (body.languages || body.formats) autoGen(); });
+  const notes = () => `${S.problem ? `<div class="rf-warn" role="alert">${esc(S.problem)}</div>` : ""}${S.warning ? `<div class="rf-warn" role="note">${esc(S.warning)}</div>` : ""}`;
+  const drawNotes = () => { const n = $("#olnotes"); if (n) { n.innerHTML = notes(); } };
 
   const DEPTH = { none: ["不追问", "只问这一题"], shallow: ["浅度追问", "追问 1 个"], deep: ["深度追问", "追问 2–3 个"], free: ["自由讨论", "追问 1–3 个，不限"] };
   const refOf = (pi, qi) => { const part = S.summary && S.summary.parts[pi], r = S.ref && S.ref[pi] && part && S.ref[pi].length === part.questions.length && S.ref[pi][qi]; return r ? `<span class="ol-ref">${esc(r.text)}</span>` : ""; };   // 其他语言的版本：原文（中文）放在下面对照
@@ -230,10 +155,9 @@ async function outlineView(p) {
   const rightHead = () => S.versions.length < 2 ? "" : `<div class="rf-hd ol-hd"><span class="sp"></span><span class="sm mut" id="olstat" role="status" aria-live="polite"></span>${capsule()}${verMenu()}</div>`;
   function drawRight() {
     const r = $("#olright"); if (!r) return;
-    const sg = $("#olseg"); if (sg) sg.innerHTML = segHtml();
     const keep = $("#olout") ? $("#olout").scrollTop : 0;
     const body = seg === "outline" ? outlineHtml() : seg === "settings" ? settingsHtml() : testHtml();
-    r.innerHTML = rightHead() + `<div class="rf-sc" id="olout"><div class="rf-col"><div id="olnotes">${notes()}</div>${body}</div></div>`;
+    r.innerHTML = `<div class="rf-seg ol-seg" id="olseg" role="tablist" aria-label="大纲视图">${segHtml()}</div>` + rightHead() + `<div class="rf-sc" id="olout"><div class="rf-col"><div id="olnotes">${notes()}</div>${body}</div></div>`;
     $("#olout").scrollTop = keep; wireRight();
   }
   const moveTo = async (from, to) => { const [kind, ref, idx] = from.split(":"); await edit({ op: "move", kind, ref: +ref, index: +idx, value: to }); drawRight(); };   // 失败时 edit 只弹提示，这里再画一遍，让卡片回到原位
@@ -294,7 +218,6 @@ async function outlineView(p) {
   }
   function wireRight() {
     document.querySelectorAll("[data-seg]").forEach((b) => (b.onclick = () => { seg = b.dataset.seg; sessionStorage.setItem("ol_seg", seg); drawRight(); }));
-    document.querySelectorAll("[data-fixnote]").forEach((b) => (b.onclick = () => send(fixMessage())));
     document.querySelectorAll("[data-pop]").forEach((b) => (b.onclick = (e) => { e.stopPropagation(); pop = pop === b.dataset.pop ? "" : b.dataset.pop; drawRight(); }));
     document.querySelectorAll("[data-ver]").forEach((b) => (b.onclick = () => { if (b.dataset.ver === V) { pop = ""; drawRight(); } else goto(b.dataset.ver); }));
     const picks = (set, code, on) => { if (on) set.add(code); else set.delete(code); drawRight(); };
@@ -336,7 +259,7 @@ async function outlineView(p) {
     const doBatch = guard(async (action, depth) => {
       const items = [...picked].map((k) => { const [kind, ref, idx] = keyOf(k); return [kind, +ref, +idx]; });
       const r = await api(`/projects/${p.id}/outline/batch`, { method: "POST", body: { action, items, depth: depth || "", v: V, sync: syncKeys() } });
-      take(r); picked.clear(); editing = ""; drawRight(); drawChat(); syncNote(r.sync);
+      take(r); picked.clear(); editing = ""; drawRight(); syncNote(r.sync);
     });
     document.querySelectorAll("[data-bt]").forEach((b) => (b.onclick = () => { batch = !batch; picked.clear(); drawRight(); }));
     document.querySelectorAll("[data-pk]").forEach((i) => (i.onchange = () => { if (i.checked) picked.add(i.dataset.pk); else picked.delete(i.dataset.pk); drawRight(); }));
@@ -364,20 +287,12 @@ async function outlineView(p) {
   document.addEventListener("click", window._olOff);
 
   /* ---------- the whole page ---------- */
-  shell(`<div class="rf-seg" id="olseg" role="tablist" aria-label="大纲视图" data-subrow></div><div class="rf" style="padding:0"><div class="rf-ws" id="olws"><div class="rf-pane">
-      <div class="rf-sc" id="olchat"></div>
-      <div id="olsel" hidden></div><div class="ol-sug" id="olsug"></div><div class="ol-files" id="olfiles"></div><div class="rf-inp"><div class="rf-box"><textarea id="olmsg" rows="2" maxlength="1000" placeholder="说说你想怎么改，或者直接问我问题……" aria-label="对话输入"></textarea><button class="ol-att" type="button" id="olatt" aria-label="添加附件（PDF、Word、文字文件）" title="添加附件"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#olclip"/></svg></button><input type="file" id="olfile" hidden accept=".pdf,.docx,.txt,.md,.csv,.png,.jpg,.jpeg,.webp,.mp4,.mov"><button class="p rf-send" type="button" id="olsend" aria-label="发送">↑</button></div></div></div>
+  shell(`<div class="cc-steps" id="ccsteps" role="tablist" aria-label="创建访谈的阶段" data-subrow></div><div class="rf" style="padding:0"><div class="rf-ws" id="olws"><div class="rf-pane"><div class="cc" id="ccroot"></div></div>
       <div class="rf-split" id="olsplit" role="separator" aria-orientation="vertical" aria-label="拖动调整对话和大纲的宽度（双击恢复）" tabindex="0"><i></i></div><div class="rf-pane" id="olright"></div></div></div>`, { active: "outline", p });
   document.body.classList.add("rfmode", "pgw");
-  if (!document.getElementById("olclip")) document.body.insertAdjacentHTML("beforeend", `<svg width="0" height="0" style="position:absolute" aria-hidden="true"><symbol id="olclip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21.4 11.1l-9.2 9.2a5 5 0 0 1-7.1-7.1l9.2-9.2a3.3 3.3 0 0 1 4.7 4.7l-9.2 9.2a1.7 1.7 0 0 1-2.4-2.4l8.5-8.5"/></symbol></svg>`);
   const ws = $("#olws"), fit = () => { if (ws && ws.offsetParent) ws.style.height = Math.max(380, innerHeight - ws.getBoundingClientRect().top - 18) + "px"; };
   fit(); pageOn("fit", window, "resize", fit);
-  resetSync(); drawChat(); drawRight(); wireSel(); autoGen();
-  const m = $("#olmsg");
-  $("#olsend").onclick = () => send(m.value);
-  $("#olatt").onclick = () => $("#olfile").click();
-  $("#olfile").onchange = (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) addFile(f); };
-  m.onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(m.value); } };
+  resetSync(); drawRight(); autoGen(); CreationChat.mount($("#ccroot"), p, { onChange: reload });
   const key = "ol_left_pct", setRatio = (pct) => ws.style.setProperty("--rfl", Math.min(60, Math.max(30, pct)) + "%");
   let saved = 42; try { saved = +localStorage.getItem(key) || 42; } catch { /* no storage: the default */ }
   setRatio(saved);

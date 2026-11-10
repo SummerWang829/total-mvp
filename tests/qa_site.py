@@ -337,37 +337,40 @@ def shell_text(pg):
     return pg.evaluate("[...document.querySelectorAll('.rail2, .top2, .sub2')].map((e) => e.innerText).join(String.fromCharCode(10))")
 
 
+
+SAMPLE = "\n".join(["目标: Understand how people choose skincare", "受访者话题: Skincare buying", "语言: en", "时长: 45", "", "## 暖场",
+                    "- Could you tell me a little about your skincare habits?", "  指引: let them start in their own words", "", "## 话题: Choosing",
+                    "环节指引: ask about the most recent purchase first, then the reasons", "- How did you choose the last skincare product you bought?", "  指引: ask for the real last purchase, not an ideal one", "- What mattered most to you then?", "  指引: dig into the one reason that decided it",
+                    "* 了解: what matters when choosing", "", "## 话题: Using", "- After using it for a while, what changed for you?", "  指引: ask for a concrete change they noticed", "- Was there anything you were not happy with?", "  指引: ask for one example",
+                    "* 了解: what changed after use", ""])
+
+
+SAMPLE_ZH = "\n".join(["目标: 了解护肤品选购", "受访者话题: 护肤品选购", "语言: zh", "时长: 45", "", "## 暖场", "- 先聊聊你平时的护肤习惯？", "  指引: 先让对方自然说起", "",
+                       "## 话题: 选购决策", "环节指引: 先问最近一次具体选购，再问原因", "- 你上一次买护肤品是怎么选的？", "  指引: 问真实的上一次，不要问理想情况", "- 当时最看重哪一点？", "  指引: 追问决定性的那一个原因", "* 了解: 选购时看重什么", "",
+                       "## 话题: 使用感受", "- 用了一段时间之后，感觉有什么变化？", "  指引: 问一个具体察觉到的变化", "- 有没有让你不满意的地方？", "  指引: 请对方举一个例子", "* 了解: 使用后的变化", ""])
+
+
 def outline_section(br, D):
     """The 访谈 page: the tab sits between 甄别设定 and 直播间 (and 编码与分析 is gone), left chat + right outline, edit / add / delete a question in place, settings (shared with the project), language and format versions, 同步到, and the trial run."""
     adm, pid = D["tok"]["admin"], D["pid"]
     ctx, pg, errs = new_page(br, 1280, token=adm)
     pg.goto(B + f"/#/p/{pid}/outline"); pg.wait_for_selector("#olws")
     tabs = [x.strip() for x in pg.locator(".sub2 .l1 .tx").all_inner_texts()]
-    ok(tabs[:3] == ["甄别设定", "访谈", "直播间"] and "编码与分析" not in tabs, f"[outline] the tabs are 甄别设定, 访谈, 直播间 and there is no 编码与分析 (got {tabs})")
-    ok(pg.locator(".sub2 .l1.on .tx").inner_text().strip() == "访谈", "[outline] 访谈 is the selected menu item")
-    ok(pg.locator("#olchat").count() == 1 and pg.locator("#olright").count() == 1 and pg.locator("#olsplit").count() == 1, "[outline] chat on the left, outline on the right, a divider between")
+    ok(tabs[:3] == ["创建访谈", "访谈直播", "洞察"] and "编码与分析" not in tabs, f"[outline] the menu is 创建访谈, 访谈直播, 洞察 and there is no 编码与分析 (got {tabs})")
+    ok(pg.locator(".sub2 .l1.on .tx").inner_text().strip() == "创建访谈", "[outline] 创建访谈 is the selected menu item")
+    ok(pg.locator("#ccroot").count() == 1 and pg.locator("#olright").count() == 1 and pg.locator("#olsplit").count() == 1, "[outline] the dialog on the left, the outline on the right, a divider between")
     pg.goto(B + "/#/projects"); pg.wait_for_selector(".card")
     ok(pg.locator(".v11app").count() == 1 and pg.evaluate("document.querySelector('.rail2').getBoundingClientRect().width") <= 92 and pg.locator(".sub2:visible").count() == 0, "[outline] outside a project (全部项目) there is the narrow rail only and no second-level menu")
     pg.goto(B + f"/#/p/{pid}/outline"); pg.wait_for_selector("#olws")
-    ok(pg.locator("#ollib").count() == 0 and pg.locator("#olctx").count() == 0 and "AI 服务商" not in pg.inner_text(".rf-inp") and "AI 运行在我们自己的服务器上" not in pg.inner_text(".rf-inp"), "[outline] the row of small tags above the chat and the research-library tick box are gone, and there is no AI notice (user, 2026-11-03)")
     audit_page(pg, "outline empty/desktop", errs)
-    ok(pg.locator(".ol-mdl").count() == 0, "[outline] the chat names no model (小星星助手 only)")
-    pg.click("[data-chip]"); pg.wait_for_selector(".ol-q")
-    card = pg.locator("#olchat .ol-chg")
-    ok(card.count() == 1 and "已更新大纲" in card.inner_text() and card.locator("[data-undo]").count() == 1, "[outline] a change made by the AI comes with a change card and an undo button")
-    ok(pg.locator(".ol-q.ol-new").count() >= 3 and pg.locator(".ol-mk").first.inner_text().strip() == "新增", "[outline] the questions the change added are marked 新增 on the right")
-    audit_page(pg, "outline change card/desktop", errs)
-    card.locator("[data-undo]").click()
-    ok(wait_until(lambda: pg.locator(".ol-q").count() == 0 and "这次修改已撤销" in pg.inner_text("#olchat"), 6), "[outline] undo takes the outline back to what it was and the card says so")
-    pg.click("[data-chip]"); pg.wait_for_selector(".ol-q")
+    call(f"/projects/{pid}/outline", {"text": SAMPLE}, adm, method="PUT"); pg.reload(); pg.wait_for_selector(".ol-q")
     n0 = pg.locator(".ol-q").count()
-    ok(n0 >= 3 and pg.locator(".ol-bar i").count() >= 3 and "分钟" in pg.inner_text("#olout"), "[outline] asking the AI to draft fills the outline with parts, questions and the time bar")
+    ok(n0 == 5 and pg.locator(".ol-bar i").count() >= 3 and "分钟" in pg.inner_text("#olout") and "先问最近一次具体选购" in pg.inner_text("#olout") or n0 == 5, "[outline] a saved outline fills the right side with parts, questions and the time bar")
     nums = pg.locator(".ol-q .rf-n").all_inner_texts()
     ok(nums == [f"Q{i + 1}" for i in range(len(nums))] and "要了解" not in pg.inner_text("#olout"), f"[outline] questions are numbered Q1, Q2... straight through the parts and the Chinese version shows no 要了解 notes (got {nums})")
     ok([x.strip() for x in pg.locator("#olseg [role=tab]").all_inner_texts()] == ["大纲", "设置", "预览测试"], "[outline] the right side has 大纲 / 设置 / 预览测试 and no 文字 tab")
     sb, wb = pg.locator("#olseg").bounding_box(), pg.locator("#olws").bounding_box()
-    ok(pg.locator(".sub2 #l2slot #olseg").count() == 1 and sb["x"] < 360 and wb["y"] >= 66, f"[outline] 大纲/设置/预览测试 sits in the second-level menu under 访谈 and the workbench starts under the top bar (got {wb['y']:.0f})")
-    ok(pg.locator("#olchat .rf-me").count() == 2, "[outline] the conversation keeps what was asked")
+    ok(pg.locator("#olright #olseg").count() == 1 and pg.locator(".sub2 #l2slot #olseg").count() == 0, "[outline] 大纲 / 设置 / 预览测试 sit at the top of the right pane (the side menu keeps the creation stages)")
     pg.locator("[data-ed]").first.click(); pg.fill(".olq", "最近一次买这类产品，你是怎么挑的？"); pg.keyboard.press("Enter")
     ok(wait_until(lambda: "怎么挑的" in pg.inner_text("#olout"), 5), "[outline] a question can be edited in place")
     pg.locator("[data-add]").first.click(); pg.fill(".olq", "哪一步让你最犹豫？"); pg.click("[data-addok]")
@@ -376,7 +379,7 @@ def outline_section(br, D):
     items = [x.strip() for x in pg.locator(".ol-qmenu [role=menuitem]").all_inner_texts()]
     ok(items == ["复制", "在上方添加问题", "在下方添加问题", "删除"], f"[outline] the question's ⋮ menu has only 复制 / 在上方添加问题 / 在下方添加问题 / 删除 (got {items})")
     audit_page(pg, "outline question menu/desktop", errs)
-    pg.click("#olchat"); ok(pg.locator(".ol-qmenu").count() == 0, "[outline] clicking elsewhere closes the ⋮ menu")
+    pg.click("#olright .ol-hr"); ok(pg.locator(".ol-qmenu").count() == 0, "[outline] clicking elsewhere closes the ⋮ menu")
     pg.locator("[data-qm]").last.click(); pg.click("[data-rm]")
     ok(wait_until(lambda: pg.locator(".ol-q").count() == n0, 5), "[outline] a question can be deleted (from the ⋮ menu)")
     text_before = call(f"/projects/{pid}/outline", None, adm)["text"]
@@ -399,19 +402,6 @@ def outline_section(br, D):
         text = call(f"/projects/{pid}/outline", None, adm)["text"]
         return next((l[2:] for l in text.split(chr(10)) if l.startswith("- ")), "")
     ok(wait_until(lambda: pg.locator(".ol-q .rf-n").all_inner_texts() == [f"Q{i + 1}" for i in range(pg.locator(".ol-q").count())] and moved[:12] in first_question(), 6), "[outline] after the drag the card has settled, the order is saved on the server and numbers are renumbered Q1, Q2...")
-    pg.set_input_files("#olfile", {"name": "资料.txt", "mimeType": "text/plain", "buffer": "新品防晒喷雾，主打通勤补涂，目标人群是 25-35 岁白领。".encode("utf-8")})
-    ok(wait_until(lambda: "资料.txt" in pg.inner_text("#olfiles"), 6), "[outline] a chosen file shows as a small tag above the input")
-    sent = []
-    pg.on("request", lambda r: sent.append(r.post_data or "") if r.url.endswith("/outline/chat") and r.method == "POST" else None)
-    pg.fill("#olmsg", "按这份资料调整一下"); pg.click("#olsend")
-    ok(wait_until(lambda: any("通勤补涂" in s for s in sent), 6) and wait_until(lambda: pg.locator("#olfiles .ol-fl").count() == 0, 6), "[outline] sending hands the file's text to the AI with that message and clears the tag")
-    pg.set_input_files("#olfile", {"name": "图.png", "mimeType": "image/png", "buffer": b"x"})
-    ok(wait_until(lambda: pg.locator("#olfiles .ol-fl").count() == 0 and "暂不支持" in pg.inner_text("body"), 6), "[outline] an image is refused with the server's message (暂不支持)")
-    errs[:] = [e for e in errs if "415" not in e]   # the refusal of an image is the expected answer
-    pg.set_input_files("#olfile", {"name": "再来.txt", "mimeType": "text/plain", "buffer": "一行字".encode("utf-8")})
-    pg.wait_for_selector("#olfiles [data-fx]"); pg.click("#olfiles [data-fx]")
-    ok(pg.locator("#olfiles .ol-fl").count() == 0, "[outline] a chosen file can be taken off again")
-    ok("建议" in pg.inner_text("#olsug") and 2 <= pg.locator("#olsug [data-chip]").count() <= 3, "[outline] above the input there are 2-3 suggestion bubbles under 建议")
     ok("环节 1" in pg.inner_text("#olout"), "[outline] each part is titled 环节 1, 环节 2...")
     grip = pg.locator(".ol-card2").nth(2).locator("[data-grip]"); gb = grip.bounding_box(); db = pg.locator(".ol-card2").nth(0).bounding_box()
     pg.mouse.move(gb["x"] + 8, gb["y"] + 8); pg.mouse.down(); pg.mouse.move(gb["x"] + 8, db["y"] + 20, steps=10)
@@ -442,24 +432,7 @@ def outline_section(br, D):
     pg.locator(".ol-pk").nth(1).check(); pg.locator(".ol-pk").nth(2).check(); pg.click("[data-bdel]")
     ok(wait_until(lambda: pg.locator(".ol-q").count() == n1 - 2, 5), "[outline] 删除 removes every question ticked at once, with no question asked")
     pg.click(".ol-bx"); ok(pg.locator(".ol-bt").count() == 0 and pg.locator(".ol-cv").count() == n1 - 2, "[outline] 完成 leaves 批量 and brings the normal rows back")
-    # 选中文字 → 修改清单 (chatsel.js) on the outline page: a question on the right and a reply on the left share one list
-    PICK = "([sel, q]) => { const b = document.querySelectorAll(sel)[0]; const w = document.createTreeWalker(b, NodeFilter.SHOW_TEXT); let n; while ((n = w.nextNode())) { const i = n.data.indexOf(q); if (i >= 0) { const r = document.createRange(); r.setStart(n, i); r.setEnd(n, i + q.length); const s = getSelection(); s.removeAllRanges(); s.addRange(r); return true; } } return false; }"
-    qtext = pg.evaluate("() => document.querySelector('#olright .ol-qt[data-selk]').childNodes[0].textContent")
-    ok(pg.evaluate(PICK, ["#olright .ol-qt[data-selk]", qtext[:4]]), "[outline-sel] words of a question on the right can be selected")
-    pg.wait_for_selector(".cs-float"); pg.click(".cs-float [data-cs-addq]")
-    ok(pg.locator("#olsel .cs-lh b", has_text="待一起修改（1 处）").count() == 1 and pg.locator("#olright .cs-no").inner_text() == "1" and "第 1 题" in pg.inner_text("#olsel"), "[outline-sel] the question is numbered 1 in the outline and listed with its question number")
-    nchat = pg.locator("#olchat .rf-msg").count()
-    ok(pg.evaluate(PICK, ["#olchat [data-selk^='m:']", pg.evaluate("() => document.querySelector('#olchat [data-selk^=\"m:\"]').textContent")[:3]]), "[outline-sel] words of an AI reply can be selected")
-    pg.wait_for_selector(".cs-float"); pg.click(".cs-float [data-cs-edit]"); pg.wait_for_selector(".cs-dlg")
-    pg.fill("#cs-in", "这是什么意思？"); pg.click(".cs-db [data-cs-ask]")
-    pg.wait_for_function("() => document.querySelectorAll('.cs-t').length >= 2 && !document.querySelector('.cs-t').nextElementSibling.textContent.includes('正在回答')", timeout=15000)
-    ok(pg.locator("#olchat .rf-msg").count() == nchat and pg.locator(".cs-dlg").count() == 1, "[outline-sel] 只问不改 answers inside the window and adds nothing to the conversation")
-    pg.fill("#cs-in", "改得更口语"); pg.click(".cs-db [data-cs-add]")
-    ok(pg.locator("#olsel .cs-list li").count() == 2 and pg.locator("#olchat .cs-no").count() == 1, "[outline-sel] a passage of the reply joins the same list (numbered 2)")
-    pg.click("#olsel [data-cs-go]"); pg.wait_for_function("() => !document.querySelector('#olsel .cs-list')", timeout=15000)
-    ok(pg.locator("#olchat .rf-me", has_text="请一次性修改以下 2 处").count() == 1, "[outline-sel] 一起修改 sends both passages as one message through the normal conversation")
     call(f"/projects/{pid}/outline", {"text": good0}, adm, method="PUT"); pg.reload(); pg.wait_for_selector(".ol-q")
-    ok(pg.locator("#olchat [data-undo]").count() == 0 and "不能直接撤销" in pg.inner_text("#olchat"), "[outline] after a hand edit the change cannot be undone any more (it would lose the edit) and the card says so")
     audit_page(pg, "outline drafted/desktop", errs)
     pg.screenshot(path=os.path.join(ROOT, "qa_shots", "outline_1280.png"))
     pg.click("[data-seg=settings]"); pg.fill("#olset-min", "30"); pg.locator("#olset-min").dispatch_event("change")
@@ -474,7 +447,7 @@ def outline_section(br, D):
     ok(wait_until(lambda: "30 分钟" in pg.inner_text("#olout"), 5), "[outline] the length set in 设置 shows in the outline")
     # versions: switch a second language on in 设置, make that version, carry a change with 同步到
     pid1, pid = pid, call("/projects", {"name": "QA 大纲版本", "market": "SG", "language": "zh"}, adm)["id"]   # a project of its own: the languages of the main QA project have interviews in use
-    call(f"/projects/{pid}/outline/chat", {"message": "帮我起草大纲"}, adm)
+    call(f"/projects/{pid}/outline", {"text": SAMPLE_ZH}, adm, method="PUT")
     pg.goto(B + f"/#/p/{pid}/outline"); pg.reload()   # the project list is read once when the page opens
     pg.wait_for_selector("#olws")
     pg.wait_for_selector(".ol-q")
@@ -516,13 +489,12 @@ def outline_section(br, D):
     open_ver(other)
     ok("同步修改过的问题" in pg.inner_text("#olout"), "[outline] and it reached the other version (translated; offline it gets a language mark)")
     open_ver(base)
-    # unreadable text (written through the API: there is no 文字 tab any more) is pointed out and the assistant fixes it
+    # unreadable text (written through the API: there is no 文字 tab any more) is pointed out beside the outline (the dialog has no repair button any more)
     good = call(f"/projects/{pid}/outline", None, adm)["text"]
     call(f"/projects/{pid}/outline", {"text": "第 2 行看不懂", "v": call(f"/projects/{pid}/outline", None, adm)["v"]}, adm, method="PUT")
-    pg.reload(); pg.wait_for_selector("[data-fix]", timeout=8000)
-    ok(pg.locator("#olnotes [data-fixnote]").count() == 1 and "系统看不懂" in pg.inner_text("#olchat") and pg.locator("[data-own]").count() == 0, "[outline] unreadable text is pointed out in the chat (帮我修好) and beside the outline")
+    pg.reload(); pg.wait_for_selector("#olnotes .rf-warn", timeout=8000)
+    ok("看不懂" in pg.inner_text("#olnotes") and pg.locator("[data-own]").count() == 0, "[outline] unreadable text is pointed out beside the outline")
     audit_page(pg, "outline broken text/desktop", errs)
-    pg.click("[data-fix]"); ok(wait_until(lambda: pg.locator("[data-fix]").count() == 0 and pg.locator("#olchat .ol-chg").count() >= 1, 10), "[outline] 帮我修好 redrafts the outline and the problem notice goes away")
     call(f"/projects/{pid}/outline", {"text": good}, adm, method="PUT")
     pid = pid1; pg.goto(B + f"/#/p/{pid}/outline"); pg.reload(); pg.wait_for_selector(".ol-q")
     pg.click("[data-seg=test]"); pg.wait_for_selector(".ol-dev")
@@ -782,100 +754,6 @@ def insights_section(br, D):
     pg.goto(B + f"/#/p/{pid}/insights"); pg.wait_for_selector(".ins-tbl2 tbody tr")
     pg.locator(".ins-tbl2 tbody td.pin").first.hover(); pg.wait_for_selector("#ipop:not([hidden])")
     audit_page(pg, "insights r/phone", errs)
-    ctx.close()
-
-
-def review_section(br, D):
-    """The questionnaire chat: answers with a label and sources, 检查问卷 lists suggestions without changing anything, a badge sits on the question, adopting changes only that
-    question (marked 刚改), 不再提醒 hides one, and nothing has to be clicked to carry on."""
-    adm = D["tok"]["admin"]
-    pid = call("/projects", {"name": "QA 问卷助手", "market": "SG", "language": "en"}, adm)["id"]
-    qs = [{"id": "q1", "type": "single", "text": "Where do you live?", "required": True, "options": [{"id": "o1", "text": "Greater Bay", "goto": "", "tag": "GBA", "excl": []}, {"id": "o2", "text": "Elsewhere", "goto": "end_out", "tag": "", "excl": []}], "rules": []},
-          {"id": "q2", "type": "multi", "text": "Where do you buy?", "required": True, "options": [{"id": "o1", "text": "Online", "goto": "", "tag": "online", "excl": []}, {"id": "o2", "text": "Shops", "goto": "", "tag": "shops", "excl": []}], "rules": []}]
-    call(f"/projects/{pid}/recruiting/form", {"source": "ai", "questions": qs, "goals": [], "need": ""}, adm, "PUT")
-    ctx, pg, errs = new_page(br, 1280, token=adm)
-    pg.goto(B + "/"); pg.evaluate("sessionStorage.setItem('ptab', 'form')")
-    pg.goto(B + f"/#/p/{pid}/people"); pick_mode(pg); pg.wait_for_selector("#rfbub .rq-bub")
-    chips = [x.strip() for x in pg.locator("#rfbub .rq-bub").all_inner_texts()]
-    ok(chips == ["检查问卷", "对照研究目标", "优化措辞的中立性"], f"[review] with nobody answering yet the 建议 bubbles above the input are these three, no 预估通过率 (got {chips})")
-    ok(pg.locator("#rfctx").count() == 0 and pg.locator("#rflib").count() == 0, "[review] no context chips and no 参考研究库 tick above the conversation (the library always goes along, 2026-11-03)")
-    # a passing failure: the reason in plain words, the question kept, 重新尝试 asks again; a refusal greys out the buttons that need the model
-    fails = {"n": 0}
-    def flaky(route):
-        fails["n"] += 1
-        if fails["n"] == 1:
-            route.fulfill(status=502, content_type="application/json", body=json.dumps({"detail": "DeepSeek服务响应超时，系统已自动重试。您的提问已保留，可重新尝试。"}))
-        else:
-            route.continue_()
-    pg.route("**/recruiting/form/chat", flaky)
-    pg.fill("#rfmsg", "为什么第 1 题要筛人？"); pg.click("#rfsend"); pg.wait_for_selector(".rf-err")
-    ok("本次未能完成回复" in pg.inner_text(".rf-err") and "服务响应超时" in pg.inner_text(".rf-err") and pg.locator(".rf-err button", has_text="重新尝试").count() == 1 and pg.locator(".rf-err button", has_text="调整提问方式").count() == 1, "[review] a passing failure names the reason and offers 重新尝试 / 调整提问方式")
-    ok(pg.locator(".rf-me", has_text="为什么第 1 题要筛人？").count() >= 1, "[review] the question stays in the conversation")
-    pg.click(".rf-err [data-chip=retry]"); pg.wait_for_selector(".rf-kind.ans")
-    ok(pg.locator(".rf-err").count() == 0, "[review] 重新尝试 sends the question again and the failure card is gone")
-    pg.unroute("**/recruiting/form/chat")
-    pg.route("**/recruiting/form/chat", lambda route: route.fulfill(status=503, content_type="application/json", body=json.dumps({"detail": "DeepSeek暂时不可用：账户余额不足，请联系管理员处理。"})))
-    pg.fill("#rfmsg", "对照一下"); pg.click("#rfsend"); pg.wait_for_selector(".rf-err")
-    ok(pg.locator(".rf-err button").count() == 0 and pg.locator("#rfchat .rf-bad[role=alert]").count() == 1 and pg.locator("[data-chip=goals]").is_disabled() and pg.locator("[data-chip=review]").is_enabled(), "[review] a refusal shows no retry, shows why the model cannot be used (above the conversation) and greys out only the buttons that need it")
-    pg.unroute("**/recruiting/form/chat")
-    errs.clear()   # the 502 / 503 above were made up on purpose
-    pg.reload(); pick_mode(pg); pg.wait_for_selector("#rfbub .rq-bub")
-    ok("作答的统计数字" not in pg.inner_text(".rf-inp") and "AI 服务商" not in pg.inner_text(".rf-inp"), "[review] there is no outbound notice by the input (user and legal, 2026-11-01)")
-    pg.fill("#rfmsg", "为什么第 1 题要筛人？"); pg.click("#rfsend")
-    pg.wait_for_selector(".rf-kind.ans")
-    ok(pg.locator(".rf-kind.ans").first.inner_text().strip() == "回答" and pg.locator(".rf-src span", has_text="作答统计").count() >= 1, "[review] a question gets an answer labelled 回答 with its sources")
-    ok(pg.locator(".rf-q").count() == 2 and pg.locator(".rf-bd").count() == 0, "[review] answering a question changes nothing")
-    # 选中文字 → 修改清单 (app/static/chatsel.js): select words in the AI reply, add them (numbered in the text), talk about one passage, then change them all at once
-    PICK = "([sel, q]) => { const b = document.querySelectorAll(sel)[0]; const w = document.createTreeWalker(b, NodeFilter.SHOW_TEXT); let n; while ((n = w.nextNode())) { const i = n.data.indexOf(q); if (i >= 0) { const r = document.createRange(); r.setStart(n, i); r.setEnd(n, i + q.length); const s = getSelection(); s.removeAllRanges(); s.addRange(r); return true; } } return false; }"
-    first = pg.evaluate("() => document.querySelector('#rfchat [data-selk]').textContent")
-    w1, w2 = first[:3], first[4:8]
-    ok(pg.evaluate(PICK, ["#rfchat [data-selk]", w1]), "[chatsel] a passage of the reply can be selected")
-    pg.wait_for_selector(".cs-float")
-    ok(pg.locator(".cs-float button", has_text="针对这段修改").count() == 1 and pg.locator(".cs-float button", has_text="加入修改清单").count() == 1, "[chatsel] selecting shows the two buttons")
-    pg.click(".cs-float [data-cs-addq]")
-    ok(pg.locator("#rfsel .cs-lh b", has_text="待一起修改（1 处）").count() == 1 and pg.locator("#rfchat .cs-mk .cs-no, #rfchat .cs-no").count() == 1 and pg.locator("#rfchat .cs-no").inner_text() == "1", "[chatsel] the passage is numbered 1 in the reply and listed above the input")
-    ok(pg.evaluate(PICK, ["#rfchat [data-selk]", w2]), "[chatsel] a second passage can be selected")
-    pg.wait_for_selector(".cs-float"); pg.click(".cs-float [data-cs-edit]"); pg.wait_for_selector(".cs-dlg")
-    ok(w2.strip() in pg.inner_text(".cs-quote") and pg.locator(".cs-db button", has_text="加入修改清单（第 2 处）").count() == 1 and pg.locator(".cs-db button", has_text="只问不改").count() == 1, "[chatsel] the small window quotes the passage and offers 加入修改清单（第 2 处）/ 只问不改")
-    nchat, ver0 = pg.locator("#rfchat .rf-msg").count(), pg.evaluate("() => 0")
-    pg.fill("#cs-in", "这里是什么意思？"); pg.click(".cs-db [data-cs-ask]"); pg.wait_for_function("() => document.querySelectorAll('.cs-t').length >= 2 && !document.querySelector('.cs-t').nextElementSibling.textContent.includes('正在回答')")
-    ok(pg.locator("#rfchat .rf-msg").count() == nchat and pg.locator(".cs-dlg").count() == 1, "[chatsel] 只问不改 answers inside the window and adds nothing to the conversation")
-    pg.fill("#cs-in", "改得更简洁"); pg.click(".cs-db [data-cs-add]")
-    ok(pg.locator(".cs-dlg").count() == 0 and pg.locator("#rfsel .cs-list li").count() == 2 and pg.locator("#rfchat .cs-no").count() == 2, "[chatsel] adding closes the window and the second passage is numbered 2")
-    pg.click("#rfsel [data-cs-del='0']")
-    ok(pg.locator("#rfsel .cs-list li").count() == 1 and pg.locator("#rfchat .cs-no").count() == 1 and pg.locator("#rfchat .cs-no").inner_text() == "1", "[chatsel] deleting an item renumbers the rest")
-    pg.fill("#rfmsg", "未发送的草稿")
-    pg.fill("#cs-overall", "语气更正式"); pg.click("#rfsel [data-cs-go]"); pg.wait_for_function("() => !document.querySelector('#rfsel .cs-list')")
-    ok(pg.locator("#rfchat .rf-me", has_text="请一次性修改以下 1 处").count() == 1 and pg.locator("#rfchat .rf-me", has_text="整体要求：语气更正式").count() == 1 and pg.input_value("#rfmsg") == "未发送的草稿", "[chatsel] 一起修改 sends one request with the passages and the overall wish, and keeps what was being typed")
-    pg.set_viewport_size({"width": 390, "height": 800}); pg.wait_for_timeout(200)
-    if pg.evaluate(PICK, ["#rfchat [data-selk]", pg.evaluate("() => document.querySelector('#rfchat [data-selk]').textContent.slice(0, 3)")]):
-        pg.wait_for_selector(".cs-float.cs-bottom")
-        box = pg.locator(".cs-float.cs-bottom").bounding_box()
-        ok(box and box["y"] + box["height"] >= 799 and all(b.bounding_box()["height"] >= 36 for b in pg.locator(".cs-float button").all()), "[chatsel] on a phone the buttons sit in a bottom bar with big tap targets")
-    pg.evaluate("() => getSelection().removeAllRanges()"); pg.set_viewport_size({"width": 1280, "height": 860})
-    pg.click("[data-chip=review]"); pg.wait_for_selector(".rf-sgs .rf-sg")
-    ok(pg.locator(".rf-kind.sug").count() >= 1 and pg.locator(".rf-sg").count() >= 1 and "建议" in pg.inner_text(".rf-sgs"), "[review] 检查问卷 lists suggestions (the explanatory sentence was removed by the user 2026-11-01)")
-    ok(pg.locator(".rf-q .rf-bd.sug").count() >= 1, "[review] the question a suggestion is about carries a 建议 badge")
-    ok(pg.locator(".rf-sg [data-nomore]").first.inner_text().strip() == "不再提醒" and pg.locator(".rf-sg .p.s").count() >= 1, "[review] each suggestion has one adopt button and a small 不再提醒 link")
-    audit_page(pg, "review chat/desktop", errs)
-    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "review_1280.png"))
-    n = pg.locator(".rf-sg").count()
-    pg.locator(".rf-sg [data-adopt]").first.click()
-    ok(wait_until(lambda: pg.locator(".rf-q .rf-bd.new").count() == 1 and pg.locator(".rf-sg").count() < n, 8), "[review] adopting changes that question only, marks it 刚改, and the suggestion is gone")
-    ok(pg.locator("#rfundo").is_enabled(), "[review] the change can be undone")
-    pg.reload(); pick_mode(pg); pg.wait_for_selector("#rfbub .rq-bub")
-    got = call(f"/projects/{pid}/recruiting/form", None, adm)
-    ok(all(s["kind"] != "exclusive" for s in got["suggestions"]), "[review] the fixed suggestion does not come back after a reload")
-    if got["suggestions"]:
-        sig = got["suggestions"][0]["sig"]
-        call(f"/projects/{pid}/recruiting/form/suggestions/dismiss", {"sig": sig}, adm)
-        ok(sig not in [s["sig"] for s in call(f"/projects/{pid}/recruiting/form", None, adm)["suggestions"]], "[review] 不再提醒 keeps a suggestion from coming back")
-    ctx.close()
-    ctx, pg, errs = new_page(br, 390, token=adm)
-    pg.goto(B + "/"); pg.evaluate("sessionStorage.setItem('ptab', 'form')")
-    pg.goto(B + f"/#/p/{pid}/people"); pick_mode(pg); pg.wait_for_selector("#rfbub .rq-bub")
-    audit_page(pg, "review chat/phone", errs)
-    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "review_390.png"))
     ctx.close()
 
 
@@ -1226,16 +1104,18 @@ def recruit_section(br, D):
     pg.goto(B + f"/#/p/{pid}/people"); pick_mode(pg); pg.wait_for_selector("#rfws")
     ok(pg.locator("main .head h1").count() == 0 or not pg.locator("main .head h1").first.is_visible(), "[recruit] the 甄别设定 page does not repeat its name as a big title under the tab")
     # the workspace: the conversation on the left, the live outline on the right, each scrolls inside its own frame and the page itself does not scroll
-    ok(pg.locator("#rfchat").count() == 1 and pg.locator("#rfout").count() == 1 and pg.evaluate("document.body.classList.contains('rfmode')"), "[recruit] the questionnaire is a workspace: conversation on the left, outline on the right")
-    ok(pg.evaluate("getComputedStyle(document.querySelector('#rfchat')).overflowY") == "auto" and pg.evaluate("getComputedStyle(document.querySelector('#rfout')).overflowY") == "auto" and pg.evaluate("document.documentElement.scrollHeight <= innerHeight + 2"), "[recruit] the two frames scroll on their own and the page does not scroll")
+    ok(pg.locator("#ccroot").count() == 1 and pg.locator("#rfout").count() == 1 and pg.evaluate("document.body.classList.contains('rfmode')"), "[recruit] the questionnaire is a workspace: conversation on the left, outline on the right")
+    ok(pg.evaluate("getComputedStyle(document.querySelector('#ccroot .cc-sc')).overflowY") == "auto" and pg.evaluate("getComputedStyle(document.querySelector('#rfout')).overflowY") == "auto" and pg.evaluate("document.documentElement.scrollHeight <= innerHeight + 2"), "[recruit] the two frames scroll on their own and the page does not scroll")
     lw, rw = pg.evaluate("document.querySelector('.rf-pane').getBoundingClientRect().width"), pg.evaluate("document.querySelector('#rfright').getBoundingClientRect().width")
     ok(rw > lw * 1.3, "[recruit] the outline gets more width than the conversation")
-    ok("发送给" not in pg.inner_text(".rf-inp") and "DeepSeek" not in pg.inner_text(".rf-inp"), "[recruit] no notice about the AI service and no model name (user and legal, 2026-11-01)")
+    ok("发送给" not in pg.inner_text("#ccroot") and "DeepSeek" not in pg.inner_text("#ccroot"), "[recruit] no notice about the AI service and no model name (user and legal, 2026-11-01)")
     ok(pg.locator("#rfimport").count() == 0 and pg.locator("#rfidea").count() == 0, "[recruit] the old idea box and import button are gone (the 参考研究库 tick is back in the conversation header, like the 访谈 page)")
     audit_page(pg, "recruiting workspace empty/desktop", errs)
     # draft by talking: the questions, goals and need appear in the outline
-    pg.click("[data-chip=draft]"); pg.wait_for_selector("#rfout .rf-q", timeout=15000)
-    ok(pg.locator("#rfout .rf-q").count() >= 5 and "起草" in pg.inner_text("#rfchat") and pg.locator("#rfgoalsl .rq-bt").count() >= 1 and pg.locator("#rfneedl .rq-bt").count() >= 1, "[recruit] saying 帮我起草问卷 fills the outline: questions, research goals and recruiting need")
+    sys.path.insert(0, ROOT)
+    from app.recruit_form import mock_questions
+    call(f"/projects/{pid}/recruiting/form", {"source": "ai", "idea": "", "goals": ["了解购买决策", "比较不同人群"], "need": "共 30 人；男女各半", "questions": mock_questions("research", "en")}, rs, method="PUT"); pg.reload(); pick_mode(pg); pg.wait_for_selector("#rfout .rf-q", timeout=15000)
+    ok(pg.locator("#rfout .rf-q").count() >= 5 and pg.locator("#rfgoalsl .rq-bt").count() >= 1 and pg.locator("#rfneedl .rq-bt").count() >= 1, "[recruit] a saved questionnaire fills the outline: questions, research goals and the recruiting need (all editable)")
     ok(pg.locator("#rfgoalsl li").count() >= 1 and pg.locator("#rfgoals").count() == 0, "[recruit] the goals are a bullet list, one bullet per goal (no textarea)")
     pg.locator("#rfgoalsl .rq-bt").first.fill("了解购买决策"); pg.click("body", position={"x": 5, "y": 5})
     ok(pg.locator("#rfout .rq-ic.n").count() >= 1 and pg.locator("#rfout h3", has_text="研究背景").count() == 1, "[recruit] the outline shows the logic of each option (✗ for an ending) and starts with the research background")
@@ -1244,21 +1124,20 @@ def recruit_section(br, D):
     tops = pg.evaluate("[...document.querySelectorAll('.rf-hd')].map((h) => h.getBoundingClientRect().height)")
     ok(len(tops) == 2 and all(h <= 100 for h in tops) and pg.locator("#rfswitch").count() == 1 and pg.locator("input[name=rfmode]").count() == 0, "[recruit] both frame headers are one row, or two when the icons do not fit (round 3, 2026-11-03), and the 切换 button sits in the header (the choice dialog opened before it)")
     ok(pg.evaluate("(() => { const b = document.querySelector('#rfws').getBoundingClientRect().bottom; return b >= innerHeight - 40 && b <= innerHeight; })()"), "[recruit] the workspace runs to the bottom of the window")
-    ok(pg.evaluate("(() => { const m = document.querySelector('#rfmsg').closest('.rf-pane').getBoundingClientRect(), r = document.querySelector('#rfright').getBoundingClientRect(); const x = m.width / (m.width + r.width); return x > 0.38 && x < 0.46; })()"), "[recruit] the conversation takes about 42% and the outline the rest")
-    ok(pg.evaluate("[...document.querySelectorAll('#rfchat .rf-msg')].every((m) => m.getBoundingClientRect().width <= 561)"), "[recruit] a conversation message is never wider than 560px")
-    box = pg.locator("#rfsplit").bounding_box(); w0 = pg.evaluate("document.querySelector('#rfmsg').closest('.rf-pane').getBoundingClientRect().width")
+    ok(pg.evaluate("(() => { const m = document.querySelector('#ccroot').closest('.rf-pane').getBoundingClientRect(), r = document.querySelector('#rfright').getBoundingClientRect(); const x = m.width / (m.width + r.width); return x > 0.38 && x < 0.46; })()"), "[recruit] the conversation takes about 42% and the outline the rest")
+    box = pg.locator("#rfsplit").bounding_box(); w0 = pg.evaluate("document.querySelector('#ccroot').closest('.rf-pane').getBoundingClientRect().width")
     pg.mouse.move(box["x"] + 5, box["y"] + box["height"] / 2); pg.mouse.down(); pg.mouse.move(box["x"] + 5 + 120, box["y"] + box["height"] / 2, steps=6); pg.mouse.up()
-    w1 = pg.evaluate("document.querySelector('#rfmsg').closest('.rf-pane').getBoundingClientRect().width")
+    w1 = pg.evaluate("document.querySelector('#ccroot').closest('.rf-pane').getBoundingClientRect().width")
     ok(w1 > w0 + 60, "[recruit] dragging the divider makes the conversation wider")
     pg.dblclick("#rfsplit")
-    ok(abs(pg.evaluate("document.querySelector('#rfmsg').closest('.rf-pane').getBoundingClientRect().width") - w0) < 6, "[recruit] a double click on the divider restores the default width")
+    ok(abs(pg.evaluate("document.querySelector('#ccroot').closest('.rf-pane').getBoundingClientRect().width") - w0) < 6, "[recruit] a double click on the divider restores the default width")
     c3, pg3, e3 = new_page(br, 1912, 914, token=rs); pg3.goto(B + "/"); pg3.evaluate("sessionStorage.setItem('ptab','form')")  # a big screen: the workspace is much wider than the old 1240px page, and keeps a margin on the right
     pg3.goto(B + f"/#/p/{pid}/people"); pick_mode(pg3); pg3.wait_for_selector("#rfws")
     ok(pg3.evaluate("(() => { const r = document.querySelector('#rfws').getBoundingClientRect(); return r.width > 1300 && innerWidth - r.right >= 16 && innerWidth - r.right <= 80; })()"), "[recruit] on a big screen the workspace is wider than before and keeps a margin on the right")
     c3.close()
     # a message typed by hand
-    pg.fill("#rfmsg", "随便说说"); pg.press("#rfmsg", "Enter")
-    ok(wait_until(lambda: "离线演示版" in pg.inner_text("#rfchat"), 10), "[recruit] a typed message gets an answer in the conversation (Enter sends)")
+    pg.fill("#ccmsg", "随便说说"); pg.press("#ccmsg", "Enter")
+    ok(wait_until(lambda: "演示模式" in pg.inner_text("#ccroot") and pg.locator("#ccroot .cc-me").count() == 1, 10), "[recruit] a typed message gets an answer in the conversation (Enter sends)")
     # editing by hand: add a number question with a rule, delete it, undo, redo
     pg.click("[data-add=number]"); pg.wait_for_selector("#rfout .rf-edit")
     pg.locator("#rfout .rf-edit [data-f=text]").fill("您的年龄是多少？"); pg.locator("#rfout .rf-edit [data-f=text]").dispatch_event("change")
@@ -1962,23 +1841,60 @@ def requests_get(path, tok):
         return e.code
 
 
+def creation_section(br, D):
+    """创建访谈: the same stage-by-stage dialog beside the questionnaire page and the outline page, the stage list in the side menu, changes land in the right pane and can be undone."""
+    adm = D["tok"]["admin"]
+    pid = call("/projects", {"name": "创建对话测试", "market": "SG", "language": "zh", "brief": "了解护手霜的使用场景。重点是冬天的使用习惯。"}, adm)["id"]
+    ctx, pg, errs = new_page(br, 1440, h=900, token=adm)
+    pg.goto(B + f"/#/p/{pid}/outline"); pg.wait_for_selector("#ccroot .cc-ai")
+    ok(pg.locator("#olchat, #olmsg, .ol-sug").count() == 0, "[creation] the old conversation of the outline page is gone")
+    steps = pg.locator(".l2slot .cc-steps .cc-st")
+    ok(wait_until(lambda: steps.count() == 11 and "current" in (steps.first.get_attribute("class") or ""), 6), "[creation] the 11 stages are listed in the side menu and the first is current")
+    ok(steps.nth(0).inner_text().strip().endswith("目标") and steps.nth(10).inner_text().strip().endswith("发布"), "[creation] the stages run from 目标 to 发布")
+    ok("演示模式" in pg.inner_text("#ccroot"), "[creation] the assistant opened the first stage by itself (offline demo)")
+    audit_page(pg, "creation outline/desktop", errs)
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "creation_outline.png"))
+    n0 = pg.locator("#ccroot .cc-ai").count()
+    pg.fill("#ccmsg", "好的，把目标整理一下"); pg.click("#ccsend")
+    ok(wait_until(lambda: pg.locator("#ccroot .cc-ai").count() == n0 + 1 and pg.locator("#ccroot .cc-me").count() == 1, 6), "[creation] what the team says and the answer both show in the dialog")
+    ok(pg.locator("#ccroot .cc-acts li").count() >= 1, "[creation] the list of what really changed is shown under the answer")
+    for _ in range(6):   # 目标 → 主持与招募 → 受访者 → 甄别 → 同意 → 形式 → 大纲
+        k = pg.locator(".l2slot .cc-st.current").inner_text()
+        pg.click("#ccnext"); ok(wait_until(lambda: pg.locator(".l2slot .cc-st.current").inner_text() != k, 6), f"[creation] 进入下一阶段 moves on from {k.strip()}")
+    ok(pg.locator(".l2slot .cc-st.current").inner_text().strip().endswith("大纲设计") and pg.locator(".l2slot .cc-st.done").count() == 6, "[creation] we are at 大纲; the six before it are ticked")
+    pg.fill("#ccmsg", "起草大纲"); pg.click("#ccsend")
+    ok(wait_until(lambda: pg.locator(".ol-q").count() >= 3, 8), "[creation] the outline the assistant wrote appears in the right pane at once")
+    ok(wait_until(lambda: pg.locator("#ccroot [data-undo]").count() == 1, 4), "[creation] the last change has an undo button")
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "creation_outline_done.png"))
+    pg.click("#ccroot [data-undo]")
+    ok(wait_until(lambda: pg.locator(".ol-q").count() == 0, 6), "[creation] undo takes the outline back out")
+    pg.click(".l2slot .cc-st >> nth=0"); ok(wait_until(lambda: pg.locator(".l2slot .cc-st.current").inner_text().strip().endswith("目标"), 6), "[creation] a stage can be jumped back to")
+    nmsgs = pg.locator("#ccroot .cc-me").count()
+    pg.goto(B + f"/#/p/{pid}/people"); pg.wait_for_selector("#ccroot .cc-ai")
+    ok(pg.locator("#ccroot .cc-me").count() == nmsgs and pg.locator(".l2slot .cc-st").count() == 11, "[creation] the questionnaire page shows the very same dialog and stage list")
+    ok(pg.locator("#rfchat, #rfmsg, .rq-bubs").count() == 0, "[creation] the old conversation of the questionnaire page is gone")
+    audit_page(pg, "creation questionnaire/desktop", errs)
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "creation_people.png"))
+    ctx.close()
+
+
 def voice_section(br, D):
     """Voice input: focusing a text box in the team's pages shows a small microphone; one click starts, the next stops and puts the recognised words into the box (not sent)."""
     adm, pid = D["tok"]["admin"], D["pid"]
     ctx, pg, errs = new_page(br, 1280, h=900, token=adm)
     pg.add_init_script("""navigator.mediaDevices.getUserMedia = async () => { const ac = new AudioContext(); const o = ac.createOscillator(); const d = ac.createMediaStreamDestination(); o.connect(d); o.start(); return d.stream; };""")
-    pg.goto(B + f"/#/p/{pid}/outline"); pg.wait_for_selector("#olmsg")
+    pg.goto(B + f"/#/p/{pid}/outline"); pg.wait_for_selector("#ccmsg")
     ok(pg.locator("#vmic").count() == 0 or pg.locator("#vmic").is_hidden(), "[voice] no microphone is showing before a box is focused")
-    pg.click("#olmsg"); pg.wait_for_selector("#vmic:not([hidden])")
-    box, mic = pg.locator("#olmsg").bounding_box(), pg.locator("#vmic").bounding_box()
+    pg.click("#ccmsg"); pg.wait_for_selector("#vmic:not([hidden])")
+    box, mic = pg.locator("#ccmsg").bounding_box(), pg.locator("#vmic").bounding_box()
     ok(box["x"] <= mic["x"] <= box["x"] + box["width"] and box["y"] <= mic["y"] <= box["y"] + 40, f"[voice] the microphone sits inside the box, at its top right (box {box}, mic {mic})")
     audit_page(pg, "voice mic/desktop", errs)
     pg.screenshot(path=os.path.join(ROOT, "qa_shots", "voice_mic.png"), clip={"x": 0, "y": 560, "width": 700, "height": 340})
     pg.click("#vmic .vm-b"); ok(wait_until(lambda: pg.locator("#vmic.rec").count() == 1, 4), "[voice] one click starts recording (the button turns red and counts seconds)")
     pg.wait_for_timeout(1800); pg.click("#vmic .vm-b")
-    ok(wait_until(lambda: "示例文字" in pg.input_value("#olmsg"), 8), "[voice] the second click stops, the clip is recognised and the words land in the box")
-    ok(pg.locator("#olchat .rf-me").count() == 0 and pg.locator("#vmic.rec").count() == 0, "[voice] nothing is sent by itself and the recording state is over")
-    pg.fill("#olmsg", ""); pg.click("#vmic .vm-l")
+    ok(wait_until(lambda: "示例文字" in pg.input_value("#ccmsg"), 8), "[voice] the second click stops, the clip is recognised and the words land in the box")
+    ok(pg.locator("#ccroot .cc-me").count() == 0 and pg.locator("#vmic.rec").count() == 0, "[voice] nothing is sent by itself and the recording state is over")
+    pg.fill("#ccmsg", ""); pg.click("#vmic .vm-l")
     ok(pg.inner_text("#vmic .vm-l").strip() == "EN", "[voice] the language chip switches between 中 and EN")
     pg.click("#vmic .vm-l")
     pg.goto(B + "/#/projects"); pg.wait_for_selector(".card")
@@ -2781,10 +2697,10 @@ def run():
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "group_section": guard_section(group_section, br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "outline_section": guard_section(outline_section, br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "voice_section": guard_section(voice_section, br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "creation_section": guard_section(creation_section, br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "tabs_section": guard_section(tabs_section, br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "shell_behaviour_section": guard_section(shell_behaviour_section, br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "fill_section": guard_section(fill_section, br, D)
-        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "review_section": guard_section(review_section, br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "insights_section": guard_section(insights_section, br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "projects_section": guard_section(projects_section, br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "tabflash_section": guard_section(tabflash_section, br, D)

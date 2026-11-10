@@ -2,11 +2,13 @@
 
 One conversation per project, shown beside the questionnaire page and the outline page alike. The model proposes, the code applies (app/creation/patches.py).
 """
+from urllib.parse import urlparse
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from .. import assistant_identity
+from .. import assistant_identity, web_reader
 from ..audit import audit
 from ..config import settings
 from ..creation import engine, patches, stages
@@ -82,7 +84,16 @@ def post_message(pid: str, body: MessageBody, ctx: Ctx = Depends(require_roles(*
     """One thing the team says in the current stage; the answer and any change to the study come back with the whole dialog."""
     proj = _project(db, ctx, pid)
     state = stages.load(proj)
-    _turn(db, ctx, proj, state, body.message.strip(), body.material)
+    material = body.material
+    for url in web_reader.urls_in(body.message):   # a pasted link is read here, on the server (public pages only); a page that cannot be read is told to the model, not hidden
+        host = urlparse(url).hostname or "?"
+        try:
+            page = web_reader.read(url)
+            material += f"\n\n【网页：{page['host']} {page['title']}】\n{page['text']}"
+        except web_reader.WebError as e:
+            material += f"\n\n【网页读取失败：{host}：{e}】"
+        audit(db, ctx.org_id, ctx.actor, "creation.web", host)   # the address itself may carry a token: only the host is written down
+    _turn(db, ctx, proj, state, body.message.strip(), material[:30500])
     return _view(state)
 
 

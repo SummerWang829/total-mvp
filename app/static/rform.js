@@ -4,7 +4,6 @@
    依赖 index.html 里的 api / esc / toast / guard / $ / CONFIG（app.js）和 screen_run.js。 */
 const RF_TYPE = { single: "单选", multi: "多选", text: "文字填空", number: "数字填空" };
 const RF_OP = { lt: "小于", lte: "不大于", gt: "大于", gte: "不小于", eq: "等于" };
-const RF_MAX_FILES = 5;
 const RF_IC = {
   list: '<path d="M9 4h6a1 1 0 0 1 1 1v1H8V5a1 1 0 0 1 1-1z"/><rect x="5" y="6" width="14" height="15" rx="2"/><path d="M9 12h6M9 16h4"/>',
   eye: '<circle cx="12" cy="12" r="8"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .9-1 1.7v.5"/><circle cx="12" cy="17" r=".6" fill="currentColor"/>',
@@ -20,7 +19,6 @@ const RF_IC = {
   ext: '<path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>',
 };
 const rfIcon = (d) => `<svg class="rf-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
-const RF_CLIP = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>';
 /** A text box as tall as its text: at least 2 lines, at most 8; beyond that it scrolls inside. */
 function rfAutosize(t) {
   const fit = () => {
@@ -36,36 +34,13 @@ function rfAutosize(t) {
 /** 整个“招募问卷”卡片，返回 { html, wire, fit }。 */
 function rfCard(p, form) {
   let f = form, mode = form.source === "html" ? "html" : "ai", seg = "outline", Q = JSON.parse(JSON.stringify(form.questions || [])), goals = [...(form.goals || [])], need = form.need || "";
-  let timer = null, sending = false, pending = "", hist = [], redo = [], editing = new Set();
+  let timer = null, hist = [], redo = [], editing = new Set();
   let ver = "", vers = null;   // the language version being looked at (""/the source = the original) and the versions' states (app/static/rtrans.js)
   const isSource = () => !ver || (vers && ver === vers.source);
-  let showSug = false, changedIds = new Set();   // showSug: the suggestion cards are open in the chat; changedIds: the questions the last change touched ("刚改")
-  const useLib = true;   // the research library always goes along (no tick, 2026-11-03)
-  let fail = null;   // fail: the last turn that did not get an answer { ask, text, fatal } (kept here only, never saved)
+  let changedIds = new Set();   // the questions the last change of the dialog touched ("刚改")
   let htmlLocked = !!form.html_url;   // the saved link is read-only until 编辑 is pressed (2026-11-03)
   let menu = null;   // the open ⋮ menu of a question ("q:<id>") or an option ("o:<id>:<number>"); one at a time
   let busy = false, focusGrip = null;   // busy: a moved card is still landing; focusGrip: the handle to focus after a keyboard move
-  let files = [];   // documents read for the next chat message: { name, text, truncated } (kept here only, sent with one message, never saved)
-  const RF_KIND = { answer: ["回答", "ans"], suggest: ["建议", "sug"], stat: ["统计", "stat"] };
-  const aiOk = () => !f.ai || f.ai.ok;
-  const nl = (s) => esc(s).replace(/\n/g, "<br>");
-  const sugs = () => f.suggestions || [];
-  const sugSeen = () => { try { return sessionStorage.getItem("rf_seen_" + p.id) || ""; } catch { return ""; } };
-  const markSeen = () => { try { sessionStorage.setItem("rf_seen_" + p.id, sugs().map((s) => s.sig).join(",")); } catch { /* no storage */ } };
-  const diffIds = (before, after) => { const b = Object.fromEntries(before.map((q) => [q.id, JSON.stringify(q)])); return new Set(after.filter((q) => b[q.id] !== JSON.stringify(q)).map((q) => q.id)); };
-  const chipsOf = (keys) => (keys && keys.length ? `<div class="rf-src">${keys.map((k) => `<span>${esc(k)}</span>`).join("")}</div>` : "");
-  const bars = (m) => { const top = Math.max(1, ...(m.bars || []).map((b) => b.n)); return (m.bars || []).map((b) => `<div class="rf-bar"><span>${esc(b.label)}</span><i style="width:${Math.round((b.n / top) * 140)}px"></i>${b.n} 人</div>`).join(""); };
-  const msgHtml = (m, last, idx) => {
-    if (m.role === "user") return `<div class="rf-msg rf-me">${esc(m.text)}</div>`;
-    if (m.kind === "change") {
-      const ids = last ? [...changedIds].map((id) => Q.findIndex((q) => q.id === id) + 1).filter(Boolean).sort((a, b) => a - b) : [];
-      return `<div class="rf-msg"><div class="rf-chgc"><b>已更新问卷</b><div data-selk="m:${idx}">${nl(m.text)}</div>${ids.length ? `<div class="sm">涉及：第 ${ids.join("、")} 题</div>` : ""}${last && hist.length ? `<button class="s" type="button" data-chip="undo">撤销本次修改</button>` : ""}</div></div>`;
-    }
-    const k = RF_KIND[m.kind], nx = last && m.next && m.next.length ? `<div class="rf-nx"><span class="sm mut">可继续查看：</span>${m.next.map((n, i) => `<button class="s" type="button" data-next="${i}">${esc(n.label)}</button>`).join("")}</div>` : "";
-    return `<div class="rf-msg">${k ? `<span class="rf-kind ${k[1]}">${k[0]}</span>` : ""}<div data-selk="m:${idx}">${nl(m.text)}</div>${m.bars && m.bars.length ? `<div class="rf-bars">${bars(m)}</div>` : ""}${chipsOf(m.sources)}${nx}</div>`;
-  };
-  const sugCard = (s) => `<div class="rf-sg"><span class="rf-sgk">${esc(s.label)}${s.qno ? ` · 第 ${s.qno} 题` : ""}</span><div>${esc(s.text)}</div>${chipsOf(s.sources)}
-    <div class="rf-sgb"><button class="p s" type="button" data-adopt="${esc(s.sig)}">${esc(s.button || "采纳")}</button><a class="rf-nomore" href="#" data-nomore="${esc(s.sig)}">不再提醒</a></div></div>`;
   const snap = () => JSON.stringify({ Q, goals, need });
   const nextId = () => { let n = 0; Q.forEach((q) => { const m = /^q(\d+)$/.exec(q.id); if (m) n = Math.max(n, +m[1]); }); return "q" + (n + 1); };
   const optId = (q) => { let n = 0; q.options.forEach((o) => { const m = /^o(\d+)$/.exec(o.id); if (m) n = Math.max(n, +m[1]); }); return "o" + (n + 1); };
@@ -84,7 +59,7 @@ function rfCard(p, form) {
   const pushHist = () => { hist.push(snap()); if (hist.length > 30) hist.shift(); redo = []; syncUndo(); };
   const apply = (s) => { const o = JSON.parse(s); Q = o.Q; goals = o.goals; need = o.need; editing = new Set(); };
   const syncUndo = () => { const u = $("#rfundo"), r = $("#rfredo"); if (u) u.disabled = !hist.length; if (r) r.disabled = !redo.length; };
-  const changed = () => { fix(); save(); changedIds = new Set(); drawRight(); drawChat(); };  // after a manual edit: the "刚改" marks go, suggestions about edited questions are gone with the next save
+  const changed = () => { fix(); save(); changedIds = new Set(); drawRight(); };  // after a manual edit: the "刚改" marks go, suggestions about edited questions are gone with the next save
   const openEx = new Set();  // option ids whose 互斥 picker is open
   const code = (q, o) => q.options.findIndex((x) => x.id === o.id) + 1;
   const exLabel = (q, o) => (o.excl || []).map((id) => q.options.findIndex((x) => x.id === id) + 1).filter(Boolean).sort((a, b) => a - b).join("、");
@@ -103,115 +78,24 @@ function rfCard(p, form) {
   const actions = (i, cur, allowNext) => `<option value="" ${cur === "" ? "selected" : ""}>${allowNext ? "下一题" : "选择处理方式"}</option>${Q.slice(i + 1).map((x, k) => `<option value="${x.id}" ${cur === x.id ? "selected" : ""}>跳到第 ${i + k + 2} 题</option>`).join("")}<option value="end_out" ${cur === "end_out" ? "selected" : ""}>结束 · 不符合（筛掉）</option><option value="end_ok" ${cur === "end_ok" ? "selected" : ""}>结束 · 符合</option>`;
   const badge = (g) => (g === "end_out" ? `<span class="rf-lg out">结束 · 不符合</span>` : g === "end_ok" ? `<span class="rf-lg ok">结束 · 符合</span>` : g ? `<span class="rf-lg jump">${ref(g)}</span>` : "");
 
-  /* ---------- left: the conversation ---------- */
-  function chatHtml() {
-    if (mode === "html") return `<div class="rf-msg">问卷已经导入了，这里不用再出题。<div class="sm mut" style="margin-top:6px">下一步是生成访谈大纲：按这份问卷的筛选字段（常住地区、年龄、到港、商圈、收入）搭结构。</div></div>
+  /* ---------- left: 导入态 = a short card; 其余 = the stage-by-stage dialog shared with the outline page (creation.js) ---------- */
+  const importHtml = () => `<div class="rf-msg">问卷已经导入了，这里不用再出题。<div class="sm mut" style="margin-top:6px">下一步是生成访谈大纲：按这份问卷的筛选字段（常住地区、年龄、到港、商圈、收入）搭结构。</div></div>
       <div class="rf-steps">
         <div><i>1</i><span>确认<b>研究背景 · 研究目标 · 招募需求</b>（右侧可以直接改）</span></div>
         <div><i>2</i><span>生成<b>访谈大纲</b>，按分群（大湾区 / 非大湾区）拆分追问</span></div>
         <div><i>3</i><span>Confirmit 数据回来后，在<b>配额与受访者名单</b>里导入甄别数据</span></div>
       </div>
       <div class="row" style="margin:2px 0 10px"><button class="p" type="button" id="rfgooutline">生成访谈大纲 →</button></div>`;
-    const hello = `<div class="rf-msg">您好！我可以根据研究背景和研究库资料协助设计招募问卷，也可以按您的要求修改，例如“年龄放最前面，18 岁以下筛掉”“每天都用的人跳过频率题”“把第 3 题改成多选”。可先说“帮我起草问卷”。</div>`;
-    const all = f.chat || [], msgs = all.map((m, i) => msgHtml(m, i === all.length - 1 && !fail, i)).join("");
-    const failHtml = fail ? `<div class="rf-msg rf-me">${esc(fail.ask)}</div><div class="rf-err" role="alert"><b>本次未能完成回复</b><div>${esc(fail.text)}</div>${fail.fatal ? "" : `<button class="s" type="button" data-chip="retry">重新尝试</button><button class="s" type="button" data-chip="rephrase">调整提问方式</button>`}</div>` : "";
-    const cards = showSug && sugs().length ? `<div class="rf-sgs"><div class="sm mut">建议 ${sugs().length} 条。</div>${sugs().map(sugCard).join("")}</div>` : "";
-    const news = !showSug && sugs().length && sugSeen() !== sugs().map((s) => s.sig).join(",") ? `<button type="button" class="rf-news" data-chip="showsug">有 ${sugs().length} 条建议，点这里查看</button>` : "";
-    const down = aiOk() ? "" : `<div class="rf-bad" role="alert">${esc(f.ai.reason)}</div>`;   // the model cannot be used: the reason stays visible (the chips above it are gone)
-    return down + hello + msgs + cards + failHtml + (pending ? `<div class="rf-msg rf-me">${esc(pending)}</div><div class="rf-msg mut">正在处理…</div>` : news);
-  }
-  function bubbles() {   // the 建议 bubbles above the input: at most three of the actions for the state of the questionnaire; a click sends those words
-    if (mode === "html") return "";
-    const started = (f.stats && f.stats.started) || 0, why = aiOk() ? "" : ` disabled title="${esc(f.ai.reason)}"`;   // the buttons that need the model are greyed out, with the reason, when it cannot be used
-    const need = (c, label) => `<button class="rq-bub" type="button" data-chip="${c}"${why}>${label}</button>`, free = (c, label) => `<button class="rq-bub" type="button" data-chip="${c}">${label}</button>`;
-    const row = !Q.length ? [need("draft", "帮我起草问卷")] : !started ? [free("review", "检查问卷"), need("goals", "对照研究目标"), need("neutral", "优化措辞的中立性"), free("test", "测试这份问卷")]
-      : [free("review", "检查问卷"), free("rate", "预估通过率"), free("worst", "定位筛除率较高的题目"), need("neutral", "优化措辞的中立性")];
-    return `<span class="rq-bubh">建议</span>${row.slice(0, 3).join("")}`;
-  }
-  const drawChat = () => { const c = $("#rfchat"); if (!c) return; c.innerHTML = chatHtml(); c.scrollTop = c.scrollHeight; const b = $("#rfbub"); if (b) b.innerHTML = pending ? "" : bubbles(); wireChips(); const g = $("#rfgooutline"); if (g) g.onclick = goOutline; };
-  async function send(text) {
-    text = (text || "").trim(); if (!text || sending) return;
-    if (incomplete()) return toast("有题目或选项还没写完，先写完再对话", true);
-    sending = true; pending = text; fail = null; $("#rfmsg").value = ""; $("#rfsend").disabled = true; drawChat();
-    const before = snap();
-    try {
-      const r = await api(`/projects/${p.id}/recruiting/form/chat`, { method: "POST", body: { message: text, questions: Q, goals, need, use_library: useLib, attachments: files.map((x) => ({ name: x.name, text: x.text })) } });
-      if (r.changed || JSON.stringify(r.goals) !== JSON.stringify(goals) || r.need !== need) { hist.push(before); if (hist.length > 30) hist.shift(); redo = []; }
-      changedIds = r.changed ? diffIds(Q, r.questions) : new Set();
-      f = { ...f, ...r }; Q = JSON.parse(JSON.stringify(r.questions)); goals = [...(r.goals || [])]; need = r.need || ""; editing = new Set();
-    } catch (e) { fail = { ask: text, text: e.message, fatal: e.status === 503 }; if (e.status === 503) f = { ...f, ai: { ...(f.ai || {}), ok: false, reason: e.message } }; }
-    sending = false; pending = ""; const b = $("#rfsend"); if (b) b.disabled = false; if (!fail) files = []; syncUndo(); drawChat(); drawRight(); drawFiles();
-    return !fail;
-  }
-  let sel = null;   // the "选中文字 → 修改清单" helper (app/static/chatsel.js)
-  const selLabel = (key) => { const m = /^q:(.+)$/.exec(key || ""); const i = m ? Q.findIndex((q) => q.id === m[1]) : -1; return i >= 0 ? `第 ${i + 1} 题` : ""; };
-  function wireSel() {
-    sel = ChatSel.attach({
-      roots: [$("#rfchat"), $("#rfright")], bar: $("#rfsel"), label: selLabel,
-      ask: async ({ quote, text }) => {   // 只问不改: answered on the server without touching or saving the questionnaire
-        const r = await api(`/projects/${p.id}/recruiting/form/chat`, { method: "POST", body: { message: `针对这一处：“${quote}”
-${text}
-请只回答，不要修改问卷。`, questions: Q, goals, need, use_library: useLib, ask_only: true } });
-        return r.reply;
-      },
-      send: async ({ text }) => { const box = $("#rfmsg"), draft = box ? box.value : ""; const ok = await send(text); if (box && draft) box.value = draft; return ok; },
-    });
-  }
-  const ASK = { draft: "帮我起草问卷", goals: "对照研究目标和招募需求，核查问卷是否有未覆盖之处，仅告知结论，暂不修改", neutral: "检查问卷是否存在引导性或带有倾向的措辞，如有，请修改得更为中立" };
-  const drawFiles = () => {   // the documents waiting for the next message, above the input; each can be taken off
-    const row = $("#rfarow"); if (!row) return;
-    row.hidden = !files.length;
-    row.innerHTML = files.map((x, i) => `<span class="rq-file">${esc(x.name)}${x.truncated ? "（超出部分未提供）" : ""}<button type="button" data-rmf="${i}" aria-label="去掉 ${esc(x.name)}">${rfIcon(RF_IC.x)}</button></span>`).join("");
-    row.querySelectorAll("[data-rmf]").forEach((b) => (b.onclick = () => { files.splice(+b.dataset.rmf, 1); drawFiles(); }));
-  };
-  const showFerr = (msg) => { const err = $("#rfferr"); if (!err) return; err.hidden = !msg; err.textContent = msg || ""; };
-  async function attach(file) {   // the file is read on the server into text (PDF, Word, text); images and video are refused there, and the reason is shown
-    if (files.length >= RF_MAX_FILES) return showFerr(`一次最多附 ${RF_MAX_FILES} 个文件`);
-    const form = new FormData(); form.append("file", file);
-    showFerr(`正在读取 ${file.name}…`);
-    try {
-      const r = await fetch("/api/attachments/extract", { method: "POST", headers: { Authorization: "Bearer " + store.get("tt_token") }, body: form });
-      if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.detail || "这个文件读不出来"); }
-      const out = await r.json();
-      files.push({ name: file.name, text: out.text, truncated: out.truncated }); showFerr(""); drawFiles();
-    } catch (e) { showFerr(e.message); }
-  }
-  async function stats(kind) {   // 预估通过率 / 定位筛除率较高的题目: worked out on the server from the anonymous counts, no model
-    if (sending) return; sending = true; fail = null; pending = kind === "rate" ? "预估通过率" : "定位筛除率较高的题目"; drawChat();
-    try { f = { ...f, ...(await api(`/projects/${p.id}/recruiting/form/stats`, { method: "POST", body: { kind } })) }; } catch (e) { fail = { ask: pending, text: e.message, fatal: true }; }
-    sending = false; pending = ""; drawChat();
-  }
-  async function review() {
-    if (sending) return; if (incomplete()) return toast("有题目或选项还没写完，先写完再检查", true);
-    sending = true; fail = null; pending = "检查问卷"; drawChat();
-    try { const r = await api(`/projects/${p.id}/recruiting/form/review`, { method: "POST" }); f = { ...f, ...r }; showSug = true; markSeen(); }
-    catch (e) { fail = { ask: pending, text: e.message, fatal: e.status === 503 }; }
-    sending = false; pending = ""; drawChat(); drawRight();
-  }
-  const adopt = guard(async (sig) => {
-    const s = sugs().find((x) => x.sig === sig); if (!s) return;
-    if (!s.fix) return send("采纳：" + s.instruction);   // the others go through the chat, which edits with the usual checks
-    const before = snap(), beforeQ = JSON.parse(JSON.stringify(Q));
-    const r = await api(`/projects/${p.id}/recruiting/form/suggestions/adopt`, { method: "POST", body: { sig } });
-    hist.push(before); if (hist.length > 30) hist.shift(); redo = [];
-    changedIds = diffIds(beforeQ, r.questions); f = { ...f, ...r }; Q = JSON.parse(JSON.stringify(r.questions)); editing = new Set(); syncUndo(); markSeen(); drawChat(); drawRight();
+  const reload = guard(async () => {   // the dialog changed the study: read the questionnaire again and mark the questions it touched
+    const before = JSON.parse(JSON.stringify(Q));
+    f = { ...f, ...(await api(`/projects/${p.id}/recruiting/form`)) }; Q = JSON.parse(JSON.stringify(f.questions || [])); goals = [...(f.goals || [])]; need = f.need || ""; editing = new Set();
+    changedIds = diffIds(before, Q); drawRight();
   });
-  const nomore = guard(async (sig) => { const r = await api(`/projects/${p.id}/recruiting/form/suggestions/dismiss`, { method: "POST", body: { sig } }); f = { ...f, suggestions: r.suggestions }; markSeen(); drawChat(); drawRight(); });
-  function wireChips() {
-    document.querySelectorAll("[data-chip]").forEach((b) => (b.onclick = () => {
-      const c = b.dataset.chip;
-      if (c === "test") { seg = "test"; drawRight(); } else if (c === "pub") publish(); else if (c === "review") review();
-      else if (c === "showsug") { showSug = true; markSeen(); drawChat(); drawRight(); }
-      else if (c === "rate" || c === "worst") stats(c);
-      else if (c === "retry" && fail) send(fail.ask);
-      else if (c === "rephrase" && fail) { const m = $("#rfmsg"), a = fail.ask; fail = null; drawChat(); m.value = a; m.focus(); }
-      else if (c === "undo") { const u = $("#rfundo"); if (u && !u.disabled) u.click(); }
-      else if (ASK[c]) send(ASK[c]);
-    }));
-    document.querySelectorAll("[data-next]").forEach((b) => (b.onclick = () => { const last = [...(f.chat || [])].reverse().find((m) => m.next && m.next.length); if (last) send(last.next[+b.dataset.next].ask); }));
-    document.querySelectorAll("[data-adopt]").forEach((b) => (b.onclick = () => adopt(b.dataset.adopt)));
-    document.querySelectorAll("[data-nomore]").forEach((a) => (a.onclick = (e) => { e.preventDefault(); nomore(a.dataset.nomore); }));
-  }
+  const drawLeft = () => {
+    const c = $("#ccroot"); if (!c) return;
+    if (mode === "html") { c.innerHTML = `<div class="cc-sc">${importHtml()}</div>`; const g = $("#rfgooutline"); if (g) g.onclick = goOutline; }
+    else CreationChat.mount(c, p, { onChange: reload });
+  };
 
   /* ---------- right: the outline / the test ---------- */
   function qEditor(q, i) {
@@ -229,7 +113,7 @@ ${text}
         <input data-r="value" type="number" step="any" value="${r.value}" aria-label="数值" style="max-width:110px"><select data-r="goto" aria-label="就">${actions(i, r.goto, false)}</select><button class="s" type="button" data-rdel="${j}" aria-label="删除规则">×</button></div>`).join("")}
         <button class="s" type="button" data-radd="1" ${(q.rules || []).length >= 4 ? "disabled" : ""}>+ 添加规则（例如 小于 18 → 结束 · 不符合）</button></div>` : ""}</div>`;
   }
-  const qBadge = (q) => (changedIds.has(q.id) ? `<span class="rf-bd new">刚改</span>` : showSug && sugs().some((s) => s.qid === q.id) ? `<span class="rf-bd sug">建议</span>` : "");
+  const qBadge = (q) => (changedIds.has(q.id) ? `<span class="rf-bd new">刚改</span>` : "");
   // a jump must still go forward (or to an end) after the questions are moved: a move that would turn one back is refused, never silently dropped
   const orderOk = (list) => list.every((q, i) => [...q.options.map((o) => o.goto), ...(q.rules || []).map((r) => r.goto)].every((g) => {
     const at = list.findIndex((x) => x.id === g);
@@ -493,8 +377,7 @@ ${text}
   const setRight = (open) => { rightOpen = open; try { sessionStorage.setItem("rf_right", open ? "1" : "0"); } catch (e) { /* private window */ } const w = $("#rfws"); if (w) w.classList.toggle("rf-collapsed", !open); fit(); };
   function panels() {
     return `<div class="rf-ws${rightOpen ? "" : " rf-collapsed"}${mode === "html" ? " rf-import" : ""}" id="rfws"><div class="rf-pane"><div class="rf-hd">${mode === "html" ? "" : `<button class="s" type="button" id="rfswitch">更换来源</button>`}<span class="sp"></span><button class="s" type="button" id="rfundo" disabled>${rfIcon(RF_IC.undo)}撤销</button><button class="s" type="button" id="rfredo" disabled>${rfIcon(RF_IC.redo)}重做</button><button class="s" type="button" id="rfexp">${rfIcon(RF_IC.expand)}展开大纲</button></div>
-      <div class="rf-sc" id="rfchat"></div>
-      <div id="rfsel" hidden></div><div class="rq-bubs" id="rfbub"></div><div class="rf-inp"><div class="rq-files" id="rfarow" hidden></div><div class="rf-box"><button class="rq-clip" type="button" id="rfclip" aria-label="附件" title="附件">${RF_CLIP}</button><input type="file" id="rffile" hidden accept=".pdf,.docx,.txt,.md,.csv,image/*,video/*"><textarea id="rfmsg" rows="2" maxlength="2000" placeholder="请输入修改要求或问题，例如“帮我起草问卷”" aria-label="对话输入"></textarea><button class="p rf-send" type="button" id="rfsend" aria-label="发送">${rfIcon(RF_IC.send)}</button></div><div class="rq-ferr" id="rfferr" role="alert" hidden></div></div></div>
+      <div class="cc" id="ccroot"></div></div>
       <div class="rf-split" id="rfsplit" role="separator" aria-orientation="vertical" aria-label="拖动调整对话和大纲的宽度（双击恢复）" tabindex="0"><i></i></div><div class="rf-pane" id="rfright"></div></div>`;
   }
   let picking = !(f.source_confirmed || ""), pickMode = f.source === "html" ? "html" : "ai";   // 只在还没选过来源时问一次（选过就记在 source_confirmed 里，从任何入口进来都不再弹）
@@ -517,8 +400,7 @@ ${text}
       mode = s; picking = false; draw();
     });
     const pno = $("#rfpickno"); if (pno) pno.onclick = () => { picking = false; draw(); };   // 取消 = 没选过，下次进来还会问
-    if (sel) { sel.destroy(); sel = null; }
-    drawChat(); drawRight(); fit(); wireSplit();   // 两栏先画出来，两种来源都要画（导入态也有左引导 + 右大纲）
+    drawLeft(); drawRight(); fit(); wireSplit();   // 两栏先画出来，两种来源都要画（导入态也有左引导 + 右大纲）
     const openPick = () => { pickMode = mode; picking = true; draw(); };
     ["#rfswitch", "#rfswitch2"].forEach((sel) => { const b = $(sel); if (b) b.onclick = openPick; });   // 放在画完之后：导入态的“更换来源”在右栏
     // 导入态右侧链接卡上的三个按钮属于 drawRight 画出来的元素，必须画完再绑
@@ -526,7 +408,7 @@ ${text}
     const op = $("#rfopen"); if (op) op.onclick = () => window.open(f.html_url, "_blank", "noopener,noreferrer");
     const ed = $("#rfedit"); if (ed) ed.onclick = () => { htmlLocked = false; draw(); const u = $("#rfurl"); if (u) u.focus(); };
     if (mode !== "ai") return;   // 导入模式没有题目：不装版本、选句、题目菜单这些
-    loadVers(true); wireSel();
+    loadVers(true);
     if (window._rfVerOff) document.removeEventListener("click", window._rfVerOff);
     window._rfVerOff = () => { const m = $("#rfvm"); if (m && !m.hidden) { m.hidden = true; const b = $("#rfvb"); if (b) b.setAttribute("aria-expanded", "false"); } };
     document.addEventListener("click", window._rfVerOff);
@@ -536,12 +418,6 @@ ${text}
     if (window._rfMenuOff) document.removeEventListener("click", window._rfMenuOff);
     window._rfMenuOff = (e) => { if (menu && !e.target.closest("[data-menu], .rq-menu")) { menu = null; drawRight(); } };   // a ⋮ menu closes on a click anywhere else
     document.addEventListener("click", window._rfMenuOff);
-    const clip = $("#rfclip"), fin = $("#rffile");
-    if (clip && fin) { clip.onclick = () => fin.click(); fin.onchange = () => { const f = fin.files[0]; fin.value = ""; if (f) attach(f); }; }
-    drawFiles();
-    const m = $("#rfmsg");
-    $("#rfsend").onclick = () => send(m.value);
-    m.onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(m.value); } };
     $("#rfundo").onclick = () => { const s = hist.pop(); if (!s) return; redo.push(snap()); apply(s); syncUndo(); changed(); };
     $("#rfexp").onclick = () => setRight(true);
     $("#rfredo").onclick = () => { const s = redo.pop(); if (!s) return; hist.push(snap()); apply(s); syncUndo(); changed(); };
@@ -558,6 +434,6 @@ ${text}
     s.onkeydown = (e) => { if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return; e.preventDefault(); const cur = parseFloat(w.style.getPropertyValue("--rfl")) || 42; setRatio(cur + (e.key === "ArrowRight" ? 2 : -2)); try { localStorage.setItem(ratioKey, parseFloat(w.style.getPropertyValue("--rfl")) || 42); } catch { /* no storage */ } };
   }
   pageOn("rf-fit", window, "resize", fit);
-  const html = `<div class="rf" style="padding:0"><div id="rfbody">${panels()}${pickHtml()}</div></div>`;
+  const html = `<div class="cc-steps" id="ccsteps" role="tablist" aria-label="创建访谈的阶段" data-subrow></div><div class="rf" style="padding:0"><div id="rfbody">${panels()}${pickHtml()}</div></div>`;
   return { html, wire, fit };
 }

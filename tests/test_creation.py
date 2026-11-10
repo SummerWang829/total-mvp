@@ -198,3 +198,11 @@ def test_the_offline_demo_walks_through_the_first_stages(org):
     r = say(org, pid, "好的，整理一下").json()
     assert "演示模式" in r["messages"][-1]["text"] and r["model"] == "演示模式" and form(pid).goals
     assert engine.START not in str(r["messages"])
+
+
+def test_the_projects_library_is_given_to_the_model_every_turn(org, monkeypatch):
+    pid = org.project()
+    org.c.post("/api/repo/documents", headers=org.h(), json={"title": "项目笔记", "text": "客户最在意的是品牌信任", "project_id": pid})
+    fake = use(monkeypatch, reply("ok"))
+    say(org, pid, "开始")
+    assert "品牌信任" in fake.calls[-1]["LIBRARY"]

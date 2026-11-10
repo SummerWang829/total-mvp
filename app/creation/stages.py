@@ -29,7 +29,7 @@ class Stage(str, Enum):
 
 
 LABELS = {Stage.GOAL: "目标", Stage.MODE: "主持与招募", Stage.AUDIENCE: "受访者", Stage.SCREEN: "甄别", Stage.CONSENT: "同意", Stage.FORMAT: "形式",
-          Stage.OUTLINE: "大纲", Stage.FOCUS: "关注点", Stage.INVITE: "邀请信", Stage.TRIAL: "试访", Stage.PUBLISH: "发布"}
+          Stage.OUTLINE: "大纲设计", Stage.FOCUS: "关注点", Stage.INVITE: "邀请信", Stage.TRIAL: "试访", Stage.PUBLISH: "发布"}
 TASKS = {
     Stage.GOAL: "Settle the research background (what is being studied and why) and 1-8 research goals. Take them from the project's brief; ask only what is missing: the decision the study feeds, the target people, the time frame.",
     Stage.MODE: "Settle two things: recruit_mode ('two' = screen first and invite the qualified later; 'one' = questionnaire and interview in one link) and host_mode ('ai' or 'human'). 'one' only works with an AI host. Recommend one and say why.",

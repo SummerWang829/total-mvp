@@ -78,3 +78,5 @@
 #olws .ol-fl button{width:22px;min-height:22px;height:22px;padding:0;border:0;border-radius:50%;background:none;color:var(--ink2);font-size:16px;line-height:1;box-shadow:none}
 #olws .ol-fl button:hover:not(:disabled){background:var(--line);color:var(--ink)}
 @media (max-width:900px){#olws .ol-att{width:36px;min-height:36px;height:36px}#olws .ol-fl button{width:36px;min-height:36px;height:36px}}
+@media (max-width:600px){#olws .ol-seg button{height:36px;min-height:36px}}
+#olws .ol-seg{margin:0 0 8px}
