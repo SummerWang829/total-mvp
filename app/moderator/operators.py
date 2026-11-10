@@ -74,6 +74,8 @@ def choose_operator(analysis: RespondentInputAnalysis, decision: PacingDecision,
         return OperatorChoice(operator=EXPLORE_ROTATION[(decision.explore_index or 0) % len(EXPLORE_ROTATION)], deep_dive_score=score, deep_dive=True)
     if not decision.followup_allowed:
         return OperatorChoice(operator=Operator.TRANSITION, deep_dive_score=score, deep_dive=False)
+    if analysis.vague_term.strip():  # the answer rests on a word with no clear meaning: ask what they mean by it before climbing the ladder
+        return OperatorChoice(operator=Operator.CLARIFY, deep_dive_score=score, deep_dive=deep)
     operator = NEXT_RUNG[analysis.ladder_level] if (deep or analysis.ladder_level in SHALLOW_RUNGS) else Operator.SPECIFY
     return OperatorChoice(operator=operator, deep_dive_score=score, deep_dive=deep)
 

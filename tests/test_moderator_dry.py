@@ -259,3 +259,15 @@ def test_a_participant_with_long_answers_gets_a_longer_wrap_up_reserve_so_the_in
         clock.advance(300.0)  # five-minute exchanges
         fsm.record_turn(TurnUpdate(information_gain=0.6))
     assert fsm._wrapup_reserve() > planned and fsm._wrapup_reserve() >= 2 * fsm.snapshot().elapsed_s / 5
+
+
+def test_a_vague_word_is_asked_about_before_climbing_the_ladder():
+    """v012: the answer rests on a word like "还行": the moderator asks what it means (clarify), only when a follow-up is allowed."""
+    from app.moderator.fsm import PacingDecision
+    from app.moderator.constants import LadderLevel, Phase, PacingAction
+    from app.moderator.schemas import RespondentInputAnalysis
+    decision = PacingDecision(action=PacingAction.CONTINUE, phase=Phase.CORE, reason="in_progress", followup_allowed=True)
+    vague = RespondentInputAnalysis(ladder_level=LadderLevel.FACT, vague_term="还行")
+    assert choose_operator(vague, decision, "用起来还行吧").operator is Operator.CLARIFY
+    assert choose_operator(RespondentInputAnalysis(ladder_level=LadderLevel.FACT), decision, "每天早上用").operator is not Operator.CLARIFY
+    assert choose_operator(vague, decision.model_copy(update={"followup_allowed": False}), "还行").operator is Operator.TRANSITION

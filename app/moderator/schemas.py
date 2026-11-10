@@ -42,6 +42,7 @@ class RespondentInputAnalysis(BaseModel):
     question_answered: bool = False
     ready_to_start: bool = False                                  # intro: the participant agreed to begin
     asks_if_ai: bool = False                                      # "are you a real person?" (red line H3)
+    vague_term: str = Field(default="", max_length=40)             # v012+: a word the answer rests on that could mean many things ("还行", "挺方便"); empty if none
     new_facts: list[str] = Field(default_factory=list)  # facts the participant just stated, to remember all interview (cut by _keep_a_few)
 
 
