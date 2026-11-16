@@ -45,6 +45,10 @@ FEATURES: tuple[Feature, ...] = (
     Feature("creation.chat", "创建访谈", "阶段式对话", "创建访谈 · 左侧对话", (("app.creation.engine", "converse"),)),
     Feature("creation.outline_spec", "创建访谈", "大纲设计规范", "创建访谈 · 大纲阶段", ()),
     Feature("creation.recruit_spec", "创建访谈", "招募筛选规范", "创建访谈 · 甄别阶段", ()),
+    Feature("outline.chat", "访谈页", "大纲对话", "访谈 · 与 AI 共同编写", (("app.outline_chat", "converse"), ("app.outline_chat", "answer_only"))),
+    Feature("recruit.draft", "招募问卷", "问卷起草", "甄别问卷", (("app.recruit_form", "generate"),)),
+    Feature("recruit.chat", "招募问卷", "问卷对话（整份回传）", "甄别问卷", (("app.recruit_form", "chat_turn"),)),
+    Feature("recruit.review", "招募问卷", "检查与建议", "甄别问卷", (("app.recruit_review", "ai_review"),)),
     Feature("asr", "语音", "实时字幕 / 转写", "房间字幕、转写", (), ""),
 )
 

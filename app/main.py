@@ -1,4 +1,5 @@
 import os
+import re
 
 from contextlib import asynccontextmanager
 
@@ -77,13 +78,42 @@ class RevalidatedStaticFiles(StaticFiles):
 
     Without a Cache-Control header browsers guess a cache lifetime from the file's age and keep showing an old page,
     script or logo after an update. "no-cache" still lets them reuse the file when it is unchanged (ETag answer 304).
+
+    The page is served with a version stamp on every local script and stylesheet it loads (?v=<mtime>), so a tab
+    that was open before an update cannot keep running yesterday's code after a reload: the URL itself changed.
     """
 
     async def get_response(self, path: str, scope: dict) -> Response:
-        """Serve the file as StaticFiles does, adding Cache-Control: no-cache."""
+        """Serve the file as StaticFiles does, adding Cache-Control: no-cache (and version stamps for the page)."""
         response = await super().get_response(path, scope)
         response.headers["Cache-Control"] = "no-cache"
+        if path in (".", "", "index.html") and response.status_code == 200:
+            return _stamped_page(response)
         return response
+
+
+_ASSET_REF = re.compile(r'(src|href)="(/(?:[\w.-]+/)*[\w.-]+\.(?:js|css))"')
+
+
+def _stamped_page(response: Response) -> Response:
+    """The page with ?v=<file mtime> on each local script and stylesheet, so an update is a new URL."""
+    from fastapi.responses import HTMLResponse
+
+    try:
+        with open(os.path.join(STATIC, "index.html"), encoding="utf-8") as fh:
+            text = fh.read()
+    except OSError:
+        return response
+
+    def stamp(m: "re.Match[str]") -> str:
+        attr, src = m.group(1), m.group(2)
+        try:
+            version = int(os.path.getmtime(os.path.join(STATIC, src.lstrip("/"))))
+        except OSError:
+            return m.group(0)
+        return f'{attr}="{src}?v={version}"'
+
+    return HTMLResponse(content=_ASSET_REF.sub(stamp, text), headers={"Cache-Control": "no-cache"})
 
 
 if os.getenv("CONCEPT_TEST_FIXTURE") == "1":   # the automated tests' placeholder cards (the product has no materials of its own)

@@ -15,8 +15,9 @@ class ModerationMode(str, Enum):
 class ModeratorProviderName(str, Enum):
     """Accepted values of MODERATOR_PROVIDER."""
 
-    MOCK = "mock"      # scripted, offline; every test uses it
-    OPENAI = "openai"  # any OpenAI-compatible /chat/completions (local Ollama or a cloud provider)
+    MOCK = "mock"          # scripted, offline; every test uses it
+    OPENAI = "openai"      # any OpenAI-compatible /chat/completions (local Ollama or a cloud provider)
+    DEEPSEEK = "deepseek"  # DeepSeek's OpenAI-compatible endpoint (preset base URL and model)
 
 
 class Phase(str, Enum):
@@ -269,7 +270,7 @@ MOCK_DEFAULT_REPLY: dict[str, str] = {"spoken_response": "Could you tell me a bi
 MSG_CLOUD_VENDOR_MISSING = "AI 主持用的是云端模型，但没有填写供应商名称（.env 里的 MODERATOR_VENDOR），同意书无法告诉受访者数据发给了谁"
 MSG_AI_INTERVIEW_NOT_READY = "This interview cannot start yet, please contact the research team / 这场访谈暂时不能开始，请联系研究团队"
 MSG_EVERY_CONSENT_NEEDED = "Every item needs your agreement to take part / 每一项都需要你明确同意才能参加"
-MSG_UNKNOWN_PROVIDER = "MODERATOR_PROVIDER={value!r}：只支持 mock 或 openai（兼容 OpenAI 接口的服务，含本机 Ollama）"
+MSG_UNKNOWN_PROVIDER = "MODERATOR_PROVIDER={value!r}：只支持 mock、openai 或 deepseek（兼容 OpenAI 接口的服务，含本机 Ollama）"
 
 # Operators that older prompt versions do not know (so v001-v003 stay loadable for comparison): operator -> first version that has it.
 OPERATORS_ADDED_IN: dict[Operator, str] = {Operator.FRESH_ANGLE: "v004"}

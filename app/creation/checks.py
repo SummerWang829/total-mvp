@@ -5,7 +5,7 @@ Run on every look at the dialog and sent to the assistant with every turn, so it
 import re
 from dataclasses import asdict, dataclass
 
-from .. import guide_text
+from .. import guide_text, outline_lint, recruit_form as rf, recruit_review
 from ..models import Project, RecruitForm
 from .stages import State
 
@@ -70,6 +70,8 @@ def _outline(project: Project, state: State, goals: list[str]) -> list[Finding]:
             out.append(Finding(f"double:{n}", "outline", "warn", f"第 {n} 题一句话里问了两件事", f"请把第 {n} 题拆成一次只问一件事"))
         if len(q) > MAX_Q_CHARS:
             out.append(Finding(f"long:{n}", "outline", "note", f"第 {n} 题太长（{len(q)} 字）", f"请把第 {n} 题改短，一句话说清"))
+        for p in outline_lint._form_problems(q, project.language or "zh", f"第 {n} 题"):
+            out.append(Finding(f"lint:{n}:{p[:16]}", "outline", "note", p, "请按 298 份笔录体检提示修改这道题"))
         if m.get("depth") in ("deep", "free") and not (m.get("guide") or "").strip():
             out.append(Finding(f"no_guide:{n}", "outline", "note", f"第 {n} 题要深追，但没有写访谈指引", f"请给第 {n} 题写一句访谈指引"))
     target = int(state.decisions.get("minutes") or g.get("duration_min") or 0)
@@ -78,6 +80,9 @@ def _outline(project: Project, state: State, goals: list[str]) -> list[Finding]:
         out.append(Finding("too_long", "outline", "warn", f"大纲大约要 {est} 分钟，比计划的 {target} 分钟长", f"请把大纲缩到 {target} 分钟左右，先去掉最不重要的问题"))
     elif target and est < target * TOO_SHORT:
         out.append(Finding("too_short", "outline", "note", f"大纲大约只有 {est} 分钟，比计划的 {target} 分钟短很多", "请补充能覆盖研究目标的问题，让时长接近计划"))
+    dims = {outline_lint.dimension_of(q) for _, _, q, _ in rows}
+    if len(dims & set(outline_lint.CORE_DIMENSIONS)) < outline_lint.MIN_CORE_DIMENSIONS:
+        out.append(Finding("lint_dims", "outline", "note", "大纲覆盖的提问维度太少（属性 / 感受 / 原因 / 边界）", "请补充能问到原因和边界的问题"))
     pool = _bigrams(" ".join(q for _, _, q, _ in rows) + " " + " ".join(m["text"] for t in g["topics"] for m in t.get("must_cover", [])) + " " + " ".join(t.get("section_guide", "") for t in g["topics"]))
     for k, goal in enumerate(goals):
         gb = _bigrams(goal)
@@ -104,6 +109,17 @@ def _screening(f: RecruitForm | None, state: State) -> list[Finding]:
     aud = state.decisions.get("audience")
     if aud and aud.get("groups") and sum(g["target"] for g in aud["groups"]) != aud["total"]:
         out.append(Finding("audience_sum", "audience", "warn", "各组人数加起来和总人数对不上", "请核对各组人数，让它们加起来等于总人数"))
+    # 交付包的问卷体检规则层：配额标签缺失 / 单题筛除率过高 / 多选标签未互斥 / 全选项死路 / 题量
+    try:
+        qobjs = [rf.Question.model_validate(q) for q in qs]
+        quotas = [{"field": "tag", "value": g.get("name", ""), "name": g.get("name", "")} for g in ((aud or {}).get("groups") or []) if g.get("name")]
+        stats = {"started": (f.n_started or 0) if f else 0, "out_by": (f.out_by or {}) if f else {}}
+        for it in recruit_review.rule_suggestions(qobjs, quotas, stats):
+            if it["kind"] == "length":   # already reported above as screen_many
+                continue
+            out.append(Finding(f"review:{it['sig']}", "screen", "warn" if it["kind"] in ("quota", "dead_end") else "note", it["text"], it["instruction"]))
+    except Exception:  # noqa: BLE001 - a check must never break the dialog
+        pass
     return out
 
 

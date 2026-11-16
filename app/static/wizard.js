@@ -388,6 +388,17 @@ function wzWire() {
   $("#wzprev").onclick = guard(async () => { await wzSave(true); WZ.step--; wzDraw(); scrollTo(0, 0); });
   const nx = $("#wznext"); if (nx) nx.onclick = guard(async () => { await wzSave(true); if (WZ.step === 0) wzAutoSuggest(); WZ.step++; wzDraw(); scrollTo(0, 0); });
   root.addEventListener("change", wzChange);
+  // 研究背景 / 主项目名称：change 只在失焦时触发，没点「下一步」就走开会丢字。
+  // 这里改成边打边存（wzSave 自带 800ms 防抖），离开输入框再立即落库一次；
+  // 其它控件仍只走 change，避免 input 时重绘把光标弄丢。
+  root.addEventListener("input", (e) => {
+    const d = e.target.dataset || {};
+    if (d.meta && !wzLocked()) { WZ[d.meta + "_edit"] = e.target.value; wzSave(); }
+  });
+  root.addEventListener("focusout", (e) => {
+    const d = e.target.dataset || {};
+    if (d.meta && !wzLocked()) { WZ[d.meta + "_edit"] = e.target.value; wzSave(true).catch((er) => toast(er.message, true)); }
+  });
   root.querySelectorAll("textarea.autosize").forEach(wzAutosize);
   root.onclick = (e) => { const t = e.target.closest("button"); if (t) wzClick(t, e); };
   const sugTab = (e) => { const t = e.target.closest("[data-sugtab]"); if (t && (e.type === "click" || e.key === "Enter" || e.key === " ")) { e.preventDefault(); WZ.sugTab = t.dataset.sugtab; wzRedraw(); } };

@@ -732,6 +732,9 @@ class RecruitForm(Base):
     out_by: Mapped[dict] = mapped_column(JSON, default=dict)  # question id -> how many were screened out there
     goals: Mapped[list] = mapped_column(JSON, default=list)  # the research goals the outline shows (written by the AI from the background, editable)
     need: Mapped[str] = mapped_column(Text, default="")  # the recruiting need in words (who, how many, what screens out)
+    goals_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # when the research goals were signed off
+    framing_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # stage 1: background + goals confirmed before any question
+    questions_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # stage 2: questionnaire final, formats + quotas applied
     n_started: Mapped[int] = mapped_column(Integer, default=0)  # how many people opened the first question
     tally: Mapped[dict] = mapped_column(JSON, default=dict)  # anonymous: how many chose each option, among people who qualified and people who were screened out (app/recruit_insights.py)
     ai_items: Mapped[list] = mapped_column(JSON, default=list)  # the model's suggestions from the last "检查问卷" (app/recruit_review.py); each expires when its question is edited

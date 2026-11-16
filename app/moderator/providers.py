@@ -5,10 +5,12 @@ Switching model = changing MODERATOR_* in .env only (app/config.py); no code cha
 - openai: any OpenAI-compatible /chat/completions, e.g. local Ollama (http://127.0.0.1:11434/v1) or a cloud provider.
 Every reply must be one JSON object; the engine validates it against app/moderator/schemas.py (Sprint 2).
 """
+import contextvars
 import json
 import logging
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from typing import Protocol
 from urllib.parse import urlparse
 
@@ -23,6 +25,33 @@ from .constants import (CHAT_COMPLETIONS_PATH, HTTP_KEEPALIVE_EXPIRY_S, CHAT_DEF
                         MOCK_DEFAULT_REPLY, MSG_UNKNOWN_PROVIDER, TRANSIENT_HTTP_STATUS, VENDOR_REQUEST_DEFAULTS, ModeratorProviderName)
 
 log = logging.getLogger(__name__)
+
+# Extra request fields for the text features only (AI_EXTRA_BODY). A ContextVar keeps them off the AI
+# moderator's calls: a draft may ask the model to think while an interview turn stays fast.
+_text_extras: contextvars.ContextVar[dict] = contextvars.ContextVar("text_extras", default={})
+
+
+@contextmanager
+def text_extras() -> Iterator[None]:
+    """Wrap a text-feature model call: `with text_extras(): chat.complete(...)`.
+
+    Empty AI_EXTRA_BODY means no change at all. An invalid JSON value is ignored with a warning,
+    never breaking the call. The value is reset even when the call raises.
+    """
+    extra: dict = {}
+    raw = (settings.ai_extra_body or "").strip()
+    if raw:
+        try:
+            parsed = json.loads(raw)
+            extra = parsed if isinstance(parsed, dict) else {}
+        except ValueError:
+            log.warning("AI_EXTRA_BODY is not a JSON object; ignored")
+    token = _text_extras.set(extra)
+    try:
+        yield
+    finally:
+        _text_extras.reset(token)
+
 
 ChatMessage = dict[str, str]  # {"role": "system" | "user" | "assistant", "content": str}
 MockScript = list[dict | Exception] | Callable[[list[ChatMessage]], dict]
@@ -131,7 +160,7 @@ class OpenAICompatModeratorChat:
             ChatError: still failing after CHAT_RETRY_ATTEMPTS, or the reply is not one JSON object (not retried here:
                 the engine decides whether to ask again, task doc 4.4).
         """
-        body: dict = {**self.extra_body, "model": self.config.moderator_model, "messages": messages, "temperature": temperature,
+        body: dict = {**self.extra_body, **_text_extras.get(), "model": self.config.moderator_model, "messages": messages, "temperature": temperature,
                       "response_format": JSON_RESPONSE_FORMAT}
         if seed is not None:
             body["seed"] = seed
@@ -244,6 +273,6 @@ def get_moderator_chat(config: Settings = settings) -> ModeratorChatProvider:
     """
     if config.moderator_provider == ModeratorProviderName.MOCK.value:
         return MockModeratorChat()
-    if config.moderator_provider == ModeratorProviderName.OPENAI.value:
+    if config.moderator_provider in (ModeratorProviderName.OPENAI.value, ModeratorProviderName.DEEPSEEK.value):
         return OpenAICompatModeratorChat(config)
     raise NotImplementedError(MSG_UNKNOWN_PROVIDER.format(value=config.moderator_provider))

@@ -4,10 +4,12 @@ The page records up to MAX_SECONDS with the browser's recorder and sends the cli
 speech service (the same one that transcribes interviews), and the text goes back to the page, which puts it into the box. The recording is deleted at once;
 neither the audio nor the text is logged or audited (only that a clip was read, and how big it was).
 """
+import base64
 import logging
 import os
 import subprocess
 import tempfile
+import time
 
 from .config import settings
 from .providers import MockASR, get_asr
@@ -15,7 +17,7 @@ from .providers import MockASR, get_asr
 log = logging.getLogger(__name__)
 
 MAX_BYTES = 4 * 1024 * 1024  # about 3 minutes of browser audio; the page stops at MAX_SECONDS long before this
-MAX_SECONDS = 90
+MAX_SECONDS = 60
 LANGUAGES = ("zh", "en")
 MOCK_TEXT = "（演示模式）这是语音输入的示例文字。"
 CONVERT_TIMEOUT_S = 60
@@ -46,6 +48,41 @@ def _to_mp3(src: str, dst: str) -> None:
         raise SpeechError("没有录到可识别的声音，请再试一次")
 
 
+def is_wav(data: bytes) -> bool:
+    """The page can record straight to 16 kHz mono WAV; that needs no ffmpeg round-trip."""
+    return len(data) > 44 and data[:4] == b"RIFF" and data[8:12] == b"WAVE"
+
+
+def _sentence_asr(path: str, language: str, voice_format: str = "mp3") -> str | None:
+    """Tencent's synchronous one-sentence recognition for short clips.
+
+    Recorded-file recognition (CreateRecTask + 2 s polling) takes 10-30 s even for a two-second
+    clip, which feels broken in a text box. SentenceRecognition answers in one request. Any problem
+    (not tencent, no keys, service error, too long) returns None so the caller falls back to the
+    original recorded-file path; a fast failure must never break voice input.
+    """
+    engine = {"zh": "16k_zh", "en": "16k_en"}.get(language)
+    if not engine or settings.asr_provider != "tencent":
+        return None
+    try:
+        from . import asr_file
+        if not asr_file.file_asr_configured():
+            return None
+        with open(path, "rb") as f:
+            raw = f.read()
+        if not raw or len(raw) > 2_500_000:   # SentenceRecognition caps the clip at ~60 s / 3 MB
+            return None
+        body = {"EngSerViceType": engine, "SourceType": 1, "VoiceFormat": voice_format,
+                "Data": base64.b64encode(raw).decode(), "DataLen": len(raw),
+                "ProjectId": 0, "SubServiceType": 2, "UsrAudioKey": "voice-%d" % time.time_ns(),
+                "FilterDirty": 0, "FilterModal": 0, "ConvertNumMode": 1}
+        resp = asr_file.call("SentenceRecognition", body)
+        return (resp.get("Result") or "").strip()   # "" = service answered, nothing heard: fail fast, no slow fallback
+    except Exception as e:  # noqa: BLE001 - never let the fast path break the slow one
+        log.warning("voice input: sentence recognition unavailable (%s), falling back to file ASR", type(e).__name__)
+        return None
+
+
 def transcribe_clip(data: bytes, language: str) -> str:
     """The words in one short recording, as one line of text ("" when nothing was said).
 
@@ -68,7 +105,15 @@ def transcribe_clip(data: bytes, language: str) -> str:
         src, dst = os.path.join(tmp, "clip.bin"), os.path.join(tmp, "clip.mp3")
         with open(src, "wb") as f:
             f.write(data)
+        # 浏览器已经录成 16 kHz 单声道 WAV：直接送一句话识别，省掉 ffmpeg 转码的 0.2~1 秒
+        if is_wav(data):
+            fast = _sentence_asr(src, language, "wav")
+            if fast is not None:
+                return fast
         _to_mp3(src, dst)
+        fast = _sentence_asr(dst, language)
+        if fast is not None:   # "" is a real answer (nothing heard); None means the fast path failed
+            return fast
         try:
             rows = get_asr().transcribe_audio(dst, language, "")
         except Exception as e:  # noqa: BLE001 - any recogniser failure becomes one plain message; the cause is logged without the content

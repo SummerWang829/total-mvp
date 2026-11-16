@@ -3,6 +3,7 @@
 Every patch is checked strictly and a bad one is refused as a whole (PatchError), so the study is never half changed. `snapshot` / `restore` make each change undoable.
 """
 import json
+import re
 
 from sqlalchemy.orm import Session
 
@@ -152,6 +153,93 @@ def apply_format(db: Session, project: Project, state: State, patch: dict) -> li
 
 
 MAX_SECTIONS = 10
+WARMUP_FALLBACK = {"zh": ["先简单介绍一下你自己吧？"], "en": ["To start, could you tell me a little about yourself?"]}
+# 主持人的固定开场是「今天想听听您在{topic}方面的真实经历和想法，没有对错之分。」这句一共 25 个汉字，红线 H12 限 40，
+# 所以 participant_topic 最多 15 个字；模型常常写成「最近一次去 4S 店做保养维修的车主」这种，整份大纲就会被判不合格。
+MAX_TOPIC = 12
+QUESTION_LIMIT = 40   # 同一句红线：预置问题超过 40 个汉字会被判不合格，这种就丢掉这一题（不截短，截出来是半截话）
+
+
+def _question_is_bad(text: str, language: str) -> bool:
+    """Whether this one prepared question breaks the engine's red lines on its own (太长、一句两问、诱导…)."""
+    from ..moderator.knowledge import InterviewGuide
+    from ..study_draft import _red_line_problem  # noqa: PLC2701
+
+    try:
+        guide = InterviewGuide.model_validate({"research_goal": "研究", "participant_topic": "受访者", "language": language, "duration_min": 45,
+                                               "warmup_questions": list(WARMUP_FALLBACK.get(language, WARMUP_FALLBACK["zh"])),
+                                               "topics": [{"id": "t1", "title": "环节", "questions": [text], "section_guide": "", "must_cover": []}]})
+    except Exception:  # noqa: BLE001 - 连形状都不合格，当作坏题丢掉
+        return True
+    return bool(_red_line_problem(guide))
+
+
+MIN_QUESTION_CHARS = 8   # 比这还短的一定是半截话（「在预约环节？」），模型偶尔会这么吐
+
+
+def fit_question(text: str, language: str) -> str:
+    """The question itself when the engine accepts it, otherwise "" (that one line is dropped, the rest of the outline survives).
+
+    Deliberately no automatic shortening: cutting a question at its first comma turns "交车时，工作人员有没有跟您说明后续保养建议？"
+    into the meaningless "交车时？". 一句太长的题（没有逗号的四十字长句）非常少见，宁可少一题也不要留下半截问题。
+    """
+    if len(text.strip("？?。.!！ ")) < MIN_QUESTION_CHARS:
+        return ""
+    return text if not _question_is_bad(text, language) else ""
+
+
+def _intro_fits(topic: str, language: str) -> bool:
+    """Whether the moderator's fixed intro stays inside the sentence limit with this topic in it."""
+    from ..moderator.knowledge import InterviewGuide
+    from ..study_draft import _red_line_problem  # noqa: PLC2701
+
+    try:
+        guide = InterviewGuide.model_validate({"research_goal": "研究", "participant_topic": topic, "language": language, "duration_min": 45,
+                                               "warmup_questions": list(WARMUP_FALLBACK.get(language, WARMUP_FALLBACK["zh"])),
+                                               "topics": [{"id": "t1", "title": "环节", "questions": ["先说说你平时的做法？" if language == "zh" else "What do you usually do?"],
+                                                           "section_guide": "", "must_cover": []}]})
+    except Exception:  # noqa: BLE001
+        return False
+    return not _red_line_problem(guide)
+
+
+def fit_topic(raw_topic: object, language: str) -> str:
+    """A short name for the person being interviewed: the fixed intro must stay under the sentence limit."""
+    topic = _text(raw_topic, 40).strip("。．，、 ")
+    topic = re.sub(r"^(最近一次|上一次|最近|过去|本次|这次)", "", topic).strip("。．，、 ")
+    if not topic:
+        return ""
+    for n in (MAX_TOPIC, 10, 8, 6, 4):
+        cand = topic[:n].strip("。．，、 ")
+        if cand and _intro_fits(cand, language):
+            return cand
+    return topic[:4]
+
+
+def repair_outline(raw: dict, language: str) -> dict:
+    """Make the model's outline usable instead of refusing the whole thing over one bad line.
+
+    Fixes the two things that actually got outlines refused: the participant topic was too long for the fixed intro (H12),
+    and single questions were too long or asked two things. Empties are dropped, a warm-up is added when the model forgot it.
+    """
+    if not isinstance(raw, dict):
+        return raw
+    out = dict(raw)
+    warm = [_text(q, 300) for q in (raw.get("warmup_questions") if isinstance(raw.get("warmup_questions"), list) else [])]
+    warm = [fitted for q in warm if q for fitted in [fit_question(q, language)] if fitted]
+    out["warmup_questions"] = warm or list(WARMUP_FALLBACK.get(language, WARMUP_FALLBACK["zh"]))
+    out["participant_topic"] = fit_topic(raw.get("participant_topic"), language)
+    topics = []
+    for t in (raw.get("topics") if isinstance(raw.get("topics"), list) else []):
+        if not isinstance(t, dict):
+            continue
+        qs = [_text(q, 300) for q in (t.get("questions") if isinstance(t.get("questions"), list) else [])]
+        qs = [fitted for q in qs if q for fitted in [fit_question(q, language)] if fitted]
+        if not qs:
+            continue
+        topics.append({**t, "questions": qs})
+    out["topics"] = topics[:MAX_SECTIONS]
+    return out
 
 
 def build_guide(raw: dict, goal: str, language: str, minutes: int) -> tuple[dict, dict]:
@@ -165,6 +253,7 @@ def build_guide(raw: dict, goal: str, language: str, minutes: int) -> tuple[dict
     from ..moderator.knowledge import InterviewGuide
     from ..study_draft import _red_line_problem  # noqa: PLC2701 - the engine's own red-line check of prepared questions
 
+    raw = repair_outline(raw, language)
     topics_raw = raw.get("topics") if isinstance(raw.get("topics"), list) else []
     if not topics_raw or not isinstance(raw.get("warmup_questions"), list) or not raw["warmup_questions"]:
         raise PatchError("the outline needs warmup_questions and at least one topic")

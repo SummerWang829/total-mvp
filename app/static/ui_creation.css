@@ -1,15 +1,35 @@
 /* 创建访谈：阶段式对话（creation.js）。左边对话区；阶段进度（.cc-steps）会被外壳搬进左侧第二层菜单。 */
+
+/* ---------- 说话人配色：我提问=主题色实心，AI 回答=白底，AI 的「为什么这样建议」=主题色的对比色 ---------- */
+/* 默认=浅色主题（绿）：我=深绿，建议行=绿浅底，理由=橘（对比色） */
+:root,html[data-theme="light"] body.v11,body.v11{
+  --cc-me:#0B382C;--cc-me-ink:#FFFFFF;
+  --cc-sug-bg:#E9F1ED;--cc-sug-bd:#C3DACF;--cc-sug-ink:#0B382C;--cc-sug-hov:#DEEBE4;
+  --cc-why-bg:#FFF4EA;--cc-why-bd:#FF6A00;--cc-why-ink:#A84300;
+}
+/* 橙色主题：我=深橘，建议行=橘浅底，理由=绿（对比色） */
+html[data-theme="orange"] body.v11{
+  --cc-me:#B34F0A;--cc-me-ink:#FFFFFF;
+  --cc-sug-bg:#FCEFE3;--cc-sug-bd:#E7C6AA;--cc-sug-ink:#9A4208;--cc-sug-hov:#F8E4D3;
+  --cc-why-bg:#E8F2ED;--cc-why-bd:#0B6B4A;--cc-why-ink:#0A5C40;
+}
+/* 深色主题：我=墨绿，建议行=墨绿浅底，理由=琥珀（对比色） */
+html[data-theme="dark"] body.v11{
+  --cc-me:#1F6B54;--cc-me-ink:#F4F8F5;
+  --cc-sug-bg:#152E26;--cc-sug-bd:#2C4A3E;--cc-sug-ink:#8FD9B7;--cc-sug-hov:#1B3A30;
+  --cc-why-bg:#2A1D12;--cc-why-bd:#FF9A55;--cc-why-ink:#F0BB90;
+}
 .cc{display:flex;flex-direction:column;height:100%;min-height:0}
 .cc-hd{display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line);flex:none}
 .cc-sc{flex:1;min-height:0;overflow:auto;padding:12px 14px;display:flex;flex-direction:column;gap:10px;overscroll-behavior:contain}
-.cc-me{align-self:flex-end;max-width:84%;background:var(--wash);border-radius:12px 12px 2px 12px;padding:8px 12px;overflow-wrap:anywhere}
+.cc-me{align-self:flex-end;max-width:84%;background:var(--cc-me,#0B382C);color:var(--cc-me-ink,#fff);border-radius:12px 12px 2px 12px;padding:8px 12px;overflow-wrap:anywhere;box-shadow:0 1px 2px rgba(11,56,44,.16)}
 .cc-ai{background:var(--surface);border:1px solid var(--line);border-radius:12px 12px 12px 2px;padding:10px 12px;overflow-wrap:anywhere}
 .cc-acts{margin:6px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:2px;font-size:13.5px;color:var(--muted)}
 .cc-acts li::before{content:"✓ ";color:var(--ok,#1F6B54);font-weight:700}
-.cc-adv{margin-top:8px;padding:6px 10px;background:var(--wash);border-radius:8px;font-size:13.5px}
-.cc-adv b{display:block;font-size:12.5px;color:var(--muted);font-weight:600}
-.cc-need{margin-top:8px;border-left:3px solid var(--orange);padding:2px 0 2px 10px}
-.cc-need b{display:block;font-size:12.5px;color:var(--badge,#C2500A);font-weight:600}
+.cc-adv{margin-top:8px;padding:7px 11px;background:var(--cc-why-bg,#FFF4EA);border-left:3px solid var(--cc-why-bd,#FF6A00);border-radius:4px 8px 8px 4px;font-size:13.5px;color:var(--ink2)}
+.cc-adv b{display:block;margin-bottom:2px;font-size:12.5px;color:var(--cc-why-ink,#A84300);font-weight:700}
+.cc-need{margin-top:8px;border-left:3px solid var(--cc-sug-ink,#0B382C);padding:6px 10px;background:var(--cc-sug-bg,#E9F1ED);border-radius:4px 8px 8px 4px}
+.cc-need b{display:block;margin-bottom:2px;font-size:12.5px;color:var(--cc-sug-ink,#0B382C);font-weight:700}
 .cc-opts{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
 .cc-opts button{min-height:32px;padding:3px 14px;border:1px solid var(--brand);border-radius:999px;background:var(--surface);color:var(--brand);font-size:13.5px;font-weight:500;box-shadow:none}
 .cc-opts button:hover:not(:disabled){background:var(--green-soft)}
@@ -17,8 +37,8 @@
 .cc-sug{flex:none;padding:6px 14px 0;display:flex;flex-direction:column;gap:6px}
 .cc-sug:empty{display:none}
 .cc-sl{font-size:13px;color:var(--muted)}
-.cc-sb{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;min-height:36px;padding:6px 12px;border:1px solid #BFD9CC;border-radius:10px;background:var(--green-soft);color:var(--brand);font-size:14px;font-weight:500;text-align:left;box-shadow:none;white-space:nowrap}
-.cc-sb:hover:not(:disabled){border-color:var(--brand)}
+.cc-sb{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;min-height:36px;padding:6px 12px;border:1px solid var(--cc-sug-bd,#C3DACF);border-radius:10px;background:var(--cc-sug-bg,#E9F1ED);color:var(--cc-sug-ink,#0B382C);font-size:14px;font-weight:500;text-align:left;box-shadow:none;white-space:nowrap}
+.cc-sb:hover:not(:disabled){background:var(--cc-sug-hov,#DEEBE4);border-color:var(--cc-sug-ink,#0B382C)}
 .cc-sb::after{content:"›";flex:none;font-size:18px}
 .cc-files{flex:none;padding:6px 14px 0;display:flex;flex-wrap:wrap;gap:6px}
 .cc-files:empty{display:none}

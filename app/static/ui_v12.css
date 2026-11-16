@@ -1,0 +1,116 @@
+/* v12（2026-11-13）：苹果风卡片排版。只在研究员端外壳里生效，且只重排「招募问卷」工作台这一页。
+   规则（用户确认：左栏保持品牌深绿、强调色保持品牌绿，不换成苹果蓝/近黑）：
+   ① 圆角只有三档：28（面板卡）/ 20（题卡）/ 12（控件）；
+   ② 间距走 4 的倍数，面板之间 12、卡内 16；
+   ③ 分层不用描边，改用「浅灰底 + 一层极轻阴影」；
+   ④ 单一强调色＝品牌绿；橙色只留给「发布新版本」这一个主动作。 */
+
+body.v11.rfmode{
+  --r-card:28px;--r-inner:20px;--r-ctl:12px;
+  --hair:var(--row-hair);--hair2:rgba(0,0,0,.045);
+  --sh-card:0 1px 2px rgba(0,0,0,.04),0 10px 30px rgba(0,0,0,.06);
+  --sh-pill:0 1px 3px rgba(0,0,0,.10),0 1px 1px rgba(0,0,0,.04);
+  --tint:#FAFAFC;--tint-hov:#F7F7FA;--seg:#F2F3F5;--seg-hov:#E8E8EC;--qn:#E9F1ED;--hl:#F3F8F5;--hl-bd:#CFE1D7;--row-hair:rgba(0,0,0,.07);
+}
+/* 深色主题：同一套规则换成暗色，避免出现浅灰块 */
+html[data-theme="dark"] body.v11.rfmode{
+  --hair2:rgba(255,255,255,.06);--tint:#0F1E19;--tint-hov:#13241F;--seg:#182C24;--seg-hov:#213A30;--qn:#1B3A30;--hl:#16332A;--hl-bd:#2C5445;--row-hair:rgba(255,255,255,.09);
+  --sh-card:0 1px 2px rgba(0,0,0,.45),0 10px 30px rgba(0,0,0,.35);
+  --sh-pill:0 1px 3px rgba(0,0,0,.5);
+}
+
+/* ---------- 面板：两块独立的 28px 圆角卡片浮在浅灰底上 ---------- */
+html[data-theme="dark"] body.v11.rfmode .rf-pane{background:#16281F;box-shadow:0 0 0 1px rgba(255,255,255,.06),0 10px 30px rgba(0,0,0,.40)}
+body.v11.rfmode .rf-ws{border:0;border-radius:0;background:transparent;overflow:visible;gap:0}
+body.v11.rfmode .rf-pane{background:var(--surface);border-radius:var(--r-card);box-shadow:var(--sh-card);overflow:hidden}
+body.v11.rfmode .rf-split{background:transparent;border:0;width:12px}
+body.v11.rfmode .rf-split i{width:3px;height:40px;border-radius:99px;background:#DCDCE0}
+body.v11.rfmode .rf-split:hover i{background:var(--brand);opacity:.45}
+
+/* ---------- 面板头：发丝线 + 分段控件 + 胶囊按钮 ---------- */
+body.v11.rfmode .rf-hd{height:60px;padding:0 20px;border-bottom:1px solid var(--hair);background:transparent}
+body.v11.rfmode #rfright .rf-hd{height:auto;min-height:60px;padding:10px 20px}
+body.v11.rfmode .rf-hd button.s{width:auto;height:32px;min-height:0;padding:0 12px;border:0;border-radius:999px;background:var(--seg);color:var(--ink2);font-size:12.5px;font-weight:500;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+body.v11.rfmode .rf-hd button.s:hover{background:var(--seg-hov);color:var(--ink)}
+body.v11.rfmode .rf-hd button.s svg{width:15px;height:15px;flex:none}
+
+/* 页签 → iOS 分段控件 */
+body.v11.rfmode .rf-seg{border:0;border-radius:999px;background:var(--seg);padding:3px;height:34px;gap:2px;display:inline-flex;align-items:center}
+body.v11.rfmode .rf-seg button{height:28px;min-height:0;border:0;border-radius:999px;padding:0 16px;background:transparent;color:var(--ink2);font-size:12.5px;font-weight:500;display:inline-flex;align-items:center;gap:5px;transition:.16s}
+body.v11.rfmode .rf-seg button:hover{color:var(--ink)}
+body.v11.rfmode .rf-seg button.on{background:var(--surface);color:var(--ink);font-weight:600;box-shadow:var(--sh-pill)}
+
+/* 状态胶囊 / 两个动作按钮 */
+body.v11.rfmode .rf-hd .pill{height:24px;border-radius:999px;font-size:11.5px;font-weight:600;padding:0 10px;line-height:24px;background:var(--orange-soft,#FFF4EA);color:#A84300}
+body.v11.rfmode .rf-hd .sm.mut{font-size:11.5px;color:var(--muted)}
+body.v11.rfmode #rfpub,
+body.v11.rfmode #rfnext{height:32px;min-height:0;border-radius:999px;padding:0 16px;font-size:12.5px;font-weight:600;display:inline-flex;align-items:center;gap:5px;border:0;transition:.18s}
+body.v11.rfmode #rfpub{background:var(--orange,#FF6A00);color:#2A1200}
+body.v11.rfmode #rfpub:hover{filter:brightness(1.04);transform:translateY(-1px);box-shadow:0 6px 16px rgba(255,106,0,.28)}
+body.v11.rfmode #rfnext{background:var(--brand);color:#fff;box-shadow:0 4px 14px rgba(11,56,44,.20)}
+body.v11.rfmode #rfnext:hover{filter:brightness(1.08);transform:translateY(-1px)}
+
+/* ---------- 右栏正文 ---------- */
+body.v11.rfmode #rfout{padding:18px 22px 26px}
+body.v11.rfmode .rf-col{max-width:760px}
+body.v11.rfmode .rf-h{margin:24px 0 8px;padding:0;border:0;font-family:var(--f);font-size:11.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+body.v11.rfmode .rf-h:first-child{margin-top:0}
+body.v11.rfmode .rq-bl li{font-size:13.5px;line-height:1.7}
+body.v11.rfmode .rf-total{background:var(--tint);border:1px solid var(--hair);border-radius:var(--r-inner);padding:14px 16px}
+
+/* 题卡：20px 圆角、极浅底、无重描边 */
+body.v11.rfmode #rfws .rf-q{background:var(--tint);border:1px solid var(--hair);border-radius:var(--r-inner);padding:16px 16px 12px 40px;margin-bottom:12px;transition:.18s}
+body.v11.rfmode #rfws .rf-q:hover{background:var(--tint-hov);border-color:rgba(0,0,0,.10)}
+body.v11.rfmode #rfws .rf-q.rf-hl{background:var(--hl);border-color:var(--hl-bd)}
+body.v11.rfmode #rfws .rq-grip{left:12px;top:17px;color:#B4B4B9}
+body.v11.rfmode #rfws .rq-top{align-items:flex-start;gap:8px 10px;margin-bottom:10px;flex-wrap:wrap}
+body.v11.rfmode #rfws .rq-qn{background:var(--qn);color:var(--brand);border-radius:999px;padding:0 9px;font-size:11.5px;font-weight:700;line-height:22px}
+body.v11.rfmode #rfws .rq-title{flex:1 1 220px;min-width:0;display:block;white-space:normal;overflow-wrap:anywhere;height:auto;min-height:0;overflow:visible;padding:2px 0;font-size:13.5px;font-weight:500;line-height:1.6;color:var(--ink);text-align:left}
+body.v11.rfmode #rfws .rq-type{border:1px solid var(--hair);background:var(--surface);border-radius:999px;padding:0 11px;font-size:11.5px;color:var(--ink2);line-height:22px}
+body.v11.rfmode #rfws .rq-type:hover{border-color:#D6D6DB}
+body.v11.rfmode #rfws .rq-ask{width:30px;height:30px;min-height:0;border:1px solid var(--hair);border-radius:10px;background:var(--surface);color:var(--ink2);font-size:13px;line-height:1}
+body.v11.rfmode #rfws .rq-ask:hover{background:var(--fill,var(--seg));color:var(--ink)}
+body.v11.rfmode #rfws .rq-more{width:26px;height:26px;border-radius:8px;border:0;background:transparent;color:var(--muted)}
+body.v11.rfmode #rfws .rq-more:hover{background:rgba(0,0,0,.05);color:var(--ink)}
+
+/* 选项行：白色小卡，悬停浮起 */
+body.v11.rfmode #rfws .rq-opt{background:var(--surface);border:1px solid var(--hair);border-radius:var(--r-ctl);padding:9px 12px;margin-top:8px;font-size:13px;transition:.16s}
+body.v11.rfmode #rfws .rq-opt:hover{border-color:#D6D6DB;box-shadow:0 2px 8px rgba(0,0,0,.04)}
+body.v11.rfmode #rfws .rq-add{margin-top:10px;border:0;border-radius:999px;background:transparent;color:var(--brand);font-size:12.5px;font-weight:600;padding:5px 10px}
+body.v11.rfmode #rfws .rq-add:hover{background:var(--qn)}
+
+/* 底部加题型：分段胶囊 */
+body.v11.rfmode #rfout .row{gap:4px;background:var(--seg);border-radius:999px;padding:4px;display:inline-flex;flex-wrap:wrap;margin-top:18px}
+body.v11.rfmode #rfout .row button.s{height:28px;min-height:0;border:0;border-radius:999px;background:transparent;color:var(--ink2);font-size:12px;padding:0 14px}
+body.v11.rfmode #rfout .row button.s:hover{background:var(--surface);color:var(--ink);box-shadow:var(--sh-pill)}
+
+/* ---------- 左栏对话：卡内排版（配色见 ui_creation.css） ---------- */
+body.v11.rfmode #rfws .cc-hd{padding:18px 20px 14px;border-bottom:1px solid var(--hair)}
+body.v11.rfmode #rfws .cc-hd b{font-size:14px;font-weight:600;letter-spacing:-.01em}
+body.v11.rfmode #rfws .cc-sc{padding:18px 20px 8px;gap:12px}
+body.v11.rfmode #rfws .cc-me{border-radius:16px 16px 4px 16px;padding:9px 14px;font-size:13.5px}
+body.v11.rfmode #rfws .cc-ai{border-radius:var(--r-inner);padding:14px 16px;border-color:var(--hair)}
+body.v11.rfmode #rfws .cc-adv,
+body.v11.rfmode #rfws .cc-need{border-radius:6px 12px 12px 6px}
+body.v11.rfmode #rfws .cc-sug{padding:8px 20px 0}
+body.v11.rfmode #rfws .cc-sb{border-radius:14px;min-height:40px;font-size:13px}
+body.v11.rfmode #rfws .cc-box{margin:10px 16px 14px}
+body.v11.rfmode #rfws .cc-box textarea{border:1px solid var(--hair);border-radius:22px;background:var(--tint);padding:13px 84px 13px 16px;font-size:13.5px;transition:.16s}
+body.v11.rfmode #rfws .cc-box textarea:focus{border-color:#C3DACF;background:var(--surface);box-shadow:0 0 0 4px rgba(11,56,44,.06)}
+body.v11.rfmode #rfws .cc-send{width:34px;height:34px;min-height:0;border-radius:50%;background:var(--brand);color:#fff;font-size:16px}
+body.v11.rfmode #rfws .cc-att{right:50px;bottom:11px;color:var(--muted)}
+
+
+/* 深色主题：用亮一档的绿做强调，避免深绿压在深底上看不清 */
+html[data-theme="dark"] body.v11.rfmode #rfws .rq-add{color:#8FD9B7}
+html[data-theme="dark"] body.v11.rfmode #rfws .rq-add:hover{background:#1B3A30}
+html[data-theme="dark"] body.v11.rfmode #rfws .rq-qn{background:#1B3A30;color:#8FD9B7}
+html[data-theme="dark"] body.v11.rfmode #rfws .rq-type{color:#BCCFC6}
+html[data-theme="dark"] body.v11.rfmode #rfnext{background:#1F6B54;color:#F4F8F5;box-shadow:0 4px 14px rgba(0,0,0,.4)}
+html[data-theme="dark"] body.v11.rfmode .rf-hd .pill{background:#3A2412;color:#FFB27A}
+
+/* 窄屏：卡片贴合、圆角收小 */
+@media (max-width:900px){
+  body.v11.rfmode .rf-pane{border-radius:0}
+  body.v11.rfmode .rf-hd{padding:0 14px}
+}

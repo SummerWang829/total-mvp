@@ -16,6 +16,18 @@ def _load_dotenv(path: str = ".env") -> None:
 
 _load_dotenv()
 
+# Provider presets (from the 2026-11-12 delivery). DeepSeek speaks the OpenAI chat format, so the
+# same client code drives it; only the default endpoint and model differ. It has no audio API, so ASR
+# keeps its own provider and never inherits a DeepSeek key (see the asr_* fields below).
+_LLM_PROVIDER = os.getenv("LLM_PROVIDER", "mock").lower()
+_IS_DEEPSEEK = _LLM_PROVIDER == "deepseek"
+_DEEPSEEK_BASE = "https://api.deepseek.com/v1"
+_DEEPSEEK_MODEL = "deepseek-flash"
+_LLM_BASE_URL = os.getenv("LLM_BASE_URL", "") or (_DEEPSEEK_BASE if _IS_DEEPSEEK else "https://api.openai.com/v1")
+_LLM_MODEL = os.getenv("LLM_MODEL", "") or (_DEEPSEEK_MODEL if _IS_DEEPSEEK else "gpt-4o-mini")
+_MODERATOR_BASE_URL = os.getenv("MODERATOR_BASE_URL", "") or _LLM_BASE_URL
+_MODERATOR_MODEL = os.getenv("MODERATOR_MODEL", "") or _LLM_MODEL
+
 EU27 = {"AT","BE","BG","HR","CY","CZ","DK","EE","FI","FR","DE","GR","HU","IE","IT","LV","LT","LU","MT","NL","PL","PT","RO","SK","SI","ES","SE"}
 # First market excludes the EU. We also block EEA + UK by default (separate regimes); override with BLOCKED_COUNTRIES.
 DEFAULT_BLOCKED = EU27 | {"IS","LI","NO","GB"}
@@ -60,16 +72,21 @@ class Settings:
     media_dir: str = os.getenv("MEDIA_DIR", "./media")
     media_url_ttl_s: int = int(os.getenv("MEDIA_URL_TTL_S", "300"))
 
-    llm_provider: str = os.getenv("LLM_PROVIDER", "mock")  # mock | openai
-    llm_base_url: str = os.getenv("LLM_BASE_URL", "https://api.openai.com/v1")
-    llm_api_key: str | None = os.getenv("LLM_API_KEY")
-    llm_model: str = os.getenv("LLM_MODEL", "gpt-4o-mini")
-    llm_timeout_s: int = int(os.getenv("LLM_TIMEOUT_S", "180"))  # per call; raise it for a slow local CPU model
+    llm_provider: str = _LLM_PROVIDER  # mock | openai | deepseek
+    llm_base_url: str = _LLM_BASE_URL
+    llm_api_key: str | None = os.getenv("LLM_API_KEY") or (os.getenv("DEEPSEEK_API_KEY") if _IS_DEEPSEEK else None)
+    llm_model: str = _LLM_MODEL
+    llm_timeout_s: int = int(os.getenv("LLM_TIMEOUT_S", "180"))  # per call; unchanged (creation/outline use their own hard budgets)
+    # One knob for the text features (creation dialog, plan suggestions, study draft): 0 = repeatable, 2 = varied.
+    # Default 0.4 keeps today's behaviour; extra request fields go only to those calls (see providers.text_extras).
+    ai_temperature: float = max(0.0, min(2.0, float(os.getenv("AI_TEMPERATURE", "0.4"))))
+    ai_extra_body: str = os.getenv("AI_EXTRA_BODY", "")
     asr_provider: str = os.getenv("ASR_PROVIDER", "mock")  # mock | openai (any OpenAI-compatible /audio/transcriptions) | tencent (recorded-file recognition, zh/en only)
-    asr_base_url: str = os.getenv("ASR_BASE_URL", "") or os.getenv("LLM_BASE_URL", "https://api.openai.com/v1")
-    asr_api_key: str | None = os.getenv("ASR_API_KEY") or os.getenv("LLM_API_KEY")
+    # A DeepSeek key cannot transcribe audio: never inherit its endpoint or key for ASR (tencent ASR uses its own TENCENT_ASR_* keys).
+    asr_base_url: str = os.getenv("ASR_BASE_URL", "") or ("" if _IS_DEEPSEEK else os.getenv("LLM_BASE_URL", "")) or "https://api.openai.com/v1"
+    asr_api_key: str | None = os.getenv("ASR_API_KEY") or (None if _IS_DEEPSEEK else os.getenv("LLM_API_KEY"))
     asr_model: str = os.getenv("ASR_MODEL", "whisper-1")  # needs segment timestamps (verbose_json)
-    asr_timeout_s: int = int(os.getenv("ASR_TIMEOUT_S", "600"))  # per upload; raise it for a slow local CPU server
+    asr_timeout_s: int = int(os.getenv("ASR_TIMEOUT_S", "600"))  # per upload; unchanged
 
     # Live captions while the interview is running: each browser streams its own microphone to Tencent Cloud real-time speech recognition
     # (wss://asr.cloud.tencent.com/asr/v2/<appid>). The secret key stays on this server: the browser only gets a short-lived signed address.
@@ -82,10 +99,10 @@ class Settings:
     # AI moderator (docs/AI主持人_工程与训练任务说明_v1.md). Any OpenAI-compatible chat API; switching model = changing these lines only.
     # Empty values fall back to the LLM_* settings above. A local server (Ollama on 127.0.0.1) keeps transcripts on this computer;
     # anything else is a cloud provider: MODERATOR_VENDOR must name it, because the consent text tells participants who receives their answers.
-    moderator_provider: str = os.getenv("MODERATOR_PROVIDER", "") or os.getenv("LLM_PROVIDER", "mock")  # mock | openai
-    moderator_base_url: str = os.getenv("MODERATOR_BASE_URL", "") or os.getenv("LLM_BASE_URL", "https://api.openai.com/v1")
-    moderator_api_key: str | None = os.getenv("MODERATOR_API_KEY") or os.getenv("LLM_API_KEY")
-    moderator_model: str = os.getenv("MODERATOR_MODEL", "") or os.getenv("LLM_MODEL", "gpt-4o-mini")
+    moderator_provider: str = (os.getenv("MODERATOR_PROVIDER", "") or _LLM_PROVIDER).lower()  # mock | openai | deepseek
+    moderator_base_url: str = _MODERATOR_BASE_URL
+    moderator_api_key: str | None = os.getenv("MODERATOR_API_KEY") or os.getenv("LLM_API_KEY") or (os.getenv("DEEPSEEK_API_KEY") if _IS_DEEPSEEK else None)
+    moderator_model: str = _MODERATOR_MODEL
     moderator_timeout_s: int = int(os.getenv("MODERATOR_TIMEOUT_S", "60"))
     moderator_extra_body: str = os.getenv("MODERATOR_EXTRA_BODY", "")  # JSON object merged into every request (e.g. {"thinking": {"type": "disabled"}})
     # The model host is a fixed vendor, so by default its calls ignore the computer's system proxy: a local proxy measured 5-30x slower.

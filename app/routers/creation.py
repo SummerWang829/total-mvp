@@ -2,6 +2,7 @@
 
 One conversation per project, shown beside the questionnaire page and the outline page alike. The model proposes, the code applies (app/creation/patches.py).
 """
+import time
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -61,15 +62,20 @@ def _view(db: Session, proj: Project, state: stages.State) -> dict:
 def _turn(db: Session, ctx: Ctx, proj: Project, state: stages.State, text: str, material: str = "") -> None:
     if state.mode or proj.recruit_mode == "onelink" or proj.host_mode == "ai":   # the project holds the truth: the 招募方式 page may have changed it (still undecided = left for the dialog to ask)
         state.mode, state.host = ("one" if proj.recruit_mode == "onelink" else "two"), (proj.host_mode or "human")
+    deadline = time.monotonic() + engine.TURN_BUDGET_S   # 本轮 + 自动推进后的开场共用预算：整条请求必须在 CDN 的 100s 回源超时内返回
     try:
-        engine.run_turn(db, _chat(), proj, state, text, material)
+        engine.run_turn(db, _chat(), proj, state, text, material, deadline=deadline)
         last = state.msgs[-1] if state.msgs else {}
         nxt = stages.next_after(state) if text != engine.START and last.get("role") == "ai" and last.get("ready") else None
         if nxt:   # the stage is finished: the assistant moves on by itself and opens the next one (there is no stage list for the team to click)
             if state.stage.value not in state.done:
                 state.done.append(state.stage.value)
             state.stage = nxt
-            engine.run_turn(db, _chat(), proj, state, engine.START)
+            try:
+                engine.run_turn(db, _chat(), proj, state, engine.START, deadline=deadline)
+            except engine.CreationError:   # 预算用完了：开场白用固定文案，别让整条请求失败
+                state.msgs.append(stages.message("ai", state.stage, f"进入{LABELS[state.stage]}阶段：接下来想怎么定？说一句我来接着完善。",
+                                                 actions=[], advice="", needs=[], suggestions=[], ready=False, snapshot=""))
     except ChatFatalError as e:
         raise HTTPException(502, f"小星星助手暂时不可用：{e.reason}") from e
     except engine.CreationError as e:
@@ -154,3 +160,13 @@ def undo(pid: str, mid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Sess
     audit(db, ctx.org_id, ctx.actor, "creation.undo", proj.id)
     db.commit()
     return _view(db, proj, state)
+
+@router.get("/projects/{pid}/creation/audience")
+def creation_audience(pid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    """The planned depth-interview headcount decided in 创建访谈 (no model call, no side effects)."""
+    proj = _project(db, ctx, pid)
+    state = stages.load(proj)
+    a = (state.decisions or {}).get("audience") or {}
+    return {"total": int(a.get("total") or 0), "backup": int(a.get("backup") or 0),
+            "groups": a.get("groups") or []}
+

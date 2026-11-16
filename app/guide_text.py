@@ -30,7 +30,7 @@ HEADER_KEYS = {"目标": "research_goal", "goal": "research_goal", "受访者话
                "语言": "language", "language": "language", "时长": "duration_min", "minutes": "duration_min"}
 LIST_SECTIONS = {"暖场": "warmup_questions", "warmup": "warmup_questions", "假设": "hypotheses", "hypotheses": "hypotheses", "禁谈": "forbidden_topics", "forbidden": "forbidden_topics",
                  "品牌": "client_brand_names", "brands": "client_brand_names", "产品事实": "product_facts", "facts": "product_facts"}
-NOTE_KEYS = {"追问": "depth", "follow": "depth", "指引": "guide", "guidance": "guide", "重点关注": "mark", "关注原因": "reason", "关注人": "mark_by"}
+NOTE_KEYS = {"追问": "depth", "follow": "depth", "指引": "guide", "guidance": "guide", "维度": "dim", "dimension": "dim", "重点关注": "mark", "关注原因": "reason", "关注人": "mark_by"}
 SECTION_GUIDE_KEYS = ("环节指引", "section_guide")  # under a "## 话题" line, before its first question
 TOPIC_WORDS, STIMULUS_WORDS = ("话题", "topic"), ("素材", "stimulus")
 COVER_WORDS = ("了解", "cover")
@@ -43,7 +43,7 @@ MAX_NOTE = 500
 
 def blank_meta() -> dict:
     """What a question has until the researcher says otherwise."""
-    return {"depth": DEFAULT_DEPTH, "guide": "", "mark": False, "reason": "", "mark_by": ""}
+    return {"depth": DEFAULT_DEPTH, "guide": "", "dim": "", "mark": False, "reason": "", "mark_by": ""}
 
 
 class GuideTextError(ValueError):
@@ -126,7 +126,9 @@ def parse_guide_text(text: str) -> dict:
         elif cur is not None and "must_cover" in cur and not cur["questions"] and (kv := _split_key(line)) and kv[0] in SECTION_GUIDE_KEYS:
             cur["section_guide"] = kv[1][:MAX_NOTE]
         elif last is not None and (kv := _split_key(line)) and kv[0] in NOTE_KEYS:
-            if NOTE_KEYS[kv[0]] == "guide":
+            if NOTE_KEYS[kv[0]] == "dim":
+                last["dim"] = kv[1].strip().lower()[:24]
+            elif NOTE_KEYS[kv[0]] == "guide":
                 last["guide"] = kv[1][:MAX_NOTE]
             elif NOTE_KEYS[kv[0]] == "reason":
                 last["reason"] = kv[1][:MAX_NOTE]
@@ -168,6 +170,8 @@ def _questions(questions: list[str], metas: list[dict] | None, one) -> list[str]
             out.append(f"  追问: {m['depth']}")
         if (m.get("guide") or "").strip():
             out.append(f"  指引: {one(m['guide'])[:MAX_NOTE]}")
+        if (m.get("dim") or "").strip():
+            out.append(f"  维度: {one(m['dim'])[:24]}")
         if m.get("mark"):
             out.append("  重点关注: ★")
             if (m.get("reason") or "").strip():

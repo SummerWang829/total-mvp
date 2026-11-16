@@ -14,8 +14,11 @@ function olMinutes(sum) {
 async function outlineView(p) {
   const my = renderSeq;
   let V = ""; try { V = sessionStorage.getItem("ol_v_" + p.id) || ""; } catch { /* no storage */ }
+  const recP = api(`/projects/${p.id}/recruiting`).catch(() => ({}));   // 只有「先甄别后邀请」才需要右上角「确认并下一步」
   let S; try { S = await api(`/projects/${p.id}/outline${V ? "?v=" + encodeURIComponent(V) : ""}`); } catch { S = await api(`/projects/${p.id}/outline`); }
   if (stale(my)) return;
+  const rec = await recP;
+  const staged = (rec && rec.recruit_mode ? rec.recruit_mode : "screen_then_invite") !== "onelink";
   V = S.v;
   let seg = sessionStorage.getItem("ol_seg") || "outline", editing = "", qmenu = "", viewer = "host", step = 0, pop = "", L = new Set(), F = new Set(), opened = new Set(), batch = false, picked = new Set(), autoPend = new Set(), autoFail = new Set();
   const RO = () => !!S.readonly;   // a client (viewer) sees the outline read-only but may still mark 重点关注
@@ -94,7 +97,7 @@ async function outlineView(p) {
   const famRow = () => {   // 访谈形式：语音/视频和文字访谈各有一份大纲，点一下切换（还没有的先生成）
     if (S.families.length < 2) return "";
     const c = cur();
-    return `<div class="ol-fm"><span class="sm mut">访谈形式</span>${S.families.map((f) => { const v = S.versions.find((x) => x.lang === c.lang && x.family === f); return `<button type="button" class="ol-chip${f === c.family ? " on" : ""}" data-ver="${v.key}" aria-pressed="${f === c.family}">${esc(S.family_names[f])}${v.exists ? "" : autoFail.has(v.key) ? " ！" : " …"}</button>`; }).join("")}</div>`;
+    return `<div class="ol-fm"><span class="sm mut">访谈形式</span>${S.families.map((f) => { const v = S.versions.find((x) => x.lang === c.lang && x.family === f); return v ? `<button type="button" class="ol-chip${f === c.family ? " on" : ""}" data-ver="${v.key}" aria-pressed="${f === c.family}">${esc(S.family_names[f])}${v.exists ? "" : autoFail.has(v.key) ? " ！" : " …"}</button>` : ""; }).join("")}</div>`;
   };
   function outlineHtml() {
     const sum = S.summary, live = cur().family === "live";
@@ -162,7 +165,8 @@ async function outlineView(p) {
     const sg = $("#olseg"); if (sg) sg.innerHTML = segHtml();
     const keep = $("#olout") ? $("#olout").scrollTop : 0;
     const body = seg === "outline" ? outlineHtml() : seg === "settings" ? settingsHtml() : testHtml();
-    r.innerHTML = `<div class="rf-seg ol-seg" id="olseg" role="tablist" aria-label="大纲视图">${segHtml()}</div>` + rightHead() + `<div class="rf-sc" id="olout"><div class="rf-col"><div id="olnotes">${notes()}</div>${body}</div></div>`;
+    const nextBtn = staged && !RO() ? `<button class="p" type="button" id="olnext" title="访问大纲确认好了，进入配额及受访者名单邀请人">确认并下一步 →</button>` : "";
+    r.innerHTML = `<div class="ol-segbar"><div class="rf-seg ol-seg" id="olseg" role="tablist" aria-label="大纲视图">${segHtml()}</div><span class="sp"></span>${nextBtn}</div>` + rightHead() + `<div class="rf-sc" id="olout"><div class="rf-col"><div id="olnotes">${notes()}</div>${body}</div></div>`;
     $("#olout").scrollTop = keep; wireRight();
   }
   const moveTo = async (from, to) => { const [kind, ref, idx] = from.split(":"); await edit({ op: "move", kind, ref: +ref, index: +idx, value: to }); drawRight(); };   // 失败时 edit 只弹提示，这里再画一遍，让卡片回到原位
@@ -222,6 +226,11 @@ async function outlineView(p) {
     });
   }
   function wireRight() {
+    const nx = $("#olnext"); if (nx) nx.onclick = () => {   // 生成访问大纲之后：确认并下一步 → 配额及受访者名单去邀请人
+      try { sessionStorage.setItem("ptab", "list"); } catch { /* no storage */ }
+      location.hash = `#/p/${p.id}/people`;
+      toast("进入配额及受访者名单，可以邀请受访者了");
+    };
     document.querySelectorAll("[data-seg]").forEach((b) => (b.onclick = () => { seg = b.dataset.seg; sessionStorage.setItem("ol_seg", seg); drawRight(); }));
     document.querySelectorAll("[data-pop]").forEach((b) => (b.onclick = (e) => { e.stopPropagation(); pop = pop === b.dataset.pop ? "" : b.dataset.pop; drawRight(); }));
     document.querySelectorAll("[data-ver]").forEach((b) => (b.onclick = () => { if (b.dataset.ver === V) { pop = ""; drawRight(); } else goto(b.dataset.ver); }));

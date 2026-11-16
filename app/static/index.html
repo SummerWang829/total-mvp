@@ -3,7 +3,7 @@
 <link rel="icon" href="/logo_phoenix.svg" type="image/svg+xml">
 <title>星桐 TOTAL · 深访</title><link rel="stylesheet" href="/app.css">
 <link rel="stylesheet" href="/editorial.css"><link rel="stylesheet" href="/fonts.css"><link rel="stylesheet" href="/ui_v7.css"><link rel="stylesheet" href="/ui_v8.css"><link rel="stylesheet" href="/ui_rooms.css">
-<link rel="stylesheet" href="/chat.css"><link rel="stylesheet" href="/chatsel.css"><link rel="stylesheet" href="/ui_list.css"><link rel="stylesheet" href="/ui_screening.css"><link rel="stylesheet" href="/ui_outline.css"><link rel="stylesheet" href="/ui_wizard.css"><link rel="stylesheet" href="/ui_overview.css"><link rel="stylesheet" href="/ui_ai.css"><link rel="stylesheet" href="/voice.css"><link rel="stylesheet" href="/ui_creation.css"><link rel="stylesheet" href="/ui_v6.css"><link rel="stylesheet" href="/ui_global.css"><link rel="stylesheet" href="/ui_v9.css"><link rel="stylesheet" href="/ui_v10.css"><link rel="stylesheet" href="/ui_responsive.css"><link rel="stylesheet" href="/ui_icons.css"><link rel="stylesheet" href="/ui_layout.css"><link rel="stylesheet" href="/ui_font.css"><link rel="stylesheet" href="/ui_v11.css"></head>
+<link rel="stylesheet" href="/chat.css"><link rel="stylesheet" href="/chatsel.css"><link rel="stylesheet" href="/ui_list.css"><link rel="stylesheet" href="/ui_screening.css"><link rel="stylesheet" href="/ui_outline.css"><link rel="stylesheet" href="/ui_wizard.css"><link rel="stylesheet" href="/ui_overview.css"><link rel="stylesheet" href="/ui_ai.css"><link rel="stylesheet" href="/ui_creation.css"><link rel="stylesheet" href="/ui_v6.css"><link rel="stylesheet" href="/ui_global.css"><link rel="stylesheet" href="/ui_v9.css"><link rel="stylesheet" href="/ui_v10.css"><link rel="stylesheet" href="/ui_responsive.css"><link rel="stylesheet" href="/ui_icons.css"><link rel="stylesheet" href="/ui_layout.css"><link rel="stylesheet" href="/ui_font.css"><link rel="stylesheet" href="/ui_v11.css"><link rel="stylesheet" href="/ui_v12.css"><link rel="stylesheet" href="/voice_fast.css?v=2"></head>
 <body>
 <div id="app"></div>
 <script src="/app.js"></script>
@@ -19,7 +19,6 @@
 <script src="/outline.js"></script>
 <script src="/ai_console.js"></script>
 <script src="/creation.js"></script>
-<script src="/voice.js"></script>
 <script src="/insights.js"></script>
 <script src="/respondent.js"></script>
 <script src="/respondent_v2.js"></script>
@@ -322,8 +321,9 @@ const RULE_OPS = [["equals", "等于"], ["in", "是其中之一"], ["not_in", "�
 const RULE_EFFECTS = [["require", "必须满足"], ["exclude", "命中就排除"], ["flag", "命中就让人工看"]];
 async function peopleView(p) {
   const my = renderSeq;
-  let [parts, its, rec, form, lib, impB] = await Promise.all([api(`/projects/${p.id}/participants`), api(`/projects/${p.id}/interviews`), api(`/projects/${p.id}/recruiting`), api(`/projects/${p.id}/recruiting/form`), api(`/projects/${p.id}/recruiting/tags`), api(`/projects/${p.id}/recruiting/import/batches`).catch(() => ({ batches: [], orphans_pending: 0 }))]);
-  const rf = rfCard(p, form, rec), rd = await rdBuild(p, rec);
+  let [parts, its, rec, form, lib, impB, mon, aud] = await Promise.all([api(`/projects/${p.id}/participants`), api(`/projects/${p.id}/interviews`), api(`/projects/${p.id}/recruiting`), api(`/projects/${p.id}/recruiting/form`), api(`/projects/${p.id}/recruiting/tags`), api(`/projects/${p.id}/recruiting/import/batches`).catch(() => ({ batches: [], orphans_pending: 0 })), api(`/projects/${p.id}/monitor`).catch(() => ({})), api(`/projects/${p.id}/creation/audience`).catch(() => ({}))]);
+  const plannedN = (aud && aud.total) || (mon && mon.i && mon.i.target) || 0;   // 创建访谈里定的深访总人数，回退立项配额表
+  const rf = rfCard(p, form, rec, plannedN), rd = await rdBuild(p, rec);
   if (stale(my)) return;
   const countries = [...new Set(parts.map((x) => x.country).filter(Boolean))].sort(), langs = [...new Set(parts.map((x) => x.language).filter(Boolean))];
   const srcName = (x) => x.source_name || ({ link: "问卷链接 / 二维码", manual: "手动添加", import: "外部名单", platform: "外部问卷平台" })[x.source] || "未记录来源";
@@ -401,11 +401,11 @@ async function peopleView(p) {
     </section>
     <section class="au-grp au-est"><div class="au-esthd"><b>人群规模估算</b><span class="au-status" id="aueststatus">尚未估算</span><span class="sp"></span><button type="button" class="s" data-au="estimate" id="auestbtn">▦ 人群规模估算</button></div>
       <div class="sm mut au-estnote" id="auestnote">点右上角「人群规模估算」，结果出来后会自动同步到下方「N 人符合筛选」。</div></section>
-    <div class="au-keep"><div class="rdb-total"><span class="rdb-num" id="dbnum">${dbTotal}</span><span class="rdb-u">人符合筛选</span><span class="sp"></span><button type="button" class="p" id="dbsend">同步发送甄别问卷链接</button></div></div>
+    <div class="au-keep"><div class="rdb-total"><input class="rdb-num" id="dbnum" type="number" min="0" max="${dbTotal}" value="${dbTotal}" aria-label="符合筛选人数，可修改" style="width:64px;text-align:center;border:1px solid var(--line2);border-radius:6px;font:inherit;color:inherit;background:var(--surface,#fff)"><span class="rdb-u">人符合筛选</span><span class="sp"></span><button type="button" class="p" id="dbsend">同步发送甄别问卷链接</button></div></div>
   </div>`;
   shell(`<div class="hubtabs sub" role="tablist" aria-label="创建访谈"><a href="#" role="tab" id="ptab-mode-t" class="${ptab === "mode" ? "on" : ""}" aria-selected="${ptab === "mode"}">招募/主持/问卷</a>${rm === "onelink"
       ? `<a href="#" role="tab" id="ptab-form-t" class="${ptab === "form" ? "on" : ""}" aria-selected="${ptab === "form"}">招募问卷</a><a href="#" role="tab" id="ptab-db-t" class="${ptab === "db" ? "on" : ""}" aria-selected="${ptab === "db"}">数据库发送</a>`
-      : `<a href="#" role="tab" id="ptab-form-t" class="${ptab === "form" ? "on" : ""}" aria-selected="${ptab === "form"}">甄别问卷</a><a href="#" role="tab" id="ptab-db-t" class="${ptab === "db" ? "on" : ""}" aria-selected="${ptab === "db"}">数据库筛选及发送</a><a href="#" role="tab" id="ptab-list-t" class="${ptab === "list" ? "on" : ""}" aria-selected="${ptab === "list"}">配额及受访者名单</a><a href="#" role="tab" id="ptab-outline-t" class="${ptab === "outline" ? "on" : ""}" aria-selected="${ptab === "outline"}">访问大纲生成及邀请</a>`}</div>
+      : `<a href="#" role="tab" id="ptab-form-t" class="${ptab === "form" ? "on" : ""}" aria-selected="${ptab === "form"}">甄别问卷</a><a href="#" role="tab" id="ptab-db-t" class="${ptab === "db" ? "on" : ""}" aria-selected="${ptab === "db"}">数据库筛选及发送</a><a href="#" role="tab" id="ptab-outline-t" class="${ptab === "outline" ? "on" : ""}" aria-selected="${ptab === "outline"}">生成访问大纲</a><a href="#" role="tab" id="ptab-list-t" class="${ptab === "list" ? "on" : ""}" aria-selected="${ptab === "list"}">配额及受访者名单</a>`}</div>
     <div id="ptab-mode" ${ptab === "mode" ? "" : "hidden"}>${modeBar}</div>
     <div id="ptab-form" ${ptab === "form" ? "" : "hidden"}>${rf.html}</div><div id="ptab-db" ${ptab === "db" ? "" : "hidden"}>${dbHtml}</div><div id="ptab-list" ${ptab === "list" ? "" : "hidden"}>
     ${rd.html}
@@ -425,12 +425,20 @@ async function peopleView(p) {
   document.querySelectorAll('.sub2 .l2slot a.l2e').forEach((a) => { if (/\/outline/.test(a.getAttribute("href") || "")) a.remove(); });
   const showTab = (name) => {
     sessionStorage.setItem("ptab", name);
-    if (name === "outline") { location.hash = `#/p/${p.id}/outline`; return; }   // 访问大纲生成及邀请 = 打开访谈大纲页
+    if (name === "outline") {   // 生成访问大纲：先按已做好的大纲算法生成，再打开大纲页（已有大纲不覆盖）
+      (async () => {
+        try { const r = await api(`/projects/${p.id}/outline/generate`, { method: "POST" }); if (r.generated) toast("已生成访问大纲"); else if (r.reason) toast(r.reason, true); }
+        catch (e) { toast("访问大纲生成未成功：" + (e.message || ""), true); }
+        location.hash = `#/p/${p.id}/outline`;
+      })();
+      return;
+    }
     const set = (id, on) => { const el = $(id); if (el) el.hidden = !on; };
     set("#ptab-mode", name === "mode"); set("#ptab-form", name === "form"); set("#ptab-db", name === "db"); set("#ptab-list", name === "list");
     ["mode", "form", "db", "list"].forEach((k) => { const t = $(`#ptab-${k}-t`); if (t) { t.classList.toggle("on", name === k); t.setAttribute("aria-selected", name === k); } });
     document.body.classList.toggle("rfmode", name === "form"); if (name === "form") rf.fit();
   };
+  window.__ptabGo = showTab;   // 招募问卷页右上角「确认并下一步」跳到数据库筛选及发送
   const tMode = $("#ptab-mode-t"); if (tMode) tMode.onclick = (e) => { e.preventDefault(); showTab("mode"); };
   const tForm = $("#ptab-form-t"); if (tForm) tForm.onclick = (e) => { e.preventDefault(); showTab("form"); };
   const ptdb = $("#ptab-db-t"); if (ptdb) ptdb.onclick = (e) => { e.preventDefault(); showTab("db"); };
@@ -438,9 +446,10 @@ async function peopleView(p) {
   const tList = $("#ptab-list-t"); if (tList) tList.onclick = (e) => { e.preventDefault(); showTab("list"); };
   // 同步发送甄别问卷链接（邮件）+ 假名化留痕（失败不影响发送）
   const dbsend = $("#dbsend"); if (dbsend) dbsend.onclick = guard(async () => {
-    const ids = parts.filter((x) => x.email && !x.anonymized).map((x) => x.id);
+    const numEl = $("#dbnum"), want = numEl ? Math.max(0, Math.min(+numEl.value || 0, parts.length)) : parts.length;
+    const ids = parts.filter((x) => x.email && !x.anonymized).map((x) => x.id).slice(0, want);
     const n = ids.length;
-    if (!n) return toast("没有可发送的受访者邮箱，请先在名单里补齐邮箱", true);
+    if (!n) return toast("没有可发送的受访者邮箱，请先在名单里补齐邮箱，并检查左侧人数", true);
     if (!confirm(`将向 ${n} 位受访者发送甄别问卷链接邮件，确定发送吗？`)) return;
     const r = await api(`/projects/${p.id}/recruiting/screen-invite`, { method: "POST", body: { participant_ids: ids } });
     api(`/projects/${p.id}/audience/record-send`, { method: "POST", body: { participant_ids: ids } }).catch(() => {});
@@ -475,7 +484,7 @@ async function peopleView(p) {
       s.className = "au-status" + (busy ? " busy" : done ? " done" : "");
       s.innerHTML = busy ? `<span class="au-spin"></span>正在请求中…` : done ? "已完成" : (e && e.status === "failed" ? "估算失败" : "尚未估算");
       if (done) {
-        const num = $("#dbnum"); if (num && e.matched_count != null) num.textContent = e.matched_count;
+        const num = $("#dbnum"); if (num && e.matched_count != null) { num.value = e.matched_count; num.max = e.matched_count; }
         n.textContent = `人群规模估算完成：${e.matched_count} 人，已同步到下方「N 人符合筛选」。`;
       } else if (busy) n.textContent = "已提交估算请求，结果出来后会自动同步到下方「N 人符合筛选」。你可以先离开，稍后回来查看。";
       else if (e && e.status === "failed") n.textContent = "估算失败，可点右上角重试。";
@@ -1725,4 +1734,5 @@ async function demoView() {
 window.addEventListener("hashchange", () => { document.querySelectorAll(".modal").forEach((m) => m.remove()); render(); });  // an open dialog never survives a page change
 if (window.TT_THEME) TT_THEME.mount();  // theme switch (top right) and the back-to-top button
 render();
-</script></body></html>
+</script>
+<script src="/voice_fast.js?v=2"></script></body></html>

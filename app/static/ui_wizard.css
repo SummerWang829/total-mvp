@@ -32,3 +32,17 @@ html body .wzbody .wzsubs input:not([type=checkbox]):not([type=radio]),html body
 .sugrow{display:grid;grid-template-columns:220px 1fr;gap:14px;padding:10px 0;border-bottom:1px solid var(--line2)}
 .sugrow:last-child{border-bottom:0}
 .wzsubs th,.wzsubs td,.wzfix th,.wzfix td,.wzroles th,.wzroles td{padding-left:12px;padding-right:8px}
+
+/* 子项目行：横向每一格的内容贴同一条顶线（2026-11-13）
+   原来 .chk.wzbig 是 36px 的居中容器、checkbox 另有 margin-top:4px，比同行的文字/胶囊低一截；
+   这里把每格首行统一成 24px 行高、去掉额外上边距，checkbox 容器也压到 24px 并靠顶。
+   用高特异性选择器，保证不被后加载的 ui_layout.css / app.css 覆盖。 */
+html body .wzsubs table.tbl > tbody > tr > td { vertical-align: top; }
+html body .wzsubs td > * { margin-top: 0; line-height: 24px; }
+html body .wzsubs td > .wzchips { align-items: flex-start; }
+html body .wzsubs .wzchips > .tag { height: 24px; min-height: 24px; line-height: 22px; box-sizing: border-box; align-items: center; }
+html body .wzsubs .wzchips > button[data-pick] { height: 24px; min-height: 0; line-height: 24px; }
+html body .wzsubs .chk.wzbig { min-width: 0; min-height: 0; height: 24px; justify-content: flex-start; align-items: center; }
+html body .wzsubs td input[type=checkbox] { margin: 0; }
+html body .wzsubs td > input:not([type=checkbox]),
+html body .wzsubs td > select { height: 24px; min-height: 0; line-height: 24px; margin-top: 0; vertical-align: top; }

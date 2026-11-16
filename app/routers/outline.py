@@ -1,24 +1,32 @@
 """The 访谈 page's interview outline: read it, save a hand edit, talk to the AI to change it. Staff only (it holds the research goal); nothing here reaches participants."""
+import contextvars
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeout
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from .. import formats, guide_text, library_context, outline, outline_export, outline_translate, outline_versions, project_context as pctx, project_langs, assistant_identity
+from .. import formats, guide_text, library_context, outline, outline_export, outline_lint, outline_translate, outline_versions, project_context as pctx, project_langs, assistant_identity
 from .. import methods as methods_mod
 from ..audit import audit
 from ..config import settings
 from ..db import get_db
 from ..deps import STAFF, Ctx, ensure_project, require_roles
-from ..models import Project, RecruitForm
+from ..models import Project, RecruitForm, utcnow
 from ..moderator.compliance import moderator_runs_locally
-from ..moderator.providers import ChatFatalError, get_moderator_chat
+from ..moderator.providers import ChatFatalError, get_moderator_chat, text_extras
 from ..recruit_form import MSG_VENDOR_MISSING
 from ..study_draft import DraftError
 from .projects import _can_manage
 
 router = APIRouter(prefix="/api", tags=["outline"])
+GENERATE_TIMEOUT_S = 30   # 生成访问大纲的单次硬超时：必须远低于网关回源超时，避免用户只看到 524
+
+
+class GoalsBody(BaseModel):
+    confirmed: bool = True
 
 
 class OutlineBody(BaseModel):
@@ -123,6 +131,11 @@ def _versions_of(proj: Project, meta: dict) -> list[dict]:
     return out
 
 
+def _families_of(versions: list[dict]) -> list[str]:
+    """Only the format families that actually have a version; otherwise outline.js reads v.key of undefined."""
+    return [f for f in ("live", "text") if any(v["family"] == f for v in versions)]
+
+
 def _out(proj: Project, db: Session, key: str | None = None, ctx: Ctx | None = None) -> dict:
     key = _version(proj, key)
     text = outline_versions.text_of(proj, key)
@@ -134,9 +147,14 @@ def _out(proj: Project, db: Session, key: str | None = None, ctx: Ctx | None = N
     meta = pctx.meta(db, proj)
     can_edit = bool(ctx and (ctx.user.role in ("admin", "recruiter") or _can_manage(db, ctx, proj.id)))
     readonly = bool(ctx and ctx.user.role == "viewer")
+    _gf = db.get(RecruitForm, proj.id)
+    try:
+        _planned = round(outline_lint._planned_minutes(guide_text.parse_guide_text(text), None), 1) if summary else 0.0
+    except Exception:  # noqa: BLE001 - a broken outline must not break the page
+        _planned = 0.0
     return {"text": text, "problem": outline.problem_of(text), "summary": summary, "warning": outline.warning_of(text),
             "readonly": readonly, "role": ctx.user.role if ctx else "researcher",
-            "v": key, "base": base, "versions": _versions_of(proj, meta), "families": list(meta["formats"]["family_labels"]),
+            "v": key, "base": base, "versions": _versions_of(proj, meta), "families": _families_of(_versions_of(proj, meta)),
             "family_names": outline_versions.FAMILY_NAMES, "lang": outline_versions.split(key)[0],
             "setup": {"source": meta["source"], "country": meta["country"], "language": meta["language"],
                       "languages": meta["languages"], "formats": meta["formats"]["names"],
@@ -149,12 +167,28 @@ def _out(proj: Project, db: Session, key: str | None = None, ctx: Ctx | None = N
                          "formats": meta["formats"]["codes"], "format_names": formats.FORMATS, "can_edit_langs": can_edit},
             "context": {"brief": bool((proj.brief or "").strip()), "library_docs": len(library_context.project_documents(db, proj.id)), "parts": len(summary["parts"]) if summary else 0,
                         "questions": summary["question_count"] if summary else 0},
-            "model": _model_label(), "ai_local": local, "ai_vendor": "" if local else settings.moderator_vendor.strip()}
+            "model": _model_label(), "ai_local": local, "ai_vendor": "" if local else settings.moderator_vendor.strip(),
+            "goals": [str(g) for g in ((_gf.goals if _gf else []) or []) if str(g).strip()],
+            "goals_confirmed": bool(_gf and _gf.goals_confirmed_at), "planned_minutes": _planned}
 
 
 @router.get("/projects/{pid}/outline")
 def get_outline(pid: str, v: str | None = None, ctx: Ctx = Depends(require_roles(*STAFF, "viewer")), db: Session = Depends(get_db)):
     return _out(_project(db, ctx, pid), db, v, ctx)
+
+
+@router.post("/projects/{pid}/outline/goals")
+def confirm_goals(pid: str, body: GoalsBody, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    """The researcher signs the research goals off (or takes it back)."""
+    proj = _project(db, ctx, pid)
+    form = db.get(RecruitForm, proj.id)
+    if form is None:
+        form = RecruitForm(project_id=proj.id, org_id=proj.org_id)
+        db.add(form)
+    form.goals_confirmed_at = utcnow() if body.confirmed else None
+    audit(db, ctx.org_id, ctx.actor, "outline.goals_confirm", proj.id, confirmed=body.confirmed)
+    db.commit()
+    return {"goals_confirmed": body.confirmed, "goals": [str(g) for g in (form.goals or [])]}
 
 
 @router.put("/projects/{pid}/outline")
@@ -280,3 +314,60 @@ def export_outline(pid: str, format: str = "md", v: str | None = None, ctx: Ctx 
     body = outline_export.build_markdown(summary, proj, db, form, key)
     name = f"{(proj.name or 'outline')[:40]}-{key}.md"
     return Response(body, media_type="text/markdown; charset=utf-8", headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+@router.post("/projects/{pid}/outline/generate")
+def generate_main_outline(pid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    """生成访问大纲：用创建访谈里已做好的大纲规范/构造算法，按研究背景、目标、招募需求出一版。
+
+    An existing outline is never overwritten. Offline (mock) returns a reason instead of failing the page.
+    """
+    import json
+    proj = _project(db, ctx, pid)
+    try:
+        old = outline.summary_of(proj.outline_text or "")
+        if old and (old.get("question_count") or 0) > 0:
+            return {"generated": False, "reason": "已有访问大纲，未覆盖"}
+    except Exception:
+        pass
+    chat = _translator()
+    if chat is None:
+        return {"generated": False, "reason": "模型未接入（演示模式）"}
+    from ..creation import patches as creation_patches, specs as creation_specs
+    f = db.get(RecruitForm, proj.id)
+    goals = list(f.goals or []) if f else []
+    need = (f.need if f else "") or ""
+    brief = proj.brief or ""
+    spec = getattr(creation_specs, "OUTLINE_SPEC", "")
+    system = ("你是深访大纲设计助手。按下面的规范，把研究背景与目标写成一份访问大纲。"
+              "只输出一个 JSON 对象：{\"participant_topic\":\"受访者称呼，最多 12 字\",\"warmup_questions\":[\"...\"],\"topics\":[{\"title\":\"...\",\"questions\":[\"...\"]}]}。"
+              "暖场 1-2 题，话题 3-5 个、每话题 3-5 题；不要是非题、一句两问、诱导性提问；每题只问一件事，而且必须是完整的问句"
+              "（至少 8 个字，不要写「在预约环节？」这类半截话）。\n\n"
+              "OUTLINE SPEC\n" + spec)
+    user = json.dumps({"研究背景": brief[:2000], "研究目标": goals, "招募需求": need[:2000]}, ensure_ascii=False)
+    # 硬超时：底层 httpx 是 60s × 3 次重试，模型卡住时整条请求会拖过网关的回源超时，前端就只看到 524。这里 30 秒一定给结论。
+    pool = ThreadPoolExecutor(max_workers=1)
+    try:
+        try:
+            # A worker thread does not inherit contextvars; copy the context so text_extras() reaches the call.
+            # The 30-second hard timeout below is unchanged.
+            with text_extras():
+                ctx = contextvars.copy_context()
+                future = pool.submit(ctx.run, chat.complete, [{"role": "system", "content": system}, {"role": "user", "content": user}], settings.ai_temperature)
+            raw = future.result(timeout=GENERATE_TIMEOUT_S)
+        except FutureTimeout:
+            return {"generated": False, "reason": "模型这次响应太慢（已等 30 秒）。请再点一次「生成访问大纲」，或在左边对话里让它出大纲。"}
+        data = json.loads(raw) if isinstance(raw, str) else (raw or {})
+        goal = ("；".join(goals) or brief)[:1000]
+        guide, meta = creation_patches.build_guide(data, goal, proj.language or "zh", 45)
+        text = guide_text.guide_to_text({**guide, "meta": meta})
+        guide_text.parse_guide_text(text)  # must read back
+    except Exception as exc:  # noqa: BLE001
+        return {"generated": False, "reason": ("生成失败：%s %s" % (type(exc).__name__, exc))[:300]}
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
+    proj.outline_text = text
+    outline_versions.put_text(proj, outline_versions.base_key(proj), text)
+    audit(db, ctx.org_id, ctx.actor, "outline.generate", pid)
+    db.commit()
+    return {"generated": True, "text": text[:200]}
+

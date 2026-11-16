@@ -387,3 +387,29 @@ def set_owner(pid: str, uid: str, body: OwnerBody, ctx: Ctx = Depends(require_ro
     audit(db, ctx.org_id, ctx.actor, "project.member.owner", proj.id, user=uid, owner=body.is_owner)
     db.commit()
     return _members_out(db, ctx, proj.id)
+
+@router.post("/projects/{pid}/lab/reset")
+def lab_reset(pid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    """Clear what the AI generated for this project (outline, questionnaire, both conversations, goals).
+
+    People, interviews and quotas are left alone: this resets the drafting, not the study.
+    """
+    proj = get_project(db, ctx, pid)
+    if not _can_manage(db, ctx, proj.id):
+        raise HTTPException(403, "只有项目负责人或管理员能清空")
+    proj.brief = ""
+    proj.outline_text = ""
+    for k, v in {"outline_versions": {}, "outline_chat": "", "creation_json": ""}.items():
+        if hasattr(proj, k):
+            setattr(proj, k, v)
+    f = db.get(RecruitForm, proj.id)
+    if f is not None:
+        for k, v in {"questions": [], "chat": [], "goals": [], "need": "", "goals_confirmed_at": None,
+                     "framing_confirmed_at": None, "questions_confirmed_at": None, "source": "ai",
+                     "source_confirmed": "", "idea": "", "html_url": "", "version": 0, "status": "draft"}.items():
+            if hasattr(f, k):
+                setattr(f, k, v)
+        f.updated_at = utcnow()
+    audit(db, ctx.org_id, ctx.actor, "project.lab_reset", proj.id)
+    db.commit()
+    return {"ok": True}

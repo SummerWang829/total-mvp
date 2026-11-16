@@ -3,21 +3,27 @@
 The model only proposes; the code decides. A patch is applied all-or-nothing (a bad one is sent back to the model with the reason, three tries), the list of changes the
 page shows comes from what was really applied, and every change can be undone from the snapshot kept with the message.
 """
+import contextvars
 import json
 import logging
+import time
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 from dataclasses import dataclass, field
 
 from sqlalchemy.orm import Session
 
 from .. import ai_prompts, assistant_identity, library_context
+from ..config import settings
 from ..models import Project, RecruitForm
-from ..moderator.providers import ChatError, ChatFatalError, ChatFormatError, ModeratorChatProvider
+from ..moderator.providers import ChatError, ChatFatalError, ChatFormatError, ModeratorChatProvider, text_extras
 from . import checks, patches, specs
 from .stages import LABELS, TASKS, Stage, State, message
 
 log = logging.getLogger(__name__)
 
-MAX_ATTEMPTS = 3
+MAX_ATTEMPTS = 2           # 一次叫模型 + 一次带着打回原因再试：再多就是拿用户的等待换概率，网关会先返回 524
+MODEL_TIMEOUT_S = 20       # 单次模型调用硬超时（底层 httpx 是 60s × 3 次重试，不能让它一直挂着）
+TURN_BUDGET_S = 40         # 一轮对话的总预算，含自动推进后那次开场；整条请求必须远低于网关回源超时
 HISTORY = 8
 MAX_NEEDS, MAX_OPTIONS, MAX_SUGGESTIONS = 3, 4, 3
 MSG_FAIL = "这一步没有成功，请换个说法再试，或直接在右边修改"
@@ -71,7 +77,7 @@ def _clean(raw: object) -> Reply:
                  suggestions=sugg, ready=bool(raw.get("ready")) and not needs)
 
 
-def converse(chat: ModeratorChatProvider, db: Session, project: Project, state: State, text: str, material: str, problem: str) -> Reply:
+def converse(chat: ModeratorChatProvider, db: Session, project: Project, state: State, text: str, material: str, problem: str, timeout_s: float = MODEL_TIMEOUT_S) -> Reply:
     """Ask the model once for this stage.
 
     Raises:
@@ -81,14 +87,26 @@ def converse(chat: ModeratorChatProvider, db: Session, project: Project, state: 
     """
     history = [{"role": m["role"], "text": m["text"]} for m in state.msgs if m.get("stage") == state.stage.value][-HISTORY:]
     payload = {"CURRENT_STAGE": state.stage.value, "STAGE_TASK": TASKS[state.stage], "DOCUMENT": document(db, project, state), "DECISIONS": state.decisions, "HISTORY": history,
-               "USER": text, "CHECKS": [f["text"] for f in checks.run(project, db.get(RecruitForm, project.id), state)][:8], "MATERIAL": material[:30000], "LIBRARY": library_context.library_text(db, project.id)[0], "LANGUAGE": project.language}
+               "USER": text, "CHECKS": [f["text"] for f in checks.run(project, db.get(RecruitForm, project.id), state)][:8], "MATERIAL": material[:8000], "LIBRARY": library_context.library_text(db, project.id)[0][:4000], "LANGUAGE": project.language}
     if problem:
         payload["YOUR_PREVIOUS_ANSWER_WAS_REJECTED"] = problem
-    raw = chat.complete([{"role": "system", "content": system_prompt()}, {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}], temperature=0.4)
+    msgs = [{"role": "system", "content": system_prompt()}, {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}]
+    pool = ThreadPoolExecutor(max_workers=1)
+    try:
+        # A worker thread does not inherit contextvars, so copy the context: text_extras() and the AI
+        # call-log company both reach the model call. The hard timeout below is unchanged.
+        with text_extras():
+            ctx = contextvars.copy_context()
+            future = pool.submit(ctx.run, chat.complete, msgs, temperature=settings.ai_temperature)
+        raw = future.result(timeout=max(1.0, timeout_s))
+    except FutureTimeout as e:
+        raise ChatError("MODEL_TIMEOUT") from e
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
     return _clean(raw)
 
 
-def run_turn(db: Session, chat: ModeratorChatProvider | None, project: Project, state: State, text: str, material: str = "") -> dict:
+def run_turn(db: Session, chat: ModeratorChatProvider | None, project: Project, state: State, text: str, material: str = "", deadline: float | None = None) -> dict:
     """Do one turn of the current stage: the model's reply, its patch applied (all or nothing) and both messages stored. Returns the AI message.
 
     Raises:
@@ -101,15 +119,23 @@ def run_turn(db: Session, chat: ModeratorChatProvider | None, project: Project, 
         state.msgs.append(ai)
         return ai
     problem, reply, actions, snap = "", None, [], ""
+    if deadline is None:
+        deadline = time.monotonic() + TURN_BUDGET_S
     for attempt in range(MAX_ATTEMPTS):
+        left = deadline - time.monotonic()
+        if left <= 0:
+            log.warning("creation turn budget used up (stage %s)", state.stage.value)
+            break
         try:
-            reply = mock_reply(db, project, state, text) if chat is None else converse(chat, db, project, state, text, material, problem)
+            reply = mock_reply(db, project, state, text) if chat is None else converse(chat, db, project, state, text, material, problem, min(MODEL_TIMEOUT_S, left))
         except ChatFatalError:
             raise
         except ChatFormatError:
             problem = "not valid JSON (a bracket or quote was wrong)"
             continue
         except ChatError as e:
+            if str(e) == "MODEL_TIMEOUT":
+                raise CreationError("这一步模型响应太慢，请再点一次重试；也可以直接在右边修改") from e
             raise CreationError("小星星助手暂时无法回答，请稍后再试，或直接在右边修改") from e
         except (ValueError, KeyError, TypeError) as e:
             problem = f"not a usable reply ({e})"
@@ -122,9 +148,9 @@ def run_turn(db: Session, chat: ModeratorChatProvider | None, project: Project, 
             if snap:
                 patches.restore(db, project, state, snap)
             problem, reply = str(e), None
-            log.warning("creation turn %d (stage %s): patch refused", attempt + 1, state.stage.value)
+            log.warning("creation turn %d (stage %s): patch refused: %s", attempt + 1, state.stage.value, str(e)[:300])
     if reply is None:
-        raise CreationError(MSG_FAIL)
+        raise CreationError("这一步花的时间有点久，请再点一次重试；也可以直接在右边手动改" if time.monotonic() > deadline else MSG_FAIL)
     if text != START:
         state.msgs.append(message("user", state.stage, text))
     ai = message("ai", state.stage, reply.reply, actions=actions, advice=reply.advice, needs=reply.needs, suggestions=reply.suggestions, ready=reply.ready,
