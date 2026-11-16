@@ -38,7 +38,7 @@ function rfAutosize(t) {
 }
 
 /** 整个“招募问卷”卡片，返回 { html, wire, fit }。 */
-function rfCard(p, form, rec) {
+function rfCard(p, form, rec, plannedN) {
   let f = form, mode = form.source === "html" ? "html" : "ai", seg = "outline", Q = JSON.parse(JSON.stringify(form.questions || [])), goals = [...(form.goals || [])], need = form.need || "";
   const rm = (rec && rec.recruit_mode) || "screen_then_invite", hm = (rec && rec.host_mode) || "human";   // 招募方式 / 主持方式（决定阶段增减）
   if (rm === "onelink") { mode = "ai"; f = { ...f, source: "ai", source_confirmed: "ai" }; }   // 一站式 = AI 问卷 + AI 访谈，来源锁定为 AI，不弹来源选择、不可切换
@@ -52,6 +52,7 @@ function rfCard(p, form, rec) {
   let htmlLocked = !!form.html_url;   // the saved link is read-only until 编辑 is pressed (2026-11-03)
   let menu = null;   // the open ⋮ menu of a question ("q:<id>") or an option ("o:<id>:<number>"); one at a time
   let typeMenuOpen = null;   // 哪道题的题型下拉正打开（qid）
+  let askOpen = null, askBusy = false, askFail = "";   // 题旁「问 AI / 改这题」：正在改哪一题
   let busy = false, focusGrip = null;   // busy: a moved card is still landing; focusGrip: the handle to focus after a keyboard move
   const snap = () => JSON.stringify({ Q, goals, need });
   const nextId = () => { let n = 0; Q.forEach((q) => { const m = /^q(\d+)$/.exec(q.id); if (m) n = Math.max(n, +m[1]); }); return "q" + (n + 1); };
@@ -103,10 +104,255 @@ function rfCard(p, form, rec) {
     f = { ...f, ...(await api(`/projects/${p.id}/recruiting/form`)) }; Q = JSON.parse(JSON.stringify(f.questions || [])); goals = [...(f.goals || [])]; need = f.need || ""; editing = new Set();
     changedIds = diffIds(before, Q); drawRight(); loadOl();
   });
+  // ===== 单线六步（2026-11-16 变更包 2C）：欢迎语 → 要素卡片 → 确认背景 → 出题 → 确认问卷 → 配额与形式 =====
+  let qfStep = 0, flowText = "", cardShown = false, cardDone = false, cardAnswers = {}, cardCustom = {}, flowBusy = false, showChecks = false, thinking = false, quotaBusy = false, quotaChat = "", fmtDone = false, quotaDone = false;
+  let fmtPicked = Array.isArray(f.formats) ? f.formats.slice() : [];
+  let quotaList = Array.isArray(f.quotas) ? JSON.parse(JSON.stringify(f.quotas)) : [];
+  let frameSug = [], sugPicked = new Set(), sugBusy = false;            // 建议条：第 3/4 步，可多选后确认生效
+  let quotaPlan = null, quotaClarify = [], clarifyPick = {}, planBusy = false, quotaRationale = "";  // 配额口径对齐：说明 + 表格 + 选择题
+  try { const sv = JSON.parse(sessionStorage.getItem("qf_" + p.id) || "{}"); qfStep = sv.step || 0; flowText = sv.text || ""; cardShown = !!sv.shown; cardDone = !!sv.done; cardAnswers = sv.answers || {}; cardCustom = sv.custom || {}; if (Array.isArray(sv.fmt)) fmtPicked = sv.fmt; if (sv.fmtDone) fmtDone = true; if (sv.quotaDone) quotaDone = true; } catch (e) { /* private window */ }
+  const saveFlow = () => { try { sessionStorage.setItem("qf_" + p.id, JSON.stringify({ step: qfStep, text: flowText, shown: cardShown, done: cardDone, answers: cardAnswers, custom: cardCustom, fmt: fmtPicked, fmtDone, quotaDone })); } catch (e) { /* private window */ } };
+  // 把自定义输入拼进「研究想法」，供出题时一起交给 AI；固定选项只作引导，不强制回传。
+  const cardIdea = () => {
+    const parts = [];
+    CARD.forEach((q, i) => { const c = (cardCustom[i] || "").trim(); if (c) parts.push(`${q[0]}${c}`); });
+    return parts.length ? `${flowText || ""}\n\n（补充要素）\n${parts.join("\n")}` : (flowText || "");
+  };
+  const CARD = [
+    ["这项研究的结果主要用来支撑哪个决策？", ["售后服务流程升级（推荐）", "新车定价策略", "品牌传播口径"]],
+    ["谁可以参加？哪些人必须筛掉？", ["近 12 个月有维保（推荐）", "不限", "仅首任车主"]],
+    ["要区分哪几组人？", ["一线 / 新一线（推荐）", "按车型", "不分组"]],
+    ["问卷最多可以答多久？", ["3 分钟以内（推荐）", "5 分钟", "不限"]],
+    ["有没有需要特别小心的话题？", ["没有（推荐）", "涉及品牌", "涉及个人信息"]]
+  ];
+  const esc2 = (x) => esc(String(x == null ? "" : x));
+  const FORMATS = { video: "视频访谈", video_screen: "视频+屏幕共享", audio: "纯音频", text: "文字访谈", text_voice: "文字+语音转录" };
+  const fmtLabel = (c) => FORMATS[c] || c;
+  const quotaLabel = (q) => q.name || `${q.field}=${q.value}`;
+  const fmtToggle = (c) => { fmtPicked = fmtPicked.includes(c) ? fmtPicked.filter((x) => x !== c) : [...fmtPicked, c]; saveFlow(); };
+  const fmtBtn = (c) => `<button class="s${fmtPicked.includes(c) ? " on" : ""}" type="button" data-fmt="${c}">${fmtLabel(c)}</button>`;
+  // 建议条：贴在输入框上方，最多 3 条，可多选，点「确认」把选中的建议交给 AI 生效
+  const curSuggestions = () => {
+    const st = flowState();
+    if (st === 3) return frameSug.slice(0, 3);
+    if (st === 4) return (f.suggestions || []).map((x, i) => ({ id: x.sig || `s${i + 1}`, text: String(x.text || x.label || "") })).filter((x) => x.text).slice(0, 3);
+    return [];
+  };
+  const sugBarHtml = () => {
+    const list = curSuggestions();
+    if (!list.length) return "";
+    if (sugBusy) return `<div class="cc-sugbar"><div class="sm mut">正在按要求修改，请稍候…</div></div>`;
+    const n = sugPicked.size;
+    return `<div class="cc-sugbar"><div class="cc-sughd">建议 <span class="mut">（可多选，最多 ${list.length} 条）</span></div>` +
+      list.map((x) => `<button class="cc-sugitem${sugPicked.has(x.id) ? " on" : ""}" type="button" data-sug="${esc2(x.id)}"><span class="cc-sugck">${sugPicked.has(x.id) ? "✓" : ""}</span><span class="cc-sugt">${esc2(x.text)}</span></button>`).join("") +
+      `<div class="cc-sugfoot"><button class="p" type="button" id="sugapply"${n ? "" : " disabled"}>${n ? `确认选中的 ${n} 条建议生效` : "选中建议后确认"}</button><button class="s" type="button" id="sugclear">清空</button></div></div>`;
+  };
+  // 配额口径对齐：说明 + 配额表 + 不清晰项的选择题 → 最后确认表格
+  const quotaPanelHtml = () => {
+    if (planBusy) return `<div class="qf-panel"><h4>配额组（口径对齐中…）</h4><div class="qf-think"><span></span><span></span><span></span></div><div class="sm mut">正在按研究目标对齐分组口径，请稍候。</div></div>`;
+    const rat = quotaRationale ? `<div class="cc-adv"><b>口径说明</b>${esc2(quotaRationale)}</div>` : "";
+    const clarify = quotaClarify.length
+      ? `<div class="qf-clarify">${quotaClarify.map((c, i) => `<div class="qf-clarq"><b>${i + 1}. ${esc2(c.text)}</b><div class="qf-opts">${c.options.map((o) => `<button type="button" class="s${clarifyPick[i] === o ? " on" : ""}" data-clarify="${i}" data-claropt="${esc2(o)}">${esc2(o)}</button>`).join("")}</div></div>`).join("")}</div>`
+      : "";
+    const tbl = quotaList.length
+      ? `<table><tr><th>分组</th><th>目标人数</th><th>条件</th></tr>${quotaList.map((q) => `<tr><td>${esc2(quotaLabel(q))}</td><td><input class="qf-target" type="number" min="1" max="10000" data-quota-target="${esc2(quotaLabel(q))}" value="${q.target}"></td><td>${esc2(q.field === "answer" ? (q.question || "") : q.value || "")}</td></tr>`).join("")}</table><div class="sm mut">合计 ${quotaList.reduce((s, q) => s + (+q.target || 0), 0)} 人</div>`
+      : `<div class="mut">还没有配额组，可直接确认，或让 AI 按目标人群生成。</div>`;
+    return `<div class="qf-panel"><h4>配额组（先对齐口径，再确认表格）</h4>${rat}${clarify}${tbl}` +
+      `<div class="qf-aimsg"><textarea id="qfquotamsg" rows="2" placeholder="例如：一线城市加到 30 人，新增二线城市 15 人">${esc2(quotaChat)}</textarea><button class="s" type="button" id="qfquotago"${quotaBusy ? " disabled" : ""}>${quotaBusy ? "AI 调整中…" : "让 AI 调整目标人数"}</button></div>` +
+      `<div class="qf-forward"><button class="p" type="button" id="qfquotadone">口径与表格没问题，确认配额 →</button><button class="s" type="button" id="qfquotaskip">跳过配额</button></div></div>`;
+  };
+  // step 6：访谈形式（单独确认）→ 配额组（口径对齐+表格确认）→ 进入测试/名单
+  const step6Html = () => {
+    if (!fmtDone) {
+      return `<div class="cc-ai"><b>问卷已确认</b><br>先确认访谈形式（可多选），确认后再配置配额组。</div>` +
+        `<div class="qf-panel"><h4>访谈形式（可多选）</h4><div class="row">${Object.keys(FORMATS).map(fmtBtn).join("")}</div>` +
+        `<div class="qf-forward"><button class="p" type="button" id="qffmtgo">确认访谈形式 →</button><div class="qf-hint">确认后再配置配额；之后还可修改</div></div></div>`;
+    }
+    if (!quotaDone) {
+      return `<div class="cc-ai"><b>访谈形式已确认</b>${fmtPicked.length ? `：${esc2(fmtPicked.map(fmtLabel).join("、"))}` : ""}<br>下面按研究目标对齐配额口径，确认表格后即保存。</div>` +
+        `<div class="qf-panel"><h4>访谈形式（已确认）</h4><div class="row">${Object.keys(FORMATS).map(fmtBtn).join("")}</div><button class="s" type="button" id="qffmtredo">修改形式</button></div>` +
+        quotaPanelHtml();
+    }
+    return `<div class="cc-ai"><b>访谈形式与配额已保存</b><br>下面可以进入测试答题，或进入「配额与受访者名单」。</div>` +
+      `<div class="qf-panel"><h4>访谈形式</h4><div class="mut">${fmtPicked.length ? esc2(fmtPicked.map(fmtLabel).join("、")) : "（未选择）"}</div>` +
+      `<h4>配额组</h4>${quotaList.length ? `<table><tr><th>分组</th><th>目标人数</th><th>条件</th></tr>${quotaList.map((q) => `<tr><td>${esc2(quotaLabel(q))}</td><td>${q.target}</td><td>${esc2(q.field === "answer" ? (q.question || "") : q.value || "")}</td></tr>`).join("")}</table>` : `<div class="mut">未设置配额组</div>`}</div>` +
+      `<div class="qf-forward" style="margin-top:4px"><button class="p" type="button" id="qftest">进入测试答题 →</button><button class="s" type="button" id="qflist">进入配额与名单</button></div>`;
+  };
+  const flowState = () => {
+    if (qfStep) return qfStep;
+    if (f.questions_confirmed) return 6;
+    if (Q.length) return 5;
+    if (f.framing_confirmed) return 3;
+    if (cardShown) return 2;
+    return 1;
+  };
+  const flowHtml = (st) => {
+    const hello = `<div class="cc-ai"><b>您好，我是您的 AI 访谈助手。</b>我可以协助您完成招募问卷的设计：<ul style="margin:8px 0 0 18px;padding:0"><li>确认研究背景与研究目标</li><li>定义目标受众与访问场景</li><li>生成 8–12 题甄别问卷</li><li>检查问卷并确认配额与访谈形式</li></ul><div class="sm mut" style="margin-top:8px">请先说明研究目标与受访者；资料不足时我会先向您确认几个问题，再开始起草。</div></div>`;
+    let body = "";
+    if (st === 1) body = hello;
+    if (st === 2) body = `<div class="cc-me">${esc2(flowText || "我想做一次用户研究")}</div><div class="cc-ai">好的，我先确认几个要素再出题。</div>` +
+      CARD.map((q, i) => `<div class="qf-card" data-cardi="${i}"><b>确认问卷要素 ${i + 1}/${CARD.length}</b><div>${esc2(q[0])}</div><div class="qf-opts">${q[1].map((o, j) => `<button type="button" class="s${cardAnswers[i] === j && !(cardCustom[i] || "").trim() ? " on" : ""}" data-card="${i}" data-opt="${j}">${esc2(o)}</button>`).join("")}</div><input class="qf-custom" type="text" data-custom="${i}" value="${esc2(cardCustom[i] || "")}" placeholder="或输入自定义…" maxlength="120"></div>`).join("") +
+      `<div class="qf-cardfill"><button class="s" type="button" data-fill="1">按推荐填满</button><button class="s" type="button" data-skip="1">跳过</button><button class="p" type="button" data-confirm="1">确认 →</button></div>`;
+    if (st === 3) body = thinking
+      ? `<div class="cc-me">确认背景与目标，生成问卷</div><div class="cc-ai"><b>正在思考与起草问卷…</b><div class="qf-think"><span></span><span></span><span></span></div><div class="sm mut">正在根据研究背景、目标与受访者条件生成甄别题目，通常需要几秒到十几秒，请稍候。</div></div>`
+      : `<div class="cc-me">${esc2(flowText || "按推荐填好了")}</div><div class="cc-ai">研究背景与研究目标已按两轮回答写好，右侧可以直接改；确认后我开始出题。</div>` +
+      `<div class="cc-adv"><b>为什么这样建议</b>先锁定决策用途与可参加人群，题目才不会问偏，也不会把不合格的人放进来。</div>` +
+      `<div class="qf-forward"><button class="p" type="button" id="qfgo3"${flowBusy ? " disabled" : ""}>确认背景与目标，生成问卷 →</button><div class="qf-hint">此时只有这一个前进按钮；确认前不会出任何题目</div></div>`;
+    if (st === 4) body = `<div class="cc-me">确认背景与目标，生成问卷</div><div class="cc-ai"><b>已生成 ${Q.length} 题甄别问卷</b><br>资格题 → 分组题 → 背景题；过去 6 个月真实行为、选项互斥、每个淘汰条件都有「结束 · 不符合」。</div>` +
+      `<div class="qf-forward"><button class="p" type="button" id="qfgo5">确认问卷生成 →</button><div class="qf-hint">确认后才写配额、才锁定版本</div></div>`;
+    if (st === 5) body = `<div class="cc-ai"><b>问卷已就绪（${Q.length} 题）</b><br>可继续让小星星助手整份改题，也可用每题 💬 只改一题。确认后进入下一步。</div>` +
+      `<div class="qf-forward"><button class="p" type="button" id="qfgo5">确认问卷生成 →</button></div>`;
+    if (st === 6) body = step6Html();
+    const sugN = (f.suggestions || []).length;
+    return `<div class="cc-hd"><b>与小星星助手共同创建</b><span class="mut">小星星助手</span><span class="sp"></span><button class="cc-ck${sugN ? " on" : ""}" type="button" id="qfck" aria-expanded="${showChecks}">检查提示 ${sugN}</button></div>` +
+      (showChecks ? `<div class="cc-cklist">${sugN ? (f.suggestions || []).map((x) => `<div class="cc-ci warn"><span>${esc2(x.text || x.label)}</span></div>`).join("") : `<div class="mut">现在没有需要处理的提示</div>`}</div>` : "") +
+      `<div class="cc-sc" id="ccscroll">${body}</div>` +
+      sugBarHtml() +
+      `<div class="cc-box"><textarea id="ccmsg" rows="2" maxlength="1000" placeholder="说一句话，或点上面的按钮……" aria-label="对话输入"></textarea>` +
+      `<button class="cc-att" type="button" aria-label="附件">📎</button><button class="p cc-send" type="button" id="ccsend" aria-label="发送">↑</button></div>`;
+  };
+
+  const wireFlow = () => {
+    const send = $("#ccsend"), box = $("#ccmsg");
+    if (box) box.onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); if (send) send.click(); } };
+    const chatTurn = async (text) => {
+      const r = await api(`/projects/${p.id}/recruiting/form/chat`, { method: "POST", body: { message: text, questions: Q, goals, need, use_library: true, ask_only: false } });
+      if (Array.isArray(r.questions)) { pushHist(); Q = JSON.parse(JSON.stringify(r.questions)); }
+      if (Array.isArray(r.goals)) goals = r.goals.slice();
+      if (typeof r.need === "string") need = r.need;
+      f = { ...f, ...r }; save(); drawLeft(); drawRight(); toast(r.reply || "已更新");
+    };
+    if (send) send.onclick = guard(async () => {
+      const text = (box ? box.value : "").trim();
+      if (!text || flowBusy) return;
+      const st = flowState();
+      if (st <= 3) { flowText = text; cardShown = true; qfStep = 2; drawLeft(); return; }
+      flowBusy = true;
+      try { await chatTurn(text); } catch (e) { toast(e.message, true); }
+      flowBusy = false;
+    });
+    // 点选项/自定义只做局部更新，绝不重绘左栏，避免滚动位置与焦点被重置（用户反馈「点选项自动往上跳」）。
+    const setCardUi = (i) => {
+      const card = document.querySelector(`[data-cardi="${i}"]`); if (!card) return;
+      card.querySelectorAll("[data-opt]").forEach((b) => { const on = cardAnswers[i] === +b.dataset.opt && !(cardCustom[i] || "").trim(); b.classList.toggle("on", on); });
+      const inp = card.querySelector("[data-custom]"); if (inp) inp.value = cardCustom[i] || "";
+    };
+    document.querySelectorAll("[data-card]").forEach((b) => (b.onclick = () => { const i = +b.dataset.card; cardAnswers[i] = +b.dataset.opt; cardCustom[i] = ""; saveFlow(); setCardUi(i); }));
+    document.querySelectorAll("[data-custom]").forEach((inp) => (inp.oninput = () => { const i = +inp.dataset.custom; cardCustom[i] = inp.value; if (inp.value.trim()) delete cardAnswers[i]; saveFlow(); setCardUi(i); }));
+    const fill = document.querySelector("[data-fill]"); if (fill) fill.onclick = () => { CARD.forEach((_, i) => { cardAnswers[i] = 0; cardCustom[i] = ""; }); saveFlow(); CARD.forEach((_, i) => setCardUi(i)); };
+    // 第 3 步：进入时静默拉「背景与目标」建议（还没有题目，用 framing/suggestions）
+    const loadFrameSug = async () => {
+      if (frameSug.length) return;
+      try {
+        const r = await api(`/projects/${p.id}/recruiting/form/framing/suggestions`, { method: "POST", body: { brief: f.brief || "", goals, need, idea: cardIdea() } });
+        frameSug = (r.suggestions || []).slice(0, 3); drawLeft();
+      } catch (e) { /* 建议拿不到不影响流程 */ }
+    };
+    const enterStep3 = () => { cardDone = true; qfStep = 3; drawLeft(); loadFrameSug(); };
+    const skip = document.querySelector("[data-skip]"); if (skip) skip.onclick = enterStep3;
+    const confirm = document.querySelector("[data-confirm]"); if (confirm) confirm.onclick = enterStep3;
+    const ck = $("#qfck"); if (ck) ck.onclick = () => { showChecks = !showChecks; drawLeft(); };
+    document.querySelectorAll("[data-say]").forEach((b) => (b.onclick = () => { if (box) { box.value = b.dataset.say; box.focus(); } }));
+    // 建议条：多选（局部更新不重绘）→ 确认后把选中的建议交给 AI 生效
+    document.querySelectorAll("[data-sug]").forEach((b) => (b.onclick = () => {
+      const id = b.dataset.sug;
+      if (sugPicked.has(id)) sugPicked.delete(id); else sugPicked.add(id);
+      b.classList.toggle("on", sugPicked.has(id));
+      const tick = b.querySelector(".cc-sugck"); if (tick) tick.textContent = sugPicked.has(id) ? "✓" : "";
+      const ap = $("#sugapply"); if (ap) { ap.disabled = !sugPicked.size; ap.textContent = sugPicked.size ? `确认选中的 ${sugPicked.size} 条建议生效` : "选中建议后确认"; }
+    }));
+    const sugclear = $("#sugclear"); if (sugclear) sugclear.onclick = () => { sugPicked = new Set(); drawLeft(); };
+    const sugapply = $("#sugapply"); if (sugapply) sugapply.onclick = guard(async () => {
+      const st = flowState();
+      const list = curSuggestions().filter((x) => sugPicked.has(x.id));
+      if (!list.length) return;
+      sugBusy = true; sugPicked = new Set(); drawLeft();
+      const msg = (st === 3 ? "请按以下建议调整研究背景与目标：" : "请按以下建议修改问卷：") + "\n" + list.map((x, i) => `${i + 1}. ${x.text}`).join("\n");
+      try {
+        await chatTurn(msg);
+        if (st === 3) { frameSug = []; }
+        if (st === 4) { try { const rv = await api(`/projects/${p.id}/recruiting/form/review`, { method: "POST" }); f = { ...f, ...rv }; } catch (e) { /* ignore */ } }
+      } catch (e) { toast(e.message, true); }
+      sugBusy = false; drawLeft();
+    });
+    const go3 = $("#qfgo3"); if (go3) go3.onclick = guard(async () => {
+      flowBusy = true; go3.disabled = true; thinking = true; drawLeft();
+      try {
+        await api(`/projects/${p.id}/recruiting/form/framing/confirm`, { method: "POST" });
+        const idea = cardIdea();
+        let r = null;
+        try { r = await api(`/projects/${p.id}/recruiting/form/chat`, { method: "POST", body: { message: idea || "请据此起草招募问卷", questions: [], goals, need, use_library: true } }); } catch (e) { r = null; }
+        if (!r || !Array.isArray(r.questions) || !r.questions.length) r = await api(`/projects/${p.id}/recruiting/form/generate`, { method: "POST", body: { idea: idea || "" } });
+        pushHist(); Q = JSON.parse(JSON.stringify(r.questions || []));
+        if (Array.isArray(r.goals)) goals = r.goals.slice();
+        if (typeof r.need === "string") need = r.need;
+        f = { ...f, ...r, framing_confirmed: true }; cardDone = true; qfStep = 4; thinking = false; frameSug = []; sugPicked = new Set();
+        save(); drawLeft(); drawRight(); toast(`已生成 ${Q.length} 题`);
+        // 出题后主动检查问卷，把建议直接展示在输入框上方（用户反馈「确认后没有弹出建议」）
+        try { const rv = await api(`/projects/${p.id}/recruiting/form/review`, { method: "POST" }); f = { ...f, ...rv }; drawLeft(); drawRight(); } catch (e) { /* 检查失败不阻塞 */ }
+      } catch (e) { toast(e.message, true); thinking = false; qfStep = 3; drawLeft(); }
+      flowBusy = false;
+    });
+    const go5 = $("#qfgo5"); if (go5) go5.onclick = guard(async () => {
+      await api(`/projects/${p.id}/recruiting/form/questions/confirm`, { method: "POST", body: { formats: [], quotas: [] } });
+      f = { ...f, questions_confirmed: true }; qfStep = 6; fmtDone = false; quotaDone = false; quotaPlan = null; drawLeft(); drawRight(); toast("问卷已确认");
+    });
+    // 访谈形式：多选，单独确认（样式补 .on 后才能看出选中）
+    document.querySelectorAll("[data-fmt]").forEach((b) => (b.onclick = () => { fmtToggle(b.dataset.fmt); b.classList.toggle("on", fmtPicked.includes(b.dataset.fmt)); }));
+    const fmtgo = $("#qffmtgo"); if (fmtgo) fmtgo.onclick = guard(async () => {
+      if (!fmtPicked.length) fmtPicked = ["video"];   // 未选时默认视频访谈
+      try { await api(`/projects/${p.id}/recruiting/form/questions/confirm`, { method: "POST", body: { formats: fmtPicked, quotas: [] } }); } catch (e) { toast(e.message, true); return; }
+      fmtDone = true; f = { ...f, formats: fmtPicked }; saveFlow(); drawLeft(); toast("访谈形式已保存，接着对齐配额口径");
+      loadQuotaPlan();   // 进入配额阶段才拉口径
+    });
+    const fmtredo = $("#qffmtredo"); if (fmtredo) fmtredo.onclick = () => { fmtDone = false; saveFlow(); drawLeft(); };
+    // 配额口径计划：口径说明 + 配额表 + 不清晰项的选择题
+    const loadQuotaPlan = async () => {
+      if (quotaPlan) return;
+      planBusy = true; drawLeft();
+      try {
+        const r = await api(`/projects/${p.id}/recruiting/form/quotas/plan`, { method: "POST", body: { brief: f.brief || "", goals, need, idea: cardIdea() } });
+        quotaRationale = r.rationale || ""; quotaClarify = r.clarify || [];
+        if (Array.isArray(r.quotas) && r.quotas.length) quotaList = JSON.parse(JSON.stringify(r.quotas));
+        quotaPlan = true;
+      } catch (e) { quotaPlan = true; toast(e.message, true); }
+      planBusy = false; drawLeft();
+    };
+    document.querySelectorAll("[data-clarify]").forEach((b) => (b.onclick = () => {
+      const i = +b.dataset.clarify, o = b.dataset.claropt; clarifyPick[i] = o;
+      document.querySelectorAll(`[data-clarify="${i}"]`).forEach((x) => x.classList.toggle("on", x.dataset.claropt === o));
+    }));
+    // 目标人数：手动改 / AI 调整
+    document.querySelectorAll("[data-quota-target]").forEach((inp) => (inp.onchange = () => { const q = quotaList.find((x) => quotaLabel(x) === inp.dataset.quotaTarget); if (q) q.target = +inp.value || q.target; }));
+    const quotago = $("#qfquotago"); if (quotago) quotago.onclick = guard(async () => {
+      const msg = $("#qfquotamsg"); if (!msg || !msg.value.trim()) return toast("先说想怎么调整配额", true);
+      quotaChat = msg.value; quotaBusy = true; drawLeft();
+      try {
+        const r = await api(`/projects/${p.id}/recruiting/form/quotas/chat`, { method: "POST", body: { message: msg.value, quotas: quotaList } });
+        if (Array.isArray(r.quotas)) quotaList = JSON.parse(JSON.stringify(r.quotas));
+        quotaChat = ""; toast(r.reply || "配额已调整");
+      } catch (e) { toast(e.message, true); }
+      quotaBusy = false; drawLeft();
+    });
+    const quotadone = $("#qfquotadone"); if (quotadone) quotadone.onclick = guard(async () => {
+      // 有口径不清楚的选项时，必须先逐项选完（选择题二次确认）才能确认表格
+      const unset = quotaClarify.map((c, i) => (clarifyPick[i] ? "" : (i + 1))).filter(Boolean);
+      if (unset.length) return toast(`还有口径要拍板：第 ${unset.join("、")} 项请先选一个`, true);
+      if (!quotaList.length) return toast("还没有配额组，可先让 AI 生成，或点「跳过配额」", true);
+      try { await api(`/projects/${p.id}/recruiting/quotas`, { method: "PUT", body: { quotas: quotaList } }); } catch (e) { toast(e.message, true); return; }
+      quotaDone = true; quotaPlan = null; clarifyPick = {}; saveFlow(); drawLeft(); toast("配额已确认保存");
+    });
+    const quotaskip = $("#qfquotaskip"); if (quotaskip) quotaskip.onclick = () => { quotaDone = true; drawLeft(); };
+    const testgo = $("#qftest"); if (testgo) testgo.onclick = () => { seg = "test"; drawRight(); };
+    const listgo = $("#qflist"); if (listgo) listgo.onclick = () => { if (window.__ptabGo) window.__ptabGo("list"); else toast("请稍后再试", true); };
+  };
+
   const drawLeft = () => {
     const c = $("#ccroot"); if (!c) return;
-    if (mode === "html") { c.innerHTML = `<div class="cc-sc">${importHtml()}</div>`; const g = $("#rfgooutline"); if (g) g.onclick = goOutline; }
-    else CreationChat.mount(c, p, { onChange: reload });
+    if (mode === "html") { c.innerHTML = `<div class="cc-sc">${importHtml()}</div>`; const g = $("#rfgooutline"); if (g) g.onclick = goOutline; return; }
+    saveFlow();
+    c.innerHTML = flowHtml(flowState());   // 单线六步：不再挂 11 阶段对话；右栏单题改 /form/ask 与建议区保持不动
+    wireFlow();
   };
 
   /* ---------- right: the outline / the test ---------- */
@@ -231,15 +477,16 @@ function rfCard(p, form, rec) {
         <button class="rq-more" type="button" data-menu="${ok}" aria-label="选项 ${j + 1} 菜单" aria-expanded="${menu === ok}">${rfIcon(RF_IC.dots)}</button>${menu === ok ? oMenu(q, i, j) : ""}</div>`;
     }).join("") + `<button class="rq-add" type="button" data-oadd-view="${q.id}">＋ 添加选项</button>` : "";
     const rules = q.type === "number" ? (q.rules || []).map((r) => `<div class="rq-opt">如果数字${RF_OP[r.op]} ${r.value} ${badge(r.goto)}</div>`).join("") : "";
-    return `<div class="rf-q${changedIds.has(q.id) ? " rf-hl" : ""}" data-qid="${q.id}" data-qi="${i}" data-selk="q:${q.id}">
+    return `<div class="rf-q${changedIds.has(q.id) ? " rf-hl" : ""}${askOpen === q.id ? " rf-ask-target" : ""}" data-qid="${q.id}" data-qi="${i}" data-selk="q:${q.id}">
       <span class="rq-grip" data-grip="${i}" tabindex="0" role="button" title="按住拖动排序，或用上下方向键移动" aria-label="拖动第 ${i + 1} 题">${rfIcon(RF_IC.grip)}</span>
       <div class="rq-top"><span class="rq-qn">Q${i + 1}</span><button class="rq-title" type="button" data-edit="${q.id}">${esc(q.text || "（还没写题目）")}</button>${qBadge(q)}<span class="sp"></span>
         <span class="rq-type-wrap"><button class="rq-type rq-type-btn" type="button" data-typetg="${q.id}" aria-haspopup="true" aria-expanded="false" title="点一下切换题型">${RF_TYPE[q.type] || q.type}${q.required ? " · 必答" : ""}${rfIcon(RF_IC.chev)}</button>${typeMenuOpen === q.id ? `<div class="rq-type-menu" role="menu">${Object.entries(RF_TYPE).map(([k, n]) => `<button type="button" role="menuitem" data-typeset="${q.id}" data-t="${k}" class="${q.type === k ? "on" : ""}">${n}</button>`).join("")}</div>` : ""}</span>
+        <button class="rq-ask" type="button" data-ask="${q.id}" aria-label="对这题问问 AI" title="对这题问问 AI">💬</button>
         <button class="rq-more" type="button" data-menu="${qk}" aria-label="题目菜单" aria-expanded="${menu === qk}">${rfIcon(RF_IC.dots)}</button>${menu === qk ? qMenu(q, i) : ""}</div>
       ${opts}${rules}${exWarn(q)}</div>`;
   }
   // 研究背景: one bullet per line of the project's background; the numbering in front of a line is not shown
-  const briefLines = () => (f.brief || "").split("\n").map((l) => l.replace(/^\s*(?:\d+\s*[.、)]|[-•·])\s*/, "").trim()).filter(Boolean);
+  const briefLines = () => (f.brief || p.brief || "").split("\n").map((l) => l.replace(/^\s*(?:\d+\s*[.、)]|[-•·])\s*/, "").trim()).filter(Boolean);
   const listHtml = (id, lines, label) => `<ul class="rq-bl" id="${id}">${(lines.length ? lines : [""]).map((l) => `<li><span class="rq-bt" contenteditable="true" spellcheck="false" aria-label="${label}">${esc(l)}</span></li>`).join("")}</ul>`;
   const needLines = () => need.split(/[。；;\n]/).map((x) => x.trim()).filter(Boolean);   // 招募需求 is shown one sentence per bullet (split at 。 ； ;)
   const briefHtml = () => `<ul class="rq-bl" id="rfbrief">${(briefLines().length ? briefLines() : [""]).map((l) => `<li><span class="rq-bt" contenteditable="true" spellcheck="false" aria-label="研究背景的一条">${esc(l)}</span></li>`).join("")}</ul>`;
@@ -268,7 +515,7 @@ function rfCard(p, form, rec) {
   // 招募需求下方的「总共 N 人」抬头：N = 各配额 target 之和；没配配额就回退到受访者名单人数
   const totalHead = () => {
     const qs = (rec && rec.quotas) || [];
-    const n = qs.length ? qs.reduce((s, q) => s + (q.target || 0), 0) : (rec && rec.participants_count) || 0;
+    const n = plannedN || (qs.length ? qs.reduce((s, q) => s + (q.target || 0), 0) : (rec && rec.participants_count) || 0);
     return `<div class="rf-total">${rfIcon(RF_IC.users)}<span class="rf-total-n">${n}</span><span class="rf-total-u">人</span></div>`;
   };
   // 访谈大纲结构：甄别问卷一行，再按访谈大纲的每个环节一行（读的是访谈页里的同一份大纲）
@@ -302,22 +549,64 @@ function rfCard(p, form, rec) {
       ${mode === "html" ? importedCard() : `<h3 class="rf-h rq-bold">问卷流程（共 ${Q.length} 题）<span class="rf-pass-tip"><span class="rq-ic y">✓</span>通过 <span class="rq-ic n">✗</span>筛掉 · 点图标即可切换，逻辑自动写好</span></h3>${Q.length ? Q.map(qCard).join("") : `<div class="empty"><b>还没有题目</b><span>在左边和小星星助手聊到“甄别”阶段，它会逐题生成。</span></div>`}
       <div class="row"><button class="s" type="button" data-add="single">+ 单选</button><button class="s" type="button" data-add="multi">+ 多选</button><button class="s" type="button" data-add="scale">+ 量表</button><button class="s" type="button" data-add="text">+ 文字填空</button><button class="s" type="button" data-add="number">+ 数字填空</button></div>`}`;
   }
+  // 检查建议（qhash：题目一改，对应建议自动失效）；沿用现有 .rf-msg 卡片与 .s 胶囊按钮
+  const sugHtml = () => {
+    const list = f.suggestions || [];
+    if (!list.length) return "";
+    return `<h3 class="rf-h rq-bold">检查建议（${list.length}）</h3>` + list.map((x) =>
+      `<div class="rf-msg"><b>${esc(x.label || "建议")}</b><div class="sm mut">${esc(x.text || "")}</div>` +
+      `<div class="row"><button class="s" type="button" data-adopt="${esc(x.sig)}">${esc(x.button || "采纳")}</button>` +
+      `<button class="s" type="button" data-dismiss="${esc(x.sig)}">不再提醒</button></div></div>`).join("");
+  };
   const rightHead = () => {
     const live = f.status === "published";
-    if (mode === "html") return `<div class="rf-hd"><span class="pill">已导入</span><span class="sm mut">问卷在客户那边作答，本平台不出题</span><span class="sp"></span><button class="s" type="button" id="rfcol" aria-label="收起大纲">${rfIcon(RF_IC.collapse)}收起</button></div>`;
-    // 发布四态（产品文档第 11 章）：①草稿可发布 ②发布中=已锁定(可解锁修改/停止收集) ③已停止可重新发布
+    if (mode === "html") return `<div class="rf-hd"><span class="pill">已导入</span><span class="sm mut">问卷在客户那边作答，本平台不出题</span><span class="sp"></span></div>`;
+    // 发布四态（产品文档第 11 章）：①草稿可发布 ②发布中=已锁定(可解锁修改) ③已停止可重新发布；「停止收集」已按需求去掉
     const pill = live ? `<span class="pill">已锁定 · 第 ${f.version || 1} 版</span>` : f.status === "closed" ? `<span class="pill o">已停止</span>` : `<span class="pill o">编辑中 · 未发布</span>`;
-    const pubBtn = live ? `<button class="s" type="button" id="rfunlock">解锁修改</button><button class="s" type="button" id="rfclose">停止收集</button>`
+    const pubBtn = live ? `<button class="s" type="button" id="rfunlock">解锁修改</button>`
       : `<button class="p" type="button" id="rfpub" ${Q.length ? "" : "disabled"}>${f.status === "closed" ? "重新发布" : "发布新版本"}</button>`;
     return `<div class="rf-hd"><div class="rf-seg" role="tablist"><button type="button" role="tab" data-seg="outline" class="${seg === "outline" ? "on" : ""}" aria-selected="${seg === "outline"}">${rfIcon(RF_IC.list)}招募问卷</button><button type="button" role="tab" data-seg="test" class="${seg === "test" ? "on" : ""}" aria-selected="${seg === "test"}">${rfIcon(RF_IC.eye)}测试答题</button></div>
-      <span class="sp"></span>${vers && vers.languages.length > 1 || (vers && vers.languages.length) ? verMenu() : ""}<span class="sm mut" id="rfstat" role="status" aria-live="polite">${f.version ? `第 ${f.version} 版` : ""}</span>${pill}
-      ${pubBtn}<button class="s" type="button" id="rfcol" aria-label="收起大纲">${rfIcon(RF_IC.collapse)}收起</button></div>`;
+      <span class="sp"></span><button class="s" type="button" id="rfframing" title="确认研究背景与目标后才开始出题">确认背景与目标</button><button class="s" type="button" id="rfdraft" title="按研究背景与目标一次起草 8-12 题">起草问卷</button><button class="s" type="button" id="rfreview" title="检查配额、筛除率、选项互斥、措辞与目标覆盖">检查问卷</button>${vers && vers.languages.length > 1 || (vers && vers.languages.length) ? verMenu() : ""}<span class="sm mut" id="rfstat" role="status" aria-live="polite">${f.version ? `第 ${f.version} 版` : ""}</span>${pill}
+      ${pubBtn}<button class="p" type="button" id="rfnext" title="甄别问卷测试好了，进入数据库筛选及发送">确认并下一步 →</button></div>`;
   };
+
+  // 右侧并排的「改这题」栏：点题目右上角 💬 打开，只改这一题，不遮住问卷
+  function drawAskPanel() {
+    const panel = $("#rfaskpanel"); if (!panel) return;
+    const qi = Q.findIndex((x) => x.id === askOpen);
+    if (qi < 0) { panel.hidden = true; panel.innerHTML = ""; return; }
+    panel.hidden = false;
+    const q = Q[qi], qn = qi + 1;
+    panel.innerHTML = `<div class="rq-askbox" role="dialog" aria-label="对第 ${qn} 题问问 AI">
+      <div class="rq-askhd"><b>改这题 · Q${qn}</b><span class="sm mut">${RF_TYPE[q.type] || q.type}${q.required ? " · 必答" : ""}</span><span class="sp"></span><button type="button" class="s" id="askclose">关闭</button></div>
+      <div class="rq-askbody"><div class="sm mut">${esc(q.text || "")}</div>
+        <textarea id="asktext" placeholder="说说要怎么改这一题，例如：把选项改成……／加一道追问……"></textarea>
+        ${askFail ? `<div class="rq-askerr">${esc(askFail)}</div>` : ""}</div>
+      <div class="rq-askft"><button type="button" class="p" id="asksend" ${askBusy ? "disabled" : ""}>${askBusy ? "正在改…" : "改这题"}</button><span class="sm mut">只改这一题，其它题目不变</span></div></div>`;
+    const cl = $("#askclose"); if (cl) cl.onclick = () => { askOpen = null; askFail = ""; drawRight(); };
+    const sd = $("#asksend"); if (sd) sd.onclick = guard(async () => {
+      const text = ($("#asktext") ? $("#asktext").value : "").trim();
+      if (!text) return toast("先说要怎么改这题", true);
+      askBusy = true; askFail = ""; drawAskPanel();
+      try {
+        const r = await api(`/projects/${p.id}/recruiting/form/ask`, { method: "POST", body: { qid: q.id, instruction: text, questions: Q, goals, need } });
+        if (r.changed && Array.isArray(r.questions)) {
+          pushHist(); changedIds = diffIds(Q, r.questions); Q = JSON.parse(JSON.stringify(r.questions)); editing = new Set();
+          askOpen = null; askFail = ""; save(); drawRight(); toast("已按你的要求改好这一题"); return;
+        }
+        askFail = r.reply || "模型没有改这一题，换个说法试试";
+      } catch (e) { askFail = e.message || "改题失败"; }
+      askBusy = false; drawAskPanel();
+    });
+  }
+
   function drawRight() {
     const r = $("#rfright"); if (!r) return;
     const keep = $("#rfout") ? $("#rfout").scrollTop : 0;
-    r.innerHTML = rightHead() + `<div class="rf-sc" id="rfout"><div class="rf-col">${seg === "outline" ? (isSource() ? outline() : `<div id="rftr"><div class="mut" style="padding:12px">加载中…</div></div>`) : `<p class="sm mut" style="margin:0">就是候选人看到的样子：直接填写，看会走到哪里。</p><div id="rfrun"></div><div class="note" id="rfresult" role="status" aria-live="polite" hidden></div>`}</div></div>`;
+    r.innerHTML = rightHead() + `<div class="rf-sc" id="rfout"><div class="rf-col">${seg === "outline" ? (isSource() ? sugHtml() + outline() : `<div id="rftr"><div class="mut" style="padding:12px">加载中…</div></div>`) : `<p class="sm mut" style="margin:0">就是候选人看到的样子：直接填写，看会走到哪里。</p><div id="rfrun"></div><div class="note" id="rfresult" role="status" aria-live="polite" hidden></div>`}</div></div>`;
     $("#rfout").scrollTop = keep; wireRight(); wireVer(); syncUndo();
+    const rr = $("#rfright"); if (rr) rr.querySelectorAll("[data-ask]").forEach((b) => (b.onclick = (e) => { e.stopPropagation(); askOpen = b.dataset.ask; askFail = ""; drawRight(); }));
+    drawAskPanel();
     const g2 = $("#rfgooutline2"); if (g2) g2.onclick = goOutline;
   }
   const refreshVers = async () => {   // after the original is saved, other versions may have gone stale: update the menu (the banner shows when you open that version)
@@ -357,7 +646,12 @@ function rfCard(p, form, rec) {
     scrRunner(host, {
       lang: ["zh", "en", "ms", "ta"].includes(ver) ? ver : "zh",
       step: async (answers) => { const r = await api(`/projects/${p.id}/recruiting/form/preview`, { method: "POST", body: { questions: Q, answers, lang: isSource() ? "" : ver } }); return r.result ? { result: r.result } : { question: r.question }; },
-      onEnd: (result) => { res.hidden = false; res.textContent = result === "out" ? "测试结果：这位候选人会被筛掉（不符合），问卷到此结束。" : "测试结果：这位候选人符合，会进入留联系方式的步骤。"; },
+      onEnd: (result, answers, ctx) => {
+        res.hidden = false;
+        const tail = ctx && ctx.back ? ` <button type="button" class="s" id="scrbackretry">返回上一题</button>` : "";
+        res.innerHTML = (result === "out" ? "测试结果：这位候选人会被筛掉（不符合），问卷到此结束。" : "测试结果：这位候选人符合，会进入留联系方式的步骤。") + tail;
+        const b = $("#scrbackretry"); if (b && ctx && ctx.back) b.onclick = () => { res.hidden = true; ctx.back(); };
+      },
     }).start();
   };
   const publish = guard(async () => {
@@ -368,11 +662,39 @@ function rfCard(p, form, rec) {
   });
 
   function wireRight() {
-    const co = $("#rfcol"); if (co) co.onclick = () => setRight(false);
+    const nx = $("#rfnext"); if (nx) nx.onclick = guard(async () => {
+      try { await api(`/projects/${p.id}/recruiting/form/questions/confirm`, { method: "POST", body: { formats: [], quotas: [] } }); } catch (e) { /* 还没出题时保留原有跳转 */ }
+      if (window.__ptabGo) window.__ptabGo("db"); else toast("请稍后再试", true);
+    });
+    const fr = $("#rfframing"); if (fr) fr.onclick = guard(async () => {
+      const r = await api(`/projects/${p.id}/recruiting/form/framing/confirm`, { method: "POST" });
+      f = { ...f, framing_confirmed: r.framing_confirmed }; toast("研究背景与目标已确认，可以开始出题了");
+    });
+    const dr = $("#rfdraft"); if (dr) dr.onclick = guard(async () => {
+      if (!f.framing_confirmed) return toast("请先点「确认背景与目标」，再起草问卷", true);
+      dr.disabled = true;
+      try {
+        const r = await api(`/projects/${p.id}/recruiting/form/generate`, { method: "POST", body: { idea: f.idea || "" } });
+        pushHist(); Q = JSON.parse(JSON.stringify(r.questions || [])); editing = new Set(); changedIds = new Set();
+        f = { ...f, ...r }; save(); drawRight(); toast(`已起草 ${Q.length} 题`);
+      } catch (e) { toast(e.message, true); } finally { dr.disabled = false; }
+    });
+    const rv = $("#rfreview"); if (rv) rv.onclick = guard(async () => {
+      const r = await api(`/projects/${p.id}/recruiting/form/review`, { method: "POST" });
+      f = { ...f, ...r }; drawRight(); toast(r.reply || "检查完成");
+    });
+    document.querySelectorAll("[data-adopt]").forEach((b) => (b.onclick = guard(async () => {
+      const r = await api(`/projects/${p.id}/recruiting/form/suggestions/adopt`, { method: "POST", body: { sig: b.dataset.adopt } });
+      if (Array.isArray(r.questions)) { pushHist(); Q = JSON.parse(JSON.stringify(r.questions)); save(); }
+      f = { ...f, ...r }; drawRight(); toast(r.reply || "已采纳");
+    })));
+    document.querySelectorAll("[data-dismiss]").forEach((b) => (b.onclick = guard(async () => {
+      const r = await api(`/projects/${p.id}/recruiting/form/suggestions/dismiss`, { method: "POST", body: { sig: b.dataset.dismiss } });
+      f = { ...f, ...r }; drawRight(); toast("已不再提醒");
+    })));
     document.querySelectorAll("[data-seg]").forEach((b) => (b.onclick = () => { seg = b.dataset.seg; drawRight(); }));
     const pub = $("#rfpub"); if (pub) pub.onclick = publish;
     const un = $("#rfunlock"); if (un) un.onclick = guard(async () => { f = { ...f, ...(await api(`/projects/${p.id}/recruiting/form/unlock`, { method: "POST" })) }; drawRight(); toast("已解锁，进入编辑中；受访者仍看旧版，改完点「发布新版本」才生效"); });
-    const cl = $("#rfclose"); if (cl) cl.onclick = guard(async () => { f = { ...f, ...(await api(`/projects/${p.id}/recruiting/form/close`, { method: "POST" })) }; drawRight(); toast("已停止收集"); });
     if (seg === "test") return retest();
     if (seg === "outline" && !isSource()) return drawTrans();
     document.querySelectorAll("[data-exall]").forEach((b) => (b.onclick = () => {   // link every pair of tagged options of this question as mutually exclusive
@@ -463,30 +785,17 @@ function rfCard(p, form, rec) {
   let rightOpen = sessionStorage.getItem("rf_right") !== "0";  // the outline (right) can be folded away; the choice is kept in this browser
   const setRight = (open) => { rightOpen = open; try { sessionStorage.setItem("rf_right", open ? "1" : "0"); } catch (e) { /* private window */ } const w = $("#rfws"); if (w) w.classList.toggle("rf-collapsed", !open); fit(); };
   function panels() {
-    return `<div class="rf-ws${rightOpen ? "" : " rf-collapsed"}${mode === "html" ? " rf-import" : ""}" id="rfws"><div class="rf-pane"><div class="rf-hd"><span class="sp"></span><button class="s" type="button" id="rfundo" disabled>${rfIcon(RF_IC.undo)}撤销</button><button class="s" type="button" id="rfredo" disabled>${rfIcon(RF_IC.redo)}重做</button><button class="s" type="button" id="rfexp">${rfIcon(RF_IC.expand)}展开大纲</button></div>
+    return `<div class="rf-main"><div class="rf-ws${rightOpen ? "" : " rf-collapsed"}${mode === "html" ? " rf-import" : ""}" id="rfws"><div class="rf-pane"><div class="rf-hd"><span class="sp"></span><button class="s" type="button" id="rfundo" disabled>${rfIcon(RF_IC.undo)}撤销</button><button class="s" type="button" id="rfredo" disabled>${rfIcon(RF_IC.redo)}重做</button><button class="s" type="button" id="rfexp">${rfIcon(RF_IC.expand)}展开大纲</button></div>
       <div class="cc" id="ccroot"></div></div>
-      <div class="rf-split" id="rfsplit" role="separator" aria-orientation="vertical" aria-label="拖动调整对话和大纲的宽度（双击恢复）" tabindex="0"><i></i></div><div class="rf-pane" id="rfright"></div></div>`;
+      <div class="rf-split" id="rfsplit" role="separator" aria-orientation="vertical" aria-label="拖动调整对话和大纲的宽度（双击恢复）" tabindex="0"><i></i></div><div class="rf-pane" id="rfright"></div></div><div class="rf-askpanel" id="rfaskpanel" hidden></div></div>`;
   }
-  let picking = rm === "onelink" ? false : !(f.source_confirmed || ""), pickMode = f.source === "html" ? "html" : "ai";   // 一站式来源锁定为 AI，不弹选择；其余只在还没选过来源时问一次
   const goOutline = () => { location.hash = `#/p/${p.id}/outline`; };
-  const pickHtml = () => !picking ? "" : `<div class="rq-pick-back" id="rfpickback"><div class="rq-pick" role="dialog" aria-modal="true" aria-labelledby="rfpickt">
-      <h3 id="rfpickt">这份招募问卷怎么来？</h3>
-      <label><input type="radio" name="rfpick" value="ai" ${pickMode === "ai" ? "checked" : ""}><span><b>AI 生成招募问卷</b><span class="sm mut">在左边说清条件，AI 出题、你改逻辑，发布成链接和二维码</span></span></label>
-      <label><input type="radio" name="rfpick" value="html" ${pickMode === "html" ? "checked" : ""}><span><b>导入招募问卷</b><span class="sm mut">客户已在 Confirmit 编好，用链接导入；本平台不出题，数据由 PM 导入</span></span></label>
-      <div class="rq-pick-btns"><button class="s" type="button" id="rfpickno">取消</button><button class="p" type="button" id="rfpickok">确定</button></div></div></div>`;
-  const draw = () => { $("#rfbody").innerHTML = panels() + pickHtml(); wire(); };
+  // 问卷来源选择弹窗已按需求删除：来源统一在「招募方式」页的「问卷来源」决定，
+  // mode 在开头已取 form.source，进页面直接用，不再二次询问。
+  const draw = () => { $("#rfbody").innerHTML = panels(); wire(); };
   const fit = () => { const w = $("#rfws"); if (w && w.offsetParent) { const h = Math.max(380, innerHeight - w.getBoundingClientRect().top - 18); w.style.height = h + "px"; const m = w.parentElement; if (m && m.classList.contains("rf-main")) m.style.height = h + "px"; } };
 
   function wire() {
-    document.querySelectorAll("input[name=rfpick]").forEach((r) => (r.onchange = () => { pickMode = r.value; }));
-    const pok = $("#rfpickok"); if (pok) pok.onclick = guard(async () => {
-      const s = pickMode;
-      if (!f.source_confirmed || f.source_confirmed !== s) {   // 记一次，之后从任何入口进来都不再问
-        f = { ...f, ...(await api(`/projects/${p.id}/recruiting/form/source`, { method: "POST", body: { source: s } })) };
-      }
-      mode = s; picking = false; draw();
-    });
-    const pno = $("#rfpickno"); if (pno) pno.onclick = () => { picking = false; draw(); };   // 取消 = 没选过，下次进来还会问
     drawLeft(); drawRight(); fit(); wireSplit(); loadOl();   // 两栏先画出来，两种来源都要画（导入态也有左引导 + 右大纲）
     // 导入态右侧链接卡上的三个按钮属于 drawRight 画出来的元素，必须画完再绑
     const sv = $("#rfsave"); if (sv) sv.onclick = guard(async () => { f = { ...f, ...(await api(`/projects/${p.id}/recruiting/form`, { method: "PUT", body: { source: "html", html_url: $("#rfurl").value.trim() } })) }; htmlLocked = true; draw(); toast("链接已保存，已锁定"); });
@@ -531,6 +840,6 @@ function rfCard(p, form, rec) {
     s.onkeydown = (e) => { if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return; e.preventDefault(); const cur = parseFloat(w.style.getPropertyValue("--rfl")) || 42; setRatio(cur + (e.key === "ArrowRight" ? 2 : -2)); try { localStorage.setItem(ratioKey, parseFloat(w.style.getPropertyValue("--rfl")) || 42); } catch { /* no storage */ } };
   }
   pageOn("rf-fit", window, "resize", fit);
-  const html = `<div class="rf" style="padding:0"><div id="rfbody">${panels()}${pickHtml()}</div></div>`;
+  const html = `<div class="rf" style="padding:0"><div id="rfbody">${panels()}</div></div>`;
   return { html, wire, fit };
 }

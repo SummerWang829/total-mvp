@@ -44,7 +44,7 @@ function scrRunner(host, { step, onEnd, lang = "en", onStep }) {
   async function run() {
     let r;
     try { r = await step(answers); } catch (e) { host.innerHTML = `<div class="note" role="alert">${esc(e.message || L.errNet)}</div>`; return; }
-    if (r.result) { host.innerHTML = ""; return onEnd(r.result, answers); }
+    if (r.result) { host.innerHTML = ""; return onEnd(r.result, answers, { back: trail.length ? back : null, trail: trail.slice() }); }
     cur = r.question; if (onStep) onStep(r.question); draw();
   }
   async function go() {
