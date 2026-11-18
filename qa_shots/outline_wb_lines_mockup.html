@@ -1,0 +1,50 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>题号归属效果图（只是图，代码未改）</title>
+<style>
+:root{--f:"Inter","Microsoft YaHei",system-ui,sans-serif}
+html[data-theme=light]{--bg:#fff;--surface:#fff;--wash:#F4F6F5;--ink:#1f2d28;--muted:#566A60;--line:#E1E6E3;--line2:#CBD3CF;--chip:#EDF1EF;--pri:#FF6A00;--soft:#FFF4EA;--warn:#9A4208;--ok:#0B7A4B}
+html[data-theme=dark]{--bg:#0E1A15;--surface:#16261F;--wash:#1B2E26;--ink:#E8F0EB;--muted:#9BB3A6;--line:#26382F;--line2:#33493E;--chip:#1E3329;--pri:#FF6A00;--soft:#2A2418;--warn:#F0A64B;--ok:#5BD08F}
+*{box-sizing:border-box}body{margin:0;background:#dfe3e1;font:14px/1.6 var(--f);color:#1f2d28}
+.meta{position:sticky;top:0;z-index:5;background:#fff;border-bottom:1px solid #cfd6d2;padding:8px 14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}.meta b{color:#B84900}.meta button{font:inherit;border:1px solid #cfd6d2;background:#fff;border-radius:8px;padding:4px 12px;cursor:pointer}.meta button[aria-pressed=true]{background:#0B382C;color:#fff}.sp{flex:1}
+.view{display:none}.view.on{display:block}
+.frame{margin:14px auto;max-width:1300px;background:var(--bg);color:var(--ink);border:1px solid #b9c2bd;border-radius:12px;overflow:hidden}
+.bar{height:48px;display:flex;align-items:center;gap:12px;padding:0 16px;border-bottom:1px solid var(--line)}.bar .sp{flex:1}
+.pill{display:inline-block;padding:0 9px;border-radius:999px;background:var(--chip);font-size:12.5px;line-height:20px;white-space:nowrap}.pill.o{background:var(--soft);color:var(--warn)}.pill.g{color:var(--ok)}
+.cols{display:grid;grid-template-columns:1.25fr 1fr 1fr 1fr;gap:12px;padding:12px;min-height:640px}
+.col{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:10px}.col.dim{opacity:.55}.col h4{margin:0;font-size:13.5px}
+.vid{height:110px;border-radius:10px;background:var(--wash);display:grid;place-items:center;color:var(--muted)}
+.q{display:grid;grid-template-columns:22px 34px minmax(0,1fr) auto;gap:8px;align-items:center;padding:7px 8px;border:1px solid var(--line);border-radius:10px}
+.q.cur{border-color:var(--pri);background:var(--soft)}.q.done{color:var(--muted)}.q .n{font-weight:700}.q .st{text-align:center}
+.btn{display:inline-block;padding:2px 10px;border-radius:8px;border:1px solid var(--line2);background:var(--surface);color:var(--ink);font-size:12.5px;line-height:20px;white-space:nowrap}.btn.p{background:var(--pri);border-color:var(--pri);color:#fff}
+.note{max-width:1300px;margin:14px auto;padding:12px 16px;border-left:4px solid #E8590C;background:#fff7ed;border-radius:8px;font-size:13px}
+.tr{display:grid;grid-template-columns:76px 56px 96px minmax(0,1fr) 54px;gap:8px;align-items:center;padding:8px 0;border-bottom:1px dashed var(--line)}
+.sel{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line2);border-radius:8px;padding:2px 6px;height:28px}
+.menu{border:1px solid var(--line2);border-radius:10px;background:var(--surface);box-shadow:0 8px 24px rgba(0,0,0,.14);padding:6px;width:300px}.menu div{padding:6px 10px;border-radius:8px;display:flex;gap:8px;align-items:center}.menu div.on{background:var(--chip);font-weight:600}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:12px}
+</style></head><body>
+<div class="meta"><b>题号归属效果图</b>（只是图，代码未改）<button data-v="a" aria-pressed="true">① 房间：正在问这一题</button><button data-v="b" aria-pressed="false">② Pilot 笔录：改题号</button><span class="sp"></span>配色：<button data-t="light" aria-pressed="true">白色</button><button data-t="dark" aria-pressed="false">深绿</button></div>
+
+<div class="view on" id="a"><div class="frame"><div class="bar"><b>访谈房间 · 主持人</b><span class="pill g">● 进行中 18:42</span><span class="sp"></span><span class="pill o">没有点“正在问”时，题号由系统按字幕猜</span></div>
+<div class="cols">
+<div class="col"><h4>画面与访谈大纲</h4><div class="vid">主持人 · 受访者 画面</div>
+<div class="row" style="display:flex;gap:8px;align-items:center"><b>访谈大纲</b><span class="pill">8 / 18 已问</span><span class="sp"></span><span class="btn">交给系统自动判断</span></div>
+<div class="q done"><span class="st">✓</span><span class="n">Q1</span><span>先聊聊你平时怎么买日常用品？</span><span class="btn">标为正在问</span></div>
+<div class="q done"><span class="st">✓</span><span class="n">Q2</span><span>最近一次买护肤品是什么时候？</span><span class="btn">标为正在问</span></div>
+<div class="q cur"><span class="st" style="color:var(--pri)">●</span><span class="n">Q3</span><span>看完概念卡，你的第一反应是什么？</span><span class="pill o">正在问 · 你指定的</span></div>
+<div class="q"><span class="st"></span><span class="n">Q4</span><span>哪一点最先吸引你？</span><span class="btn">标为正在问</span></div>
+<div class="q"><span class="st"></span><span class="n">Q5</span><span>如果满分是十分，你有多想试用？</span><span class="btn">标为正在问</span></div>
+</div>
+<div class="col dim"><h4>实时字幕</h4><div style="color:var(--muted)">……</div></div><div class="col dim"><h4>追问</h4></div><div class="col dim"><h4>章节总结</h4></div></div></div></div>
+
+<div class="view" id="b"><div class="frame"><div class="bar"><b>预览测试 › Pilot 修正</b><span class="pill">Pilot 1 · 真人主持</span><span class="sp"></span><span class="pill o">带“?”的题号是系统猜的</span></div>
+<div class="card"><div class="tr"><span class="mut">00:03:12</span><span>主持</span><span><span class="pill">Q4</span></span><span>看完之后，你的第一反应是什么？</span><span class="btn">圈出</span></div>
+<div class="tr"><span>00:03:40</span><span>受访者</span><span><span class="pill">Q4</span></span><span>嗯……你说的“修护”是指什么？</span><span class="btn">圈出</span></div>
+<div class="tr" style="background:var(--wash)"><span>00:03:58</span><span>主持</span><span><span class="pill o">Q5 ?</span> ▾</span><span>修护就是让皮肤状态变好。那你的第一反应是什么？</span><span class="btn">圈出</span></div>
+<div style="padding-left:132px"><div class="menu"><div style="color:var(--muted);font-size:12.5px">这句话属于哪一道题（现在：Q5，系统猜的）</div><div>Q3　看完概念卡，你的第一反应是什么？</div><div class="on">Q4　哪一点最先吸引你？ <span class="pill">选这个</span></div><div>Q5　如果满分是十分，你有多想试用？</div><div style="color:var(--muted)">选了之后：这句话标为“研究员改的”，之前 AI 对它编的码作废并重新编</div></div></div>
+<div class="tr"><span>00:04:30</span><span>受访者</span><span><span class="pill">Q4</span></span><span>我觉得价格可能偏贵，但包装很好看。</span><span class="btn">圈出</span></div></div></div></div>
+
+<div class="note"><b>请你确认：</b>
+① 房间里：只在主持人的大纲面板里每道题旁加一个“标为正在问”按钮；点了，这道题变成“正在问 · 你指定的”，之后每一句都按它归属，直到你点下一题或点“交给系统自动判断”。观察员、客户看不到这个按钮。AI 主持的场次不需要（引擎自己会说），所以 AI 场次里不显示。
+② Pilot 笔录里：每句话的题号变成可点的小下拉，选另一道题就改；系统猜的带“?”；改过的标成“研究员改的”，AI 之前对它编的码作废并重新编。审计只记“改过题号”，不记原话。
+③ 不改房间其它任何地方，不改配色（白色和深绿两种都画了）。
+④ 没点按钮时仍然是系统猜，看板会标“题号是猜的”。</div>
+<script>const $=s=>document.querySelectorAll(s);$("[data-v]").forEach(b=>b.onclick=()=>{$("[data-v]").forEach(x=>x.setAttribute("aria-pressed",x===b));$(".view").forEach(v=>v.classList.toggle("on",v.id===b.dataset.v))});$("[data-t]").forEach(b=>b.onclick=()=>{$("[data-t]").forEach(x=>x.setAttribute("aria-pressed",x===b));document.documentElement.dataset.theme=b.dataset.t});document.documentElement.dataset.theme="light";</script></body></html>
