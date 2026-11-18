@@ -1,0 +1,178 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>阶段 4 效果图 · 实时看板（只是图，代码未改）</title><style>
+:root{--f:"Inter","Microsoft YaHei","PingFang SC",system-ui,sans-serif}
+html[data-theme="light"]{--bg:#F2F3F5;--surface:#fff;--wash:#F7F8FA;--ink:#1f2d28;--ink2:#2F4A40;--muted:#566A60;--line:#E3E6E4;--line2:#D3D9D5;--brand:#0B382C;--chip:#EDEFF2;--pri:#FF6A00;--pri-ink:#fff;--rail:#0B382C;--rail-ink:#CFE3D8;--soft:#FFF4EA;--ok:#0B7A4B;--warn:#B45309;--bad:#B42318}
+html[data-theme="orange"]{--bg:#F4F2F0;--surface:#fff;--wash:#FAF7F4;--ink:#3b2a1d;--ink2:#AD4C0A;--muted:#8C5A33;--line:#EADFD5;--line2:#DCCBBB;--brand:#B34F0A;--chip:#EFEDEB;--pri:#0B6B4A;--pri-ink:#fff;--rail:#3F1B07;--rail-ink:#F6D9BF;--soft:#FCEFE3;--ok:#0B6B4A;--warn:#B45309;--bad:#B42318}
+html[data-theme="dark"]{--bg:#0E1A15;--surface:#16261F;--wash:#1B2E26;--ink:#E8F0EB;--ink2:#C9DAD0;--muted:#9BB3A6;--line:#26382F;--line2:#33493E;--brand:#9ED3B7;--chip:#1E3329;--pri:#FF6A00;--pri-ink:#0B2E25;--rail:#08120E;--rail-ink:#B9CFC4;--soft:#2A2418;--ok:#5BD08F;--warn:#F0A64B;--bad:#FF8A7A}
+*{box-sizing:border-box}body{margin:0;background:#dfe3e1;font:14px/1.6 var(--f);color:#1f2d28}
+.meta{position:sticky;top:0;z-index:50;background:#fff;border-bottom:1px solid #cfd6d2;padding:8px 14px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.meta b{color:#B84900}.meta button{font:inherit;border:1px solid #cfd6d2;background:#fff;border-radius:8px;padding:4px 12px;cursor:pointer}
+.meta button[aria-pressed=true]{background:#0B382C;color:#fff;border-color:#0B382C}.meta .sp{flex:1}
+.frame{margin:14px auto;max-width:1280px;background:var(--bg);color:var(--ink);border-radius:12px;overflow:hidden;border:1px solid #b9c2bd;display:flex;min-height:760px}
+.rail{flex:0 0 64px;background:var(--rail);display:flex;flex-direction:column;align-items:center;gap:14px;padding:14px 0;color:var(--rail-ink);font-size:11px}
+.rail i{display:block;width:34px;height:34px;border-radius:10px;background:rgba(255,255,255,.14)}.rail i.on{background:rgba(255,255,255,.3)}
+.col{flex:1;min-width:0;display:flex;flex-direction:column}
+.top{height:54px;display:flex;align-items:center;gap:16px;padding:0 20px;border-bottom:1px solid var(--line)}
+.top .tile{width:34px;height:34px;border-radius:10px;background:var(--chip);display:grid;place-items:center;font-weight:700;color:#B84900}
+.top .mods{display:flex;gap:18px;margin-left:12px;color:var(--muted)}.top .mods .on{color:var(--pri);font-weight:600}
+.body{display:flex;flex:1;min-height:0}
+.sub{flex:0 0 170px;padding:14px 12px;border-right:1px solid var(--line);color:var(--muted)}
+.sub div{padding:6px 10px;border-radius:8px}.sub .on{background:var(--chip);color:var(--ink);font-weight:600}.sub .ind{margin-left:14px;font-size:13px}
+main{flex:1;min-width:0;padding:14px 22px 24px;display:flex;flex-direction:column;gap:12px}
+.tabs{display:flex;gap:22px;border-bottom:1px solid var(--line);align-items:flex-end}
+.tabs span{padding:6px 2px;color:var(--muted)}.tabs span.on{color:var(--ink);font-weight:700;border-bottom:2px solid var(--ink);margin-bottom:-1px;font-size:15px}
+.tabs .right{margin-left:auto;display:flex;gap:8px;padding-bottom:6px;align-items:center}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.card h3{margin:0 0 8px;font-size:14px}
+.pill{display:inline-block;padding:0 9px;border-radius:999px;background:var(--chip);font-size:12px;margin-right:4px;color:var(--ink2)}
+.pill.ok{color:var(--ok)}.pill.w{color:var(--warn)}.pill.b{color:var(--bad)}.pill.o{background:var(--soft);color:#B84900}
+.btn{display:inline-block;padding:5px 14px;border-radius:8px;border:1px solid var(--line2);background:var(--surface);color:var(--ink);font-size:13px;cursor:default}
+.btn.p{background:var(--pri);border-color:var(--pri);color:var(--pri-ink)}.btn.s{padding:2px 10px;font-size:12px}
+.mut{color:var(--muted)}.sm{font-size:12.5px}
+.steps{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.steps .st{padding:3px 12px;border-radius:999px;background:var(--chip);color:var(--muted);font-size:13px}.steps .st.on{background:var(--ink);color:var(--surface)}.steps .st.done{color:var(--ok)}
+.grid{display:grid;gap:12px}.g2{grid-template-columns:minmax(0,1fr) 340px}
+.slot{display:flex;gap:10px;align-items:center;padding:6px 0;border-bottom:1px dashed var(--line)}.slot:last-child{border:0}.slot .k{flex:0 0 84px;color:var(--muted)}.slot .v{flex:1}
+.q{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:10px;background:var(--wash)}
+.q .opts{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}.opt{border:1px solid var(--line2);border-radius:9px;padding:5px 12px;background:var(--surface)}.opt.rec{border-color:var(--pri);box-shadow:0 0 0 2px var(--soft)}
+.input{border:1px solid var(--line2);border-radius:10px;padding:8px 10px;background:var(--surface);display:flex;gap:8px;align-items:center;color:var(--muted)}.input .mic{margin-left:auto;width:28px;height:28px;border-radius:50%;background:var(--chip);display:grid;place-items:center}
+.ed{display:grid;grid-template-columns:160px minmax(0,1fr) 340px;gap:12px;align-items:start}
+.nav div{padding:6px 10px;border-radius:8px;color:var(--muted)}.nav .on{background:var(--chip);color:var(--ink);font-weight:600}
+.item{border:1px solid var(--line);border-radius:10px;padding:9px 12px;margin-bottom:8px;background:var(--surface)}.item:hover{background:var(--wash)}
+.item.sel{border-color:var(--ink);box-shadow:0 0 0 2px var(--chip)}.item .h{display:flex;gap:8px;align-items:center}.item .lab{font-weight:700;color:var(--ink2);flex:0 0 32px}
+.item .fu{margin:6px 0 0 40px;color:var(--muted);font-size:12.5px}.item .t{flex:1}
+.ins{border:1px dashed var(--line2);border-radius:10px;padding:6px 12px;color:var(--muted);margin:2px 0 12px;display:flex;gap:8px;align-items:center}
+.menu{display:inline-flex;flex-wrap:wrap;gap:6px}.menu span{border:1px solid var(--line2);border-radius:8px;padding:1px 10px;background:var(--surface);color:var(--ink)}
+.aip{background:var(--surface);border:1px solid var(--line);border-radius:12px;display:flex;flex-direction:column;min-height:520px;position:sticky;top:6px}
+.aip .h{padding:10px 12px;border-bottom:1px solid var(--line);display:flex;gap:8px;align-items:center}.aip .h .x{margin-left:auto;color:var(--muted)}
+.aip .m{padding:10px 12px;display:flex;flex-direction:column;gap:8px;flex:1}.bub{padding:7px 11px;border-radius:12px;max-width:92%;background:var(--chip)}.bub.me{align-self:flex-end;background:var(--soft)}
+.rev{border:1px solid var(--line2);border-radius:10px;padding:9px 11px;background:var(--wash)}.rev .bf{color:var(--muted);text-decoration:line-through}.rev .af{color:var(--ink);font-weight:600}
+.quick{display:flex;gap:6px;flex-wrap:wrap;padding:0 12px 8px}.quick span{border:1px solid var(--line2);border-radius:999px;padding:1px 10px;font-size:12.5px;background:var(--surface)}
+.aip .f{padding:10px 12px;border-top:1px solid var(--line)}
+.phone{width:360px;margin:0 auto;border:8px solid #222;border-radius:30px;background:var(--bg);color:var(--ink);overflow:hidden}
+.phone .sw{display:flex;border-bottom:1px solid var(--line)}.phone .sw span{flex:1;text-align:center;padding:8px;color:var(--muted)}.phone .sw .on{color:var(--ink);font-weight:700;border-bottom:2px solid var(--ink)}
+.phone .pb{padding:10px}
+.table{width:100%;border-collapse:collapse;font-size:13px}.table th,.table td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}.table th{color:var(--muted);font-weight:600}
+.note{margin:14px auto;max-width:1280px;padding:12px 16px;border-left:4px solid #E8590C;background:#fff7ed;border-radius:8px;color:#1f2d28;font-size:13px}
+.view{display:none}.view.on{display:block}
+@media(max-width:1100px){.ed{grid-template-columns:1fr}.g2{grid-template-columns:1fr}.sub{display:none}}
+.sug{border-top:1px solid var(--line);padding:8px 12px;background:var(--wash)}
+.sug .t{font-size:12.5px;color:var(--muted);margin-bottom:4px;display:flex;gap:8px;align-items:center}
+.sug label{display:flex;gap:8px;align-items:flex-start;padding:5px 8px;border:1px solid var(--line2);border-radius:9px;margin-bottom:5px;background:var(--surface);cursor:pointer}
+.sug label b{font-weight:600}.sug label small{display:block;color:var(--muted)}
+.sug input{margin-top:4px;accent-color:var(--pri)}
+.after2{display:none}#v6.adopted .after2{display:inline}#v6.adopted span.before{display:none}.new{background:var(--soft)}.chg{background:var(--soft)}.after{display:none}
+#v6.adopted .after{display:table-row}#v6.adopted .before{display:none}#v6.adopted .chg-row td{background:var(--soft)}
+.seg2{display:inline-flex;border:1px solid var(--line2);border-radius:9px;overflow:hidden}.seg2 span{padding:2px 12px;color:var(--muted);cursor:pointer}.seg2 span.on{background:var(--ink);color:var(--surface)}
+
+.frame{height:860px;min-height:0}.col{min-height:0}.body{min-height:0}
+.sub{flex:0 0 214px;overflow:auto}.sub .g{font-size:12px;color:var(--muted);margin:8px 10px 2px}
+.sub .c1{margin-left:22px;font-size:13px}.sub .c2{margin-left:36px;font-size:12.5px}
+.sub .st{float:right;font-size:12px}.sub .ok{color:var(--ok)}.sub .cur{color:var(--pri)}
+.sub .state{margin:12px 6px 0;padding:10px;border-radius:10px;background:var(--chip);color:var(--ink);font-size:12.5px;display:flex;flex-direction:column;gap:6px}
+main{display:flex;flex-direction:row;gap:14px;min-height:0;padding:14px 16px}
+.content{flex:1;min-width:0;overflow:auto;display:flex;flex-direction:column;gap:12px;padding-right:2px}
+.aip{flex:0 0 380px;width:380px;height:100%;min-height:0;position:static}
+.aip .m{overflow:auto}
+.dp{display:inline-flex;border:1px solid var(--line2);border-radius:8px;overflow:hidden;white-space:nowrap}.dp span{padding:0 8px;font-size:12px;color:var(--muted)}.dp span.on{background:var(--ink);color:var(--surface)}
+@media(max-width:1100px){.frame{height:auto}.aip{flex:none;width:100%;height:520px}main{flex-direction:column}}
+
+.frame{height:860px;min-height:0;max-width:1500px}.col{min-height:0}.body{min-height:0}
+.sub{flex:0 0 214px;overflow:auto}.sub .g{font-size:12px;color:var(--muted);margin:8px 10px 2px}
+.sub .c1{margin-left:22px;font-size:13px}.sub .c2{margin-left:36px;font-size:12.5px}
+.sub .st{float:right;font-size:12px}.sub .ok{color:var(--ok)}.sub .cur{color:var(--pri)}
+.sub .state{margin:12px 6px 0;padding:10px;border-radius:10px;background:var(--chip);color:var(--ink);font-size:12.5px;display:flex;flex-direction:column;gap:6px}
+main{display:flex;flex-direction:row;gap:14px;min-height:0;padding:14px 16px}
+.content{flex:1;min-width:0;overflow:auto;display:flex;flex-direction:column;gap:12px;padding-right:2px}
+.aip{flex:0 0 340px;width:340px;height:100%;min-height:0;position:static}
+.aip .m{overflow:auto}
+.dp{display:inline-flex;border:1px solid var(--line2);border-radius:8px;overflow:hidden;white-space:nowrap}.dp span{padding:0 8px;font-size:12px;color:var(--muted)}.dp span.on{background:var(--ink);color:var(--surface)}
+@media(max-width:1100px){.frame{height:auto}.aip{flex:none;width:100%;height:520px}main{flex-direction:column}}
+
+.sub .c1{margin-left:22px;font-size:13px}.sub .c2{margin-left:36px;font-size:12.5px}.sub .g{font-size:12px;color:var(--muted);margin:8px 10px 2px}
+.sub .st{float:right;display:inline-block;width:18px;text-align:center;font-size:12px}.sub .ok{color:var(--ok)}.sub .cur{color:var(--pri)}
+.sub .state{margin:12px 6px 0;padding:10px;border-radius:10px;background:var(--chip);color:var(--ink);font-size:12.5px;display:flex;flex-direction:column;gap:6px}
+.frame{height:860px;min-height:0;max-width:1500px}.col,.body{min-height:0}.sub{flex:0 0 214px;overflow:auto}
+main{display:flex;flex-direction:row;gap:14px;min-height:0;padding:14px 16px}.content{flex:1;min-width:0;overflow:auto;display:flex;flex-direction:column;gap:12px}
+.aip{flex:0 0 340px;width:340px;height:100%;min-height:0;position:static}.aip .m{overflow:auto}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.sp2{flex:1}
+.table th,.table td{vertical-align:middle}.c{text-align:center}
+.phonebox{width:300px;margin:0 auto;border:8px solid #222;border-radius:30px;background:var(--surface);overflow:hidden}.phonebox .tt{padding:10px 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px}
+.phonebox .pb{padding:12px;display:flex;flex-direction:column;gap:10px}.wm{position:relative;height:130px;border-radius:10px;background:linear-gradient(135deg,#e8eee9,#cfd9d2);display:grid;place-items:center;color:#566A60}
+.wm i{position:absolute;right:8px;bottom:6px;font-style:normal;font-size:12px;color:#566A60}
+.tr{display:grid;grid-template-columns:54px 66px 44px minmax(0,1fr);gap:8px;align-items:start;padding:7px 0;border-bottom:1px dashed var(--line)}
+.tr .tm{color:var(--muted);font-variant-numeric:tabular-nums}.tr mark{background:#FFE9B8;border-radius:3px;padding:0 2px;color:inherit}.tr.sel{background:var(--wash)}
+.kv{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.kv .k{background:var(--wash);border:1px solid var(--line);border-radius:10px;padding:10px 12px}.kv b{font-size:22px;display:block}
+.table .pill{white-space:nowrap}.table td{white-space:normal}.chk{display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px dashed var(--line)}.chk:last-child{border:0}.chk .pill{flex:none;width:44px;text-align:center;margin:0}
+.sug{border-top:1px solid var(--line);padding:8px 12px;background:var(--wash)}.sug .t{font-size:12.5px;color:var(--muted);margin-bottom:4px}.sug label{display:flex;gap:8px;align-items:flex-start;padding:5px 8px;border:1px solid var(--line2);border-radius:9px;margin-bottom:5px;background:var(--surface)}.sug label b{font-weight:600}.sug label small{display:block;color:var(--muted)}.sug input{margin-top:3px;accent-color:var(--pri)}
+.sub .on2{background:var(--chip);color:var(--ink);font-weight:600;border-radius:8px}
+.cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.qc{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:8px}
+.qc .hd{display:flex;gap:8px;align-items:center}.qc .hd b{flex:1}
+.qc .stat{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.qc .stat>div{background:var(--wash);border:1px solid var(--line);border-radius:9px;padding:6px 10px;display:flex;flex-direction:column}.qc .stat b{font-size:18px;font-variant-numeric:tabular-nums}
+.bar{display:grid;grid-template-columns:96px minmax(0,1fr) 54px;gap:8px;align-items:center;padding:3px 0}.bar .t{height:14px;background:var(--chip);border-radius:7px;overflow:hidden}.bar .t i{display:block;height:100%;background:var(--pri);border-radius:7px}.bar .n{text-align:right;font-variant-numeric:tabular-nums;color:var(--muted)}
+.bar2 .t i{background:#7a8f86}
+.qrow{display:grid;grid-template-columns:58px minmax(0,1fr) 92px 70px;gap:8px;align-items:center;padding:8px 0;border-bottom:1px dashed var(--line)}.qrow:last-child{border:0}
+.qrow .code{justify-self:start}.qrow .conf{text-align:right;font-variant-numeric:tabular-nums}
+.drawer{position:absolute;right:0;top:0;bottom:0;width:380px;background:var(--surface);border-left:1px solid var(--line2);box-shadow:-8px 0 24px rgba(0,0,0,.12);padding:16px;display:flex;flex-direction:column;gap:10px;overflow:auto}
+.shot{position:relative;height:120px;border-radius:10px;background:linear-gradient(135deg,#dfe6e2,#c3cfc8);display:grid;place-items:center;color:#3f5248}.shot i{position:absolute;right:8px;bottom:6px;font-style:normal;font-size:12px}
+.al{display:grid;grid-template-columns:54px 80px minmax(0,1fr) 70px;gap:8px;align-items:center;padding:8px 0;border-bottom:1px dashed var(--line)}.al:last-child{border:0}
+.live{display:grid;grid-template-columns:70px 54px minmax(0,1fr) 90px 70px;gap:8px;align-items:center;padding:8px 0;border-bottom:1px dashed var(--line)}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#2fb26b;margin-right:6px}
+.wrap{position:relative;flex:1;min-width:0;display:flex}
+.al .btn,.live .btn{justify-self:end;padding:2px 12px}.fresh{display:inline-flex;gap:6px;align-items:center;color:var(--muted);font-size:12.5px}
+</style></head><body><div class="meta"><b>阶段 4 效果图</b>（只是图，代码未改）<button data-v="s1" aria-pressed="true">① 实时看板</button><button data-v="s2" aria-pressed="false">② 单个关注问题</button><button data-v="s3" aria-pressed="false">③ 点开一条回答</button><button data-v="s4" aria-pressed="false">④ 场次与告警</button><span class="sp"></span>主题：<button data-t="light" aria-pressed="true">浅色</button><button data-t="orange" aria-pressed="false">橙色</button><button data-t="dark" aria-pressed="false">深色</button></div><div class="view on" id="s1"><div class="frame"><div class="rail"><i></i><i class="on"></i><i></i><i></i></div><div class="col"><div class="top"><div class="tile">A</div><div><b>A 品牌进入新加坡</b><div class="sm mut">P-0012 · 进行中</div></div><div class="mods"><span>立项向导</span><span>项目总览</span><span class="on">深访</span></div></div><div class="body"><div class="sub"><div>访谈设置</div><div>创建访谈</div><div class="c1">生成访问大纲</div><div class="g">访谈直播</div><div class="c2">场次列表</div><div class="c2 on2" style="margin-left:36px;padding:6px 10px">实时看板</div><div class="c2 on" style="margin-left:52px">概览<span class="st cur">●</span></div><div class="c2 " style="margin-left:52px">单个关注问题</div><div class="c2 " style="margin-left:52px">场次与告警</div><div>洞察与片段</div><div class="state"><span><b>v2</b> 已发布 · 第 6 次修改</span><span class="mut">已被 14 场使用</span></div></div><main><div class="wrap"><div class="content"><div class="row"><b>实时看板</b><span class="pill"><span class="dot"></span>进行中 8 场</span><span class="pill">已完成 22 场</span><span class="fresh">数据更新于 6 秒前</span><span class="sp2"></span><span class="btn s">＋ 新增关注问题</span></div>
+<div class="cards"><div class="qc"><div class="hd"><b>她们买护肤品最看重什么</b><span class="pill">客户 · 王经理</span></div>
+<div class="sm mut">已回答 <b style="color:var(--ink)">24</b> 人 · 最多的说法：<b style="color:var(--ink)">成分（9 人）</b></div>
+<div class="stat"><div><span class="mut sm">新到</span><b>3 条</b></div><div><span class="mut sm">没问到</span><b>2</b></div><div><span class="mut sm">待复核</span><b>1</b></div></div>
+<div class="row"><span class="pill ">还在增加</span><span class="pill">被问到 18 · 主动提到 6</span><span class="sp2"></span><span class="btn s">看详情</span></div></div><div class="qc"><div class="hd"><b>价格接受范围</b><span class="pill">研究员 · 李</span></div>
+<div class="sm mut">已回答 <b style="color:var(--ink)">17</b> 人 · 最多的说法：<b style="color:var(--ink)">偏贵（11 人）</b></div>
+<div class="stat"><div><span class="mut sm">新到</span><b>4 条</b></div><div><span class="mut sm">没问到</span><b>5</b></div><div><span class="mut sm">待复核</span><b>3</b></div></div>
+<div class="row"><span class="pill o">接近饱和</span><span class="pill">被问到 12 · 主动提到 5</span><span class="sp2"></span><span class="btn s">看详情</span></div></div>
+<div class="qc"><div class="hd"><b>对包装颜色有什么看法</b><span class="pill">客户 · 王经理</span></div>
+<div class="sm mut">已回答 <b style="color:var(--ink)">9</b> 人 · 最多的说法：<b style="color:var(--ink)">好看（6 人）</b></div>
+<div class="stat"><div><span class="mut sm">新到</span><b>1 条</b></div><div><span class="mut sm">没问到</span><b>11</b></div><div><span class="mut sm">待复核</span><b>0</b></div></div>
+<div class="row"><span class="pill ">还在增加</span><span class="pill">被问到 9 · 主动提到 0</span><span class="sp2"></span><span class="btn s">看详情</span></div></div><div class="qc"><div class="hd"><b>会拿什么品牌来比较</b><span class="pill">研究员 · 李</span></div>
+<div class="sm mut">已回答 <b style="color:var(--ink)">13</b> 人 · 最多的说法：<b style="color:var(--ink)">日系品牌（5 人）</b></div>
+<div class="stat"><div><span class="mut sm">新到</span><b>2 条</b></div><div><span class="mut sm">没问到</span><b>7</b></div><div><span class="mut sm">待复核</span><b>1</b></div></div>
+<div class="row"><span class="pill ">还在增加</span><span class="pill">被问到 13 · 主动提到 0</span><span class="sp2"></span><span class="btn s">看详情</span></div></div></div>
+<div class="card"><h3>刚刚</h3><div class="al"><span class="tm mut">14:32:08</span><span class="pill">P-0031</span><span>提到了“价格偏贵”（价格接受范围）</span><span class="btn s">看</span></div><div class="al"><span class="tm mut">14:31:40</span><span class="pill">P-0027</span><span>主动提到了“包装好看”（包装颜色）</span><span class="btn s">看</span></div><div class="al"><span class="tm mut">14:30:51</span><span class="pill">P-0029</span><span>回答了“成分”（最看重什么）</span><span class="btn s">看</span></div></div>
+<div class="sm mut">每个问题的回答先攒成“新到 N 条”，点开才刷新列表；统计图照常实时更新。</div></div></div><div class="aip"><div class="h"><b>小星星助手</b><span class="x">收起 ›</span></div><div class="m"><div class="bub">现在 8 场进行中、22 场已完成。“价格接受范围”已经接近饱和，“包装颜色”还有 11 场没问到。</div></div><div class="sug"><div class="t"><b>建议</b>（最多 3 条，可多选）</div><label><input type="checkbox" checked><span><b>“价格接受范围”可以不再追问</b><small>17 人里 11 人说“偏贵”，新到的回答都落在已有说法里，再问的收益很低</small></span></label><label><input type="checkbox" checked><span><b>“包装颜色”有 11 场没问到，给后面的场次加一道题</b><small>客户 · 王经理提的；目前没有一道题对应它</small></span></label><label><input type="checkbox" ><span><b>“会拿什么品牌来比较”有 1 条待复核</b><small>把握值低于 0.75，需要你确认编码</small></span></label><div style="margin-top:6px"><span class="btn p s">采纳所选</span> <span class="btn s">不再提醒</span></div></div><div class="f"><div class="input">问一句，比如：哪些人提到价格偏贵？ <span class="mic">🎤</span></div></div></div></main></div></div></div></div><div class="view" id="s2"><div class="frame"><div class="rail"><i></i><i class="on"></i><i></i><i></i></div><div class="col"><div class="top"><div class="tile">A</div><div><b>A 品牌进入新加坡</b><div class="sm mut">P-0012 · 进行中</div></div><div class="mods"><span>立项向导</span><span>项目总览</span><span class="on">深访</span></div></div><div class="body"><div class="sub"><div>访谈设置</div><div>创建访谈</div><div class="c1">生成访问大纲</div><div class="g">访谈直播</div><div class="c2">场次列表</div><div class="c2 on2" style="margin-left:36px;padding:6px 10px">实时看板</div><div class="c2 " style="margin-left:52px">概览</div><div class="c2 on" style="margin-left:52px">单个关注问题<span class="st cur">●</span></div><div class="c2 " style="margin-left:52px">场次与告警</div><div>洞察与片段</div><div class="state"><span><b>v2</b> 已发布 · 第 6 次修改</span><span class="mut">已被 14 场使用</span></div></div><main><div class="wrap"><div class="content"><div class="row"><b>价格接受范围</b><span class="pill">研究员 · 李</span><span class="pill">对应 Q7</span><span class="sp2"></span><span class="seg2"><span class="on">被问到 12</span><span>主动提到 5</span><span>全部 17</span></span></div>
+<div class="card"><h3>回答分布 <span class="mut sm">（17 人，不到 20 人，只显示人数不显示百分比）</span></h3>
+<div class="bar"><span>偏贵</span><span class="t"><i style="width:65%"></i></span><span class="n">11 人</span></div><div class="bar"><span>合适</span><span class="t"><i style="width:24%"></i></span><span class="n">4 人</span></div><div class="bar"><span>便宜</span><span class="t"><i style="width:6%"></i></span><span class="n">1 人</span></div><div class="bar"><span>说不清</span><span class="t"><i style="width:6%"></i></span><span class="n">1 人</span></div></div>
+<div class="card"><h3>按组别拆分</h3><div class="bar bar2"><span>25–32 岁</span><span class="t"><i style="width:70%"></i></span><span class="n">偏贵 6/9</span></div><div class="bar bar2"><span>33–40 岁</span><span class="t"><i style="width:60%"></i></span><span class="n">偏贵 5/8</span></div></div>
+<div class="card"><h3>原话 <span class="mut sm">（编码由 AI 给出，把握值低于 0.75 的进入待复核）</span></h3>
+<div class="qrow"><span class="pill">P-0031</span><span>“一瓶要八十多新币，我觉得有点偏贵。”</span><span class="code"><span class="pill">偏贵</span></span><span class="conf">0.93</span></div>
+<div class="qrow"><span class="pill">P-0027</span><span>“看包装我以为会更贵，这个价格还可以。”</span><span class="code"><span class="pill">合适</span></span><span class="conf">0.88</span></div>
+<div class="qrow"><span class="pill">P-0019</span><span>“比我平时用的贵一点，但可以试试。”</span><span class="code"><span class="pill w">偏贵？</span></span><span class="conf" style="color:var(--warn)">0.62 待复核</span></div>
+<div class="qrow"><span class="pill">P-0012</span><span>“嗯……要看效果吧。” <span class="mut sm">（主动提到，在 Q4）</span></span><span class="code"><span class="pill">说不清</span></span><span class="conf">0.81</span></div></div></div></div><div class="aip"><div class="h"><b>小星星助手</b><span class="x">收起 ›</span></div><div class="m"><div class="bub me">哪些人提到价格偏贵？</div><div class="bub">11 位：P-0031、P-0019、P-0012…（只显示编号）。其中 3 位是在别的题里主动提到的，已单独统计。</div></div><div class="sug"><div class="t"><b>建议</b>（最多 3 条，可多选）</div><label><input type="checkbox" checked><span><b>P-0019 的编码需要你确认</b><small>把握值 0.62，“比平时贵一点”也可能是“合适”</small></span></label><label><input type="checkbox" ><span><b>价格这个问题可以导出到报告引用</b><small>17 人里 11 人偏贵，已经足够写进报告</small></span></label><div style="margin-top:6px"><span class="btn p s">采纳所选</span> <span class="btn s">不再提醒</span></div></div><div class="f"><div class="input">问一句，比如：哪些人提到价格偏贵？ <span class="mic">🎤</span></div></div></div></main></div></div></div></div><div class="view" id="s3"><div class="frame"><div class="rail"><i></i><i class="on"></i><i></i><i></i></div><div class="col"><div class="top"><div class="tile">A</div><div><b>A 品牌进入新加坡</b><div class="sm mut">P-0012 · 进行中</div></div><div class="mods"><span>立项向导</span><span>项目总览</span><span class="on">深访</span></div></div><div class="body"><div class="sub"><div>访谈设置</div><div>创建访谈</div><div class="c1">生成访问大纲</div><div class="g">访谈直播</div><div class="c2">场次列表</div><div class="c2 on2" style="margin-left:36px;padding:6px 10px">实时看板</div><div class="c2 " style="margin-left:52px">概览</div><div class="c2 on" style="margin-left:52px">单个关注问题<span class="st cur">●</span></div><div class="c2 " style="margin-left:52px">场次与告警</div><div>洞察与片段</div><div class="state"><span><b>v2</b> 已发布 · 第 6 次修改</span><span class="mut">已被 14 场使用</span></div></div><main><div class="wrap"><div class="content"><div class="row"><b>价格接受范围</b><span class="pill">研究员 · 李</span><span class="pill">对应 Q7</span><span class="sp2"></span><span class="seg2"><span class="on">被问到 12</span><span>主动提到 5</span><span>全部 17</span></span></div>
+<div class="card"><h3>回答分布 <span class="mut sm">（17 人，不到 20 人，只显示人数不显示百分比）</span></h3>
+<div class="bar"><span>偏贵</span><span class="t"><i style="width:65%"></i></span><span class="n">11 人</span></div><div class="bar"><span>合适</span><span class="t"><i style="width:24%"></i></span><span class="n">4 人</span></div><div class="bar"><span>便宜</span><span class="t"><i style="width:6%"></i></span><span class="n">1 人</span></div><div class="bar"><span>说不清</span><span class="t"><i style="width:6%"></i></span><span class="n">1 人</span></div></div>
+<div class="card"><h3>按组别拆分</h3><div class="bar bar2"><span>25–32 岁</span><span class="t"><i style="width:70%"></i></span><span class="n">偏贵 6/9</span></div><div class="bar bar2"><span>33–40 岁</span><span class="t"><i style="width:60%"></i></span><span class="n">偏贵 5/8</span></div></div>
+<div class="card"><h3>原话 <span class="mut sm">（编码由 AI 给出，把握值低于 0.75 的进入待复核）</span></h3>
+<div class="qrow"><span class="pill">P-0031</span><span>“一瓶要八十多新币，我觉得有点偏贵。”</span><span class="code"><span class="pill">偏贵</span></span><span class="conf">0.93</span></div>
+<div class="qrow"><span class="pill">P-0027</span><span>“看包装我以为会更贵，这个价格还可以。”</span><span class="code"><span class="pill">合适</span></span><span class="conf">0.88</span></div>
+<div class="qrow"><span class="pill">P-0019</span><span>“比我平时用的贵一点，但可以试试。”</span><span class="code"><span class="pill w">偏贵？</span></span><span class="conf" style="color:var(--warn)">0.62 待复核</span></div>
+<div class="qrow"><span class="pill">P-0012</span><span>“嗯……要看效果吧。” <span class="mut sm">（主动提到，在 Q4）</span></span><span class="code"><span class="pill">说不清</span></span><span class="conf">0.81</span></div></div></div><div class="drawer"><div class="row"><b>P-0031 · 价格接受范围</b><span class="sp2"></span><span class="btn s">关闭</span></div>
+<div class="shot">那一刻的画面（带水印）<i>P-0031</i></div><div class="row"><span class="btn s">▶ 前 10 秒到后 10 秒</span><span class="sm mut">不能下载</span></div>
+<div class="card" style="padding:10px 12px"><div class="sm mut">AI 的提问</div>这款产品大概多少钱，你会觉得合适？</div>
+<div class="card" style="padding:10px 12px"><div class="sm mut">原话</div>“一瓶要八十多新币，我觉得有点偏贵。”</div>
+<div class="card" style="padding:10px 12px"><div class="sm mut">中文（机器翻译）<span class="pill w">进报告前请人工核对</span></div>It costs more than eighty dollars a bottle, which feels a bit expensive.</div>
+<div class="row"><span class="pill">编码：偏贵</span><span class="pill ok">把握 0.93</span><span class="sp2"></span></div><div class="row"><span class="btn s">改编码</span><span class="btn p s">加入报告引用</span></div>
+<div class="sm mut">客户只看到编号，看不到姓名、联系方式；原始录像不能下载。</div></div></div><div class="aip"><div class="h"><b>小星星助手</b><span class="x">收起 ›</span></div><div class="m"><div class="bub">点一条回答，右边看那一刻的画面、前后 10 秒、AI 的提问、原话和机器翻译。</div></div><div class="f"><div class="input">问一句…… <span class="mic">🎤</span></div></div></div></main></div></div></div></div><div class="view" id="s4"><div class="frame"><div class="rail"><i></i><i class="on"></i><i></i><i></i></div><div class="col"><div class="top"><div class="tile">A</div><div><b>A 品牌进入新加坡</b><div class="sm mut">P-0012 · 进行中</div></div><div class="mods"><span>立项向导</span><span>项目总览</span><span class="on">深访</span></div></div><div class="body"><div class="sub"><div>访谈设置</div><div>创建访谈</div><div class="c1">生成访问大纲</div><div class="g">访谈直播</div><div class="c2">场次列表</div><div class="c2 on2" style="margin-left:36px;padding:6px 10px">实时看板</div><div class="c2 " style="margin-left:52px">概览</div><div class="c2 " style="margin-left:52px">单个关注问题</div><div class="c2 on" style="margin-left:52px">场次与告警<span class="st cur">●</span></div><div>洞察与片段</div><div class="state"><span><b>v2</b> 已发布 · 第 6 次修改</span><span class="mut">已被 14 场使用</span></div></div><main><div class="wrap"><div class="content"><div class="row"><b>场次与告警</b><span class="pill">进行中 8 场</span><span class="sp2"></span></div>
+<div class="card"><h3>告警 <span class="mut sm">（需要人处理的在最上面）</span></h3>
+<div class="al"><span class="pill b">立即</span><span class="pill">P-0034</span><span>受访者说“我不想继续了”——AI 已停止提问，等你接管</span><span class="btn p s">接管</span></div>
+<div class="al"><span class="pill b">立即</span><span class="pill">P-0036</span><span>AI 的一句话碰到红线“诱导”，已换成安全说法</span><span class="btn s">查看</span></div>
+<div class="al"><span class="pill w">注意</span><span class="pill">P-0031</span><span>AI 漏问了关注问题“包装颜色”，距离结束还有 6 分钟</span><span class="btn s">悄悄话</span></div>
+<div class="al"><span class="pill w">注意</span><span class="pill">P-0029</span><span>疑似敷衍：连续 5 个回答不到 4 个字</span><span class="btn s">看</span></div>
+<div class="al"><span class="pill w">注意</span><span class="pill">P-0038</span><span>画面卡顿，连续 40 秒</span><span class="btn s">看</span></div></div>
+<div class="card"><h3>进行中的场次</h3>
+<div class="live"><span class="pill">P-0034</span><span class="mut">AI</span><span>Q7 价格 · 已进行 31 分 / 计划 45 分</span><span><span class="dot"></span>进行中</span><span class="btn s">隐身旁听</span></div>
+<div class="live"><span class="pill">P-0036</span><span class="mut">AI</span><span>Q4 概念评估 · 已进行 18 分 / 计划 45 分</span><span><span class="dot"></span>进行中</span><span class="btn s">隐身旁听</span></div>
+<div class="live"><span class="pill">P-0031</span><span class="mut">AI</span><span>Q9 品牌 · 已进行 38 分 / 计划 45 分</span><span><span class="dot"></span>进行中</span><span class="btn s">隐身旁听</span></div></div></div></div><div class="aip"><div class="h"><b>小星星助手</b><span class="x">收起 ›</span></div><div class="m"><div class="bub">有 2 条需要马上处理：P-0034 要求停止，P-0036 碰到红线。我已经让 AI 停下，等你接管。</div></div><div class="f"><div class="input">跟我说，比如：把 P-0031 的悄悄话发出去 <span class="mic">🎤</span></div></div></div></main></div></div></div></div><div class="note"><b>请你确认：</b>
+① 位置：「访谈直播」下新增“实时看板”，和“场次列表”并列，三个子栏（概览 / 单个关注问题 / 场次与告警）放在左侧栏；新的全新做，旧的综合看板之后删除。
+② 概览：每个关注问题一张卡片——已回答人数、最多的说法、新到条数、没问到的场数、待复核数、是否接近饱和。回答先攒成“新到 N 条”，点开才刷新列表，统计图照常实时更新。
+③ 规则：不到 20 人不显示百分比，只显示人数；把握值低于 0.75 的编码进“待复核”，改编码会记下来用于校准；“被问到”和“主动提到”分开统计，可切换。
+④ 点开一条回答：那一刻的画面（带水印）、前后 10 秒片段（不能下载）、AI 的提问、原话、机器翻译（标明“进报告前请人工核对”）、编码；“加入报告引用”接到洞察里已有的片段和引用。客户只看到编号。
+⑤ 告警：受访者要求停止或情绪不适、碰红线、AI 漏问关注问题、疑似敷衍、画面卡顿；进行中的场次可以隐身旁听或接管。
+⑥ 建议：对话框底部最多 3 条，规则算出来（饱和度、没问到的场数、待复核），措辞由模型补；对话里可以问“哪些人提到价格偏贵”，只显示编号。
+⑦ 本阶段会做的实时部分：受访者说完到看板出现，目标不超过 15 秒；我会用模拟受访者同时跑 30 场压测，把延迟、错误率、单场模型调用成本写进 PROGRESS。编码只在命中关注问题对应的题时才调用 DeepSeek。
+⑧ “＋ 新增关注问题”（中途加题）放阶段 5 做，这里先只放按钮位置。</div><script>const $=s=>document.querySelectorAll(s);$("[data-v]").forEach(b=>b.onclick=()=>{$("[data-v]").forEach(x=>x.setAttribute("aria-pressed",x===b));$(".view").forEach(v=>v.classList.toggle("on",v.id===b.dataset.v))});$("[data-t]").forEach(b=>b.onclick=()=>{$("[data-t]").forEach(x=>x.setAttribute("aria-pressed",x===b));document.documentElement.dataset.theme=b.dataset.t});document.documentElement.dataset.theme="light";</script></body></html>
