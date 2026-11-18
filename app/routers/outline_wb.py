@@ -448,3 +448,16 @@ def line_item(pid: str, iid: str, lid: str, body: LineItemBody, ctx: Ctx = Depen
     audit(db, ctx.org_id, ctx.actor, "outline_wb.line_item", iid, ip=ctx.ip)   # only that a number was fixed, never the words
     db.commit()
     return out
+
+
+room_router = APIRouter(prefix="/api", tags=["outline-wb"])
+
+
+@room_router.put("/interviews/{iid}/current-question")
+def room_current_question(iid: str, body: CurrentBody, ctx: Ctx = Depends(require_roles(*STAFF, "moderator")), db: Session = Depends(get_db)):
+    """The room's "标为正在问" button: the human moderator says which question is being asked (null = back to automatic)."""
+    itv = visible_interview(db, ctx, iid)
+    if itv.moderation == "ai":
+        raise HTTPException(409, "AI 主持的场次不需要指定")
+    _run(db, board.set_current, db, itv, body.item_uid)
+    return {"current": itv.current_item_uid}

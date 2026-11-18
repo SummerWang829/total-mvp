@@ -26,7 +26,7 @@
 </div>
 <div class="admitbar" id="admitbar" hidden><b>等候区</b><span id="admitwho"></span><span class="sp"></span><span class="sm" id="admithint">放行一次即可，之后离开再回来不用再放行</span><button type="button" class="p" id="b-admit">放行</button></div>
 <div class="q4" id="q4" aria-label="访谈房间">
-  <div class="qc qc1"><div class="qrow" id="qrow"><div class="qt" id="c1t"></div><div class="qt" id="c2t"></div><div class="qvm" id="qvm" role="group" aria-label="画面大小"><button type="button" data-vm="big">大屏</button><button type="button" data-vm="split">平分</button></div></div><div class="qp fill" id="c1o"><h3>访谈大纲 <span id="olcount"></span></h3><div id="olbody"><p>加载中…</p></div></div><div class="qp qs" id="c1s"><h3>说话占比 · 节奏</h3><div id="talk"><p>访谈开始后显示</p></div></div></div>
+  <div class="qc qc1"><div class="qrow" id="qrow"><div class="qt" id="c1t"></div><div class="qt" id="c2t"></div><div class="qvm" id="qvm" role="group" aria-label="画面大小"><button type="button" data-vm="big">大屏</button><button type="button" data-vm="split">平分</button></div></div><div class="qp fill" id="c1o"><h3>访谈大纲 <span id="olcount"></span> <button type="button" class="qwb" id="olauto" hidden>交给系统自动判断</button></h3><div id="olbody"><p>加载中…</p></div></div><div class="qp qs" id="c1s"><h3>说话占比 · 节奏</h3><div id="talk"><p>访谈开始后显示</p></div></div></div>
   <div class="qc qc2"><div class="qp cp fill" id="c2c"><h3>实时字幕 <span id="capst" role="status">等访谈开始后，字幕会自动开启</span></h3><div class="caps" id="caps" role="log" aria-live="polite" tabindex="0"></div><div class="cap live" id="cappart" hidden style="white-space:pre-wrap"></div></div></div>
   <div class="qc qc3"><div class="qp fill" id="c3"><h3>追问</h3>
     <h3 style="margin-top:6px">待追问</h3><div class="probes" id="probes"></div>
@@ -1146,15 +1146,26 @@ function videoMode() {   // two pictures side by side, or one big with the other
 }
 const QD = { none: "不追问", shallow: "轻问 1 个", deep: "深挖 2–3 个", free: "不限（1–3 个）" };
 const olBar = (label, pct, color) => `<div class="qbar"><span>${label}</span><div><i style="width:${Math.min(100, pct || 0)}%;background:${color}"></i></div><span>${pct == null ? "—" : pct + "%"}</span></div>`;
+const wbNorm = (s) => String(s || "").replace(/\s+/g, "");
+function wbUid(d, text) { return role === "moderator" && d.wb ? (d.wb.items.find((i) => wbNorm(i.text) === wbNorm(text)) || {}).uid : undefined; }   // the question of the interview's frozen outline with these words
+async function wbSet(uid) {
+  try { const r = await api(`/interviews/${iid}/current-question`, { method: "PUT", body: { item_uid: uid || null } }); if (Q4.lastAssist && Q4.lastAssist.wb) { Q4.lastAssist.wb.current = r.current; renderAssist(Q4.lastAssist); } }
+  catch (e) { toast(e.message || "没有成功", true); }
+}
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("[data-wbq]"); if (b) { wbSet(b.dataset.wbq); return; }
+  if (e.target.closest("#olauto")) wbSet(null);
+});
 function renderAssist(d) {
   Q4.lastAssist = d;
   if (!d.has_outline) { $id("olbody").innerHTML = `<p>项目还没有访谈大纲。到“访谈”页写好大纲，这里会显示进度。</p>`; $id("olcount").textContent = ""; }
   else {
-    const o = d.outline; $id("olcount").textContent = `已覆盖 ${o.covered} / ${o.total}`;
+    const o = d.outline; $id("olcount").textContent = `已覆盖 ${o.covered} / ${o.total}`; $id("olauto") && ($id("olauto").hidden = !(d.wb && d.wb.current));
     let n = -1, upto = 0; Q4.plan = null;
     $id("olbody").innerHTML = o.parts.map((p) => { upto += p.minutes; return p.questions.map((q, qi) => { n++; const cur = n === o.current; if (cur) Q4.plan = { planned: d.planned_min, name: p.title, endMs: upto * 60000 };
+      const wbu = wbUid(d, q.text), wbOn = wbu && d.wb.current === wbu;
       const guide = (q.guide || "").trim(), fu = q.depth && q.depth !== "none" || guide;   // a question with follow-ups shows them at once, no arrow to open
-      return `<div class="qo ${q.covered ? "dn" : ""}${cur ? " now" : ""}"><i></i><span>${esc(q.text)}${qi === 0 ? `<small>${esc(p.title)} · 预算 ${p.minutes} 分钟</small>` : ""}${fu ? `<small class="qfu">追问 · ${QD[q.depth] || QD.shallow}${guide ? `：${esc(guide)}` : ""}</small>` : ""}</span></div>`; }).join(""); }).join("")
+      return `<div class="qo ${q.covered ? "dn" : ""}${cur || wbOn ? " now" : ""}"><i></i><span>${esc(q.text)}${qi === 0 ? `<small>${esc(p.title)} · 预算 ${p.minutes} 分钟</small>` : ""}${fu ? `<small class="qfu">追问 · ${QD[q.depth] || QD.shallow}${guide ? `：${esc(guide)}` : ""}</small>` : ""}</span>${wbu ? `<button type="button" class="qwb${wbOn ? " on" : ""}" data-wbq="${wbu}">${wbOn ? "正在问 · 你指定的" : "标为正在问"}</button>` : ""}</div>`; }).join(""); }).join("")
       + (d.pacing && d.pacing.used_pct != null ? olBar("进度", d.pacing.covered_pct, "#1F6B54") + olBar("时间", d.pacing.used_pct, "#EF9F27") : "");
   }
   if (d.talk) {   // who talks and the follow-up hints are for the team only (the client gets the outline and the chapters)

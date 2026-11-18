@@ -5,6 +5,13 @@
 > qa.sh 数字的顺序：逻辑测试（pytest）/ 全站浏览器检查 / 真实视频访谈 / 一键启动。
 
 
+## 2026-11-18 · 大纲工作台：房间“标为正在问”按钮 + Pilot 笔录改题号（用户已确认效果图）
+
+- 房间（真人主持的一对一，主持人视角）：大纲每道题旁“标为正在问”，点了变“正在问 · 你指定的”，之后每句按它归属；标题旁“交给系统自动判断”清除。观察员、客户、AI 主持的场次不显示。接口 `PUT /api/interviews/{id}/current-question`（`outline_wb.room_router`）；`/assist` 对主持人多给 `wb`。样式在 `ui_room.css`。
+- Pilot 笔录：每句话的题号变成下拉，选另一道题就改（猜的带“?”，改过的带“✎”）；`pilot_view` 多返回 `questions`。
+- 测试：新增 2 个（共 43 个）；相关 pytest 219 个通过；`outline_board_section` 68、`outline_wb_test_section` 59 通过；真实浏览器里走了房间按钮（点、变色、清除）。`rooms_section` 里手机点击区等 4 项失败改动前就有。**没测：** 房间页的自动化检查里没有这个按钮的专项检查；白色/深绿两种配色我只看了深绿截图。
+- 备份分支：`backup/outline-wb-lines-ui-20261118`。
+
 ## 2026-11-18 · 大纲工作台：每句挂题号（host > ai > guess，事后可改）
 
 - 来源三种，优先级从高到低：**host**（真人主持人指定“正在问这一题”，`PUT /outline-wb/interviews/{id}/current-question`）> **ai**（AI 主持引擎提问时带的“准备好的那道题”原句，按文字精确对应到大纲条目；引擎没带题的追问算同一题；受访者的句子跟着前一题，保持同样的确定程度）> **guess**（谁都没说时，按题目相似度加大纲顺序猜）。另有 **edited**：研究员事后改某一句（`PUT /outline-wb/interviews/{id}/lines/{lid}/item`，AI 之前编的码作废、重新编；审计只记“改过题号”，不记原话）。

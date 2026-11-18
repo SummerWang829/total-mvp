@@ -153,3 +153,6 @@ body.t-dark.pphone-ai #cform{background:#15271F;border-color:#345044}
 body.t-dark.pphone-ai #cin{color:#E8EFEA}
 body.pphone-ai.pm-kb #grid>.aihost .aiface{width:48px}
 }
+
+/* 真人主持：大纲每道题旁的“标为正在问”（2026-11-18 用户确认效果图） */
+.qwb{flex:none;align-self:center;border:1px solid var(--line2,#CBD3CF);border-radius:8px;background:var(--surface,#fff);color:inherit;font:inherit;font-size:12.5px;line-height:20px;padding:2px 10px;cursor:pointer;white-space:nowrap}.qwb.on{background:#FFF4EA;border-color:#FF6A00;color:#9A4208;cursor:default}.qwb:hover:not(.on){background:rgba(127,127,127,.12)}#olauto{margin-left:8px;font-weight:400}

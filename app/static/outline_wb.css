@@ -139,3 +139,5 @@ body.ob-on #rmtabs{display:none!important}
 .ob-ex{display:grid;grid-template-columns:22px 78px 50px minmax(0,1fr) 60px;gap:8px;align-items:center;padding:8px 0;border-bottom:1px dashed var(--line)}
 .ob-grp{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--wash);display:flex;flex-direction:column;gap:6px;margin-bottom:8px}.ob-grp .gh{display:grid;grid-template-columns:22px minmax(0,1fr) 70px;gap:8px;align-items:center}.ob-grp .q{color:var(--muted);font-size:13.5px;padding-left:10px;border-left:3px solid var(--line2)}
 .bk{display:inline-flex;align-items:center;gap:6px}
+.ow-lsel{height:28px;max-width:84px;padding:0 4px}.ow-lsel.guess{color:var(--ow-warn);border-color:var(--ow-warn)}
+.ow-tr{grid-template-columns:70px 56px 84px minmax(0,1fr) 54px}

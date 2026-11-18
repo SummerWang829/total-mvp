@@ -666,3 +666,27 @@ def test_a_pilot_is_numbered_but_not_coded(org, proj):
         task = board.assign(db, itv, line, "participant", "我平时在网上买东西。")
         db.commit()
     assert task is None
+
+
+def test_the_room_gives_the_human_moderator_the_questions_to_point_at_and_not_the_ai_or_clients(org, proj):
+    iid, fid, uid = _board_setup(org, proj)
+    items = _api(org, proj, "get", "").json()["items"]
+    a = org.c.get(f"/api/interviews/{iid}/assist", headers=org.h()).json()
+    assert a["wb"]["current"] is None and {i["uid"] for i in a["wb"]["items"]} >= {items[0]["uid"]}
+    assert org.c.put(f"/api/interviews/{iid}/current-question", headers=org.h(), json={"item_uid": items[1]["uid"]}).json()["current"] == items[1]["uid"]
+    assert org.c.get(f"/api/interviews/{iid}/assist", headers=org.h()).json()["wb"]["current"] == items[1]["uid"]
+    assert org.c.put(f"/api/interviews/{iid}/current-question", headers=org.h("observer"), json={"item_uid": None}).status_code == 403
+    assert "wb" not in org.c.get(f"/api/interviews/{iid}/assist", headers=org.h("observer")).json()          # an observer or client never gets the pointer
+    from app.db import SessionLocal
+    from app.models import Interview
+    with SessionLocal() as db:
+        db.get(Interview, iid).moderation = "ai"
+        db.commit()
+    assert "wb" not in org.c.get(f"/api/interviews/{iid}/assist", headers=org.h()).json()
+    assert org.c.put(f"/api/interviews/{iid}/current-question", headers=org.h(), json={"item_uid": None}).status_code == 409
+
+
+def test_the_pilot_view_lists_the_questions_a_line_can_be_moved_to(org, proj):
+    iid, lines = _pilot_setup(org, proj)
+    pv = _api(org, proj, "get", f"/pilots/{iid}").json()
+    assert pv["questions"] and all({"uid", "label", "text"} <= set(q) for q in pv["questions"])

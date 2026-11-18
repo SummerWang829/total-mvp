@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..outline_wb.models import OutlineSnapshot
 from .. import ai_room, concept, outline, room_assist
 from ..db import get_db
 from ..deps import Ctx, require_roles, visible_interview
@@ -41,6 +42,10 @@ def assist(iid: str, asked: str = Query("", max_length=1200), ctx: Ctx = Depends
                           "covered": cov["covered"], "total": cov["total"], "current": cov["current"]}
         out["pacing"] = room_assist.pacing(cov, concept.at_ms(itv) if itv.status == "live" else None, planned)
         out["chapters"] = room_assist.chapter_summaries(summary, lines, cov)
+    if ctx.user.role not in VIEWERS and itv.moderation != "ai" and itv.outline_snapshot_id and not itv.is_pilot:   # the human moderator may say which question is being asked (app/outline_wb/board.py)
+        snap = db.get(OutlineSnapshot, itv.outline_snapshot_id)
+        if snap is not None:
+            out["wb"] = {"current": itv.current_item_uid, "items": [{"uid": i["item_uid"], "text": next(iter(i["texts"].values()), "")} for i in snap.content["items"] if i["kind"] in ("question", "rating") and not i["is_backup"]]}
     if ctx.user.role in VIEWERS:
         return {k: out[k] for k in VIEWER_KEYS if k in out}
     return out

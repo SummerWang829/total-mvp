@@ -191,6 +191,12 @@
     return `${req}<div class="card ow-card"><h3>pilot 发现的问题汇总 <span class="mut sm">（${m.pilots} 场 pilot，${m.ended} 场已结束）</span></h3><div class="ow-dests">${g}</div>${rows || `<div class="mut">还没有发现问题。</div>`}${host}
       <div class="ow-actions"><span class="mut sm">建议：${m.revisions.pending} 待你接受 · ${m.revisions.accepted} 已接受 · ${m.revisions.rejected} 已拒绝</span><span class="sp"></span><button type="button" class="p" data-ow="pil-update"${m.can_update ? "" : " disabled"}>用已接受的修改生成更新版</button></div></div>`;
   }
+  const SRC_TIP = { ai: "AI 主持告诉的", host: "主持人指定的", guess: "按题目相似度猜的", edited: "研究员改的" };
+  function lineSel(ln, qs) {
+    const g = ln.source === "guess";
+    if (!qs.length) return `<span class="ow-pill">${E(ln.label || "—")}</span>`;
+    return `<select class="ow-sel ow-lsel${g ? " guess" : ""}" aria-label="这句话属于哪一道题" title="${SRC_TIP[ln.source] || ""}${ln.source ? "；" : ""}选另一道题就改" data-ow-line="${ln.id}"><option value=""${ln.item_uid ? "" : " selected"}>—</option>${qs.map((x) => `<option value="${x.uid}"${x.uid === ln.item_uid ? " selected" : ""}>${E(x.label)}${x.uid === ln.item_uid && g ? " ?" : x.uid === ln.item_uid && ln.source === "edited" ? " ✎" : ""}</option>`).join("")}</select>`;
+  }
   function pilotView() {
     if (!S.pl) return `<div class="card ow-card mut">正在读取……</div>`;
     const pick = (S.cand || []).length ? `<div class="ow-add"><select class="ow-sel" id="ow-cand" aria-label="选一场访谈">${S.cand.map((x) => `<option value="${x.id}">${E(x.title)}（${{ scheduled: "待开始", live: "进行中", ended: "已结束" }[x.status] || x.status}）</option>`).join("")}</select><button type="button" class="s" data-ow="pil-set">设为 pilot</button></div>` : `<div class="mut">这个项目还没有访谈可以设为 pilot。</div>`;
@@ -201,7 +207,7 @@
       const mk = pv.marks.filter((m) => m.line_id === ln.id);
       const fi = pv.findings.filter((f) => f.line_id === ln.id);
       const form = S.markForm === ln.id ? `<div class="ow-mform"><select class="ow-sel" id="ow-mk-tag" aria-label="标签">${Object.entries(TAG).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select><input class="ow-in" id="ow-mk-note" aria-label="意见" placeholder="意见（可以不写）"><button type="button" class="p s" data-ow="mark-ok" data-line="${ln.id}">圈出</button><button type="button" class="s" data-ow="mark-cancel">取消</button></div>` : "";
-      return `<div class="ow-tr"><span class="tm">${fmtT(ln.at_ms)}</span><span>${ln.speaker === "moderator" ? "主持" : "受访者"}</span><span class="ow-pill ${ln.source === "guess" ? "warn" : ""}" title="${{ ai: "AI 主持告诉的", host: "主持人指定的", guess: "按题目相似度猜的", edited: "研究员改的" }[ln.source] || ""}">${E(ln.label || "—")}${ln.source === "guess" ? "?" : ""}</span>
+      return `<div class="ow-tr"><span class="tm">${fmtT(ln.at_ms)}</span><span>${ln.speaker === "moderator" ? "主持" : "受访者"}</span>${lineSel(ln, pv.questions)}
         <span class="tx" data-line-text="${ln.id}">${E(ln.text)}${ln.why ? ` <span class="sm mut" title="${E(ln.why.reason)}">▸ ${E(ln.why.action)}：${E(ln.why.reason)}</span>` : ""}${fi.map((f) => ` <span class="ow-pill bad">${E(f.text)}</span>`).join("")}${mk.map((m) => ` <span class="ow-pill warn">${E(m.tag_text)}</span>`).join("")}</span>
         <button type="button" class="s" data-ow="mark-open" data-line="${ln.id}">圈出</button></div>${form}`;
     }).join("");
@@ -303,6 +309,7 @@
     if (d.owSg) { S.adopt.has(d.owSg) ? S.adopt.delete(d.owSg) : S.adopt.add(d.owSg); return paint(); }
     if (d.owM !== undefined && d.f) return act(`/overview/modules/${d.owM}`, "PUT", { [d.f]: d.f === "minutes" ? parseInt(t.value, 10) : t.value });
     if (d.owI !== undefined && d.f) return act(`/items/${d.owI}`, "PUT", { [d.f]: d.f === "backup" ? t.checked : t.value });
+    if (d.owLine !== undefined) { if (!t.value) return paint(); try { await call(`/interviews/${S.pilId}/lines/${d.owLine}/item`, "PUT", { item_uid: t.value }); toast("题号已改，AI 之前对这句编的码作废并重新编"); S.pil = await call(`/pilots/${S.pilId}`); } catch { /* toast */ } return paint(); }
     if (d.owPil !== undefined) { S.pilId = t.value; S.pil = null; paint(); return loadTab(); }
     if (d.owLink !== undefined) return act(`/focus/${d.owLink}`, "PUT", { item_uid: t.value || null });
   }

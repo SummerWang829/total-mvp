@@ -204,7 +204,8 @@ def pilot_view(db: Session, proj: Project, iid: str) -> dict:
     finds = auto_findings(snap_items, raw)
     for f in finds:
         f["label"] = now_labels.get(f["item_uid"] or "") or labels.get(f["item_uid"] or "", "")
-    return {"id": itv.id, "title": itv.title, "moderation": itv.moderation, "version_id": itv.outline_version_id, "rev": itv.outline_rev, "lines": lines, "findings": finds, "marks": marks}
+    qs = [{"uid": i["item_uid"], "label": now_labels.get(i["item_uid"]) or i["label"], "text": next(iter(i["texts"].values()), "")} for i in snap_items if i["kind"] in ("question", "rating") and not i["is_backup"]]
+    return {"id": itv.id, "title": itv.title, "moderation": itv.moderation, "version_id": itv.outline_version_id, "rev": itv.outline_rev, "lines": lines, "findings": finds, "marks": marks, "questions": qs}
 
 
 def mark(db: Session, proj: Project, iid: str, line_id: str, start: int, end: int, tag: str, note: str, user_id: str, role: str) -> dict:
