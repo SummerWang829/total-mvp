@@ -18,6 +18,8 @@ from sqlalchemy.orm import Session
 from .audit import audit
 from . import content_rules, guide_text, outline_versions, screener, signals
 from .models import AiSession, ChatMessage, SegmentCode, Interview, Project, Reaction, RoomState, Stimulus, TranscriptSegment, utcnow
+from .outline_wb import service as outline_wb_service
+from .outline_wb.models import OutlineSnapshot
 from .moderator.compliance import ai_moderation_blocker
 from .moderator.constants import AlertLevel, ModerationMode, Phase
 from .moderator.engine import EngineStateError, ModeratorEngine
@@ -103,6 +105,13 @@ def project_guide(db: Session, itv: Interview) -> InterviewGuide | None:
     Raises:
         AiRoomError: the outline cannot be read as a guide; the message says what to fix.
     """
+    if itv.outline_snapshot_id:   # the outline workbench froze the outline when this interview started: a running interview never reads the live one
+        snap = db.get(OutlineSnapshot, itv.outline_snapshot_id)
+        if snap is not None:
+            try:
+                return InterviewGuide.model_validate(outline_wb_service.snapshot_to_guide(snap, itv.language, float(itv.duration_min)))
+            except (outline_wb_service.OutlineError, ValueError) as e:
+                raise AiRoomError(422, f"大纲快照不合格：{str(e)[:200]}") from e
     proj = db.get(Project, itv.project_id)
     if proj is None:
         return None

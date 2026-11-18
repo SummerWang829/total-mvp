@@ -82,6 +82,7 @@ class Project(Base):
     outline_versions: Mapped[dict] = mapped_column(JSON, default=dict)  # the outline in the other languages / format families: "<lang>|<live or text>" -> outline text (app/outline_versions.py); the main version stays in outline_text
     retention_days: Mapped[int] = mapped_column(Integer, default=180)  # chosen in the plan (30/60/120/180, never above the platform's); the consent text names it
     recruit_mode: Mapped[str] = mapped_column(String(20), default="screen_then_invite")  # how candidates are recruited: onelink (one link, screen and interview in one journey) | screen_then_invite (screen first, then invite)
+    outline_id: Mapped[str | None] = mapped_column(String(32), nullable=True)  # the outline workbench's current outline (app/outline_wb); the old outline_text stays until the old pages are removed
     host_mode: Mapped[str] = mapped_column(String(10), default="human")  # who runs the interview: ai (AI moderator) | human (a person). onelink can only pair with ai (server enforces)
     created_by: Mapped[str] = mapped_column(String(32))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
@@ -141,6 +142,10 @@ class Interview(Base):
     admitted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     held_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     moderation: Mapped[str] = mapped_column(String(10), default="human")  # app.moderator.constants.ModerationMode; "ai": the consent text discloses it
+    outline_version_id: Mapped[str | None] = mapped_column(String(32), nullable=True)  # the outline version this interview used (app/outline_wb); recorded when it starts
+    outline_rev: Mapped[int | None] = mapped_column(Integer, nullable=True)  # that version's edit count at that moment
+    outline_snapshot_id: Mapped[str | None] = mapped_column(String(32), nullable=True)  # the frozen copy of the outline this interview runs on, even when the outline is edited meanwhile
+    is_pilot: Mapped[bool] = mapped_column(Boolean, default=False)  # a pilot run: its transcript feeds the Pilot correction page
     kind: Mapped[str] = mapped_column(String(10), default="depth")  # depth (1:1) | group (focus group, up to 10 participants; see app/groups.py) | async (a study done alone, any time; see app/studies.py)
     study_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)  # kind "async": the study this session belongs to
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
@@ -274,6 +279,9 @@ class TranscriptSegment(Base):
     text_zh: Mapped[str] = mapped_column(Text, default="")
     text_en: Mapped[str] = mapped_column(Text, default="")
     lang: Mapped[str] = mapped_column(String(10), default="")
+    zh_source: Mapped[str] = mapped_column(String(8), default="")  # who wrote text_zh: machine | human | "" (no translation)
+    item_uid: Mapped[str | None] = mapped_column(String(32), nullable=True)  # the outline item this sentence belongs to (permanent id, app/outline_wb)
+    item_source: Mapped[str] = mapped_column(String(8), default="")  # how item_uid was set: ai | host | guess | edited | "" (not set)
 
 
 class Insight(Base):
@@ -582,6 +590,10 @@ class CaptionLine(Base):
     rate_x10: Mapped[int | None] = mapped_column(Integer, nullable=True)  # characters (Chinese) or words per second, times ten
     vol_db10: Mapped[int | None] = mapped_column(Integer, nullable=True)  # average level while speaking in dBFS times ten, measured in the speaker's own browser
     gap_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)  # silence between the end of the previous speaker's sentence and the start of this one
+    lang: Mapped[str] = mapped_column(String(10), default="")  # the language of `text`
+    zh_source: Mapped[str] = mapped_column(String(8), default="")  # who wrote text_zh: machine | human | "" (no translation)
+    item_uid: Mapped[str | None] = mapped_column(String(32), nullable=True)  # the outline item this sentence belongs to (permanent id, app/outline_wb)
+    item_source: Mapped[str] = mapped_column(String(8), default="")  # how item_uid was set: ai | host | guess | edited | "" (not set)
     senti: Mapped[int] = mapped_column(Integer, default=0)  # tone of the words, -100 (very negative) .. 100 (very positive)
     tags: Mapped[str] = mapped_column(String(80), default="")  # slow, fast, quiet, loud, hesitation, negative, positive (comma separated)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

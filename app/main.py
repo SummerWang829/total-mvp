@@ -16,6 +16,7 @@ from .security import decode_access_token
 from . import participant_code
 from .db import Base, SessionLocal, engine, ensure_columns
 from .recording import start_worker
+from .outline_wb import models as outline_wb_models  # noqa: F401  (registers the outline workbench tables)
 from . import ai_calls, ai_prompts, chat_models, report_models  # noqa: F401  (registers the ai_call_log, ai_prompt_version, chat_threads and report_templates tables)
 from .routers import creation as creation_router, speech as speech_router, ai_console, attachments as attachments_router, recruit_import as recruit_import_router, languages as languages_router, recruit_translate as recruit_translate_router, admin_data, ai_room, group_analysis as group_analysis_router, analysis, auth, concept, cues, group_metrics, interviews, listening, outline, room_assist as room_assist_router, insight_chat as insight_chat_router, pool, jobs as jobs_router, plans as plans_router, quant, recruit, screen_public, reels as reels_router, report, signals, studies, repo, overview, projects, public, board, audience as audience_router, themes as themes_router, timeline as timeline_router, detail as detail_router
 

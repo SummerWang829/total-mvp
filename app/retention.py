@@ -13,6 +13,7 @@ from .audit import audit
 from .config import settings
 from .media import purge_cache
 from . import ai_room, screener
+from .outline_wb import service as outline_wb_service
 from .chat_models import ChatThread
 from .report_models import ReportTemplate
 from .models import (BackroomMessage, CaptionLine, Clip, CueCard, Evidence, Highlight, Insight, Claim, Interview, InterviewParticipant, Job, Mention, Participant, PersuasionEvent, SlotVote, PreTask, PreTaskAnswer, Project, RepoDocument, SegmentCode,
@@ -40,6 +41,7 @@ def purge_interview(db: Session, itv: Interview, reason: str, actor: str = "syst
     db.execute(delete(SegmentCode).where(SegmentCode.interview_id == itv.id))
     db.execute(delete(TranscriptSegment).where(TranscriptSegment.interview_id == itv.id))
     ai_room.purge(db, itv.id)  # the AI-mode chat is personal data too
+    outline_wb_service.purge_interview(db, itv.id)  # pilot marks, coded answers and the AI host's decision notes
     db.execute(delete(CaptionLine).where(CaptionLine.interview_id == itv.id))  # live captions and the quotes copied from them
     db.execute(delete(Highlight).where(Highlight.interview_id == itv.id))
     db.execute(delete(BackroomMessage).where(BackroomMessage.interview_id == itv.id))  # the team's private chat
