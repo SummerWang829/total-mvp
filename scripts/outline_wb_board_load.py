@@ -1,5 +1,5 @@
 """Stage 4 load test: 30 interviews at once feed the live board. Uses a temporary database and a FAKE model whose answer time you choose (default 1.5 s ± 30 %), so it measures our own
-pipeline (line -> rules -> coding job -> database) and the model-call count, NOT the real model's speed or price. Run: python scripts/outline_wb_board_load.py [interviews] [model_seconds] [out.md]
+pipeline (line -> rules -> coding job -> database) and the model-call count, NOT the real model's speed or price. Run: python scripts/outline_wb_board_load.py [interviews] [model_seconds] [out.md] [pause_s] [questions]; with LOAD_REAL=1 the real model is used (set the real MODERATOR_* values; the fake latency argument is ignored)
 The real figures need the real model: run it with your key in .env and MODERATOR_PROVIDER set (the key is never printed)."""
 import os
 import random
@@ -15,8 +15,11 @@ LATENCY = float(sys.argv[2]) if len(sys.argv) > 2 else 1.5
 OUT = sys.argv[3] if len(sys.argv) > 3 else ""
 PAUSE = float(sys.argv[4]) if len(sys.argv) > 4 else 3.0     # seconds between two sentences of one interview (a real interview: about 20-30)
 QUESTIONS = int(sys.argv[5]) if len(sys.argv) > 5 else 6    # questions each interview goes through
+REAL = os.environ.get("LOAD_REAL") == "1"   # LOAD_REAL=1: use the model configured in .env / the environment (MODERATOR_PROVIDER, key, vendor); the key is never printed
 tmp = tempfile.mkdtemp()
-os.environ.update(DATABASE_URL=f"sqlite:///{tmp}/load.db", MEDIA_DIR=f"{tmp}/m", DISABLE_WORKER="1", LIVEKIT_URL="", ASR_PROVIDER="mock", LLM_PROVIDER="mock", MODERATOR_PROVIDER="mock", MODERATOR_VENDOR="")
+os.environ.update(DATABASE_URL=f"sqlite:///{tmp}/load.db", MEDIA_DIR=f"{tmp}/m", DISABLE_WORKER="1", LIVEKIT_URL="", ASR_PROVIDER="mock", LLM_PROVIDER=os.environ.get("LLM_PROVIDER", "mock") if REAL else "mock")
+if not REAL:
+    os.environ.update(MODERATOR_PROVIDER="mock", MODERATOR_VENDOR="")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.db import Base, SessionLocal, engine  # noqa: E402
@@ -95,7 +98,11 @@ def one(pid: str, n: int, errors: list[str]) -> None:
 
 def main() -> int:
     pid, _ = setup()
-    board._chat = lambda: FakeChat()   # type: ignore[assignment]
+    if not REAL:
+        board._chat = lambda: FakeChat()   # type: ignore[assignment]
+    elif board._chat() is None:
+        print("LOAD_REAL=1 but no real model is configured (MODERATOR_PROVIDER / MODERATOR_VENDOR / key): nothing to measure.")
+        return 2
     errors: list[str] = []
     t0 = time.time()
     ts = [threading.Thread(target=one, args=(pid, n, errors)) for n in range(N)]
@@ -116,12 +123,12 @@ def main() -> int:
         coded = db.query(CodedAnswer).count()
     p = lambda q: ms[min(len(ms) - 1, int(len(ms) * q))] / 1000 if ms else 0   # noqa: E731
     lines = [f"# 看板压测（模拟）", "", f"- 同时进行的访谈：{N} 场；每场 {QUESTIONS} 题 × 2 句；三个关注问题；每句间隔约 {PAUSE:g} 秒（真实访谈约 20–30 秒，所以这次的压力约是真实的 {25 / PAUSE:.0f} 倍）。",
-             f"- **模型是假的**：每次编码等 {LATENCY} 秒 ±30%（不是真 DeepSeek 的速度和价格）。这里量的是我们自己的流水线：句子 → 规则 → 后台编码 → 数据库。",
+             ("- **用的是真实模型**（.env 里配好的那个）：延迟、失败和费用是真的；平均每场调用次数乘以单价就是每场费用。" if REAL else f"- **模型是假的**：每次编码等 {LATENCY} 秒 ±30%（不是真 DeepSeek 的速度和价格）。这里量的是我们自己的流水线：句子 → 规则 → 后台编码 → 数据库。"),
              f"- 任务数：{len(ms)}；失败：{bad}；访谈创建/发句子的错误：{len(errors)}；写进库的编码回答：{coded}。",
              f"- 从“句子进来”到“编码写入数据库”（含排队）：中位数 {statistics.median(ms) / 1000 if ms else 0:.2f} 秒，p95 {p(0.95):.2f} 秒，最大 {p(0.999):.2f} 秒（目标 ≤ 15 秒，含真实模型时间）。",
              f"- 模型调用：共 {CALLS['n']} 次，平均每场 {CALLS['n'] / N:.1f} 次（只在“被问到”或“明显在讲关注问题”的受访者句子上调用）。",
              f"- 发句子用时 {sent:.1f} 秒，全部处理完 {wall:.1f} 秒；后台线程 {board.WORKERS} 个。",
-             "", "没有测：真实 DeepSeek 的延迟、失败率和每场费用（需要你的密钥，我不读 .env）；实时推送（看板用 3 秒轮询）；线上单容器 + SQLite 的真实并发。"]
+             "", ("没有测：实时推送（看板用 3 秒轮询）。" if REAL else "没有测：真实 DeepSeek 的延迟、失败率和每场费用（要在装好密钥的机器上用 LOAD_REAL=1 再跑一次）；实时推送（看板用 3 秒轮询）；线上单容器 + SQLite 的真实并发。")]
     text = "\n".join(lines) + "\n"
     if OUT:
         Path(OUT).write_text(text, encoding="utf-8")
