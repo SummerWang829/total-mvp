@@ -135,3 +135,33 @@ def fix_question(chat: ModeratorChatProvider | None, text: str, notes: list[str]
         log.warning("outline_wb: fix_question failed (%s)", type(e).__name__)
         return fallback
     return new if new and not quality.check_question(new, lang, fmt)["blocked"] else fallback
+
+
+CODE_PROMPT = SYSTEM_RULES + (' Task: code ONE interview answer for the focus question. Input: QUESTION, CODES (the allowed codes; empty = make a short label of at most 6 Chinese characters), ANSWER. '
+                              'Output {"code":"...","confidence":0.0-1.0}. If CODES is not empty the code MUST be one of them, or "其他" when none fits. Confidence is how sure you are the answer says that.')
+MAX_CODE_CHARS = 20
+
+
+def code_answer(chat: ModeratorChatProvider | None, question: str, codes: list[str], answer: str) -> tuple[str, float]:
+    """(code, confidence 0..1) for one answer. With no model the offline rules answer (a code whose words appear in the answer, else the first few characters), so the board can be walked through
+    offline. A model answer outside the allowed codes becomes "其他" with low confidence.
+
+    Raises:
+        ChatFatalError: the service refused.
+        ChatError: no usable answer in time.
+    """
+    if chat is None:
+        hit = next((c for c in codes if c and c in answer), "")
+        if codes:
+            return (hit, 0.9) if hit else ("其他", 0.5)
+        clause = re.split(r"[，。！？,.!?\s]+", answer.strip())[0] or answer.strip()
+        return clause[:6], 0.7
+    raw = _ask(chat, CODE_PROMPT, {"QUESTION": question, "CODES": codes, "ANSWER": answer[:600]})
+    code = " ".join(str(raw.get("code", "")).split())[:MAX_CODE_CHARS] or "其他"
+    try:
+        conf = max(0.0, min(1.0, float(raw.get("confidence", 0.5))))
+    except (TypeError, ValueError):
+        conf = 0.5
+    if codes and code not in codes:
+        code, conf = "其他", min(conf, 0.5)
+    return code, conf

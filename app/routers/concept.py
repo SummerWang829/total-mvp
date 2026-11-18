@@ -17,6 +17,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from ..outline_wb import board as outline_wb_board
 from .. import concept, content_rules, groups, marks, signals
 from ..asr_live import token_out
 from ..audit import audit
@@ -206,8 +207,11 @@ def _store_caption(db: Session, itv: Interview, speaker: str, body: CaptionIn) -
             line = CaptionLine(org_id=itv.org_id, interview_id=itv.id, seq=seq, speaker=speaker, text=text, at_ms=at_ms(itv), dur_ms=body.dur_ms,
                                flags=",".join(sorted(checked.flags)), **said)
             db.add(line)
+            db.flush()
+            task = outline_wb_board.assign(db, itv, line, speaker, text)   # the outline question of this line; a task when it is worth coding
             try:
                 db.commit()
+                outline_wb_board.submit(task)
                 if itv.language != "zh":  # English interviews: the team reads the Chinese next to the original
                     fut = _TRANSLATOR.submit(_translate_line, line.id)
                     _translations.add(fut)

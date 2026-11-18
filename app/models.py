@@ -430,6 +430,8 @@ class ChatMessage(Base):
     phase: Mapped[str] = mapped_column(String(12), default="")
     prompt_version: Mapped[str] = mapped_column(String(12), default="")  # the AI's lines: which prompt version and which model said it (traceability)
     model: Mapped[str] = mapped_column(String(60), default="")
+    item_uid: Mapped[str | None] = mapped_column(String(32), nullable=True)  # the outline item this line belongs to (app/outline_wb), set while the interview runs
+    item_source: Mapped[str] = mapped_column(String(8), default="")  # how: ai | host | guess | edited | "" (not set)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 

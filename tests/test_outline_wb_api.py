@@ -318,3 +318,135 @@ def test_an_interview_can_be_marked_as_a_pilot_and_then_lists_there(org, proj):
     after = _api(org, proj, "put", f"/pilots/{itv['id']}", json={"value": True}).json()
     assert [p["id"] for p in after["pilots"]] == [itv["id"]] and after["candidates"] == []
     assert _api(org, proj, "put", f"/pilots/{itv['id']}", json={"value": True}, role="observer").status_code == 403
+
+
+# ---- stage 4: the live board --------------------------------------------------------------------------------------------------------------------
+
+def _board_setup(org, proj):
+    """A published outline, a focus question tied to the first question, and a live (not pilot) interview that started on the snapshot."""
+    from app.db import SessionLocal
+    from app.models import Interview, Participant, Project
+    from app.outline_wb import stage3
+    _ready(org, proj, ("warm",))
+    uid = _api(org, proj, "get", "").json()["items"][0]["uid"]
+    fid = _api(org, proj, "post", "/focus", json={"text": "她们平时怎么买东西", "item_uid": uid}).json()["focus"][0]["id"]
+    assert _api(org, proj, "post", "/publish").status_code == 200
+    with SessionLocal() as db:
+        p = db.get(Project, proj)
+        part = Participant(org_id=p.org_id, project_id=p.id, name="演示", country="SG", language="zh", code="Q-001")
+        db.add(part)
+        db.flush()
+        itv = Interview(org_id=p.org_id, project_id=p.id, participant_id=part.id, title="真访谈", language="zh", status="live", moderation="human", invite_hash="x-board")
+        db.add(itv)
+        db.flush()
+        from app.models import utcnow
+        itv.started_at = utcnow()
+        stage3.snapshot_on_start(db, itv)
+        db.commit()
+        return itv.id, fid, uid
+
+
+def _say(iid, speaker, text, seq):
+    """A caption line through the same function the room uses, then wait for the background coding."""
+    import time
+    from app.db import SessionLocal
+    from app.models import CaptionLine, Interview
+    from app.outline_wb import board
+    with SessionLocal() as db:
+        itv = db.get(Interview, iid)
+        line = CaptionLine(org_id=itv.org_id, interview_id=iid, seq=seq, speaker=speaker, text=text, at_ms=seq * 20000)
+        db.add(line)
+        db.flush()
+        task = board.assign(db, itv, line, speaker, text)
+        db.commit()
+    board.submit(task)
+    return task
+
+
+def _wait(fn, secs=8):
+    import time
+    end = time.time() + secs
+    while time.time() < end:
+        if fn():
+            return True
+        time.sleep(0.2)
+    return False
+
+
+def test_a_line_is_put_under_its_question_and_only_answers_are_coded(org, proj):
+    iid, fid, uid = _board_setup(org, proj)
+    items = _api(org, proj, "get", "").json()["items"]
+    assert _say(iid, "moderator", items[0]["text"], 1) is None                    # the moderator's line is placed, never coded
+    t = _say(iid, "participant", "我平时在网上买，价格偏贵。", 2)
+    assert t is not None and t.item_uid == uid                                    # the answer stays under the question that was asked
+    assert _say(iid, "participant", "嗯", 3) is None                              # too short to code
+    assert _wait(lambda: _api(org, proj, "get", "/board").json()["cards"][0]["answered"] == 1)
+    card = _api(org, proj, "get", "/board").json()["cards"][0]
+    assert card["asked"] == 1 and card["top"]
+
+
+def test_an_answer_under_another_question_that_talks_about_it_counts_as_volunteered(org, proj):
+    iid, fid, uid = _board_setup(org, proj)
+    items = _api(org, proj, "get", "").json()["items"]
+    _say(iid, "moderator", items[1]["text"], 1)                                   # a different question is on
+    _say(iid, "participant", "我平时怎么买东西？一般在网上买。", 2)
+    assert _wait(lambda: _api(org, proj, "get", f"/board/focus/{fid}").json()["quotes"] != [])
+    q = _api(org, proj, "get", f"/board/focus/{fid}").json()["quotes"][0]
+    assert q["origin"] == "volunteered" and q["in"]                               # said unprompted, and where
+    assert _api(org, proj, "get", f"/board/focus/{fid}?origin=asked").json()["quotes"] == []
+
+
+def test_percentages_wait_for_twenty_people_and_low_confidence_goes_to_review(org, proj):
+    iid, fid, uid = _board_setup(org, proj)
+    items = _api(org, proj, "get", "").json()["items"]
+    _say(iid, "moderator", items[0]["text"], 1)
+    _say(iid, "participant", "我平时在网上买东西。", 2)
+    assert _wait(lambda: _api(org, proj, "get", f"/board/focus/{fid}").json()["n"] == 1)
+    d = _api(org, proj, "get", f"/board/focus/{fid}").json()
+    assert d["percent"] is False and all(x["pct"] is None for x in d["dist"])    # one person: counts only
+    from app.db import SessionLocal
+    from app.outline_wb.models import CodedAnswer
+    with SessionLocal() as db:
+        ca = db.query(CodedAnswer).first()
+        ca.confidence = 0.6
+        db.commit()
+    assert _api(org, proj, "get", "/board").json()["cards"][0]["review"] == 1
+
+
+def test_recoding_keeps_the_ai_code_and_a_client_sees_only_numbers_and_cannot_change(org, proj):
+    iid, fid, uid = _board_setup(org, proj)
+    items = _api(org, proj, "get", "").json()["items"]
+    _say(iid, "moderator", items[0]["text"], 1)
+    _say(iid, "participant", "我平时在网上买东西。", 2)
+    assert _wait(lambda: _api(org, proj, "get", f"/board/focus/{fid}").json()["quotes"] != [])
+    cid = _api(org, proj, "get", f"/board/focus/{fid}").json()["quotes"][0]["id"]
+    first = _api(org, proj, "get", f"/board/answer/{cid}").json()
+    assert first["who"] == "Q-001" and first["can_download"] is False and first["question"]
+    new = _api(org, proj, "put", f"/board/answer/{cid}", json={"code": "网购"}).json()
+    assert new["code"] == "网购" and new["ai_code"] == first["code"] and new["confirmed"] is True
+    assert _api(org, proj, "put", f"/board/answer/{cid}", json={"code": "x"}, role="observer").status_code == 403
+    clip = _api(org, proj, "post", f"/board/answer/{cid}/report").json()
+    assert clip["clip_id"]
+    assert _api(org, proj, "post", f"/board/answer/{cid}/report").json()["clip_id"] == clip["clip_id"]    # twice makes one clip
+
+
+def test_the_board_asks_by_keyword_and_answers_with_numbers_only(org, proj):
+    iid, fid, uid = _board_setup(org, proj)
+    items = _api(org, proj, "get", "").json()["items"]
+    _say(iid, "moderator", items[0]["text"], 1)
+    _say(iid, "participant", "我平时在网上买东西，价格偏贵。", 2)
+    assert _wait(lambda: _api(org, proj, "get", "/board").json()["cards"][0]["answered"] == 1)
+    r = _api(org, proj, "post", "/board/chat", json={"text": "哪些人提到价格偏贵"}).json()
+    assert r["who"] == ["Q-001"] and "演示" not in r["reply"]
+    assert _api(org, proj, "post", "/board/chat", json={"text": "你是什么模型"}).json()["reply"].startswith("我是小星星助手")
+    changes = _api(org, proj, "get", "/board/changes").json()["token"]
+    assert changes.startswith("1:")
+
+
+def test_saturation_needs_eight_answers_and_adopting_only_proposes(org, proj):
+    from app.outline_wb import board
+    assert board._saturated(["价格"] * 7) is False
+    assert board._saturated(["价格", "价格", "成分", "成分", "价格", "成分", "价格", "成分", "价格", "成分"]) is True   # the last five all fell into codes seen at least twice before
+    assert board._saturated(["价格"] * 6 + ["新说法", "价格"]) is False
+    iid, fid, uid = _board_setup(org, proj)
+    assert _api(org, proj, "post", "/board/suggestions/adopt", json={"ids": ["sat_none"]}).json()["proposed"] == 0

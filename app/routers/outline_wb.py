@@ -13,7 +13,7 @@ from ..deps import STAFF, Ctx, ensure_project, require_roles
 from ..models import Project
 from ..moderator.compliance import moderator_runs_locally
 from ..moderator.providers import ChatError, ChatFatalError, get_moderator_chat
-from ..outline_wb import session as sess, stage3
+from ..outline_wb import board, session as sess, stage3
 from ..outline_wb.service import OutlineError
 from ..recruit_form import MSG_VENDOR_MISSING
 
@@ -74,6 +74,18 @@ class MarkBody(BaseModel):
 
 class PilotBody(BaseModel):
     value: bool = True
+
+
+class RecodeBody(BaseModel):
+    code: str = Field(min_length=1, max_length=80)
+
+
+class BoardChatBody(BaseModel):
+    text: str = Field(min_length=1, max_length=500)
+
+
+class BoardAdoptBody(BaseModel):
+    ids: list[str] = Field(max_length=3)
 
 
 class VersionBody(BaseModel):
@@ -286,3 +298,54 @@ def publish(pid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = D
 @router.post("/versions")
 def new_version(pid: str, body: VersionBody, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
     return _run(db, stage3.new_version, db, _project(db, ctx, pid), body.summary, ctx.user.id)
+
+
+# ---- 实时看板（访谈直播）----------------------------------------------------------------------------------------------------------
+
+@router.get("/board")
+def board_view(pid: str, since: float = 0.0, ctx: Ctx = Depends(require_roles(*STAFF, *VIEWERS)), db: Session = Depends(get_db)):
+    p = _project(db, ctx, pid)
+    out = _run(db, board.board, db, p, since)
+    out["suggestions"] = [] if ctx.user.role in VIEWERS else _run(db, board.suggestions, db, p)
+    out["sessions"] = _run(db, board.sessions, db, p)
+    out["can_edit"] = ctx.user.role not in VIEWERS
+    return out
+
+
+@router.get("/board/changes")
+def board_changes(pid: str, ctx: Ctx = Depends(require_roles(*STAFF, *VIEWERS)), db: Session = Depends(get_db)):
+    return _run(db, board.changes, db, _project(db, ctx, pid))
+
+
+@router.get("/board/focus/{fid}")
+def board_focus(pid: str, fid: str, origin: str = "all", ctx: Ctx = Depends(require_roles(*STAFF, *VIEWERS)), db: Session = Depends(get_db)):
+    return _run(db, board.focus_detail, db, _project(db, ctx, pid), fid, origin)
+
+
+@router.get("/board/answer/{cid}")
+def board_answer(pid: str, cid: str, ctx: Ctx = Depends(require_roles(*STAFF, *VIEWERS)), db: Session = Depends(get_db)):
+    return _run(db, board.answer_detail, db, _project(db, ctx, pid), cid)
+
+
+@router.put("/board/answer/{cid}")
+def board_recode(pid: str, cid: str, body: RecodeBody, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    return _run(db, board.recode, db, _project(db, ctx, pid), cid, body.code)
+
+
+@router.post("/board/answer/{cid}/report")
+def board_report(pid: str, cid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    return _run(db, board.to_report, db, _project(db, ctx, pid), cid, ctx.user.id)
+
+
+@router.post("/board/chat")
+def board_chat(pid: str, body: BoardChatBody, ctx: Ctx = Depends(require_roles(*STAFF, *VIEWERS)), db: Session = Depends(get_db)):
+    from .. import assistant_identity
+    p = _project(db, ctx, pid)
+    if assistant_identity.asks_identity(body.text):
+        return {"reply": assistant_identity.REPLY, "who": []}
+    return _run(db, board.ask, db, p, body.text)
+
+
+@router.post("/board/suggestions/adopt")
+def board_adopt(pid: str, body: BoardAdoptBody, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    return _run(db, board.adopt, db, _project(db, ctx, pid), body.ids, ctx.user.id)

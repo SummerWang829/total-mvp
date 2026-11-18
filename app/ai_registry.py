@@ -53,6 +53,7 @@ FEATURES: tuple[Feature, ...] = (
     Feature("outline_wb.module", "创建访谈", "按模块写题目", "生成大纲 · 题目", (("app.outline_wb.writer", "write_module"),)),
     Feature("outline_wb.chat", "创建访谈", "大纲对话修订", "生成大纲 · 右侧对话", (("app.outline_wb.writer", "chat_ops"),)),
     Feature("outline_wb.fix", "创建访谈", "pilot 修改建议", "预览测试 · Pilot 修正", (("app.outline_wb.writer", "fix_question"),)),
+    Feature("outline_wb.code", "创建访谈", "看板：回答编码", "访谈直播 · 实时看板", (("app.outline_wb.writer", "code_answer"),)),
     Feature("asr", "语音", "实时字幕 / 转写", "房间字幕、转写", (), ""),
 )
 

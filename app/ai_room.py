@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from .audit import audit
 from . import content_rules, guide_text, outline_versions, screener, signals
 from .models import AiSession, ChatMessage, SegmentCode, Interview, Project, Reaction, RoomState, Stimulus, TranscriptSegment, utcnow
-from .outline_wb import service as outline_wb_service, stage3 as outline_wb_stage3
+from .outline_wb import board as outline_wb_board, service as outline_wb_service, stage3 as outline_wb_stage3
 from .outline_wb.models import OutlineSnapshot
 from .moderator.compliance import ai_moderation_blocker
 from .moderator.constants import AlertLevel, ModerationMode, Phase
@@ -165,6 +165,7 @@ def _add_message(db: Session, itv: Interview, sender: str, text: str, payload: M
                       model=str(getattr(getattr(getattr(engine, "calls", None), "chat", None), "name", ""))[:60] if engine else "")
     db.add(row)
     db.flush()
+    outline_wb_board.submit(outline_wb_board.assign(db, itv, row, sender, text))   # its outline question; coded in the background when it answers a focus question
     return row
 
 
