@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
+from ..outline_wb import stage3 as outline_wb_stage3
 from .. import formats, insights_overview as insights_overview_mod, interview_answers, interview_facts, respondent_table, ai_room, concept, content_rules, export, groups, invites, jobs, participant_code, pretask, scheduling
 from ..audit import audit
 from ..config import settings
@@ -586,6 +587,7 @@ def start_interview(iid: str, ctx: Ctx = Depends(require_roles("admin", "researc
         raise HTTPException(409, "访谈已结束")
     if itv.status == "scheduled":
         itv.status, itv.started_at = "live", utcnow()
+        outline_wb_stage3.snapshot_on_start(db, itv)   # a published outline is frozen for this interview
         audit(db, ctx.org_id, ctx.actor, "interview.start", itv.id)
         db.commit()
     return interview_out(itv, ctx)

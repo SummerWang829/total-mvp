@@ -186,3 +186,125 @@ def test_insert_a_material_checks_its_address_and_a_question_its_wording(org, pr
     assert _api(org, proj, "post", "/items", json={"kind": "question", "text": "难道你不觉得它很好吗？", "after_uid": uid}).status_code == 422
     gone = _api(org, proj, "delete", f"/items/{ok.json()['items'][1]['uid']}")
     assert gone.status_code == 200 and all(i["kind"] != "website" for i in gone.json()["items"])
+
+
+# ---- stage 3: preview, rehearsal, pilot, publish ------------------------------------------------------------------------------------------------
+
+def _ready(org, proj, modules=("warm",)):
+    """An outline with its overview confirmed and the first modules written and confirmed."""
+    _api(org, proj, "post", "/overview")
+    _api(org, proj, "post", "/overview/confirm")
+    for m in modules:
+        _api(org, proj, "post", f"/modules/{m}/generate")
+        _api(org, proj, "post", f"/modules/{m}/confirm")
+
+
+def test_preview_shows_what_a_participant_sees_and_flags_a_missing_language(org, proj):
+    _ready(org, proj)
+    uid = _api(org, proj, "get", "").json()["items"][0]["uid"]
+    _api(org, proj, "post", "/items", json={"kind": "concept", "text": "请看这张概念卡", "after_uid": uid, "config": {"title": "概念 A"}})
+    pv = _api(org, proj, "get", "/preview").json()
+    concept = next(i for i in pv["items"] if i["kind"] == "concept")
+    assert concept["watermark"] and concept["view_only"]
+    en = _api(org, proj, "get", "/preview?lang=en").json()
+    assert any("缺题" in c["text"] for c in en["checks"]) and all(i["missing"] for i in en["items"])
+
+
+def test_rehearsal_is_saved_and_goes_stale_after_an_edit(org, proj):
+    _ready(org, proj)
+    r = _api(org, proj, "post", "/rehearsal")
+    assert r.status_code == 200 and r.json()["runs"][0]["sessions"] == 3 and not r.json()["runs"][0]["stale"]
+    uid = _api(org, proj, "get", "").json()["items"][0]["uid"]
+    _api(org, proj, "put", f"/items/{uid}", json={"minutes": 3})
+    assert _api(org, proj, "get", "/rehearsal").json()["runs"][0]["stale"] is True
+
+
+def _pilot_setup(org, proj):
+    """A published outline and one pilot interview with numbered lines, one of them a participant asking what a word means."""
+    from app.db import SessionLocal
+    from app.models import CaptionLine, Interview, Participant, Project
+    from app.outline_wb import service as svc, stage3
+    _ready(org, proj)
+    assert _api(org, proj, "post", "/publish").status_code == 200
+    items = _api(org, proj, "get", "").json()["items"]
+    with SessionLocal() as db:
+        p = db.get(Project, proj)
+        part = Participant(org_id=p.org_id, project_id=p.id, name="演示", country="SG", language="zh", code="M-901")
+        db.add(part)
+        db.flush()
+        itv = Interview(org_id=p.org_id, project_id=p.id, participant_id=part.id, title="Pilot", language="zh", status="ended", moderation="ai", is_pilot=True, invite_hash="x-pilot")
+        db.add(itv)
+        db.flush()
+        stage3.snapshot_on_start(db, itv)
+        rows = [("moderator", items[0]["text"], items[0]["uid"], "ai"), ("participant", "你说的这个是什么意思？", items[0]["uid"], "ai"), ("participant", "我平时在网上买。", items[0]["uid"], "ai")]
+        for n, (sp, tx, uid, src) in enumerate(rows, 1):
+            ln = CaptionLine(org_id=p.org_id, interview_id=itv.id, seq=n, speaker=sp, text=tx, at_ms=n * 30000, lang="zh")
+            db.add(ln)
+            db.flush()
+            svc.assign_line(ln, uid, src)
+        db.commit()
+        return itv.id, [ln.id for ln in db.query(CaptionLine).filter_by(interview_id=itv.id).order_by(CaptionLine.seq)]
+
+
+def test_publishing_freezes_for_new_interviews_and_keeps_the_older_pages_in_step(org, proj):
+    iid, _ = _pilot_setup(org, proj)
+    from app.db import SessionLocal
+    from app.models import Interview, Project
+    from app.outline_wb.models import OutlineSnapshot
+    with SessionLocal() as db:
+        itv = db.get(Interview, iid)
+        assert itv.outline_snapshot_id and itv.outline_rev is not None
+        proj_row = db.get(Project, proj)
+        assert "## 暖场" in proj_row.outline_text and proj_row.outline_text.count("\n- ") >= 1      # the older pages read the published outline
+        snap = db.get(OutlineSnapshot, itv.outline_snapshot_id)
+        before = [i["texts"]["zh"] for i in snap.content["items"]]
+    uid = _api(org, proj, "get", "").json()["items"][0]["uid"]
+    _api(org, proj, "put", f"/items/{uid}", json={"text": "你平时怎么买东西呢？"})      # edited after the pilot started
+    with SessionLocal() as db:
+        assert [i["texts"]["zh"] for i in db.get(OutlineSnapshot, itv.outline_snapshot_id).content["items"]] == before
+
+
+def test_publish_is_refused_while_a_focus_question_has_no_question(org, proj):
+    _ready(org, proj)
+    _api(org, proj, "post", "/focus", json={"text": "对包装颜色有什么看法？"})
+    r = _api(org, proj, "post", "/publish")
+    assert r.status_code == 422 and "关注问题" in r.json()["detail"]
+    chk = _api(org, proj, "get", "/publish/check").json()
+    assert chk["can_publish"] is False and chk["versions"]
+
+
+def test_pilot_view_numbers_lines_finds_problems_and_a_client_can_only_circle(org, proj):
+    iid, lines = _pilot_setup(org, proj)
+    pv = _api(org, proj, "get", f"/pilots/{iid}").json()
+    assert all(ln["label"] for ln in pv["lines"]) and any(f["kind"] == "confused" for f in pv["findings"])
+    m = _api(org, proj, "post", f"/pilots/{iid}/marks", json={"line_id": lines[1], "start": 0, "end": 4, "tag": "unclear", "note": "没听懂"})
+    assert m.status_code == 200 and m.json()["marks"][0]["quote"] == "你说的这" and m.json()["marks"][0]["role"] == "researcher"
+    assert _api(org, proj, "post", f"/pilots/{iid}/marks", json={"line_id": lines[1], "start": 0, "end": 99, "tag": "unclear"}).status_code == 422
+    assert _api(org, proj, "post", f"/pilots/{iid}/suggest", role="observer").status_code == 403
+
+
+def test_pilot_suggestions_merge_by_question_and_have_three_possible_destinations(org, proj):
+    iid, lines = _pilot_setup(org, proj)
+    _api(org, proj, "post", f"/pilots/{iid}/marks", json={"line_id": lines[1], "start": 0, "end": 4, "tag": "unclear", "note": "没听懂"})
+    _api(org, proj, "post", f"/pilots/{iid}/marks", json={"line_id": lines[0], "start": 0, "end": 3, "tag": "host", "note": "主持引导不当"})
+    out = _api(org, proj, "post", f"/pilots/{iid}/suggest").json()
+    first = _api(org, proj, "get", "").json()["items"][0]["uid"]
+    mine = [r for r in out["revisions"] if r["item_uid"] == first]
+    assert [r["destination"] for r in mine].count("outline") == 1 and "host_engine" in {r["destination"] for r in mine}   # two marks and a finding about one question made ONE outline rewrite
+    assert any("没有问到" in r["reason"] for r in out["revisions"] if r["item_uid"] != first)                              # questions the pilot never asked are reported too
+    host = next(r for r in out["revisions"] if r["destination"] == "host_engine")
+    ok = _api(org, proj, "post", f"/revisions/{host['id']}/accept")
+    assert ok.status_code == 200                                           # a training case number is made for it
+    outline_rev = next(r for r in out["revisions"] if r["destination"] == "outline")
+    before = _api(org, proj, "get", "").json()["items"][0]["text"]
+    assert _api(org, proj, "post", f"/revisions/{outline_rev['id']}/accept", role="observer").status_code == 403
+    assert _api(org, proj, "post", f"/revisions/{outline_rev['id']}/accept").json()["items"][0]["text"] != before
+
+
+def test_a_new_version_is_a_copy_with_the_same_permanent_ids(org, proj):
+    _ready(org, proj)
+    v1 = _api(org, proj, "get", "").json()
+    out = _api(org, proj, "post", "/versions", json={"summary": "第二版"}).json()
+    assert out["version"] == 2 and {v["number"] for v in out["versions"]} == {1, 2}
+    v2 = _api(org, proj, "get", "").json()
+    assert [i["uid"] for i in v2["items"]] == [i["uid"] for i in v1["items"]] and v2["version"]["number"] == 2

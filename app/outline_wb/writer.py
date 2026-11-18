@@ -116,3 +116,22 @@ def chat_ops(chat: ModeratorChatProvider | None, outline: list[dict], selected: 
 
 
 MODEL_FATAL = ChatFatalError
+
+
+FIX_PROMPT = SYSTEM_RULES + (' Task: rewrite ONE interview question so that the problems in NOTES are fixed (plain everyday words, one idea, neutral, 8-30 Chinese characters, a complete sentence). '
+                             'Input: QUESTION, NOTES, LANGUAGE. Output {"text":"the new question"}.')
+
+
+def fix_question(chat: ModeratorChatProvider | None, text: str, notes: list[str], lang: str = "zh", fmt: str = "") -> str:
+    """A rewrite of one question that answers the notes from a pilot. With no model it appends a plain invitation, only so the page can be walked through offline. A rewrite the quality gate blocks is
+    replaced by the same offline wording."""
+    from . import quality
+    fallback = re.sub(r"[？?]$", "", text) + ("，可以说说吗？" if lang == "zh" else ", could you tell me more?")
+    if chat is None:
+        return fallback
+    try:
+        new = " ".join(str(_ask(chat, FIX_PROMPT, {"QUESTION": text, "NOTES": notes, "LANGUAGE": lang}).get("text", "")).split())[:200]
+    except (ChatError, ValueError) as e:
+        log.warning("outline_wb: fix_question failed (%s)", type(e).__name__)
+        return fallback
+    return new if new and not quality.check_question(new, lang, fmt)["blocked"] else fallback

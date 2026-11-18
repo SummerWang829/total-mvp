@@ -13,7 +13,7 @@ from ..deps import STAFF, Ctx, ensure_project, require_roles
 from ..models import Project
 from ..moderator.compliance import moderator_runs_locally
 from ..moderator.providers import ChatError, ChatFatalError, get_moderator_chat
-from ..outline_wb import session as sess
+from ..outline_wb import session as sess, stage3
 from ..outline_wb.service import OutlineError
 from ..recruit_form import MSG_VENDOR_MISSING
 
@@ -62,6 +62,18 @@ class InsertBody(BaseModel):
     module: str = Field(default="", max_length=40)
     minutes: float | None = None
     config: dict = Field(default_factory=dict)
+
+
+class MarkBody(BaseModel):
+    line_id: str = Field(max_length=40)
+    start: int = Field(ge=0)
+    end: int = Field(ge=1)
+    tag: str = Field(max_length=12)
+    note: str = Field(default="", max_length=500)
+
+
+class VersionBody(BaseModel):
+    summary: str = Field(default="", max_length=300)
 
 
 class FocusBody(BaseModel):
@@ -210,3 +222,58 @@ def add_focus(pid: str, body: FocusBody, ctx: Ctx = Depends(require_roles(*STAFF
 @router.put("/focus/{fid}")
 def link_focus(pid: str, fid: str, body: LinkBody, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
     return _run(db, sess.link_focus, db, _project(db, ctx, pid), fid, body.item_uid)
+
+
+@router.get("/preview")
+def preview(pid: str, lang: str | None = None, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    return _run(db, stage3.preview, db, _project(db, ctx, pid), lang)
+
+
+@router.get("/rehearsal")
+def rehearsal(pid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    return _run(db, stage3.rehearsal_view, db, _project(db, ctx, pid))
+
+
+@router.post("/rehearsal")
+def run_rehearsal(pid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    return _run(db, stage3.rehearse, db, _project(db, ctx, pid), ctx.user.id)
+
+
+@router.get("/pilots")
+def pilots(pid: str, ctx: Ctx = Depends(require_roles(*STAFF, *VIEWERS)), db: Session = Depends(get_db)):
+    return _run(db, stage3.pilots, db, _project(db, ctx, pid))
+
+
+@router.get("/pilots/{iid}")
+def pilot(pid: str, iid: str, ctx: Ctx = Depends(require_roles(*STAFF, *VIEWERS)), db: Session = Depends(get_db)):
+    return _run(db, stage3.pilot_view, db, _project(db, ctx, pid), iid)
+
+
+@router.post("/pilots/{iid}/marks")
+def add_mark(pid: str, iid: str, body: MarkBody, ctx: Ctx = Depends(require_roles(*STAFF, *VIEWERS)), db: Session = Depends(get_db)):
+    return _run(db, stage3.mark, db, _project(db, ctx, pid), iid, body.line_id, body.start, body.end, body.tag, body.note, ctx.user.id, ctx.user.role)
+
+
+@router.post("/pilots/{iid}/suggest")
+def suggest_fixes(pid: str, iid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    return _run(db, stage3.suggest_fixes, db, _project(db, ctx, pid), iid, _chat(), ctx.user.id)
+
+
+@router.get("/publish/check")
+def publish_check(pid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    p = _project(db, ctx, pid)
+    return {**_run(db, stage3.publish_checks, db, p), "versions": _run(db, stage3.versions, db, p)}
+
+
+@router.post("/publish")
+def publish(pid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    p = _project(db, ctx, pid)
+    out = _run(db, stage3.publish, db, p, ctx.user.id)
+    audit(db, ctx.org_id, ctx.actor, "outline_wb.publish", pid, ip=ctx.ip, version=out["version"])
+    db.commit()
+    return out
+
+
+@router.post("/versions")
+def new_version(pid: str, body: VersionBody, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    return _run(db, stage3.new_version, db, _project(db, ctx, pid), body.summary, ctx.user.id)

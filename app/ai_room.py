@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from .audit import audit
 from . import content_rules, guide_text, outline_versions, screener, signals
 from .models import AiSession, ChatMessage, SegmentCode, Interview, Project, Reaction, RoomState, Stimulus, TranscriptSegment, utcnow
-from .outline_wb import service as outline_wb_service
+from .outline_wb import service as outline_wb_service, stage3 as outline_wb_stage3
 from .outline_wb.models import OutlineSnapshot
 from .moderator.compliance import ai_moderation_blocker
 from .moderator.constants import AlertLevel, ModerationMode, Phase
@@ -230,6 +230,7 @@ def start(db: Session, itv: Interview, guide: dict | None, actor: str) -> AiSess
     Raises:
         AiRoomError: not an AI interview, not live, already started, the model cannot be used, or the guide is invalid.
     """
+    outline_wb_stage3.snapshot_on_start(db, itv)   # a published workbench outline is frozen for this interview before the engine reads its guide
     if itv.moderation != ModerationMode.AI.value:
         raise AiRoomError(409, "这场访谈不是 AI 主持")
     if itv.status != "live":

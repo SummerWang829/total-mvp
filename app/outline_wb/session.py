@@ -277,6 +277,10 @@ def chat_turn(db: Session, proj: Project, chat, text: str, selected: str, user_i
 
 
 def decide(db: Session, proj: Project, rid: str, accept: bool, user_id: str, role: str, train_case_id: str = "") -> dict:
+    """Accept or reject a revision. Accepting one for the AI host records a training case: its number is made here from the revision when the person did not type one."""
+    rev = db.get(Revision, rid)
+    if accept and rev is not None and rev.org_id == proj.org_id and rev.destination == "host_engine" and not train_case_id.strip():
+        train_case_id = "TC-" + rev.id[:8]
     if accept:
         svc.accept(db, proj.org_id, rid, user_id, role, train_case_id)
     else:

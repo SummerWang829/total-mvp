@@ -224,16 +224,23 @@ def snapshot_to_guide(snap: OutlineSnapshot, language: str, duration_min: float)
     """The AI host's configuration (the dict `InterviewGuide` validates) built from a snapshot, so the running interview never reads the live outline.
 
     Questions and ratings become topics per module (the module named like a warm-up supplies the warm-up questions, notes become the section guide); materials become stimuli;
-    backup items are left out.
+    backup items are left out. `meta` (follow-up depth and guide of every question, in the same order) is what the outline text format keeps next to each question.
 
     Raises:
         OutlineError: the snapshot has no question to ask in `language`.
     """
     c = snap.content
+
     def text(it: dict) -> str:
         return (it["texts"].get(language) or it["texts"].get("zh") or it["texts"].get("en") or "").strip()
+
+    def meta(it: dict) -> dict:
+        return {"depth": (it.get("config") or {}).get("depth", "shallow"), "guide": "；".join(it.get("followups") or [])[:480], "dim": "", "mark": False, "reason": "", "mark_by": ""}
+
     warm: list[str] = []
+    warm_meta: list[dict] = []
     topics: dict[str, dict] = {}
+    topic_meta: dict[str, list[dict]] = {}
     stimuli: list[dict] = []
     for it in sorted(c["items"], key=lambda x: x["position"]):
         if it["is_backup"] or not text(it):
@@ -243,17 +250,22 @@ def snapshot_to_guide(snap: OutlineSnapshot, language: str, duration_min: float)
             stimuli.append({"id": it["item_uid"], "description": (it["config"].get("title") or text(it))[:300], "questions": [text(it)]})
         elif mod in WARMUP_MODULES and it["kind"] in ("question", "rating"):
             warm.append(text(it))
+            warm_meta.append(meta(it))
         elif it["kind"] == "note":
             topics.setdefault(mod, {"id": it["item_uid"], "title": mod, "questions": [], "must_cover": [], "section_guide": ""})["section_guide"] = text(it)[:500]
         else:
             t = topics.setdefault(mod, {"id": it["item_uid"], "title": mod, "questions": [], "must_cover": [], "section_guide": ""})
             t["questions"].append(text(it))
+            topic_meta.setdefault(mod, []).append(meta(it))
             t["must_cover"] += [{"id": f"{it['item_uid']}_{n}", "text": m[:300]} for n, m in enumerate(it["must_cover"])]
-    topic_list = [t for t in topics.values() if t["questions"]]
-    if not topic_list:
+    keep = [m for m, t in topics.items() if t["questions"]]
+    if not keep:
         raise OutlineError("这份大纲还没有可问的题")
+    topic_list = [topics[m] for m in keep]
+    if not warm:
+        warm, warm_meta = [topic_list[0]["questions"][0]], [topic_meta[keep[0]][0]]
     return {"research_goal": c.get("goal") or "（未写研究目标）", "participant_topic": (c.get("topic") or "")[:20], "language": language, "duration_min": float(duration_min),
-            "warmup_questions": warm or [topic_list[0]["questions"][0]], "topics": topic_list, "stimuli": stimuli}
+            "warmup_questions": warm, "topics": topic_list, "stimuli": stimuli, "meta": {"warmup": warm_meta, "topics": [topic_meta[m] for m in keep]}}
 
 
 # ---- transcript lines and question numbers -----------------------------------------------------------------------------
@@ -391,9 +403,10 @@ def add_mark(db: Session, org_id: str, interview_id: str, line: CaptionLine, sta
     """Circle part of a transcript line. The quote is copied from the line by the server; the question number comes from the line."""
     if line.org_id != org_id or line.interview_id != interview_id:
         raise OutlineError("笔录不存在", 404)
-    if not 0 <= start < end <= len(line.text):
+    words = getattr(line, "text", None) or getattr(line, "text_orig", "") or ""
+    if not 0 <= start < end <= len(words):
         raise OutlineError("圈选范围不对")
-    m = Mark(org_id=org_id, interview_id=interview_id, line_id=line.id, item_uid=line.item_uid, quote=line.text[start:end], start=start, end=end, tag=tag, note=note,
+    m = Mark(org_id=org_id, interview_id=interview_id, line_id=line.id, item_uid=line.item_uid, quote=words[start:end], start=start, end=end, tag=tag, note=note,
              author_id=author_id, author_role="client" if author_role == "viewer" else "researcher")
     db.add(m)
     db.flush()
