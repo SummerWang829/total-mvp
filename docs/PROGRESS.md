@@ -5,6 +5,14 @@
 > qa.sh 数字的顺序：逻辑测试（pytest）/ 全站浏览器检查 / 真实视频访谈 / 一键启动。
 
 
+## 2026-11-18 · 部署 3652fd2（大纲工作台）：服务器已更新，未写 DEPLOYED.txt（等用户确认和浏览器检查）
+- 前提：线上 DEPLOYED.txt 最后一条是 3669e57，线上 app 文件与 3669e57 一致（忽略 CRLF 行尾，279 个文件）。访谈直播没有进行中场次、没有正在录制、AI 主持没有未结束的场次（三项都是 0）。
+- 备份：数据库在线备份 `/opt/total-mvp/backups/total-20261118-1824.db`（integrity_check = ok，2748416 字节）；代码 `/opt/total-mvp/backups/app-20261118-1824.tgz`（4977443 字节）；异地 COS 备份 `total-20261118-102412.db.gz` 上传成功。镜像标签 `total-app:rollback-3669e57`。
+- 基线：表 71 个；projects 2、interviews 4、participants 5、transcript_segments 0、caption_lines 0、clips 0、insights 0。
+- 部署：`git archive 3652fd2 app` 覆盖 `/opt/total-mvp/app`；`docker compose -p deploy up -d --build --no-deps app`。
+- 核对：启动日志无报错，`board: job failed` 为 0；表总数 83 = 71 + 12，12 张新表齐全；新列都在；app healthy；`/api/health`、`/api/public/config`、`/index.html`、`/shell.js`、`/ui_v11.css` 200，公网 `/api/health` 200；`app.doctor` 没有必须解决的问题；AI 后台登记了 outline_wb.wording / module / chat / fix / code 五个功能；保留期 `--dry-run` 输出：`would purge: {'interviews': 0, 'projects': {}, 'projects_with_active_interviews': []}`。
+- 还没做：6.2 pilot 实测、6.3 看板和房间按钮、6.4 老项目回退、6.5 权限与隔离（需要客户、另一家公司、观察员的测试账号和浏览器）、6.6 三种主题和手机宽度检查；6.8 看板压测**等用户确认法务问题（部署词第四节）后再跑**。因为 6.1–6.8 没有全部通过，**没有写 DEPLOYED.txt**。
+- 线上残留：部署前后的其他文件没有删除。
 ## 2026-11-18 · 大纲工作台：房间“标为正在问”按钮 + Pilot 笔录改题号（用户已确认效果图）
 
 - 房间（真人主持的一对一，主持人视角）：大纲每道题旁“标为正在问”，点了变“正在问 · 你指定的”，之后每句按它归属；标题旁“交给系统自动判断”清除。观察员、客户、AI 主持的场次不显示。接口 `PUT /api/interviews/{id}/current-question`（`outline_wb.room_router`）；`/assist` 对主持人多给 `wb`。样式在 `ui_room.css`。
