@@ -141,3 +141,4 @@ body.ob-on #rmtabs{display:none!important}
 .bk{display:inline-flex;align-items:center;gap:6px}
 .ow-lsel{height:28px;max-width:84px;padding:0 4px}.ow-lsel.guess{color:var(--ow-warn);border-color:var(--ow-warn)}
 .ow-tr{grid-template-columns:70px 56px 84px minmax(0,1fr) 54px}
+@media (max-width:900px){#owbbar a,#owsteps a,#owsteps3 a{min-height:40px!important;display:flex;align-items:center}}   /* 手机上点击区不小于 36px（全站检查的要求） */
