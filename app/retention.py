@@ -103,6 +103,33 @@ def purge_project_extras(db: Session, project: Project, actor: str, reason: str)
     return out
 
 
+def due_interviews(db: Session, now=None) -> list[Interview]:
+    """The interviews the cleanup would purge now (the same selection `run_retention` uses). Read-only."""
+    now = now or utcnow()
+    back_cut = now - timedelta(days=settings.retention_backstop_days)
+    q = (select(Interview).join(Project, Project.id == Interview.project_id)
+         .where(Interview.purged_at.is_(None), Interview.ended_at.is_not(None))
+         .where((Project.closed_at.is_not(None)) | (Interview.ended_at < back_cut)))
+    q = q.where((Project.purge_hold_until.is_(None)) | (Project.purge_hold_until < now))
+    due = []
+    for itv in db.scalars(q).all():
+        proj = db.get(Project, itv.project_id)
+        if proj.closed_at is None or _closed_due(proj, now):
+            due.append(itv)
+    return due
+
+
+def preview(db: Session, now=None) -> dict:
+    """What the cleanup would do, without doing it: how many interviews, in which projects (ids only), and whether any of them belongs to a project that still has a live or scheduled interview
+    (that should be zero). Run it before trusting the cleanup after an upgrade: `python -m app.retention --dry-run`."""
+    due = due_interviews(db, now)
+    per: dict[str, int] = {}
+    for itv in due:
+        per[itv.project_id] = per.get(itv.project_id, 0) + 1
+    active = [pid for pid in per if db.scalar(select(Interview.id).where(Interview.project_id == pid, Interview.status.in_(("live", "scheduled")), Interview.purged_at.is_(None)).limit(1))]
+    return {"interviews": len(due), "projects": per, "projects_with_active_interviews": active}
+
+
 def run_retention(db: Session, now=None) -> int:
     """Delete personal data 180 days after the PROJECT closed. Projects never closed hit the backstop
     (RETENTION_BACKSTOP_DAYS after each interview ended) so data cannot be kept forever by forgetting to close."""

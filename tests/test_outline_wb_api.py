@@ -690,3 +690,85 @@ def test_the_pilot_view_lists_the_questions_a_line_can_be_moved_to(org, proj):
     iid, lines = _pilot_setup(org, proj)
     pv = _api(org, proj, "get", f"/pilots/{iid}").json()
     assert pv["questions"] and all({"uid", "label", "text"} <= set(q) for q in pv["questions"])
+
+
+# ---- upgrade safety: old projects, model scope, retention preview -------------------------------------------------------------------------------------------
+
+def test_a_project_that_never_used_the_workbench_still_runs_on_its_old_outline_text(org):
+    """The AI room reads the old outline text when an interview has no snapshot (every project made before the workbench, and any project whose outline was never published)."""
+    from app import ai_room
+    from app.db import SessionLocal
+    from app.models import Interview, Project
+    pid = org.project()
+    itv = org.interview(pid=pid, moderation="ai")
+    with SessionLocal() as db:
+        p = db.get(Project, pid)
+        p.outline_text = "目标: 了解护肤品选购\n受访者话题: 护肤品\n语言: en\n时长: 30\n## 暖场\n- 先聊聊你平时的护肤习惯？\n## 话题: 选购\n- 你上一次买护肤品是怎么选的？\n"
+        db.commit()
+        row = db.get(Interview, itv["id"])
+        assert row.outline_snapshot_id is None
+        g = ai_room.project_guide(db, row)
+        assert g is not None and "先聊聊你平时的护肤习惯？" in g.warmup_questions                  # the old text is what the room uses
+        from app.outline_wb import stage3
+        stage3.snapshot_on_start(db, row)
+        assert row.outline_snapshot_id is None                                                      # no workbench outline: nothing is frozen, nothing changes
+
+
+def test_an_unpublished_workbench_outline_is_not_used_by_a_real_interview_only_by_a_pilot(org, proj):
+    from app.db import SessionLocal
+    from app.models import Interview, Participant, Project
+    from app.outline_wb import stage3
+    _ready(org, proj)                                                                              # an outline exists, but it is only a draft
+    with SessionLocal() as db:
+        p = db.get(Project, proj)
+        part = Participant(org_id=p.org_id, project_id=p.id, name="x", country="SG", language="zh", code="M-1")
+        db.add(part)
+        db.flush()
+        real = Interview(org_id=p.org_id, project_id=p.id, participant_id=part.id, title="真", language="zh", status="live", invite_hash="r1")
+        pilot = Interview(org_id=p.org_id, project_id=p.id, participant_id=part.id, title="试", language="zh", status="live", invite_hash="r2", is_pilot=True)
+        db.add_all([real, pilot])
+        db.flush()
+        stage3.snapshot_on_start(db, real)
+        stage3.snapshot_on_start(db, pilot)
+        assert real.outline_snapshot_id is None and pilot.outline_snapshot_id                       # a real interview never runs on an unpublished draft; a pilot runs on it
+
+
+def test_the_model_reads_answers_only_in_ai_moderated_interviews_whose_consent_names_the_vendor(org, proj):
+    import time
+    from app.db import SessionLocal
+    from app.models import Interview
+    from app.outline_wb import board
+    calls = {"n": 0}
+
+    class Spy:
+        name = "spy"
+
+        def complete(self, msgs, **kw):  # noqa: ANN001, ANN003
+            calls["n"] += 1
+            return {"code": "偏贵", "confidence": 0.9}
+
+    old = board._chat
+    board._chat = lambda: Spy()
+    try:
+        iid, fid, uid = _board_setup(org, proj)                                                     # a human-moderated interview
+        items = _api(org, proj, "get", "").json()["items"]
+        _say(iid, "moderator", items[0]["text"], 1)
+        _say(iid, "participant", "我平时在网上买，价格偏贵。", 2)
+        assert _wait(lambda: _api(org, proj, "get", "/board").json()["cards"][0]["answered"] == 1)
+        assert calls["n"] == 0                                                                      # coded by the offline rules, the model never saw the words
+        with SessionLocal() as db:
+            db.get(Interview, iid).moderation = "ai"
+            db.commit()
+        _say(iid, "participant", "第二位也觉得价格偏贵，而且包装很好看。", 3)
+        assert _wait(lambda: calls["n"] >= 1)                                                       # an AI-moderated one may use the model
+    finally:
+        board._chat = old
+
+
+def test_the_retention_preview_only_looks_and_reports_active_projects(org, proj):
+    from app import retention
+    from app.db import SessionLocal
+    iid, fid, uid = _board_setup(org, proj)
+    with SessionLocal() as db:
+        r = retention.preview(db)
+        assert r["interviews"] == 0 and r["projects_with_active_interviews"] == []

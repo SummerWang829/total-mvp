@@ -51,6 +51,7 @@ class Task:
     item_uid: str | None
     at_ms: int
     queued: float
+    ai: bool = False   # an AI-moderated interview: its consent names the model vendor, so the model may read the answer; otherwise the offline rules code it
 
 
 def _items(db: Session, snap_id: str) -> list[dict]:
@@ -110,7 +111,7 @@ def assign(db: Session, itv: Interview, line, speaker: str, text: str, question:
         line.item_uid, line.item_source = uid, src
     if itv.is_pilot or speaker != "participant" or len(re.sub(r"\W+", "", text)) < MIN_WORDS:
         return None
-    return Task(itv.id, itv.org_id, itv.project_id, kind, line.id, text, uid, int(getattr(line, "at_ms", 0) or 0), time.monotonic())
+    return Task(itv.id, itv.org_id, itv.project_id, kind, line.id, text, uid, int(getattr(line, "at_ms", 0) or 0), time.monotonic(), ai=itv.moderation == "ai")
 
 
 def set_current(db: Session, itv: Interview, item_uid: str | None) -> None:
@@ -141,7 +142,7 @@ def reassign_line(db: Session, itv: Interview, line_id: str, item_uid: str) -> d
     speaker = "participant" if (getattr(row, "speaker", None) == "participant" or getattr(row, "sender", None) == "participant") else ""
     db.flush()
     if speaker and not itv.is_pilot and len(re.sub(r"\W+", "", row.text)) >= MIN_WORDS:
-        submit(Task(itv.id, itv.org_id, itv.project_id, kind, row.id, row.text, item_uid, int(getattr(row, "at_ms", 0) or 0), time.monotonic()))
+        submit(Task(itv.id, itv.org_id, itv.project_id, kind, row.id, row.text, item_uid, int(getattr(row, "at_ms", 0) or 0), time.monotonic(), ai=itv.moderation == "ai"))
     return {"line_id": line_id, "item_uid": item_uid}
 
 
@@ -169,7 +170,9 @@ def _recode(coded_id: str) -> None:
             if c is None or f is None or c.code or not text:
                 return
             q, codes = f.text, list(f.codes or [])
-        code, conf, _ = _code(q, codes, text)
+            itv = db.get(Interview, c.interview_id)
+            ai = bool(itv and itv.moderation == "ai")
+        code, conf, _ = _code(q, codes, text, ai)
         with SessionLocal() as db:
             c = db.get(CodedAnswer, coded_id)
             if c is not None and not c.code:
@@ -232,7 +235,7 @@ def _run(task: Task) -> None:
             if how == "collect" and not codes:   # "collect the words first": nothing to choose from yet, so no model is asked; the answer waits to be grouped
                 code, conf, used_model = "", 1.0, False
             else:
-                code, conf, used_model = _code(ftext, codes, task.text)
+                code, conf, used_model = _code(ftext, codes, task.text, task.ai)
             results.append((fid, asked, uid, code, conf))
         if results:
             with SessionLocal() as db:
@@ -251,8 +254,9 @@ def _run(task: Task) -> None:
         del METRICS[:-5000]
 
 
-def _code(question: str, codes: list[str], text: str) -> tuple[str, float, bool]:
-    chat = _chat()
+def _code(question: str, codes: list[str], text: str, allow_model: bool) -> tuple[str, float, bool]:
+    """Code one answer. The model reads it only when `allow_model` (the interview is AI-moderated: its consent names the vendor that processes the answers); otherwise the offline rules code it."""
+    chat = _chat() if allow_model else None
     code, conf = writer.code_answer(chat, question, codes, text)
     return code, conf, chat is not None
 
