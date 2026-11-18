@@ -165,7 +165,7 @@ def _add_message(db: Session, itv: Interview, sender: str, text: str, payload: M
                       model=str(getattr(getattr(getattr(engine, "calls", None), "chat", None), "name", ""))[:60] if engine else "")
     db.add(row)
     db.flush()
-    outline_wb_board.submit(outline_wb_board.assign(db, itv, row, sender, text))   # its outline question; coded in the background when it answers a focus question
+    outline_wb_board.submit(outline_wb_board.assign(db, itv, row, sender, text, question=(plan.decision.question if plan else None), engine=payload is not None))   # its outline question; coded in the background when it answers a focus question
     return row
 
 

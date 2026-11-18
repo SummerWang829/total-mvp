@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from ..audit import audit
 from ..config import settings
 from ..db import get_db
-from ..deps import STAFF, Ctx, ensure_project, require_roles
+from ..deps import STAFF, Ctx, ensure_project, require_roles, visible_interview
 from ..models import Project
 from ..moderator.compliance import moderator_runs_locally
 from ..moderator.providers import ChatError, ChatFatalError, get_moderator_chat
@@ -105,6 +105,14 @@ class LinesBody(BaseModel):
 
 class GroupsBody(BaseModel):
     groups: list[dict] = Field(max_length=12)
+
+
+class CurrentBody(BaseModel):
+    item_uid: str | None = Field(default=None, max_length=40)
+
+
+class LineItemBody(BaseModel):
+    item_uid: str = Field(max_length=40)
 
 
 class VersionBody(BaseModel):
@@ -418,3 +426,25 @@ def focus_clusters(pid: str, fid: str, ctx: Ctx = Depends(require_roles(*STAFF))
 @router.post("/board/focus/{fid}/codes")
 def focus_codes(pid: str, fid: str, body: GroupsBody, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
     return _run(db, focus_new.set_codes, db, _project(db, ctx, pid), fid, body.groups)
+
+
+# ---- 题号归属：真人主持说“正在问这一题”，研究员事后改某一句的题号 ------------------------------------------------------------------------
+
+@router.put("/interviews/{iid}/current-question")
+def current_question(pid: str, iid: str, body: CurrentBody, ctx: Ctx = Depends(require_roles(*STAFF, "moderator")), db: Session = Depends(get_db)):
+    itv = visible_interview(db, ctx, iid)
+    if itv.project_id != pid:
+        raise HTTPException(404, "访谈不存在")
+    _run(db, board.set_current, db, itv, body.item_uid)
+    return {"current": itv.current_item_uid}
+
+
+@router.put("/interviews/{iid}/lines/{lid}/item")
+def line_item(pid: str, iid: str, lid: str, body: LineItemBody, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    itv = visible_interview(db, ctx, iid)
+    if itv.project_id != pid:
+        raise HTTPException(404, "访谈不存在")
+    out = _run(db, board.reassign_line, db, itv, lid, body.item_uid)
+    audit(db, ctx.org_id, ctx.actor, "outline_wb.line_item", iid, ip=ctx.ip)   # only that a number was fixed, never the words
+    db.commit()
+    return out

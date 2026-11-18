@@ -201,7 +201,7 @@
       const mk = pv.marks.filter((m) => m.line_id === ln.id);
       const fi = pv.findings.filter((f) => f.line_id === ln.id);
       const form = S.markForm === ln.id ? `<div class="ow-mform"><select class="ow-sel" id="ow-mk-tag" aria-label="标签">${Object.entries(TAG).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select><input class="ow-in" id="ow-mk-note" aria-label="意见" placeholder="意见（可以不写）"><button type="button" class="p s" data-ow="mark-ok" data-line="${ln.id}">圈出</button><button type="button" class="s" data-ow="mark-cancel">取消</button></div>` : "";
-      return `<div class="ow-tr"><span class="tm">${fmtT(ln.at_ms)}</span><span>${ln.speaker === "moderator" ? "主持" : "受访者"}</span><span class="ow-pill">${E(ln.label || "—")}</span>
+      return `<div class="ow-tr"><span class="tm">${fmtT(ln.at_ms)}</span><span>${ln.speaker === "moderator" ? "主持" : "受访者"}</span><span class="ow-pill ${ln.source === "guess" ? "warn" : ""}" title="${{ ai: "AI 主持告诉的", host: "主持人指定的", guess: "按题目相似度猜的", edited: "研究员改的" }[ln.source] || ""}">${E(ln.label || "—")}${ln.source === "guess" ? "?" : ""}</span>
         <span class="tx" data-line-text="${ln.id}">${E(ln.text)}${ln.why ? ` <span class="sm mut" title="${E(ln.why.reason)}">▸ ${E(ln.why.action)}：${E(ln.why.reason)}</span>` : ""}${fi.map((f) => ` <span class="ow-pill bad">${E(f.text)}</span>`).join("")}${mk.map((m) => ` <span class="ow-pill warn">${E(m.tag_text)}</span>`).join("")}</span>
         <button type="button" class="s" data-ow="mark-open" data-line="${ln.id}">圈出</button></div>${form}`;
     }).join("");

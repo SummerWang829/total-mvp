@@ -573,3 +573,96 @@ def test_a_question_added_for_the_next_interviews_is_a_pending_revision_that_lin
         running = db.get(Interview, iid)
         from app.outline_wb.models import OutlineSnapshot
         assert len(db.get(OutlineSnapshot, running.outline_snapshot_id).content["items"]) == n_before     # the interview already running keeps its snapshot
+
+
+# ---- which question a line belongs to: host > ai > guess, and a fix afterwards ---------------------------------------------------------------------------------
+
+def _line_row(iid, seq):
+    from app.db import SessionLocal
+    from app.models import CaptionLine
+    with SessionLocal() as db:
+        r = db.query(CaptionLine).filter_by(interview_id=iid, seq=seq).one()
+        return r.item_uid, r.item_source, r.id
+
+
+def test_the_ai_engine_says_which_prepared_question_it_asked_and_follow_ups_stay_under_it(org, proj):
+    from app.db import SessionLocal
+    from app.models import CaptionLine, Interview
+    from app.outline_wb import board
+    iid, fid, uid = _board_setup(org, proj)
+    items = _api(org, proj, "get", "").json()["items"]
+    with SessionLocal() as db:
+        itv = db.get(Interview, iid)
+        a = CaptionLine(org_id=itv.org_id, interview_id=iid, seq=1, speaker="moderator", text="随便什么话", at_ms=1)
+        db.add(a)
+        db.flush()
+        board.assign(db, itv, a, "ai", "随便什么话", question=items[1]["text"], engine=True)     # the engine names the prepared question (words that do not look like it at all)
+        b = CaptionLine(org_id=itv.org_id, interview_id=iid, seq=2, speaker="moderator", text="能再说说吗", at_ms=2)
+        db.add(b)
+        db.flush()
+        board.assign(db, itv, b, "ai", "能再说说吗", question=None, engine=True)               # a follow-up: no prepared question
+        c = CaptionLine(org_id=itv.org_id, interview_id=iid, seq=3, speaker="participant", text="就是这样吧我觉得", at_ms=3)
+        db.add(c)
+        db.flush()
+        board.assign(db, itv, c, "participant", "就是这样吧我觉得")
+        db.commit()
+    assert _line_row(iid, 1)[:2] == (items[1]["uid"], "ai")
+    assert _line_row(iid, 2)[:2] == (items[1]["uid"], "ai")
+    assert _line_row(iid, 3)[:2] == (items[1]["uid"], "ai")                                          # the answer stays under the question, with the same certainty
+
+
+def test_when_nobody_says_it_is_a_guess_and_the_board_marks_the_guesses(org, proj):
+    iid, fid, uid = _board_setup(org, proj)
+    items = _api(org, proj, "get", "").json()["items"]
+    _say(iid, "moderator", items[0]["text"], 1)
+    _say(iid, "participant", "我平时在网上买东西，价格偏贵。", 2)
+    assert _line_row(iid, 1)[1] == "guess" and _line_row(iid, 2)[1] == "guess"
+    assert _wait(lambda: _api(org, proj, "get", "/board").json()["cards"][0]["answered"] == 1)
+    assert _api(org, proj, "get", "/board").json()["cards"][0]["guessed"] == 1
+    assert _api(org, proj, "get", f"/board/focus/{fid}").json()["quotes"][0]["src"] == "guess"
+
+
+def test_the_human_moderator_can_say_which_question_is_being_asked_and_that_wins(org, proj):
+    iid, fid, uid = _board_setup(org, proj)
+    items = _api(org, proj, "get", "").json()["items"]
+    r = _api(org, proj, "put", f"/interviews/{iid}/current-question", json={"item_uid": items[2]["uid"]}, role="moderator")
+    assert r.status_code in (200, 404)                              # the moderator of this interview may; a moderator not on it gets "not found"
+    r = _api(org, proj, "put", f"/interviews/{iid}/current-question", json={"item_uid": items[2]["uid"]})
+    assert r.status_code == 200 and r.json()["current"] == items[2]["uid"]
+    _say(iid, "moderator", items[0]["text"], 1)                     # the words look like question 1, but the moderator said question 3
+    assert _line_row(iid, 1)[:2] == (items[2]["uid"], "host")
+    assert _api(org, proj, "put", f"/interviews/{iid}/current-question", json={"item_uid": "nope"}).status_code == 404
+    assert _api(org, proj, "put", f"/interviews/{iid}/current-question", json={"item_uid": None}).json()["current"] is None
+    _say(iid, "moderator", items[0]["text"], 2)
+    assert _line_row(iid, 2)[1] == "guess"                          # back to automatic
+
+
+def test_a_researcher_can_fix_a_lines_question_afterwards_and_it_is_coded_again(org, proj):
+    iid, fid, uid = _board_setup(org, proj)
+    items = _api(org, proj, "get", "").json()["items"]
+    _say(iid, "moderator", items[1]["text"], 1)
+    _say(iid, "participant", "我平时在网上买东西，价格偏贵。", 2)
+    assert _wait(lambda: _api(org, proj, "get", f"/board/focus/{fid}").json()["quotes"] != [])
+    assert _api(org, proj, "get", f"/board/focus/{fid}").json()["quotes"][0]["origin"] == "volunteered"     # it was under another question
+    lid = _line_row(iid, 2)[2]
+    assert _api(org, proj, "put", f"/interviews/{iid}/lines/{lid}/item", json={"item_uid": uid}, role="observer").status_code == 403
+    assert _api(org, proj, "put", f"/interviews/{iid}/lines/{lid}/item", json={"item_uid": "nope"}).status_code == 404
+    assert _api(org, proj, "put", f"/interviews/{iid}/lines/{lid}/item", json={"item_uid": uid}).status_code == 200
+    assert _line_row(iid, 2)[:2] == (uid, "edited")
+    assert _wait(lambda: (lambda q: bool(q) and q[0]["origin"] == "asked")(_api(org, proj, "get", f"/board/focus/{fid}").json()["quotes"]))     # coded again, now "asked"
+
+
+def test_a_pilot_is_numbered_but_not_coded(org, proj):
+    from app.db import SessionLocal
+    from app.models import CaptionLine, Interview
+    from app.outline_wb import board, stage3
+    iid, fid, uid = _board_setup(org, proj)
+    with SessionLocal() as db:
+        itv = db.get(Interview, iid)
+        itv.is_pilot = True
+        line = CaptionLine(org_id=itv.org_id, interview_id=iid, seq=1, speaker="participant", text="我平时在网上买东西。", at_ms=1)
+        db.add(line)
+        db.flush()
+        task = board.assign(db, itv, line, "participant", "我平时在网上买东西。")
+        db.commit()
+    assert task is None

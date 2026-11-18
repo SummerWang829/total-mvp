@@ -5,6 +5,16 @@
 > qa.sh 数字的顺序：逻辑测试（pytest）/ 全站浏览器检查 / 真实视频访谈 / 一键启动。
 
 
+## 2026-11-18 · 大纲工作台：每句挂题号（host > ai > guess，事后可改）
+
+- 来源三种，优先级从高到低：**host**（真人主持人指定“正在问这一题”，`PUT /outline-wb/interviews/{id}/current-question`）> **ai**（AI 主持引擎提问时带的“准备好的那道题”原句，按文字精确对应到大纲条目；引擎没带题的追问算同一题；受访者的句子跟着前一题，保持同样的确定程度）> **guess**（谁都没说时，按题目相似度加大纲顺序猜）。另有 **edited**：研究员事后改某一句（`PUT /outline-wb/interviews/{id}/lines/{lid}/item`，AI 之前编的码作废、重新编；审计只记“改过题号”，不记原话）。
+- pilot 现在也会被挂题号（以前只有演示数据有），但不编码。
+- 看板：关注问题卡片显示“题号是猜的 N”，原话旁标“题号是猜的”；Pilot 笔录里猜的题号带“?”。
+- 改动的现有文件：`ai_room._add_message`（把引擎的 `decision.question` 传给挂题号）；`interviews` 新增 `current_item_uid/current_item_at` 两列，`chat_messages` 新增 `item_uid/item_source`。**没有改 AI 主持引擎本身的代码。**
+- 测试：新增 5 个（共 41 个）；相关 pytest 243 个通过；`outline_board_section` 68 项、`outline_wb_test_section` 59 项通过。
+- **没做（等你确认效果图）：** 房间里真人主持人“正在问这一题”的按钮；Pilot 笔录里点题号改题号的下拉。接口都有，页面没放。没有按钮前，真人主持的场次仍是靠猜（会标“猜”）。
+- 备份分支：`backup/outline-wb-lines-20261118`。
+
 ## 2026-11-18 · 大纲工作台 阶段 5：中途新增关注问题 + pilot 必做与汇总
 
 - **pilot 是必须的（用户 2026-11-18 要求）：** 发布前检查里“还没有做完一场 pilot”是“不行”，不能发布；左侧栏状态块和 pilot 页顶部都会提醒。pilot 在**草稿**上跑（访谈开始存快照时，没有已发布版本的 pilot 用当前草稿）。

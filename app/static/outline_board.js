@@ -27,7 +27,7 @@
     return `<div class="ob-card"><div class="hd"><b>${E(c.text)}</b>${pill(c.role === "client" ? "客户" : "研究员")}</div>
       <div class="sm mut">已回答 <b class="ink">${c.answered}</b> 人 · 最多的说法：<b class="ink">${E(c.top || "—")}${c.top_n ? `（${c.top_n} 人）` : ""}</b></div>
       <div class="ob-stat"><div><span class="mut sm">新到</span><b>${c.new} 条</b></div><div><span class="mut sm">没问到</span><b>${c.missing}</b></div><div><span class="mut sm">待复核</span><b>${c.review}</b></div></div>
-      <div class="ow-row">${sat}${pill(`被问到 ${c.asked} · 主动提到 ${c.volunteered}`)}<span class="sp"></span><button type="button" class="s" data-ob-open="${c.id}">看详情</button></div></div>`;
+      <div class="ow-row">${sat}${pill(`被问到 ${c.asked} · 主动提到 ${c.volunteered}`)}${c.guessed ? pill(`题号是猜的 ${c.guessed}`, "warn") : ""}<span class="sp"></span><button type="button" class="s" data-ob-open="${c.id}">看详情</button></div></div>`;
   }
   function overview() {
     const d = B.d; if (!d) return `<div class="card ow-card mut">正在读取……</div>`;
@@ -71,7 +71,7 @@
     const max = Math.max(1, ...f.dist.map((x) => x.n));
     const bars = f.dist.map((x) => `<div class="ob-bar"><span>${E(x.code)}</span><span class="t"><i style="width:${Math.round(x.n * 100 / max)}%"></i></span><span class="n">${x.n} 人${x.pct != null ? ` · ${x.pct}%` : ""}</span></div>`).join("");
     const grp = f.groups.map((g) => `<div class="ob-bar g"><span>${E(g.group)}</span><span class="t"><i style="width:${Math.round(g.total * 100 / Math.max(1, f.dist.reduce((a, x) => a + x.n, 0)))}%"></i></span><span class="n">${g.dist.slice(0, 2).map((x) => `${E(x.code)} ${x.n}`).join(" / ")}</span></div>`).join("");
-    const rows = f.quotes.map((x) => `<div class="ob-q" data-ob-ans="${x.id}">${pill(x.who)}<span>“${E(x.text)}”${x.in ? ` <span class="mut sm">（主动提到，在 ${E(x.in)}）</span>` : ""}</span>${pill(x.code, x.review ? "warn" : "")}<span class="conf${x.review ? " w" : ""}">${x.confidence.toFixed(2)}${x.review ? " 待复核" : ""}</span></div>`).join("");
+    const rows = f.quotes.map((x) => `<div class="ob-q" data-ob-ans="${x.id}">${pill(x.who)}<span>“${E(x.text)}”${x.in ? ` <span class="mut sm">（主动提到，在 ${E(x.in)}）</span>` : ""}</span>${pill(x.code, x.review ? "warn" : "")}${x.src === "guess" ? pill("题号是猜的", "warn") : ""}<span class="conf${x.review ? " w" : ""}">${x.confidence.toFixed(2)}${x.review ? " 待复核" : ""}</span></div>`).join("");
     return `<div class="ow-row"><b>单个关注问题</b>${pick}${f.label ? pill(`对应 ${f.label}`) : ""}<span class="sp"></span><span class="ow-seg">${ORIGIN.map(([k, l]) => `<button type="button" class="${B.origin === k ? "on" : ""}" data-ob-origin="${k}">${l}</button>`).join("")}</span></div>
       <div class="card ow-card"><h3>回答分布 <span class="mut sm">${f.percent ? `（${f.n} 人）` : `（${f.n} 人，不到 20 人，只显示人数不显示百分比）`}</span></h3>${bars || `<div class="mut">还没有回答。</div>`}</div>
       ${f.pending ? `<div class="card ow-card"><h3>还没归类的回答 <span class="mut sm">（${f.pending} 条，不计入上面的统计）</span></h3>${f.can_cluster ? `<button type="button" class="p" data-ob="cluster">按意思归类</button>` : `<div class="mut">攒够 8 条后可以归类，现在 ${f.pending} 条。</div>`}</div>` : ""}

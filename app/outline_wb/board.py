@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from ..config import settings
 from ..db import SessionLocal
-from ..models import CaptionLine, ChatMessage, Clip, Interview, Participant, Project
+from ..models import CaptionLine, ChatMessage, Clip, Interview, Participant, Project, utcnow
 from ..moderator.compliance import moderator_runs_locally
 from ..moderator.providers import ChatError, ChatFatalError, get_moderator_chat
 from . import service as svc, writer
@@ -60,30 +60,89 @@ def _items(db: Session, snap_id: str) -> list[dict]:
     return _ITEMS[snap_id]
 
 
+def _prev(db: Session, itv: Interview, model, order) -> tuple[str | None, str]:
+    """The question and how it was found of the latest line of this interview that has one."""
+    row = db.execute(select(model.item_uid, model.item_source).where(model.interview_id == itv.id, model.item_uid.is_not(None)).order_by(order.desc()).limit(1)).first()
+    return (row[0], row[1] or "guess") if row else (None, "")
+
+
 def _prev_item(db: Session, itv: Interview, model, order) -> str | None:
-    return db.scalar(select(model.item_uid).where(model.interview_id == itv.id, model.item_uid.is_not(None)).order_by(order.desc()).limit(1))
+    return _prev(db, itv, model, order)[0]
 
 
-def assign(db: Session, itv: Interview, line, speaker: str, text: str) -> Task | None:
-    """Put a new line under its outline question (rules only, no model) and return a coding task when the line is worth coding. Nothing happens for an interview without a snapshot.
-    A moderator line is matched to the question it most resembles (the outline order breaks ties); a participant line stays under the question being asked."""
-    if not itv.outline_snapshot_id or itv.is_pilot:
+def _norm(s: str) -> str:
+    return re.sub(r"\s+", "", s or "")
+
+
+def match_question(items: list[dict], question: str) -> str | None:
+    """The outline item whose text is exactly this prepared question (the AI host asks the outline's own sentence when it moves to a question)."""
+    q = _norm(question)
+    return next((i["item_uid"] for i in items if q and any(_norm(t) == q for t in i["texts"].values())), None) if q else None
+
+
+def assign(db: Session, itv: Interview, line, speaker: str, text: str, question: str | None = None, engine: bool = False) -> Task | None:
+    """Put a new line under its outline question and return a coding task when the line is worth coding. Nothing happens for an interview without a snapshot. How the question was found is
+    kept on the line: host (the human moderator pointed at it) > ai (the AI host's engine said which prepared question it was asking, or that this is a follow-up of the one before) >
+    guess (matched by wording and the outline order; only when nobody said). A participant's line stays under the question before it. A pilot is numbered too but never coded."""
+    if not itv.outline_snapshot_id:
         return None
     items = _items(db, itv.outline_snapshot_id)
     if not items:
         return None
     kind = "chat" if isinstance(line, ChatMessage) else "caption"
     model, order = (ChatMessage, ChatMessage.seq) if kind == "chat" else (CaptionLine, CaptionLine.seq)
-    prev = _prev_item(db, itv, model, order)
-    if speaker in ("moderator", "ai"):
-        uid = svc.guess_item_uid(text, items, prev) or prev
+    prev, prev_src = _prev(db, itv, model, order)
+    uid, src = None, ""
+    if itv.current_item_uid and any(i["item_uid"] == itv.current_item_uid for i in items):
+        uid, src = itv.current_item_uid, "host"
+    elif speaker in ("moderator", "ai"):
+        if question:
+            uid = match_question(items, question)
+            src = "ai" if uid else ""
+        if not uid and engine and prev:       # the engine spoke without a prepared question: a follow-up of the question before
+            uid, src = prev, "ai"
+        if not uid:
+            g = svc.guess_item_uid(text, items, prev)
+            uid, src = (g or prev), ("guess" if (g or prev) else "")
     else:
-        uid = prev
+        uid, src = prev, prev_src
     if uid:
-        line.item_uid, line.item_source = uid, "guess"
-    if speaker != "participant" or len(re.sub(r"\W+", "", text)) < MIN_WORDS:
+        line.item_uid, line.item_source = uid, src
+    if itv.is_pilot or speaker != "participant" or len(re.sub(r"\W+", "", text)) < MIN_WORDS:
         return None
     return Task(itv.id, itv.org_id, itv.project_id, kind, line.id, text, uid, int(getattr(line, "at_ms", 0) or 0), time.monotonic())
+
+
+def set_current(db: Session, itv: Interview, item_uid: str | None) -> None:
+    """The human moderator says which question is being asked now (None = back to automatic).
+
+    Raises:
+        OutlineError: the interview has no outline snapshot, or the question is not in it.
+    """
+    if not itv.outline_snapshot_id:
+        raise svc.OutlineError("这场访谈没有用新大纲")
+    if item_uid and not any(i["item_uid"] == item_uid for i in _items(db, itv.outline_snapshot_id)):
+        raise svc.OutlineError("这道题不在这场访谈用的大纲里", 404)
+    itv.current_item_uid, itv.current_item_at = item_uid or None, utcnow() if item_uid else None
+
+
+def reassign_line(db: Session, itv: Interview, line_id: str, item_uid: str) -> dict:
+    """A researcher fixes the question number of a line afterwards. The line is marked "edited"; what was coded from it by the AI is thrown away and the line is coded again under its new question."""
+    items = _items(db, itv.outline_snapshot_id) if itv.outline_snapshot_id else []
+    if not any(i["item_uid"] == item_uid for i in items):
+        raise svc.OutlineError("这道题不在这场访谈用的大纲里", 404)
+    row = db.get(CaptionLine, line_id) or db.get(ChatMessage, line_id)
+    if row is None or row.interview_id != itv.id or row.org_id != itv.org_id:
+        raise svc.OutlineError("没有这句话", 404)
+    row.item_uid, row.item_source = item_uid, "edited"
+    for c in db.scalars(select(CodedAnswer).where(CodedAnswer.line_id == line_id, CodedAnswer.org_id == itv.org_id, CodedAnswer.coded_by == "ai", CodedAnswer.confirmed.is_(False))):
+        db.delete(c)
+    kind = "chat" if isinstance(row, ChatMessage) else "caption"
+    speaker = "participant" if (getattr(row, "speaker", None) == "participant" or getattr(row, "sender", None) == "participant") else ""
+    db.flush()
+    if speaker and not itv.is_pilot and len(re.sub(r"\W+", "", row.text)) >= MIN_WORDS:
+        submit(Task(itv.id, itv.org_id, itv.project_id, kind, row.id, row.text, item_uid, int(getattr(row, "at_ms", 0) or 0), time.monotonic()))
+    return {"line_id": line_id, "item_uid": item_uid}
 
 
 def relevance(text: str, focus: str, codes: list[str]) -> float:
@@ -213,6 +272,17 @@ def _line_text(db: Session, ca: CodedAnswer) -> str:
     return (row.text if row else "") or ""
 
 
+def _sources(db: Session, line_ids: list[str]) -> dict[str, str]:
+    """How each line got its question: host / ai / guess / edited (lines that have none are left out)."""
+    out: dict[str, str] = {}
+    if not line_ids:
+        return out
+    for model in (CaptionLine, ChatMessage):
+        for lid, src in db.execute(select(model.id, model.item_source).where(model.id.in_(line_ids))):
+            out[lid] = src or ""
+    return out
+
+
 def _saturated(codes: list[str]) -> bool:
     if len(codes) < SATURATION_MIN:
         return False
@@ -231,11 +301,12 @@ def _focus_card(db: Session, proj: Project, f: FocusQuestion, itvs: list[Intervi
         if c.code:   # an answer still waiting to be grouped has no code and is not counted in the statistics
             counts[c.code] = counts.get(c.code, 0) + 1
     top = max(counts, key=lambda k: counts[k]) if counts else ""
+    src = _sources(db, [c.line_id for c in cas])
     now = time.time()
     miss = sum(1 for i in itvs if i.id not in asked and i.id not in vol and (i.status == "ended" or (i.status == "live" and i.started_at and (now - i.started_at.timestamp()) / 60 > MISS_AFTER * (i.duration_min or 45))))
     return {"id": f.id, "text": f.text, "role": f.asked_role, "label": labels.get(f.item_uid or "", ""), "answered": len(asked | vol), "asked": len(asked), "volunteered": len(vol), "top": top, "top_n": counts.get(top, 0),
             "new": sum(1 for c in cas if c.created_at.timestamp() > since), "missing": miss, "review": sum(1 for c in cas if c.code and c.confidence < REVIEW_BELOW and not c.confirmed), "saturated": _saturated([c.code for c in cas if c.code]),
-            "pending": sum(1 for c in cas if not c.code), "coding": f.coding, "during": f.timing == "during"}
+            "guessed": sum(1 for c in cas if src.get(c.line_id) == "guess"), "pending": sum(1 for c in cas if not c.code), "coding": f.coding, "during": f.timing == "during"}
 
 
 def board(db: Session, proj: Project, since: float = 0.0) -> dict:
@@ -309,6 +380,7 @@ def focus_detail(db: Session, proj: Project, fid: str, origin: str = "all") -> d
         p = people.get(c.interview_id)
         g = (p.participant.tags[0] if p and p.participant and p.participant.tags else "未分组")
         groups.setdefault(g, {})[c.code] = groups.setdefault(g, {}).get(c.code, 0) + 1
+    src = _sources(db, [c.line_id for c in cas])
     show_pct = n >= MIN_FOR_PERCENT
     labels = {}
     for i in people.values():
@@ -319,7 +391,7 @@ def focus_detail(db: Session, proj: Project, fid: str, origin: str = "all") -> d
             "dist": [{"code": k, "n": v, "pct": round(v * 100 / max(1, len(cas))) if show_pct else None} for k, v in sorted(counts.items(), key=lambda x: -x[1])],
             "groups": [{"group": g, "dist": [{"code": k, "n": v} for k, v in sorted(d.items(), key=lambda x: -x[1])], "total": sum(d.values())} for g, d in groups.items()],
             "quotes": [{"id": c.id, "who": _label(people[c.interview_id].participant) if c.interview_id in people else "—", "text": _line_text(db, c), "code": c.code, "confidence": c.confidence,
-                        "review": bool(c.code) and c.confidence < REVIEW_BELOW and not c.confirmed, "confirmed": c.confirmed, "by": c.coded_by, "origin": c.origin, "in": labels.get(c.mentioned_in_item_uid or "", "")} for c in cas[:100]]}
+                        "review": bool(c.code) and c.confidence < REVIEW_BELOW and not c.confirmed, "confirmed": c.confirmed, "by": c.coded_by, "origin": c.origin, "in": labels.get(c.mentioned_in_item_uid or "", ""), "src": src.get(c.line_id, "")} for c in cas[:100]]}
 
 
 def answer_detail(db: Session, proj: Project, cid: str) -> dict:
