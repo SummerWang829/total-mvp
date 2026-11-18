@@ -62,3 +62,25 @@ body.v11 .sub2 .l2slot #owsteps a.ow-off{pointer-events:none;cursor:default}
 .ow-tbl td{padding:6px 8px}.ow-tbl .ow-sel{border-color:transparent;background:transparent}.ow-tbl .ow-sel:hover{background:var(--edit-h,var(--wash))}
 .ow-item textarea.ow-in{border-color:transparent;background:transparent}.ow-item textarea.ow-in:hover{background:var(--edit-h,var(--wash))}.ow-item textarea.ow-in:focus{background:var(--surface);border-color:var(--edit-bd,var(--pri))}
 .ow-item textarea.ow-in.t{min-height:34px;resize:vertical}.ow-mh .ow-sel{margin-left:-4px}
+
+/* ---- 对齐（2026-11-18 用户要求：图标、数字、控件都要在同一条线上）---- */
+#owsteps .ow-st{display:inline-block;width:18px;text-align:center;float:right;margin-left:6px;line-height:1.4}
+.ow-tbl th,.ow-tbl td{vertical-align:middle}
+.ow-tbl th.c,.ow-tbl td.c{text-align:center}
+.ow-tbl td,.ow-tbl th{font-variant-numeric:tabular-nums}
+.ow-tbl .ow-in.num{text-align:center}
+.ow-tbl .ow-in{height:32px;line-height:20px;box-sizing:border-box}
+.ow-tbl .ow-sel{height:32px;box-sizing:border-box}
+.ow-tbl td.c{font-size:14px}
+.ow-item .h{display:grid;grid-template-columns:34px 56px minmax(0,1fr) 52px 24px;align-items:center;gap:8px}
+.ow-item .lab,.ow-item .kind,.ow-min{padding-top:0}
+.ow-item .lab{flex:none}.ow-min{text-align:right}.ow-x{width:24px;height:24px;display:grid;place-items:center;padding:0}
+.ow-item textarea.ow-in.t{min-height:34px;height:34px;resize:none;line-height:20px;padding:6px 8px;box-sizing:border-box;overflow:hidden}
+.ow-item .fu{margin:6px 0 0 100px;align-items:center}
+.ow-item .bk{display:inline-flex;align-items:center;gap:4px}
+.ow-mh,.ow-slot,.ow-actions,.ow-add,.ow-ins{align-items:center}
+.ow-slot{align-items:baseline}
+.ow-tag,.ow-pill{line-height:20px;vertical-align:middle}
+.ow-chat .h{align-items:center}
+.ow-sug label{align-items:flex-start}.ow-sug input{width:16px;height:16px;margin:3px 0 0;flex:none}
+.ow-tbl .ow-in.nm{min-width:110px}.ow-tbl td .ow-in+.ow-in{margin-top:0;height:26px}.ow-tbl td:nth-child(2){line-height:1.2}

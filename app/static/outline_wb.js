@@ -79,7 +79,7 @@
       <div class="ow-slot"><span class="k">访谈对象</span><span class="v">${E(c.audience) || "—"}</span><span class="ow-tag">来自甄别问卷</span></div>
       <div class="ow-slot"><span class="k">形式与语言</span><span class="v">${E({ ai: "AI 主持", human: "真人主持" }[c.host] || c.host)} · ${E(FORMAT[c.format] || c.format)} · ${E(c.language === "zh" ? "中文" : "English")}</span><span class="ow-tag">来自项目设置</span></div></div>
       <div class="card ow-card"><h3>大纲由这几部分组成</h3>
-      <table class="ow-tbl"><thead><tr><th style="width:90px">模块</th><th>目的与要了解的内容</th><th style="width:44px">问题</th><th style="width:70px">时长（分）</th><th style="width:46px">题数</th><th style="width:96px">追问</th></tr></thead><tbody>${rows}
+      <table class="ow-tbl"><thead><tr><th style="width:90px">模块</th><th>目的与要了解的内容</th><th class="c" style="width:44px">问题</th><th class="c" style="width:78px">时长（分）</th><th class="c" style="width:46px">题数</th><th style="width:96px">追问</th></tr></thead><tbody>${rows}
       <tr class="tot"><td>合计</td><td></td><td></td><td>${o.totals.minutes} 分</td><td class="c">${o.totals.questions}</td><td></td></tr></tbody></table></div>
       <div class="card ow-card"><h3>检查</h3><div class="ow-find">${fnd}</div>
       <div class="ow-actions"><button type="button" class="p" data-ow="confirm-ov">${gates().overview ? "继续写题目" : "确认总览，开始写第一个模块"}</button><button type="button" data-ow="back-people">上一步</button></div></div>`;
