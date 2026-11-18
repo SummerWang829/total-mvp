@@ -103,3 +103,22 @@ body.v11 .sub2 .l2slot #owsteps3 a.ow-l3{padding-left:40px;font-size:13px}body.v
 .ow-state .s.p{background:var(--pri);border-color:var(--pri);color:var(--pri-ink,#fff);padding:3px 14px;border-radius:8px}
 .ow-revbtn{display:flex;gap:8px;align-items:center}.ow-rev{align-items:stretch}
 body.v11 .ow-state button.p{background:var(--pri);border:1px solid var(--pri);color:var(--pri-ink,#fff);padding:3px 14px;border-radius:8px;height:28px;cursor:pointer;font:inherit}
+
+/* ---- 访谈直播 › 实时看板（阶段 4）---- */
+#owbbar{display:flex;flex-direction:column}
+body.v11 .sub2 .l2slot #owbbar a.ow-l3{padding-left:26px;font-size:13.5px}body.v11 .sub2 .l2slot #owbbar a.ow-l4{padding-left:50px;font-size:12.5px}
+body.v11 .sub2 .l2slot #owbbar a.ow-l3::after,body.v11 .sub2 .l2slot #owbbar a.ow-l4::after{display:none}
+#owbroot .ow{display:flex;gap:14px;height:calc(100vh - 150px);min-height:560px}#owbroot .ow-main{flex:1;min-width:0;overflow:auto;display:flex;flex-direction:column;gap:12px;position:relative}
+#owbroot .ow-chat{flex:0 0 340px;width:340px;display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--line);border-radius:12px;min-height:0}
+.ob-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.ob-card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:8px}.ob-card .hd{display:flex;gap:8px;align-items:center}.ob-card .hd b{flex:1}.ob-card .ink{color:var(--ink)}
+.ob-stat{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.ob-stat>div{background:var(--wash);border:1px solid var(--line);border-radius:9px;padding:6px 10px;display:flex;flex-direction:column}.ob-stat b{font-size:18px;font-variant-numeric:tabular-nums}
+.ob-row{display:grid;grid-template-columns:70px 64px minmax(0,1fr) 64px;gap:8px;align-items:center;padding:7px 0;border-bottom:1px dashed var(--line)}.ob-row:last-child{border:0}.ob-row .tm{color:var(--muted);font-variant-numeric:tabular-nums}.ob-row .btn,.ob-row button{justify-self:end}
+.ob-row.al{grid-template-columns:54px 80px minmax(0,1fr) 70px}.ob-row.ss{grid-template-columns:80px 44px minmax(0,1fr) 90px}
+.ob-bar{display:grid;grid-template-columns:110px minmax(0,1fr) 120px;gap:8px;align-items:center;padding:3px 0}.ob-bar .t{height:14px;background:var(--chip);border-radius:7px;overflow:hidden}.ob-bar .t i{display:block;height:100%;background:var(--pri);border-radius:7px}.ob-bar.g .t i{background:#7a8f86}.ob-bar .n{text-align:right;color:var(--muted);font-variant-numeric:tabular-nums}
+.ob-q{display:grid;grid-template-columns:70px minmax(0,1fr) 90px 96px;gap:8px;align-items:center;padding:8px 0;border-bottom:1px dashed var(--line);cursor:pointer}.ob-q:hover{background:var(--wash)}.ob-q .conf{text-align:right;font-variant-numeric:tabular-nums}.ob-q .conf.w{color:var(--ow-warn)}
+.ob-drawer{position:absolute;right:0;top:0;bottom:0;width:380px;background:var(--surface);border-left:1px solid var(--line2);box-shadow:-8px 0 24px rgba(0,0,0,.12);padding:16px;display:flex;flex-direction:column;gap:10px;overflow:auto}
+.ob-box{background:var(--wash);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.ob-row .ow-pill,.ob-q .ow-pill,.ob-bar .ow-pill{white-space:nowrap}
+.ob-row{grid-template-columns:78px 78px minmax(0,1fr) 64px}.ob-q{grid-template-columns:78px minmax(0,1fr) 120px 110px}
+body.ob-on #rmtabs{display:none}

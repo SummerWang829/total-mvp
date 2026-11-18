@@ -1968,6 +1968,38 @@ def outline_wb_test_section(br, D):
     ctx.close()
 
 
+def outline_board_section(br, D):
+    """大纲工作台 · 实时看板 (访谈直播): the board sits beside the interview list, its three sub-items are in the side menu, a focus question shows counts (no percentages under 20 people), a
+    coded answer opens a side panel, alerts are listed; alignment and the three themes are audited."""
+    adm = D["tok"]["admin"]
+    pid = call("/projects", {"name": "看板测试", "market": "SG", "language": "zh", "brief": "A 品牌准备进入新加坡，了解护肤品选购。"}, adm)["id"]
+    base = f"/projects/{pid}/outline-wb"
+    call(base + "/answer", {"slot": "key_questions", "value": "她们平时怎么买东西"}, adm); call(base + "/overview", {}, adm); call(base + "/overview/confirm", {}, adm)
+    for m in call(base, None, adm)["overview"]["modules"][:2]:
+        call(base + f"/modules/{m['id']}/generate", {}, adm); call(base + f"/modules/{m['id']}/confirm", {}, adm)
+    uid = call(base, None, adm)["items"][0]["uid"]
+    call(base + "/focus", {"text": "她们平时怎么买东西", "item_uid": uid}, adm); call(base + "/publish", {}, adm)
+    ctx, pg, errs = new_page(br, 1440, h=900, token=adm)
+    pg.goto(B + f"/#/p/{pid}/rooms"); pg.wait_for_selector("#owbbar [data-ob=board]")
+    ok(pg.locator("#owbbar [data-ob=list]").count() == 1, "[outline_board] the interview list and the board are both in the side menu")
+    pg.click("[data-ob=board]"); ok(wait_until(lambda: pg.locator(".l2slot #owbbar [data-ob-tab]").count() == 3, 6), "[outline_board] the three sub-items are in the side menu")
+    ok(wait_until(lambda: pg.locator(".ob-card").count() == 1, 8), "[outline_board] each focus question is a card")
+    box = pg.locator("#owbroot .ow-chat").bounding_box()
+    ok(box and box["height"] >= 500, "[outline_board] the assistant panel fills the height of the page")
+    ok("不到 20 人" not in pg.inner_text("#owbroot") and pg.locator("#owbroot .ob-cards").count() == 1, "[outline_board] the overview shows the cards")
+    audit_page(pg, "outline_board overview/desktop", errs)
+    pg.click("[data-ob-open]"); ok(wait_until(lambda: "只显示人数不显示百分比" in pg.inner_text("#owbroot") or pg.locator(".ob-bar").count() == 0, 8), "[outline_board] under 20 people only counts are said")
+    audit_page(pg, "outline_board focus/desktop", errs)
+    pg.click("[data-ob-tab=alerts]"); ok(wait_until(lambda: "场次与告警" in pg.inner_text("#owbroot"), 6), "[outline_board] the alerts page opens")
+    audit_page(pg, "outline_board alerts/desktop", errs)
+    for th in ("orange", "dark"):
+        pg.evaluate(f"document.documentElement.dataset.theme = '{th}'"); pg.wait_for_timeout(300)
+        audit_page(pg, f"outline_board alerts/{th}", errs)
+    pg.evaluate("document.documentElement.dataset.theme = 'light'")
+    pg.click("[data-ob=list]"); ok(wait_until(lambda: pg.locator("#rmlistwrap:not([hidden])").count() == 1, 6), "[outline_board] back to the interview list")
+    ctx.close()
+
+
 def voice_section(br, D):
     """Voice input: focusing a text box in the team's pages shows a small microphone; one click starts, the next stops and puts the recognised words into the box (not sent)."""
     adm, pid = D["tok"]["admin"], D["pid"]
@@ -2515,6 +2547,8 @@ def run():
             globals()[os.environ["QA_EARLY"]](br, D); br.close(); print(f"{os.environ['QA_EARLY']}: {PASSES} passed, {len(FAILS)} failed"); sys.exit(1 if FAILS else 0)
         if os.environ.get("QA_ONLY") == "outline_wb_test_section":
             outline_wb_test_section(br, D); br.close(); print(f"outline_wb_test_section: {PASSES} passed, {len(FAILS)} failed"); sys.exit(1 if FAILS else 0)
+        if os.environ.get("QA_ONLY") == "outline_board_section":
+            outline_board_section(br, D); br.close(); print(f"outline_board_section: {PASSES} passed, {len(FAILS)} failed"); sys.exit(1 if FAILS else 0)
         if os.environ.get("QA_ONLY") == "outline_wb_section":   # also only needs a fresh project: run it before the long general sweep
             outline_wb_section(br, D); br.close(); print(f"outline_wb_section: {PASSES} passed, {len(FAILS)} failed"); sys.exit(1 if FAILS else 0)
         if os.environ.get("QA_ONLY") == "tabs_section":   # this section only needs the seeded project: run it before the long general sweep
@@ -2792,6 +2826,7 @@ def run():
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "outline_section": guard_section(outline_section, br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "outline_wb_section": guard_section(outline_wb_section, br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "outline_wb_test_section": guard_section(outline_wb_test_section, br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "outline_board_section": guard_section(outline_board_section, br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "voice_section": guard_section(voice_section, br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "creation_section": guard_section(creation_section, br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "tabs_section": guard_section(tabs_section, br, D)
