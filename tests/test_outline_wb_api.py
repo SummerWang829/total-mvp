@@ -772,3 +772,26 @@ def test_the_retention_preview_only_looks_and_reports_active_projects(org, proj)
     with SessionLocal() as db:
         r = retention.preview(db)
         assert r["interviews"] == 0 and r["projects_with_active_interviews"] == []
+
+
+def test_the_retention_command_with_dry_run_does_not_delete(org, proj, capsys):
+    import runpy
+    import sys
+    from app.db import SessionLocal
+    from app.models import Interview
+    iid, fid, uid = _board_setup(org, proj)
+    with SessionLocal() as db:
+        itv = db.get(Interview, iid)
+        from app.models import Project, utcnow
+        from datetime import timedelta
+        itv.status, itv.ended_at = "ended", utcnow() - timedelta(days=900)          # long past the backstop: the real cleanup would purge it
+        db.commit()
+    old = sys.argv
+    sys.argv = ["app.retention", "--dry-run"]
+    try:
+        runpy.run_module("app.retention", run_name="__main__")
+    finally:
+        sys.argv = old
+    assert "would purge" in capsys.readouterr().out
+    with SessionLocal() as db:
+        assert db.get(Interview, iid).purged_at is None                             # looked, did not delete

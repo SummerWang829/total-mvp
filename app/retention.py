@@ -171,8 +171,13 @@ def erase_participant(db: Session, p: Participant, actor: str) -> int:
     return len(itvs)
 
 
-if __name__ == "__main__":  # python -m app.retention  (run daily from cron)
+if __name__ == "__main__":  # python -m app.retention  (run daily from cron); --dry-run only looks
+    import sys
+
     from .db import SessionLocal
 
     with SessionLocal() as s:
-        print("purged interviews:", run_retention(s))
+        if "--dry-run" in sys.argv:
+            print("would purge:", preview(s))
+        else:
+            print("purged interviews:", run_retention(s))
