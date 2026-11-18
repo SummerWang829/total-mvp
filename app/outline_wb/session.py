@@ -94,7 +94,8 @@ def view(db: Session, proj: Project, user_id: str = "") -> dict:
                for r in db.scalars(select(Revision).where(Revision.outline_id == o.id).order_by(Revision.created_at.desc()).limit(30))]
     dismissed = set(ov.get("dismissed", []))
     sugg = flow.suggest(mods, ctx, slots, dismissed) if mods else []
-    return {"outline_id": o.id, "version": {"id": v.id, "number": v.number, "rev": v.rev, "status": v.status, "used_by": svc.usage_count(db, v.id)}, "context": ctx,
+    from . import stage3
+    return {"versions": stage3.versions(db, proj), "outline_id": o.id, "version": {"id": v.id, "number": v.number, "rev": v.rev, "status": v.status, "used_by": svc.usage_count(db, v.id)}, "context": ctx,
             "slots": {k: {"value": s["value"], "source": s["source"], "confidence": s["confidence"]} for k, s in slots.items()}, "round_questions": rounds, "step": step, "gates": gates,
             "steps": [{"key": k, "label": lab} for k, lab in STEPS], "overview": {"modules": mods, "totals": flow.totals(mods) if mods else {}, "findings": flow.findings(mods, ctx, slots) if mods else [],
             "depth_labels": flow.DEPTH_LABELS}, "suggestions": sugg, "revisions": pending, "focus": [_focus_view(f, v.id, db) for f in db.scalars(select(FocusQuestion).where(FocusQuestion.project_id == proj.id))],

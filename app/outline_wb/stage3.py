@@ -112,9 +112,21 @@ def rehearsal_view(db: Session, proj: Project) -> dict:
 
 # ---- pilot -------------------------------------------------------------------------------------------------------------------------
 
-def pilots(db: Session, proj: Project) -> list[dict]:
-    rows = db.scalars(select(Interview).where(Interview.project_id == proj.id, Interview.org_id == proj.org_id, Interview.is_pilot.is_(True)).order_by(Interview.created_at.desc()))
-    return [{"id": i.id, "title": i.title, "status": i.status, "moderation": i.moderation, "version_id": i.outline_version_id, "rev": i.outline_rev} for i in rows]
+def pilots(db: Session, proj: Project) -> dict:
+    """The project's pilot interviews, and the other interviews that could be marked as one."""
+    rows = list(db.scalars(select(Interview).where(Interview.project_id == proj.id, Interview.org_id == proj.org_id, Interview.kind == "depth", Interview.purged_at.is_(None)).order_by(Interview.created_at.desc())))
+    fmt = lambda i: {"id": i.id, "title": i.title, "status": i.status, "moderation": i.moderation, "version_id": i.outline_version_id, "rev": i.outline_rev}   # noqa: E731
+    return {"pilots": [fmt(i) for i in rows if i.is_pilot], "candidates": [fmt(i) for i in rows if not i.is_pilot]}
+
+
+def set_pilot(db: Session, proj: Project, iid: str, value: bool) -> dict:
+    """Mark (or unmark) an interview of this project as a pilot run: its transcript then shows in Pilot 修正."""
+    itv = db.get(Interview, iid)
+    if itv is None or itv.org_id != proj.org_id or itv.project_id != proj.id:
+        raise svc.OutlineError("没有这场访谈", 404)
+    itv.is_pilot = bool(value)
+    db.flush()
+    return pilots(db, proj)
 
 
 def _lines(db: Session, itv: Interview):
@@ -142,6 +154,7 @@ def _itv(db: Session, proj: Project, iid: str) -> Interview:
 def auto_findings(items: list[dict], lines: list[dict]) -> list[dict]:
     """What the code notices in a pilot transcript before anyone circles anything: a question the participant did not understand, a must-cover point nobody reached, a question never asked, one that took much longer than planned."""
     out: list[dict] = []
+    skipped: list[str] = []
     by_item: dict[str, list[dict]] = {}
     for ln in lines:
         by_item.setdefault(ln["item_uid"] or "", []).append(ln)
@@ -152,7 +165,7 @@ def auto_findings(items: list[dict], lines: list[dict]) -> list[dict]:
             continue
         mine = by_item.get(it["item_uid"], [])
         if not mine:
-            out.append({"id": f"skipped_{it['item_uid']}", "kind": "skipped", "item_uid": it["item_uid"], "line_id": "", "text": f"{it['label']} 没有问到", "destination": "outline"})
+            skipped.append(it["label"])
             continue
         said = " ".join(m["text"] for m in mine if m["speaker"] == "participant")
         for cov in it.get("must_cover", []):
@@ -162,6 +175,8 @@ def auto_findings(items: list[dict], lines: list[dict]) -> list[dict]:
             span = (mine[-1]["at_ms"] - mine[0]["at_ms"]) / 60000
             if span > it["minutes"] * OVERTIME and span > 1:
                 out.append({"id": f"slow_{it['item_uid']}", "kind": "overtime", "item_uid": it["item_uid"], "line_id": "", "text": f"{it['label']} 用了 {span:.1f} 分，计划 {it['minutes']} 分", "destination": "outline"})
+    if skipped:   # one line for all of them: a question nobody asked has nothing to rewrite, it is only worth knowing
+        out.append({"id": "skipped", "kind": "skipped", "item_uid": None, "line_id": "", "text": f"有 {len(skipped)} 道题没有问到：{'、'.join(skipped[:8])}{'…' if len(skipped) > 8 else ''}", "destination": "outline"})
     return out
 
 

@@ -12,9 +12,9 @@ body.v11 .sub2 .l2slot #owsteps a.ow-off{pointer-events:none;cursor:default}
 #owsteps .ow-st{float:right;font-size:12px;margin-left:6px}.ow-st.ok{color:var(--ow-ok)}.ow-st.cur{color:var(--ow-cur)}
 .v11app.sub-off #owsteps{display:none}
 
-#owroot .ow{display:flex;gap:14px;height:calc(100vh - 150px);min-height:560px}
-#owroot .ow-main{flex:1;min-width:0;overflow:auto;display:flex;flex-direction:column;gap:12px;padding-right:2px}
-#owroot .ow-chat{flex:0 0 340px;width:340px;display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--line);border-radius:12px;min-height:0}
+#owroot .ow,#owroot3 .ow{display:flex;gap:14px;height:calc(100vh - 150px);min-height:560px}
+#owroot .ow-main,#owroot3 .ow-main{flex:1;min-width:0;overflow:auto;display:flex;flex-direction:column;gap:12px;padding-right:2px}
+#owroot .ow-chat,#owroot3 .ow-chat{flex:0 0 340px;width:340px;display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--line);border-radius:12px;min-height:0}
 .ow.busy{cursor:progress}.ow.busy button{pointer-events:none;opacity:.7}
 .ow-card{padding:14px 16px}.ow-card h3{margin:0 0 8px;font-size:14.5px}
 .ow-slot{display:flex;gap:10px;align-items:baseline;padding:6px 0;border-bottom:1px dashed var(--line)}.ow-slot:last-child{border:0}
@@ -84,3 +84,22 @@ body.v11 .sub2 .l2slot #owsteps a.ow-off{pointer-events:none;cursor:default}
 .ow-chat .h{align-items:center}
 .ow-sug label{align-items:flex-start}.ow-sug input{width:16px;height:16px;margin:3px 0 0;flex:none}
 .ow-tbl .ow-in.nm{min-width:110px}.ow-tbl td .ow-in+.ow-in{margin-top:0;height:26px}.ow-tbl td:nth-child(2){line-height:1.2}
+
+/* ---- 预览测试（阶段 3）---- */
+#owsteps3,#owstate{display:flex;flex-direction:column}#owsteps3[hidden],#owstate[hidden]{display:none}
+body.v11 .sub2 .l2slot #owsteps3 a.ow-l3{padding-left:40px;font-size:13px}body.v11 .sub2 .l2slot #owsteps3 a.ow-l3::after{display:none}
+.ow-state{margin:10px 6px 0;padding:10px;border-radius:10px;background:var(--chip);color:var(--ink);font-size:12.5px;display:flex;flex-direction:column;gap:6px;align-items:flex-start}
+.ow-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.ow-row .sp{flex:1}
+.ow-seg{display:inline-flex;border:1px solid var(--line2);border-radius:9px;overflow:hidden}.ow-seg button{border:0;background:transparent;color:var(--muted);padding:2px 12px;font:inherit;cursor:pointer;height:28px}.ow-seg button.on{background:var(--ink);color:var(--surface)}
+.ow-pvgrid{display:grid;grid-template-columns:300px minmax(0,1fr);gap:24px;align-items:start}
+.ow-phone{width:300px;border:8px solid #222;border-radius:30px;background:var(--surface);overflow:hidden}.ow-phone .tt{padding:10px 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px}.ow-phone .tt .sp{flex:1}
+.ow-phone .pb{padding:12px;display:flex;flex-direction:column;gap:10px;min-height:300px}
+.ow-wm{position:relative;height:130px;border-radius:10px;background:linear-gradient(135deg,#e8eee9,#cfd9d2);display:grid;place-items:center;color:#3f5248}.ow-wm i{position:absolute;right:8px;bottom:6px;font-style:normal;font-size:12px;color:#3f5248}
+.ow-bub{padding:8px 11px;border-radius:12px;background:var(--chip)}.ow-fake{border:1px solid var(--line2);border-radius:9px;padding:8px 10px;color:var(--muted)}
+.ow-chk{display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px dashed var(--line)}.ow-chk:last-child{border:0}.ow-chk .ow-pill{flex:none;min-width:44px;text-align:center;margin:0}
+.ow-kv{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.ow-kv>div{background:var(--wash);border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:2px}.ow-kv b{font-size:22px}
+.ow-tr{display:grid;grid-template-columns:70px 56px 46px minmax(0,1fr) 54px;gap:8px;align-items:center;padding:7px 0;border-bottom:1px dashed var(--line)}.ow-tr .tm{color:var(--muted);font-variant-numeric:tabular-nums}.ow-tr .tx{min-width:0}
+.ow-mform{display:flex;gap:8px;align-items:center;padding:6px 0 8px 70px}.ow-mform .ow-in{flex:1;height:32px}
+.ow-state .s.p{background:var(--pri);border-color:var(--pri);color:var(--pri-ink,#fff);padding:3px 14px;border-radius:8px}
+.ow-revbtn{display:flex;gap:8px;align-items:center}.ow-rev{align-items:stretch}
+body.v11 .ow-state button.p{background:var(--pri);border:1px solid var(--pri);color:var(--pri-ink,#fff);padding:3px 14px;border-radius:8px;height:28px;cursor:pointer;font:inherit}

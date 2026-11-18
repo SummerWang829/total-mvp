@@ -291,7 +291,8 @@ def test_pilot_suggestions_merge_by_question_and_have_three_possible_destination
     first = _api(org, proj, "get", "").json()["items"][0]["uid"]
     mine = [r for r in out["revisions"] if r["item_uid"] == first]
     assert [r["destination"] for r in mine].count("outline") == 1 and "host_engine" in {r["destination"] for r in mine}   # two marks and a finding about one question made ONE outline rewrite
-    assert any("没有问到" in r["reason"] for r in out["revisions"] if r["item_uid"] != first)                              # questions the pilot never asked are reported too
+    assert all(r["item_uid"] == first for r in out["revisions"])                                                         # a question nobody asked has nothing to rewrite ...
+    assert any(f["kind"] == "skipped" and "没有问到" in f["text"] for f in _api(org, proj, "get", f"/pilots/{iid}").json()["findings"])   # ... but it is reported, once
     host = next(r for r in out["revisions"] if r["destination"] == "host_engine")
     ok = _api(org, proj, "post", f"/revisions/{host['id']}/accept")
     assert ok.status_code == 200                                           # a training case number is made for it
@@ -308,3 +309,12 @@ def test_a_new_version_is_a_copy_with_the_same_permanent_ids(org, proj):
     assert out["version"] == 2 and {v["number"] for v in out["versions"]} == {1, 2}
     v2 = _api(org, proj, "get", "").json()
     assert [i["uid"] for i in v2["items"]] == [i["uid"] for i in v1["items"]] and v2["version"]["number"] == 2
+
+
+def test_an_interview_can_be_marked_as_a_pilot_and_then_lists_there(org, proj):
+    itv = org.interview(pid=proj)
+    before = _api(org, proj, "get", "/pilots").json()
+    assert before["pilots"] == [] and [c["id"] for c in before["candidates"]] == [itv["id"]]
+    after = _api(org, proj, "put", f"/pilots/{itv['id']}", json={"value": True}).json()
+    assert [p["id"] for p in after["pilots"]] == [itv["id"]] and after["candidates"] == []
+    assert _api(org, proj, "put", f"/pilots/{itv['id']}", json={"value": True}, role="observer").status_code == 403

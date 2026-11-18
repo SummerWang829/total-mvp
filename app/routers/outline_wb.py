@@ -72,6 +72,10 @@ class MarkBody(BaseModel):
     note: str = Field(default="", max_length=500)
 
 
+class PilotBody(BaseModel):
+    value: bool = True
+
+
 class VersionBody(BaseModel):
     summary: str = Field(default="", max_length=300)
 
@@ -242,6 +246,11 @@ def run_rehearsal(pid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Sessi
 @router.get("/pilots")
 def pilots(pid: str, ctx: Ctx = Depends(require_roles(*STAFF, *VIEWERS)), db: Session = Depends(get_db)):
     return _run(db, stage3.pilots, db, _project(db, ctx, pid))
+
+
+@router.put("/pilots/{iid}")
+def set_pilot(pid: str, iid: str, body: PilotBody, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    return _run(db, stage3.set_pilot, db, _project(db, ctx, pid), iid, body.value)
 
 
 @router.get("/pilots/{iid}")

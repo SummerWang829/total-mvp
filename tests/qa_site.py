@@ -1930,6 +1930,44 @@ def outline_wb_section(br, D):
     ctx.close()
 
 
+def outline_wb_test_section(br, D):
+    """大纲工作台 · 预览测试: the four sub-items sit in the side menu, the preview shows what a participant sees, a rehearsal runs, a pilot can be set, a version is published; alignment and the three themes are audited."""
+    adm = D["tok"]["admin"]
+    pid = call("/projects", {"name": "预览测试页", "market": "SG", "language": "zh", "brief": "A 品牌准备进入新加坡，了解都市女性怎么选护肤品。价格是主要顾虑。"}, adm)["id"]
+    base = f"/projects/{pid}/outline-wb"
+    call(base + "/answer", {"slot": "key_questions", "value": "她们买护肤品最看重什么\n价格接受范围"}, adm); call(base + "/overview", {}, adm); call(base + "/overview/confirm", {}, adm)
+    for m in call(base, None, adm)["overview"]["modules"][:2]:
+        call(base + f"/modules/{m['id']}/generate", {}, adm); call(base + f"/modules/{m['id']}/confirm", {}, adm)
+    part = call(f"/projects/{pid}/participants", {"name": "演示", "country": "SG", "language": "zh"}, adm)
+    itv = call(f"/projects/{pid}/interviews", {"participant_id": part["id"], "title": "Pilot 1", "observer_ids": []}, adm)
+    ctx, pg, errs = new_page(br, 1440, h=900, token=adm)
+    pg.goto(B + "/"); pg.evaluate("sessionStorage.setItem('ptab','ols'); sessionStorage.setItem('ol_menu','1'); sessionStorage.setItem('ol_seg','test')")
+    pg.goto(B + f"/#/p/{pid}/people"); pg.wait_for_selector("#owroot3 .ow")
+    ok(wait_until(lambda: pg.locator(".l2slot #owsteps3 [data-ow-tab]").count() == 4, 6), "[outline_wb_test] the four sub-items are in the side menu")
+    ok(pg.locator("#owstate .ow-state").count() == 1 and "已被" in pg.inner_text("#owstate"), "[outline_wb_test] the version state sits at the bottom of the side menu")
+    box = pg.locator("#owroot3 .ow-chat").bounding_box()
+    ok(box and box["height"] >= 500, "[outline_wb_test] the assistant panel fills the height of the page")
+    ok(wait_until(lambda: pg.locator("#owroot3 .ow-phone").count() == 1, 6), "[outline_wb_test] the preview shows a phone with what the participant sees")
+    audit_page(pg, "outline_wb_test preview/desktop", errs)
+    pg.click("[data-ow-tab=rehearsal]"); pg.click('[data-ow="rh-run"]')
+    ok(wait_until(lambda: pg.locator("#owroot3 .ow-kv").count() == 1 and "场数" in pg.inner_text("#owroot3"), 8), "[outline_wb_test] a rehearsal runs and reports")
+    audit_page(pg, "outline_wb_test rehearsal/desktop", errs)
+    pg.click("[data-ow-tab=pilot]"); ok(wait_until(lambda: pg.locator("#ow-cand").count() == 1, 6), "[outline_wb_test] an interview can be chosen as the pilot")
+    pg.click('[data-ow="pil-set"]'); ok(wait_until(lambda: "这场 pilot 还没有笔录" in pg.inner_text("#owroot3"), 8), "[outline_wb_test] the pilot is set (no transcript yet)")
+    audit_page(pg, "outline_wb_test pilot/desktop", errs)
+    pg.click("[data-ow-tab=publish]"); ok(wait_until(lambda: pg.locator("#owroot3 [data-ow=pub-go]").count() == 1, 6), "[outline_wb_test] the publish page lists checks and versions")
+    spread = pg.evaluate("""() => { const t = [...document.querySelectorAll('#owsteps3 .ow-st')].filter((e) => e.textContent.trim()).map((e) => Math.round(e.getBoundingClientRect().right)); return t.length ? Math.max(...t) - Math.min(...t) : 0; }""")
+    ok(spread <= 1, f"[outline_wb_test] the marks in the side menu are in one column (spread {spread}px)")
+    audit_page(pg, "outline_wb_test publish/desktop", errs)
+    for th in ("orange", "dark"):
+        pg.evaluate(f"document.documentElement.dataset.theme = '{th}'"); pg.wait_for_timeout(300)
+        audit_page(pg, f"outline_wb_test publish/{th}", errs)
+    pg.evaluate("document.documentElement.dataset.theme = 'light'")
+    if pg.locator('[data-ow="pub-go"]:not([disabled])').count():
+        pg.click('[data-ow="pub-go"]'); ok(wait_until(lambda: "已发布" in pg.inner_text("#owstate"), 8), "[outline_wb_test] after publishing the side menu says 已发布")
+    ctx.close()
+
+
 def voice_section(br, D):
     """Voice input: focusing a text box in the team's pages shows a small microphone; one click starts, the next stops and puts the recognised words into the box (not sent)."""
     adm, pid = D["tok"]["admin"], D["pid"]
@@ -2475,6 +2513,8 @@ def run():
         br = p.chromium.launch(executable_path=browser_path or None)
         if os.environ.get("QA_EARLY"):   # QA_EARLY=<section>: run just that section right after seeding (skips the long general sweep)
             globals()[os.environ["QA_EARLY"]](br, D); br.close(); print(f"{os.environ['QA_EARLY']}: {PASSES} passed, {len(FAILS)} failed"); sys.exit(1 if FAILS else 0)
+        if os.environ.get("QA_ONLY") == "outline_wb_test_section":
+            outline_wb_test_section(br, D); br.close(); print(f"outline_wb_test_section: {PASSES} passed, {len(FAILS)} failed"); sys.exit(1 if FAILS else 0)
         if os.environ.get("QA_ONLY") == "outline_wb_section":   # also only needs a fresh project: run it before the long general sweep
             outline_wb_section(br, D); br.close(); print(f"outline_wb_section: {PASSES} passed, {len(FAILS)} failed"); sys.exit(1 if FAILS else 0)
         if os.environ.get("QA_ONLY") == "tabs_section":   # this section only needs the seeded project: run it before the long general sweep
@@ -2751,6 +2791,7 @@ def run():
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "group_section": guard_section(group_section, br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "outline_section": guard_section(outline_section, br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "outline_wb_section": guard_section(outline_wb_section, br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "outline_wb_test_section": guard_section(outline_wb_test_section, br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "voice_section": guard_section(voice_section, br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "creation_section": guard_section(creation_section, br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "tabs_section": guard_section(tabs_section, br, D)

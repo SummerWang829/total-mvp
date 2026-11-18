@@ -410,9 +410,9 @@ async function peopleView(p) {
   </div>`;
   shell(`<div class="hubtabs sub" role="tablist" aria-label="创建访谈"><a href="#" role="tab" id="ptab-mode-t" class="${ptab === "mode" ? "on" : ""}" aria-selected="${ptab === "mode"}">招募/主持/问卷</a>${rm === "onelink"
       ? `<a href="#" role="tab" id="ptab-form-t" class="${ptab === "form" ? "on" : ""}" aria-selected="${ptab === "form"}">招募问卷</a><a href="#" role="tab" id="ptab-db-t" class="${ptab === "db" ? "on" : ""}" aria-selected="${ptab === "db"}">数据库发送</a>`
-      : `<a href="#" role="tab" id="ptab-form-t" class="${ptab === "form" ? "on" : ""}" aria-selected="${ptab === "form"}">甄别问卷</a><a href="#" role="tab" id="ptab-db-t" class="${ptab === "db" ? "on" : ""}" aria-selected="${ptab === "db"}">数据库筛选及发送</a><a href="#" role="tab" id="ptab-outline-t" aria-expanded="${olMenuOpen() ? "true" : "false"}">生成访问大纲</a><a href="#" role="tab" class="l2sub${olSeg() === "outline" ? " on" : ""}" id="ptab-ols-gen"${olMenuOpen() ? "" : " hidden"}>生成大纲</a><div id="owsteps"${olMenuOpen() && ptab === "ols" && olSeg() === "outline" ? "" : " hidden"}></div><a href="#" role="tab" class="l2sub${olSeg() === "test" ? " on" : ""}" id="ptab-ols-test"${olMenuOpen() ? "" : " hidden"}>预览测试</a><a href="#" role="tab" id="ptab-list-t" class="${ptab === "list" ? "on" : ""}" aria-selected="${ptab === "list"}">配额及受访者名单</a>`}</div>
+      : `<a href="#" role="tab" id="ptab-form-t" class="${ptab === "form" ? "on" : ""}" aria-selected="${ptab === "form"}">甄别问卷</a><a href="#" role="tab" id="ptab-db-t" class="${ptab === "db" ? "on" : ""}" aria-selected="${ptab === "db"}">数据库筛选及发送</a><a href="#" role="tab" id="ptab-outline-t" aria-expanded="${olMenuOpen() ? "true" : "false"}">生成访问大纲</a><a href="#" role="tab" class="l2sub${olSeg() === "outline" ? " on" : ""}" id="ptab-ols-gen"${olMenuOpen() ? "" : " hidden"}>生成大纲</a><div id="owsteps"${olMenuOpen() && ptab === "ols" && olSeg() === "outline" ? "" : " hidden"}></div><a href="#" role="tab" class="l2sub${olSeg() === "test" ? " on" : ""}" id="ptab-ols-test"${olMenuOpen() ? "" : " hidden"}>预览测试</a><div id="owsteps3"${olMenuOpen() && ptab === "ols" && olSeg() === "test" ? "" : " hidden"}></div><div id="owstate"${olMenuOpen() && ptab === "ols" ? "" : " hidden"}></div><a href="#" role="tab" id="ptab-list-t" class="${ptab === "list" ? "on" : ""}" aria-selected="${ptab === "list"}">配额及受访者名单</a>`}</div>
     <div id="ptab-mode" ${ptab === "mode" ? "" : "hidden"}>${modeBar}</div>
-    <div id="ptab-ols" ${ptab === "ols" ? "" : "hidden"}><div id="owroot" ${olSeg() === "outline" ? "" : "hidden"}></div><div class="card" id="olsblank" style="min-height:420px" ${olSeg() === "test" ? "" : "hidden"}><h3 style="margin:0 0 6px">预览测试</h3><div class="sm mut">这个模块正在重新设计，先留空白。</div></div></div><div id="ptab-form" ${ptab === "form" ? "" : "hidden"}>${rf.html}</div><div id="ptab-db" ${ptab === "db" ? "" : "hidden"}>${dbHtml}</div><div id="ptab-list" ${ptab === "list" ? "" : "hidden"}>
+    <div id="ptab-ols" ${ptab === "ols" ? "" : "hidden"}><div id="owroot" ${olSeg() === "outline" ? "" : "hidden"}></div><div id="owroot3" ${olSeg() === "test" ? "" : "hidden"}></div></div></div><div id="ptab-form" ${ptab === "form" ? "" : "hidden"}>${rf.html}</div><div id="ptab-db" ${ptab === "db" ? "" : "hidden"}>${dbHtml}</div><div id="ptab-list" ${ptab === "list" ? "" : "hidden"}>
     ${rd.html}
     ${impBatchBar(impB.batches, impB.orphans_pending)}
     <div class="card" id="plist"><div class="row rd-tool"><h3 style="margin:0">受访者名单 <span class="sm mut" id="plcount">共 ${parts.length} 人${shown.length !== parts.length ? `，当前显示 ${shown.length}` : ""}</span></h3><span class="sp"></span>
@@ -436,10 +436,10 @@ async function peopleView(p) {
     set("#ptab-mode", name === "mode"); set("#ptab-form", name === "form"); set("#ptab-db", name === "db"); set("#ptab-list", name === "list"); set("#ptab-ols", blank);
     if (blank) {
       const gen = name === "ols-gen";
-      const root = $("#owroot"), blankCard = $("#olsblank"), steps = $("#owsteps");
-      if (root) root.hidden = !gen; if (blankCard) blankCard.hidden = gen; if (steps) steps.hidden = !gen;
-      if (gen && window.OutlineWb) window.OutlineWb.mount(p.id);
-    } else { const steps = $("#owsteps"); if (steps) steps.hidden = true; }
+      const root = $("#owroot"), root3 = $("#owroot3"), steps = $("#owsteps"), steps3 = $("#owsteps3"), state = $("#owstate");
+      if (root) root.hidden = !gen; if (root3) root3.hidden = gen; if (steps) steps.hidden = !gen; if (steps3) steps3.hidden = gen; if (state) state.hidden = false;
+      if (window.OutlineWb) window.OutlineWb.mount(p.id, gen ? "gen" : "test");
+    } else { ["#owsteps", "#owsteps3", "#owstate"].forEach((k) => { const el = $(k); if (el) el.hidden = true; }); }
     ["mode", "form", "db", "list"].forEach((k) => { const t = $(`#ptab-${k}-t`); if (t) { t.classList.toggle("on", name === k); t.setAttribute("aria-selected", name === k); } });
     const g = $("#ptab-ols-gen"), s2 = $("#ptab-ols-test");
     if (g) g.classList.toggle("on", name === "ols-gen");
@@ -447,7 +447,7 @@ async function peopleView(p) {
     document.body.classList.toggle("rfmode", name === "form"); if (name === "form") rf.fit();
   };
   window.__ptabGo = showTab;
-  if (ptab === "ols" && olSeg() === "outline" && window.OutlineWb) window.OutlineWb.mount(p.id);   // 招募问卷页右上角「确认并下一步」跳到数据库筛选及发送
+  if (ptab === "ols" && window.OutlineWb) window.OutlineWb.mount(p.id, olSeg() === "test" ? "test" : "gen");   // 招募问卷页右上角「确认并下一步」跳到数据库筛选及发送
   const tMode = $("#ptab-mode-t"); if (tMode) tMode.onclick = (e) => { e.preventDefault(); showTab("mode"); };
   const tForm = $("#ptab-form-t"); if (tForm) tForm.onclick = (e) => { e.preventDefault(); showTab("form"); };
   const ptdb = $("#ptab-db-t"); if (ptdb) ptdb.onclick = (e) => { e.preventDefault(); showTab("db"); };
