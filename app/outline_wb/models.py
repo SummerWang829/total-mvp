@@ -102,6 +102,8 @@ class StudySetting(Base):
     hypotheses: Mapped[list] = mapped_column(JSON, default=list)
     rounds: Mapped[dict] = mapped_column(JSON, default=dict)  # round name -> {status: todo|doing|done, answers: {...}}
     gates: Mapped[dict] = mapped_column(JSON, default=dict)  # goal | structure | final -> confirmed?
+    answers: Mapped[dict] = mapped_column(JSON, default=dict)  # what the researcher answered in the rounds: slot name -> value
+    overview: Mapped[dict] = mapped_column(JSON, default=dict)  # the outline overview table: {"modules": [...], "minutes": n, "context": {...flags}, "dismissed": [...ids], "undo": {...}}
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
