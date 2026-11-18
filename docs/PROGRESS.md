@@ -5,93 +5,167 @@
 > qa.sh 数字的顺序：逻辑测试（pytest）/ 全站浏览器检查 / 真实视频访谈 / 一键启动。
 
 
+## 2026-11-18 · 创建访谈 v15：改这题保住原题 + 主题色；旧「访谈大纲」页整页删除；两个子项只进空白页
 
+- **改这题面板（用户图一/二）**：底色改主题紫（`#EFEDFB` + 左侧 3px `#5B57D6` 竖条 + 题干白底胶囊），与白色题目卡明显分开；打开时**只在题目跑出视野才滚**，不再把原题顶出去——原题与修改框同时可见。
+- **旧「访谈大纲」页（`#/p/{id}/outline`）整页删除**：`index.html` 移除 `<script src="/outline.js">` 与 `outlineView` 路由；老链接一律 `location.replace` 回「创建访谈」。`insights.js` 里 4 处「去访谈页」改指创建访谈。`outline.js` 文件保留但不再加载（后续重设计可复用，如要物理删除可再删）。
+- **入口改成"展开 + 空白页"（用户图三/四）**：左栏「生成访问大纲」不再是页面，点击只展开/收起两个子项（`ol_menu` 记忆，默认收起）；点「生成大纲」「预览测试」→ **不跳转、不生成**，切到页内空白占位页（`#ptab-ols`，标题随子项变化，正文为空），等新方案再填内容。
+- 附带：`rform.js` 里导入态的「生成访谈大纲 →」也改为切到空白占位页。
+- **部署**：`index.html`、`rform.js`、`insights.js`、`ui_screening.css`、`ui_v11.css` 覆盖并重建；首页 200。备份 `/tmp/_bk_v15`。
+- **未做**：登录态未自测（需用户硬刷）；`/outline/generate` 500 不修（重设计中）；qa.sh 未跑；GitHub 未推。
 
+## 2026-11-18 · 创建访谈 v14：改这题改行内（方案 B）/ 顶部自适应换行 / 发布留在本页 / 大纲页只留两个模块
 
+- **右栏顶部自适应（用户图三）**：`#rfright .rf-hd` 由 `nowrap` 改为 `flex-wrap:wrap;row-gap:6px`——拖动中间分隔条把右栏拉窄时按钮自动换行，不再被裁半；宽屏仍是一行。
+- **「改这题」改方案 B（用户选定）**：面板从右侧浮层改为**行内展开在题目卡片里**（选项下方，`askInline()` + `.rq-askin`）；打开后常驻，只有点「关闭」才收；翻到别的题点 💬 自动切到那道题（题号/题干/题型同步，并滚到该题顶部）；打开时右栏自动把该题滚到顶部，天然与题目顶部对齐。
+- **「正在改…」状态修复**：原来成功回调提前 return 没复位 `askBusy`，按钮一直停在"正在改…"；现在所有分支都复位，改完显示「✓ 已按你的要求改好这一题」，按钮恢复「改这题」。
+- **发布后留在本页（用户图七）**：`publish()` 不再跳「配额及受访者名单」/「数据库筛选及发送」，只 toast 提示并重绘；由用户自己点「确认并下一步 →」。测试答题通过页的发布按钮同样留在本页。
+- **大纲页做减法（用户图六/七）**：只保留「生成大纲」「预览测试」两个模块——
+  - 删掉页内 `大纲 / 设置 / 预览测试` 页签（`segHtml`、`ol-segbar`）
+  - 删掉右上「同步到」「版本」「导出 ▾」与「确认并下一步 →」（`capsule` / `verMenu` / `exportMenu` / `#olnext` 不再渲染）
+  - 删掉整个 `设置` 段（`settingsHtml`、`wireRight` 里的 settings 分支、`olset-*` 字段事件）
+  - 删掉访谈形式版本切换行（`famRow()` 调用）；视图由左栏二级菜单的 `ol_seg`（outline / test）决定
+  - 大纲正文的编辑能力（改题/加题/拖动/批量）保留——否则模块无法用
+- **部署**：`rform.js`、`outline.js`、`ui_screening.css` 覆盖 `/opt/total-mvp/app/static/`，`docker compose -p deploy up -d --build --no-deps app`；首页 200、控制台 0 报错、关键函数与样式在线上可查。备份 `/tmp/_bk_v14`。
+- **未做**：未登录态无法自测界面（需用户硬刷验证）；设置项删掉后「用对话改时长/语言/形式」后端意图解析没接；`/outline/generate` 的 500 按用户要求暂不处理（该页在重设计中）；qa.sh 未跑；GitHub 未推。
 
+## 2026-11-18 · 创建访谈 v13：顶部一行化 / 删检查建议 / 测试发布闭环 / 大纲二级菜单 / 对话表格卡片 / 对话与题目对齐
 
-## 2026-11-11 · 部署 c497149 完成（创建访谈，基于 WorkBuddy 最新线；用户指示直接部署）
-- 背景：部署前线上版本不是 WorkBuddy 最新线 d4d6b79，而是 11-10 退回后的版本（和 d4d6b79 有 36 个文件不同）。用户确认：直接部署。
-- 备份：数据库 `total-20261110-163428.db.gz`，异地 COS 上传成功。回滚材料：线上目录 `/opt/rollback-live-20261111.tgz`（不含 deploy/.env、secrets、数据库），镜像标签 `total-app:rollback-live-20261111`。
-- 部署：`git archive c497149 | tar -x` 覆盖 `/opt/total-mvp`（deploy/.env、secrets 保留）；`docker compose up -d --build --no-deps app`。删掉了两个旧对话文件 `app/outline_chat.py`、`app/recruit_review.py`（c497149 已删）。
-- 核对：c497149 的全部 275 个 app 文件与线上一致；app healthy；日志 cannot add / error / traceback 为 0；启动后 `projects.creation_json`、`projects.recruit_mode` 列都存在；`/api/health`、`/api/public/config`、`/index.html`、`/shell.js`、`/ui_v11.css`、`/creation.js`、`/voice.js` 本机 200；公网 HTTPS `/api/health` 200；`app.doctor` 没有必须解决的问题；ffmpeg 可用。
-- 线上残留：19 个不在 c497149 里的旧文件仍在服务器上（不被新代码引用，未删；清单见服务器上的回滚归档）。
-- 未测：部署词第五节的真人测试（访谈页 AI 开场和自己进入下一步、甄别问卷页、招募方式联动、粘贴公网/内网链接、语音输入、原有功能、AI 后台 creation 槽位、问“你是什么模型”）。浏览器检查里有一段还在找已删阶段按钮，会失败（部署词已说明）。
-- 还差：WorkBuddy 线与线上版本的差异还没对齐；真实模型下的完整流程待测。
+- **顶部一行（用户确认删三个 tab 按钮）**：`rform.js` 的 `rightHead()` 删掉「确认背景与目标 / 起草问卷 / 检查问卷」三个按钮，右栏只剩「招募问卷 | 测试答题 + 版本 + 第N版 + 状态 + 发布新版本 + 确认并下一步」，`ui_screening.css` 里 `#rfright .rf-hd` 改 `flex-wrap:nowrap`（窄屏横向滚动，不换行）。出题/检查全部走左侧对话（对话里的「检查提示」保留）。
+- **检查建议卡整块删除**：`drawRight()` 不再渲染 `sugHtml()`，右栏只有研究背景 / 研究目标 / 招募需求 / 流程与题目。
+- **访谈形式同步项目总览**：新增 `syncFormats()`——已确认后再点任意形式，350ms 防抖后调 `POST /recruiting/form/questions/confirm`（后端本来就写 `proj.formats`），面板下方显示绿色「✓ 已同步到「项目总览 › 语言与受访形式」」；失败红字提示。
+- **测试答题闭环**：被筛掉给「← 返回上一题」；通过后给「发布新版本 → 第 N 版」（手动点），发布成功直接进「数据库筛选及发送」（`publishNext`）。
+- **生成访问大纲拆二级菜单**：`index.html` 在 `生成访问大纲` 下加 `生成大纲 / 预览测试` 两个二级项（`ol_seg` 记忆），都打开大纲页，分别落在 outline / test 段；左栏 AI 对话对两段都可用；大纲页对话底部加「设置」快捷条（对外标题/时长/研究目标/研究背景），不再另开设置页。
+- **对话里的表格卡片**：`shell.js` 加全局 `ccTableCards`（MutationObserver）——对话区内的表格自动包成卡片，悬停出现「⤢ 放大 / ⤓ 下载」（下载导出 CSV，放大开弹窗），与 WorkBuddy 一致。
+- **对话与题目对齐**：AI 改题后 `anchorBarHtml()` 在对话里列出「这段对话改的是：Q3 Q5」，`alignAnchor()` 把右侧题目与左侧回复同时滚到顶部（两栏起始线一致），点题号可再次定位。
+- **部署**：6 个文件（index.html / rform.js / shell.js / outline.js / ui_screening.css / ui_v11.css）覆盖 `/opt/total-mvp/app/static/`，`docker compose -p deploy up -d --build --no-deps app` 重建；首页 200、控制台 0 报错。
+- **未做**：qa.sh 未跑（按用户偏好只测改动处）；GitHub 尚未推送（等用户看过界面）；设置项目前是"对话内就地打开字段"，自然语言直接改设置还没接。
 
-## 2026-11-10 · 3c1ad27 已从线上退回，恢复部署前的线上版本（用户指示）
-- 原因：用户不同意部署 3c1ad27（线上原版本不在 origin/main 上，覆盖前只做了备份）。
-- 做了什么：从 `/opt/rollback-live-20261110.tgz` 恢复线上目录（不含 deploy/.env、secrets、数据库）；删掉 3c1ad27 带来的新文件（这一步误删了 9 个原本就在线上的文件，已从归档补回）；`docker compose up -d --build --no-deps app` 重建。
-- 核对：线上 app 目录与部署前逐个文件 hash 一致（261 个，和 11-10 部署前的记录一致）；归档与线上目录文件清单完全一致；app healthy；日志 cannot add / error / traceback 为 0；`/api/health`、`/api/public/config`、`/index.html`、`/shell.js`、`/ui_v11.css` 本机 200；公网 HTTPS `/api/health` 200。
-- 数据库：备份 `total-20261110-154124.db.gz`（异地 COS 已上传）。3c1ad27 启动时加的列 `projects.creation_json` 留在库里（空列，无害，旧代码不读）。
-- 没有动 git 上的 main。3c1ad27 的部署记录在本条之上一条，已作废。
-- 还差：线上原版本来源未确认（不在 origin/main，可能是 WorkBuddy 线）；创建访谈的部署要等来源确认后再做。
-
-## 2026-11-10 · 部署 3c1ad27 完成（创建访谈阶段式对话，SW 指令，已在线上核对）
-- 本批（相对线上基线）：2242bc5 第 A 批（后端 11 阶段引擎、规范、修改提议与撤销）、46d70c7 第 B 批（访谈页和招募问卷页的阶段式对话、网页链接读取、删旧对话前端）、8e7d5ff 第 C 批（删旧对话后端）、7289778 第 D 批（检查提示）、ebcab0a（语音输入）、c39b3c1（恢复 AI 后台/附件路由）、8cbc723 和 b89aff4（主持人提示词 v011/v012 候选，默认仍 v010）。新列 `projects.creation_json`，启动时已自动补上。
-- 线上核对：部署前线上代码既不是 0c70dc7，也不是 d309169，也和 origin/main 最近 40 个提交都对不上；另外有约 46 个 app 之外或 app 内的文件不在 3c1ad27 里（如 app/ai_rules.py、app/routers/board.py、docs/RULES.md 等，来源不明，可能是另一条线 WorkBuddy 上的版本，文件日期 11-04）。用户确认：先备份再覆盖。没有排期中或进行中的访谈，录制和后台任务为空。
-- 备份：数据库 `total-20261110-154124.db.gz`，异地 COS 上传成功。回滚材料：整个线上目录 `/opt/rollback-live-20261110.tgz`（不含 deploy/.env、secrets、数据库），镜像标签 `total-app:rollback-live-20261110`。
-- 部署：`git archive 3c1ad27 | tar -x` 覆盖 `/opt/total-mvp`（deploy/.env、secrets 保留）；`docker compose up -d --build --no-deps app`。**没有删除那 46 个不在 3c1ad27 里的文件**，它们留在服务器上、不被新代码引用；要不要清理等用户决定（清理前先确认它们不是另一条线在用）。
-- 部署后核对：3c1ad27 的 250 个 app 文件全部与服务器一致；app healthy；日志 cannot add / error / traceback 为 0；启动日志显示 `added column projects.creation_json`，列已存在；`/api/health`、`/api/public/config`、`/index.html`、`/shell.js`、`/ui_v11.css`、`/rform.js`、`/outline.js`、`/creation.js`、`/voice.js` 本机 200；公网 HTTPS `/api/health` 200；`app.doctor` 没有必须解决的问题；服务器 ffmpeg 7.1.5 可用；`MODERATOR_VENDOR` 已配置（只检查是否存在，未读值）。
-- 未测：部署词第五节的上线后检查（需要研究员账号在浏览器里走：阶段式对话开场、撤销、大纲、网页链接读取、麦克风输入、招募问卷各功能、AI 后台的 creation 槽位、问“你是什么模型”的回答）。字体检查本次没有按部署词要求执行。
-- 还差：用户走一遍上线后检查；决定那 46 个多余文件怎么处理；马来语、泰米尔语文案待复核。
-
-## 2026-11-10 AI 主持人 · 模糊词请对方说清楚（v012 候选版，未上线）
-- 改了：分析结果多一个可选字段 `vague_term`（答案靠一个意思不清的词，如“还行”）；有它且允许追问时，追问方式选“澄清”（`operators.choose_operator`）；新提示词 `prompts/v012.json`（默认仍是 v010，不自动上线）。
-- 测了：moderator 相关 pytest 136 个通过（含新增 1 个）。没测：真实模型对比 v010（需余额与长时间，待用户确认后跑）。
-- 还差：“说尽后问一次还有想补充的吗”（要动状态机，单独做）、真实 A/B、保留集验收。
-
-## 2026-11-10 · 创建访谈 · 第 D 批：检查提示（程序规则，不用模型）
-- `app/creation/checks.py`：对正在做的研究逐项检查，每条说“哪里不对 + 让助手怎么修”：没有研究目标；大纲里带引导的题（是不是/对吧/难道…）、一句话问两件事、题太长（>70 字）、要深追却没写访谈指引、环节没有环节指引、大纲估算时长和计划差太多（>115% 或 <60%）、研究目标没有任何题覆盖（用词重叠判断，只是提示）；甄别问卷超过 10 题、收入题没写税前税后/个人家庭口径、写了“大湾区”但没约定城市、没有任何选项会筛掉人；各组人数加起来对不上总数。
-- 对话顶部多了“检查提示 N”按钮：点开看清单，每条有“让小星星助手修”（等于替你发了一句话）；这些提示也会随每一轮发给模型，让它在对应阶段主动提出来。
-- 测试：`tests/test_creation_checks.py` 6 项、`tests/test_creation.py` 14 项全过；`QA_EARLY=creation_section` 45 项全过。
-- 还没做：模拟试访（用真实受访者说话风格走一遍大纲、报告时长和卡点）；AI 主持人选追问方式的程序规则（模糊词请对方定义、说尽后问“还有想补充的吗”）；部署词。
-
-## 2026-11-10 · 创建访谈 · 第 C 批：删掉旧对话的后端
-- 删除：`app/outline_chat.py`、`app/recruit_review.py`，`recruit_form.py` 里的 AI 起草/对话部分（`generate`、`chat_turn`、两条旧提示词等），接口 `POST /outline/chat`、`/outline/chat/{mid}`、`/recruiting/form/chat|stats|review|generate|suggestions/adopt|dismiss`；AI 后台“提示词”里对应的 4 条（大纲对话、问卷起草、问卷对话、检查与建议），现在是 13 条可编辑（含新的 3 条创建规范）、功能总览 18 个；数据库里旧的对话记录列（`projects.outline_chat`、`recruit_forms.chat/ai_items/dismissed`）保留但不再使用。`GET /outline` 不再返回 `chat`。
-- 对话里问“你是什么模型/谁做的”，由程序直接回答“我是小星星助手”（不问模型），和以前一样。
-- 测试：删掉只测旧功能的测试（`test_outline_chat.py`、`test_recruit_review.py`、`test_recruit_attachments.py` 及几个文件里的旧用例），相关用例改成走新对话；整套 pytest 之前 25 个失败都是这些被删功能，现已清掉，相关文件重跑全过；浏览器检查 `outline_section` 154、`creation_section` 35、`insights_section` 100/1（那 1 个是页签改名“回复/逐题分析/AI 对话”，合并前就有）。
-
-## 2026-11-10 · 创建访谈：阶段式对话 · 第 B 批（左侧对话界面，替换旧对话）+ 读网页链接
-- 界面：新组件 `app/static/creation.js`（+ `ui_creation.css`）是访谈页和招募问卷页**共用的左侧对话**，同一份对话；每条 AI 回复 = 一句确认 + 真正改了什么的绿勾清单 + “为什么这样建议” + “需要你确认”（带选项按钮）+ 撤销最近一次修改；输入框上方是建议气泡，下面是“进入下一阶段：xx →”（这一阶段已就绪时变成橙色实心）。**11 个阶段的进度放在左侧第二层菜单的“创建进度”里**（当前橙色、做完打勾，可点回去；一站式时没有“邀请信”）。右边的大纲/问卷在对话改了数据后自动重读，改过的题标“刚改”。旧的对话（三种回复方式、变更卡、快捷按钮、固定建议气泡、选中文字改稿、问卷页的检查/统计/建议卡）的前端代码已整体删除，访谈页“大纲 / 设置 / 预览测试”挪到右栏顶部。导入态（Confirmit）的问卷页左边仍是原来那张三步引导卡。
-- 读网页链接（用户确认）：在对话里贴 http/https 链接，服务器去读（`app/web_reader.py`）：只读公网网页，内网/本机/云元数据地址一律拒绝，每次跳转都重新检查，最多 2 MB、10 秒、3 次跳转；读不了的页面把原因告诉模型，不假装读到；审计只记域名，不记完整地址（地址里可能带令牌）。研究库文档现在每一轮都带给模型；资料里已有问卷或大纲时，按原样转成当前大纲、只改不符合规范的地方。
-- 测试：`tests/test_web_reader.py` 18 项、`tests/test_creation.py` 14 项；相关 pytest 共 105 项全过；浏览器检查：新增 `creation_section` 35 项、`outline_section` 154 项（重写为不依赖旧对话）、`voice_section` 15 项、`ai_console_section` 40 项全过；`recruit_section` 里“导入的人带来源名”“标签筛选里加标签”两处和一处崩溃是**合并前就有**的（WorkBuddy 的名单改动没改测试），不是这批引起的。删除了只测旧问卷对话的 `review_section`。
-- 还没做：旧后端接口和提示词（`/outline/chat`、`/recruiting/form/chat|review|stats|suggestions/*`、`outline_chat.py`、`recruit_review.py` 的 AI 部分和对应测试、AI 后台里 4 条旧提示词）下一批删除；覆盖率/引导性/时长检查和模拟试访；AI 主持人规则改动。联网搜索没做（等用户选搜索服务）。
-- AI 主持人 v011 对 v010 的大样本对比（各 50 场，红线均全过）：必问要素覆盖 98.0% vs 98.7%，追问命中 85.9% vs 87.8%，到达原因层 93.0% vs 95.1%（评估器标“退步 2.2”）——**v011 没有比 v010 好，略差**（样本有噪声），所以 v011 不会设为默认；规则层改动（模糊词让对方定义、说尽后问“还有吗”）要改程序里选追问方式的规则，另做。
-
-## 2026-11-10 · 创建访谈：阶段式对话 · 第 A 批（后端，界面还没接）
-- 做了什么（用户确认了阶段顺序/旧的整体替换/进度条放侧面）：新的 `app/creation/` 包：`stages.py`（11 个阶段、分两步/一站式的阶段表、状态和对话存在 `Project.creation_json`）、`specs.py`（两份规范“大纲设计规范”“招募筛选规范”+ 阶段对话提示词，来自 298 份笔录的总结）、`patches.py`（模型只“提议”，程序校验后一次性应用：研究背景/目标、主持与招募方式、受访者人数/分组/口径、甄别问卷、访谈形式和时长、访谈大纲；整批不合格就整批不改，并把原因发回模型重试 3 次；每次修改存快照，可撤销最近一次）、`engine.py`（一轮对话；页面显示的“已更新…”清单来自真正应用了的修改，不来自模型的话；无模型时有演示回复）。新接口 `app/routers/creation.py`：`GET /projects/{id}/creation`（第一次访问时助手自己开场）、`POST .../creation/message`、`.../stage`、`.../advance`、`.../undo/{mid}`；仅研究员/管理员/技术支持，按公司隔离，审计不记话。
-- 大纲新增“环节指引”（给 AI 主持人看，不给受访者看）：`GuideTopic.section_guide`，大纲文字里写在 `## 话题` 下面的 `环节指引:` 行，能读回去。AI 后台“提示词”新增 3 条（阶段对话、大纲设计规范、招募筛选规范，共 17 条可编辑）。
-- 新数据库列：`projects.creation_json`（文本，默认空，启动时自动补列）。
-- 测试：`tests/test_creation.py` 13 项（阶段表、权限与公司隔离、清单来自真实修改并可撤销、坏提议被退回且不留半截、一站式只能 AI 主持且没有邀请信阶段、人数对不上被拒、甄别问卷走原有检查、大纲环节指引和追问读回、引导性问题进不了大纲、审计不记内容、附件只给本轮）；相关 pytest（AI 后台/提示词/大纲/语音等）全过；`QA_EARLY=ai_console_section` 40 项通过。
-- 还差（下一批）：左侧对话界面（替换访谈页和招募问卷页左边的旧对话，进度放到侧面第二层菜单）、删除旧的对话代码和提示词、检查（覆盖率/引导性/时长）、模拟试访、AI 主持人规则改动。这一批只是后端，不会改变现有页面。
-
-## 2026-11-10 · 修复：main.py 丢了 AI 后台/附件的注册 + 语音输入
-- **回归修复（重要）**：`db0c2d8`（Confirmit 导入）把 `app/main.py` 换成了一份旧底稿，丢了：`ai_console` 路由（AI 后台接口）、`attachments` 路由（对话附件）、`ai_call_org` 中间件（AI 调用日志归属公司）、`ai_calls`/`ai_prompts` 的导入。现已补回（测试：AI 后台、提示词、附件共 27 项通过）。**部署前请确认线上的 main.py 是否也缺这几项**；这次改动合并后线上才会有 AI 后台接口和附件接口。
-- **语音输入（用户 2026-11-10 要求：所有输入框都支持）**：研究员/管理员/技术支持/项目经理端所有文字输入框获得焦点时，右上角出现小麦克风（`app/static/voice.js`、`voice.css`）：点一下开始，再点一下结束；录音发到新接口 `POST /api/speech/transcribe`（`app/speech.py`、`app/routers/speech.py`），服务器转成小的单声道 mp3，用现有转写服务识别，把文字填进光标处，**不会自动发送**；录音不保存，审计只记“读了一段录音 + 字节数 + 语言”，不记文字；每人每分钟最多 20 次；只支持中文/英文（框旁小按钮“中/EN”切换）。开发/测试用模拟识别（固定示例句）。受访者端输入框没加，等用户明确。
-- 测试：`tests/test_speech.py` 7 项（含真实 ffmpeg 转换）；`QA_EARLY=voice_section` 15 项（用假麦克风走完一次：点开始 → 点结束 → 文字进输入框、没自动发送、观察员看不到麦克风）。未测：线上真实腾讯云识别、手机宽度。无新数据库列。
-
-## 2026-11-10 · AI 主持人提示词 v011（候选，没有上线）+ 笔录分析
-- 做了什么：把 298 份真实访谈笔录拆成一问一答并统计（`docs/主持人做法总结_来自298份笔录.md`，285 份成功拆解：深访 164、座谈会 121）。据此写了提示词 **v011 候选**（`app/moderator/prompts/v011.json`，只改 `operators` 的 clarify/specify/why/scale/reflect 描述和 speak 提示词新增第 16、17 条）：追问要带上对方刚说的原词（≤8 字，不替对方下结论）；模糊词（还行/一般/比较）用对方自己的词请他定义；对方答得极短时问更窄更易答的问题或换题；不连续两次裸问“为什么”；换题前可问一次“还有想补充的吗”（每个话题最多一次）；复述只用对方原话、每话题最多一两次。**默认版本仍是 v010**（`CURRENT_PROMPT_VERSION` 没改），只有设置 `MODERATOR_PROMPT_VERSION=v011` 才会用到。
-- 测试：主持人相关 pytest（质量宪章、引擎、红线、评估）457 项通过；`MODERATOR_PROMPT_VERSION=v011 python -m eval.runner --brain mock --participant rule --limit 3` 离线跑通、红线全过（这只证明流程能跑，不证明 v011 更好）。
-- 还差：用真实模型对 v010/v011 做对比评估（需要用户同意使用 .env 里的模型并先查余额），再按项目规定由用户确认才能改成正式版本。
 
 ## 2026-11-04 · 招募问卷来源弹窗只问一次（用户批注）
 
+- **问题**：来源弹窗原来**每次进入招募问卷都弹**（从任何入口：创建访谈、访谈直播、洞察、大纲，回到招募问卷都会弹一遍），确认过也照弹。
+- **做法（落库，不用浏览器本地存储）**：`RecruitForm` 新增 `source_confirmed`（`ai | html`，默认 `""` = 从没选过）。已经有 `ensure_columns()` 在启动时自动补列，所以**不需要手工迁移**，线上老库访问即补。
+- **前端**：`picking = !(f.source_confirmed || "")`，只有从没选过才弹；点「确定」调新接口 `POST /projects/{id}/recruiting/form/source` 落库，之后从任何入口进来都不再弹；点「取消」不算确认（下次还会问一次）。
+- **新接口只写来源**：不 +1 版本、不动题目、不动 `updated_at` 之外的任何东西 —— 确认来源不会出现在版本历史里（这是特意避开的坑）。
+- 顺带把两处「保存表单也等于确认来源」补上：`PUT /recruiting/form`（手工保存）与 AI 生成 / 对话改问卷，都会把 `source_confirmed` 写成实际来源，避免"已经生成过问卷了还来问来源"。
+- **入口补全**：原来左栏工具栏的「切换」改名 **「更换来源」**；导入态原来没有切换入口，现在放在右栏标题行（`#rfswitch2`，先画完再绑）。左栏那个在导入态**不渲染**（避免两个同名按钮 + 重复 id）。
+- 本地验证（Playwright + 接口 + 直接查库）：首次进入弹且默认 AI ✔；确定后 `source_confirmed='ai'` 且 `version` 仍为 1（未被污染）✔；再进 / 刷新 / 从大纲·洞察·访谈直播绕回来 **全部不弹** ✔；点「取消」后 `source_confirmed` 仍为空、下次还问 ✔；手存表单 → `source_confirmed='ai'` ✔；导入态不弹、左栏无按钮、右栏「更换来源」可点并重新弹 ✔；home/people/outline/rooms/insights/studies 六页 + 团队页回归、控制台 0 报错 ✔。
+- **部署（2026-11-04 11:51，已上线核对）**：备份 `db/total-20261104-035110.db.gz`；回滚材料 `/opt/rollback-src-20261104-115109.tgz` + 镜像 `total-app:rollback-src-20261104-115109`。**部署前又核出漂移**：线上 `app/routers/recruit.py` 与 `app/recruit_form.py` 比仓库新（多了附件解析 `AttachmentIn` / `MAX_ATTACH_FILES` / `ai_prompts`）。处理方式同上次 main.py：**以线上 `recruit.py` 为底，只并入我这几处改动**（`source_confirmed` ×5 + 新端点），附件功能原样保留；`models.py`/`rform.js`/`ui_v11.css` 核对后与改动前一致（仅换行符），直传。重建后 app `healthy`，`/api/health` `/rform.js` `/ui_v11.css` 全 200，`recruiting/form/source` 已注册，`source_confirmed` 列已由 `ensure_columns()` 自动补上（现有记录仍为 `''`，即老项目会问一次），`/api/attachments/extract` 与 `/api/ai-console/*` 仍在，未带令牌访问 401（3 层中间件），日志 error 0，公网 `rform.js`/`ui_v11.css` md5 与本机一致。
+- **遗留债务（重要）**：仓库与线上仍有一组文件不同步 —— `app/recruit_form.py`、`app/routers/recruit.py`、`ai_prompts.py`、`ai_calls.py`、`security.py`、`routers/ai_console.py`、`routers/attachments.py`。每次改到这组文件都必须先拉线上版本合并。建议尽快做一次全量对账。
 
+## 2026-11-04 · 招募问卷：来源弹窗改版 + 导入态不进出题页（用户截图批注）
 
+- **重做图标**：撤销/重做原来用 `redo-2` 那套（右上角折线箭头），在 16px 下看起来像“下一步/前进”。换成一对**弧形回头箭头**（`M21 7v6h-6` + `M3 17a9 9 0 0 1 9-9 …`），一眼能认出是“回到上一版 / 重来一版”。
+- **来源弹窗**：标题改成「这份招募问卷怎么来？」，两个选项各自带粗体标题 + 一行说明（`AI 生成招募问卷` / `导入招募问卷`），**默认选中 AI 生成**（只有在已经存过导入链接时才默认导入）。每次进入招募问卷都会弹（原来就有这个行为，这次只改文案与默认值）。
+- **导入态不再进“出题页”**：以前选导入会切到一个只有“问卷链接”输入框的小页面，跟 AI 页完全割裂。现在**两种来源共用同一个工作区**：
+  - 左栏：一段说明 + **三步引导**（①确研究背景/目标/需求 ②生成访谈大纲 ③数据回来后导入甄别数据）+ 主按钮「生成访谈大纲 →」（跳 `#/p/{id}/outline`）；输入框、建议气泡、撤销/重做全部隐藏（没有题目可改）。
+  - 右栏：保留 研究背景 / 研究目标 / 招募需求（可直接编辑），把「问卷流程（共 N 题）」换成**「已导入的问卷」卡**（链接输入 + 保存并锁定 + 新窗口打开 + 说明），底部一个次要按钮也指向大纲。
+  - 右栏顶部：导入态显示「已导入 · 问卷在客户那边作答，本平台不出题」，隐藏“招募问卷/测试答题”切换和发布按钮。
+  - 关键修复：`wire()` 里原有 `if (mode !== "ai") return` 会让导入态两栏完全不渲染（老布局不需要），现在改成“先画两栏再 return”，并把链接卡三个按钮的绑定移到 `drawRight()` 之后（元素此时才存在）。
+- 本地验证：弹窗默认 `ai` ✔；导入态 `#rfws.rf-import`、左栏三步、右栏四个标题、无「问卷流程」、`.rf-impcard` 存在 ✔；点「生成访谈大纲」→ `#/p/{id}/outline` ✔；切回 AI 态输入框恢复 ✔；控制台 0 报错。
 
+## 2026-11-04 · 菜单合并改名 + 题目首选项间距 + 对话气泡分色（用户截图批注）
 
+- **导航合并**（用户要求）：定性阶段下 `甄别设定` + `访谈` 合并成一个一级入口 **创建访谈**，`直播间` 改名 **访谈直播**。
+  - 一级菜单变为：创建访谈 / 访谈直播 / 洞察（异步研究仍按原样只在顶部模块出现）。
+  - `创建访谈` 的二级：`招募问卷`、`配额与受访者名单`（页面自己的两个页签，照旧搬进第二层菜单）+ **新增 `访谈大纲`**（原"访谈"页，改成静态二级项）。
+  - 实现：`SH_HUBS` 里 people 标签改"创建访谈"、outline 改"访谈大纲"（保留在 tabs 里让 `shHubOf` 仍能定位到定性层）、rooms 改"访谈直播"；`shSubMenu` 在定性层过滤掉 outline 并把 `onKey` 指向 people，新增 `extra` 静态二级；`shSubHtml` 把 `extra` 渲染进 l2slot；`shMoveSub` 从 `replaceChildren` 改成"只清上次搬进来的 `.mvd`、新页签插到 `.l2e` 前面"，这样静态二级不会被页签搬家冲掉。录入员/主持人视角的文案同步改名。
+- **题目与第一个选项间距**（图1 批注"再拉开多一倍"）：`#rfws .rf-q>:not(.rq-opt)+.rq-opt{margin-top:0.6cm}`。实测题目行→首选项净距 **22.67px**，选项之间仍是 **11.33px**（0.3cm），正好一倍。
+- **对话气泡分色**（图2 批注）：`我打的字` = 主色浅底 + 主色描边 + 右下小圆角（`color-mix` 按主题自适应）；`AI 的回话` = 中性浅灰绿底 + 左侧小圆角。AI 的"已更新问卷"回执卡（`.rf-chgc`）用 `:has` 排除，避免叠两层底色；深色/橙色主题各有覆盖；"正在处理…"（`.mut`）保持无底色。
+- 本地验证（Playwright，1512 宽）：一级菜单 = 创建访谈/访谈直播/洞察；创建访谈下二级 = 招募问卷+配额与受访者名单（页面页签）、访谈大纲（静态项）；点访谈大纲 → `/outline` 且该项高亮、创建访谈仍高亮；点回创建访谈 → `/people`，标题"创建访谈"；间距 22.67 / 11.33；气泡底色 `rgb(244,247,245)` vs `color(srgb 1 0.924 0.87)`；控制台 0 报错。
+- **部署（2026-11-04 11:27）**：只改前端 3 个文件（`index.html`、`shell.js`、`ui_v11.css`），部署前核对线上与上一版一致；回滚材料 `/opt/rollback-nav-20261104-112745.tgz` + 镜像标签 `total-app:rollback-nav-20261104-112745`；重建后 app `healthy`、四个接口 200、公网 `shell.js` / `ui_v11.css` md5 与本机一致、日志 error 0。本轮无表结构与数据变更，未做数据库备份。
+- **顺手解决"每次部署都弹权限"**：`~/.ssh/` 的读取规则是"每次询问"，逐命令弹窗。改为在项目内生成专用密钥 `.workbuddy/keys/total_deploy`（公钥已装进服务器 authorized_keys，注释 `wb-total-deploy-20261104`），连接时带 `-i .workbuddy/keys/total_deploy -o UserKnownHostsFile=.workbuddy/keys/known_hosts -o IdentitiesOnly=yes`，全程不碰 `~/.ssh`，此后部署零弹窗；已封装成 `_test/sg.sh`。
 
+## 2026-11-04 · 招募：Confirmit 原始数据导入（后端 + 界面）+ 洞察五项改名
 
+**四条决策（用户 00:54 定）**：匹配键=**邮箱**；未匹配**一律进未匹配池**、不自动建档；**不做**"作为研究数据"（甄别数据不进定量结果）；回滚**按整批**。
 
+**新增（不动老逻辑）**
+- 3 张表：`participant_import_batches`（批次 + snapshot 回滚快照）、`participant_import_orphans`（未匹配，保留原始行）、`recruit_datamaps`（映射模板，可按项目或全组织复用）。
+- `app/import_map.py`：读表（逗号/制表符、BOM、列名重复检测）、建议映射、映射校验（必须有邮箱列）、**值编码解码**（`Q1_REGION=1` → 广深珠…，未映射的值原样保留并报警）、邮箱归一化匹配、三类分类（命中/冲突/未匹配/无法使用）、预检影响（变合格/变不符合 + 配额 add/after/over）、写入（一次事务）、**整批回滚**（按快照恢复字段+答案，删掉 pending 孤儿）、挂接孤儿、映射模板。
+- `app/routers/recruit_import.py`（9 个端点）：`preview` / `precheck` / `commit` / `batches` / `batches/{id}/rollback` / `orphans` / `orphans/{id}/attach` / `orphans/{id}/ignore` / `mappings`（GET/PUT/DELETE）。
+- `app/static/imports.js`：五步向导（上传 → 映射 → 预检 → 确认 → 结果）、未匹配池（挂人/忽略）、名单页批次条（含整批回滚）。
 
+**修改**
+- `models.py` 加 3 张表；`screener.py` 加 `clear()`（回滚时导入前本来没有答案的情况）；`main.py` 注册新路由。
+- 名单页：工具条加 **导入甄别数据（Confirmit）**；卡片上方加**批次条**（最近导入 / 命中 / 冲突 / 未匹配 / 整批回滚）；来源列长名用省略号（不再挤压"更新邀请函"）；补 favicon（消除 404）。
+- 洞察按 A 案改名：一级"洞察与片段"→**洞察**；五项 `受访者数据/报告/问题分析/精彩片段/对话` → **回复/报告/逐题分析/片段/AI 对话**，并在第二层菜单加分组标题"洞察 · AI 分析"。
 
+**验证**
+- `_test/verify_import.py`（24 项断言全过）：邮箱大小写+空格归一化命中；编码 1/3 解码为"广深珠佛惠莞中江肇"/"25-34"；重复邮箱取最后一行并计冲突；无邮箱行进池；预检不写库；导入后来源/来源名/分群标签正确；孤儿挂接写入答案；**整批回滚后答案清空、来源复原**。
+- 预检影响实测：设 2 条规则 + 1 条配额 → `to_qualified 3 / to_disqualified 2`，配额 `大湾区 +2（目标 3，未溢出）`。
+- UI（Playwright + Edge，1512 宽）：五步走完、结果页、未匹配池、批次条全部正常，**控制台 0 报错**；home/outline/rooms/studies/insights 五页回归通过。
 
+**部署（2026-11-04 10:53，已上线核对）**
+- **核对发现一个重要事实：线上 `app/main.py` 比 GitHub 新**——它多了 jwt 鉴权中间件、`ai_calls` / `ai_prompts`、`ai_console` 与 `attachments` 路由。所以 `main.py` **没有用本地版覆盖**，而是以线上为底、只并入两处：`from .routers import ... recruit_import as recruit_import_router ...` 和 `for r in (... recruit.router, recruit_import_router.router, quant.router ...)`。其余 9 个文件核对后线上与本仓库一致（models.py / screener.py / insights.js 的 md5 差异仅为换行符）。
+- 备份：`db/total-20261104-025318.db.gz`（COS 上传 200）。
+- 回滚材料：`/opt/rollback-import-20261104-105332.tgz`（4.6M）+ 旧镜像标签 `total-app:rollback-import-20261104-105332`。
+- 替换 10 个文件（统一 LF），服务器与本机 md5 **逐一一致**；`docker compose up -d --build --no-deps app`，`deploy/.env` 未动。
+- 部署后核对：app `Up (healthy)`；`/api/health` `/index.html` `/imports.js` `/ui_v11.css` 全 200；**10 个 `recruiting/import/*` 路由已注册**；3 张新表已建（库内共 63 张表）；近 3 分钟日志 error 0；未带令牌访问 `/api/projects` 与 `/api/recruiting/import/batches` 均 **401**（jwt 中间件仍在）；`/api/ai-console/*`、`/api/attachments/extract` 仍存在（原有功能没被覆盖）；公网 `ui_v11.css` md5 与本机一致。
 
+**待确认 / 遗留**
+- **仓库与线上仍有漂移**：线上有 `ai_calls.py`、`ai_prompts.py`、`routers/ai_console.py`、`routers/attachments.py`、`security.py` 等本地仓库没有的模块，`main.py` 也对不上。建议尽快做一次全量对账（把线上新文件拉回仓库），否则每次部署都要人工合并。
+- 名单列"合格状态"独立成列：现有"资格"列已含 正式/备份/不符合，暂不新增（会与"问卷答案"列重复信息），等用户定。
+- 招募问卷页的"导入态不渲染题目"：产品已有"选择招募问卷方式"弹框（问卷编写 / 导入问卷链接），目前导入链接后仍显示编辑器，是否改成 Data Map 视图待定。
 
+## 2026-11-03 · UI 第四批（弹窗误关闭 / 输入框结构重做 / 选项 0.3cm，已部署线上核对）
+- **修 bug：弹窗在输入框里拖拽就消失**。原因：`modal()` 用 `click` 判断“点遮罩关闭”，而在输入框按下、拖到框外松手时，`click` 的事件目标是两端元素的公共祖先（= `.modal` 自己），于是被当成点了遮罩。改成 `pointerdown` 记下起点、`pointerup` 要求起点和终点都在遮罩上才关；`pointercancel` 复位。实测：框内按下拖出松手 → 弹窗仍在；点遮罩空白 → 关闭；「取消」和 Esc 照常。
+- **输入框结构重做（用户说上一版“没盖好”）**：上一版只是把左内边距加到 46px 避开左下的回形针，结果文字在上、图标在下分成两段，左边还空一块。现在按现代聊天输入框做：文字从左侧 14px 顶头开始，用 46px 下内边距在同一个框里让出底部一条图标带，回形针/附件键与发送键都落在这一带里，文字再长也不会压到图标。问卷页、访谈页、洞察页三处共用同一套（`body.v11 .rf-box textarea`）。
+- 选项行距再调：0.6cm → **0.3cm**（实测净距 11.33px，0.3cm = 11.3386px）。
+- 本地验证：团队页邀请成员弹窗四种关闭方式逐一测；问卷页/访谈页/洞察页输入框截图核对；`home`/`people`/`outline`/`insights` 回归；控制台仅 favicon 404。
+- 部署：替换 `index.html`、`ui_v11.css`、`ui_screening.css`（部署前逐文件核对服务器 = 上次部署版本）；重建 app → `Up (healthy)`；镜像内与公网 md5 MATCH；近 2 分钟日志 error 0。备份沿用 `total-20261103-125517.db.gz`（本次无数据库改动）。
+- 仓库：`79fe5973ee`。
 
+## 2026-11-03 · UI 第三批（登录页去主题切换 + 选项行距 0.6cm，已部署线上核对）
+- 用户批注：登录页不用主题、默认就是浅色绿；选项上下间隔改为 0.6cm。
+- 登录页：`loginView()` 给 body 加 `anon` 类并把 `data-theme` 固定为 `light`；`body.anon .tsw{display:none!important}` 隐藏右上角主题胶囊；进入应用（`render()` 跳过 login 分支后）移除 `anon` 并用新增的 `TT_THEME.paint()` 恢复这台电脑上选过的主题。theme.js 只加了一个导出 `paint: apply`。
+- 选项行距：`#rfws .rq-opt+.rq-opt{margin-top:0.6cm}`，实测净距 22.67px（0.6cm = 22.6772px）。
+- 本地验证：先写入 `tt_theme=dark` 再刷新登录页 → `data-theme=light`、`.tsw` 的 display 为 none；登录后 → `data-theme=dark`、胶囊恢复 flex；选项净距 22.67px。
+- **踩坑（重要）**：服务器上的 `theme.js` 比我本地仓库的新（图标 stroke-width 是 1.7，本地是 2.2），直接上传会把别人的改动回退。处理方式：以服务器版本为基准，只把 `paint: apply` 加进导出，本地文件按服务器内容重写后再上传。说明本地仓库仍有文件落后于线上，需要一次完整对账。
+- 部署：备份 `total-20261103-125517.db.gz`（COS 200）；替换 `index.html`、`theme.js`、`ui_screening.css`、`ui_v11.css`；重建 app → `Up (healthy)`；镜像内与公网 md5 全部 MATCH；近 2 分钟日志 error 0。
+- 仓库：`634caef02f`。
 
+## 2026-11-03 · UI 第二批（用户 6 张截图批注：字体/图标名称/选项行距/标签/发送键，已部署线上核对）
+- ① **全站中文字体统一微软雅黑**：原来有 5 处互相竞争的字体栈（`app.css` 用 Geist+思源、`ui_v7.css` 用 Source Sans、`editorial.css --fd` 用 Newsreader、`ui_font.css` 用 Inter+思源、`ui_v11.css` 用 Inter+雅黑），谁后加载谁生效，所以页面之间不一致。现在 5 处统一成 `"Inter","Microsoft YaHei","PingFang SC","Noto Sans SC"`：英文数字用 Inter，中文一律微软雅黑（macOS 回落苹方，只有非 Windows/macOS 才用思源）。标题 h1–h6 / b / strong 一并纳入，登录页走 `ui_font.css` 同样生效。
+- ② **图标悬停显示名称**：`shell.js` 的窄栏项与第二层菜单项加 `data-tip`，配一个全局 `.railtip`（`position:fixed` 挂 body，因为 `.rin` 与 `.sub2` 都是 `overflow:hidden`，放里面会被裁掉）。进入项目后窄栏是 12px 细边、第二层菜单收起后只剩图标和圆点——这两种状态悬停都出名称；二级圆点没有 data-tip，用自身文字做提示；菜单放开（图标旁已有文字）时不提示，避免重复。
+- ③ **选项行距 0.5cm → 0.9cm**：注意上一批改的 `.rf-optl` 不是当前问卷在用的容器，现在问卷走 `#rfws .rq-opt`（`rform.js` qCard）。已改为 `#rfws .rq-opt+.rq-opt{margin-top:0.9cm}`（只加在选项与选项之间，不动题目行和“＋添加选项”），实测行间净距 34.02px = 0.9cm。
+- ④ **分段标签现代化**：“招募问卷 / 测试答题”由描边方框改成胶囊轨道 + 白色滑块（`body.v11 .rf-seg`），选中态白底+细投影，深色主题单独配色；**发送键**（问卷/访谈/洞察三处共用的 `.rf-send`）改成 34px 实心圆、悬停微抬+投影、按下回缩、禁用半透明；**输入框**文字左缩进 + 上下留白（`12px 52px 12px 46px`），不再贴左上角。
+- ⑤ **顺手修**：访谈页附件按钮 `.ol-att` 原来没有任何样式，会掉到输入框外面，改成 32px 图标按钮（与问卷页回形针一致）并给输入框加左内边距。
+- ⑥ **本地仓库补齐**：`ai_console.js`、`ui_ai.css`、`ui_icons.css`、`ui_layout.css` 4 个文件本地缺失（之前增量同步只拉变更文件，漏了这些），已从线上补齐，哈希与 GitHub main 完全一致。
+- 本地验证（playwright + Edge，1440/820/390 三种宽度）：字体计算值 = `Inter, Microsoft YaHei, …`；分段标签 radius 999px、选中白底；发送键 34×34 圆、橙色；输入框内边距 12/52/12/46，附件键与发送键实测都在框内；选项净距 34.02px；悬停提示文字分别为“甄别设定”“招募问卷”。项目列表/总览/甄别设定/访谈/洞察/舆情/设置 7 个页面回归，控制台除 favicon 外无报错。
+- **部署（2026-11-03 20:40，用户“你先改这些”后确认部署）**：备份 `total-20261103-124033.db.gz`（COS 200）；只替换 7 个前端文件（部署前逐文件核对服务器内容与改动前版本一致，仅换行符差异，不会回退别人进度）；`docker compose up -d --build --no-deps app`；app `Up (healthy)`；镜像内与公网 7 个文件 md5 全部与本机一致；近 2 分钟日志 error 0。
+- 仓库：`07484a80`（GitHub main）。
+- 还差：`scripts/qa.sh` 全量回归没跑（本机无 LiveKit）；手机宽度只看了 390/820 两档。
+
+## 2026-11-03 · WorkBuddy 接手首批 UI 修改（本地验证通过 + 已部署新加坡，线上核对完成）
+- ① 第二层菜单二级项层级标识（用户截图批注"点了缩进以后，二级菜单没有标志……所有的二级菜单都需要"）：
+  - 展开态：`.l2slot` 左边线升级为树形连接线——颜色加深到 `--line2`、顶端加 8px 节点圆点（`::before`）、左边距对齐所属一级项图标中心（偏差 ≤1px）。所有页面的二级 tab（甄别设定/访谈/洞察/直播间）统一生效。
+  - 收起态（sub-off，桌面端）：二级菜单不再隐藏，缩成一列 8px 小圆点挂在当前一级项图标下方；当前项圆点用主题色 `--pri`，其余 `--line2`；**点击圆点=切换到对应 tab**（原 DOM 事件不变）；移动端保持完整文字菜单不变。
+- ② 招募问卷编辑态选项行距：`.rf-optl` 的 `gap` 由 8px 改为 `0.5cm`（=18.9px，用户截图批注"选项之间拉开到 0.5cm"）。
+- 改动文件：`app/static/ui_v11.css`（树线 + 收起态圆点列）、`app/static/app.css`（选项行距）。
+- 验证（本机 playwright + Edge 实测）：选项净距实测 18.9px（目标 18.8976px）；树线 2px + 圆点存在、连接线 x=54px 对图标中心 53px；收起态 2 个圆点（当前橙/其余灰）、点击圆点成功切到"配额与受访者名单"tab；三种状态截图核对通过。
+- 环境备忘（本机）：`httpx` 需 0.27.x（0.28 严格 URL 合并会丢 base_url 前缀）；本机 WorkBuddy 代理每连接只透传首请求，seed 脚本需 `Connection: close`；无 LiveKit 时 `.env` 里 `LIVEKIT_URL=` 置空即可跑 UI。
+- 还差：部署到新加坡（走 SSH 部署链路，等用户确认）；`scripts/qa.sh` 全量回归未跑（本机无 LiveKit/chromium 下载受限）。
+- 风险：收起态圆点只有指示+切换作用，不显示文字（悬停无 tooltip），如需要再补。
+- 项目固定规矩：用户 2026-11-03 确认，已写入 `docs/RULES.md`（12 条，含部署/同步/验证/代码规范），后续开发一律遵守。
+- **部署（2026-11-03 20:15，用户确认「部署、确认」）**：只替换两个静态 CSS，不整包覆盖（线上代码比本机同步的版本新 13 个文件，整包会回退别人进度）。
+  - 部署前只读侦察：app/caddy/livekit 三容器 running（app healthy）；`/opt/total-mvp/app` 253 个文件；数据库 `interviews` 4 条全部 `ended`、`recordings` 1 条 `deleted`，**没有进行中的访谈/录制**；线上两个 CSS 的 md5 与公网旧版一致（afc0bee9 / 91893286），确认是改动前版本。
+  - 备份：`total-20261103-121405.db.gz`（193KB，60 张表），异地 COS 上传 HTTP 200。
+  - 回滚材料：代码 ` /opt/rollback-code-before-ui-20261103-201415.tgz`（4.6M，不含 deploy/.env、secrets、数据库）；镜像标签 `total-app:rollback-before-ui-20261103-201415`。
+  - 部署动作：scp 两个 CSS 到 `/opt/total-mvp/app/static/`（chown root）→ `docker compose up -d --build --no-deps app`（deploy/.env 未动）。无新依赖、无表结构变更、无新环境变量。
+  - 部署后核对：镜像内 `/srv/total/app/static/ui_v11.css`、`app.css` 的 md5 与本机完全一致（7008a6f0 / 3617ccbe）；容器 `Up (healthy)`；`/api/health`、`/index.html`、`/ui_v11.css`、`/app.css` 均 200；近 3 分钟日志 traceback/error 计数 0；公网带时间戳绕缓存后两个 CSS 的 md5 与本机一致（byte 23577 / 122471）。
+  - 部署链路：源站是 `43.160.208.195`（ubuntu 用户），`43.159.98.75` 是 EdgeOne CDN 节点不是源站。本机部署公钥（`claude-total-deploy-lw-20261019`）已通过 OrcaTerm 写入服务器 `ubuntu` 的 `authorized_keys`，后续可直接 ssh，不必再走控制台扫码。
+  - 还差：需要用户登录后目视确认（强刷一次页面）。
+
+## 2026-11-03 · 部署 d309169 完成（SW 指令，已在线上核对）
+- 本批（相对 42bf606，6 个提交，只改前端静态文件）：effaea1、ecf7eeb（访谈页去掉小标签和研究库勾选，大纲空白头条去掉）；f85cc4c、f350ee7（外壳 6 条：窄栏收成细边、收起后只剩图标、头像和“姓名 · 职位 · 公司”挪右上角、正文深灰、名单页三块同高、第二层支持三级项）；36ae8ec、d309169（甄别设定：问卷对话去掉小标签和勾选；“招募问卷”改为弹框选“问卷编写 / 导入问卷链接”；导入链接保存后锁定；细线图标）。
+- 线上核对：部署前 233 个 app 文件与 42bf606 完全一致；app healthy；没有排期中或进行中的访谈，录制和后台任务为空。
+- 字体检查（本机，临时副本指向本机路径）：5 项中 4 过、1 项不过，同 42bf606：“思源黑体加载”。原因仍是正文字体栈里“微软雅黑”排在“思源黑体”前面（22b974b）。用户上次确认保持现状；本批没有改字体，未动代码。
+- 备份：数据库 `total-20261103-104507.db.gz`，异地 COS 上传 HTTP 200。回滚材料：代码 `/opt/rollback-code-42bf606.tgz`（不含 deploy/.env、secrets、数据库），镜像标签 `total-app:rollback-42bf606`。
+- 部署：`git archive d309169` 覆盖 `/opt/total-mvp`（deploy/.env、secrets 保留）；`docker compose up -d --build --no-deps app`。无新依赖、新表、新列、新环境变量。
+- 部署后核对：233 个 app 文件与 d309169 完全一致；app healthy；日志里 cannot add / error / traceback 为 0；`/api/health`、`/api/public/config`、`/index.html`、`/shell.js`、`/ui_v11.css`、`/rform.js`、`/outline.js`、`/ui_font.css`、`/fonts.css` 本机 200；公网 HTTPS `/api/health` 200；`app.doctor` 没有必须解决的问题。
+- 还差：用户登录后浏览器走一遍（先强刷）：点进项目后窄栏细边和收起、右上角姓名与公司、浅色/橙色主题正文深灰、访谈页对话、甄别设定“招募问卷”弹框、导入链接保存/锁定/编辑/新窗口、四种账号左栏顶栏。中文字体栈仍待用户决定。
 
 ## 2026-11-03 · 招募问卷：点“招募问卷”弹出选择框（问卷编写 / 导入问卷链接，单选），去掉页内三级行（用户截图指示，待部署）
 - 每次进入页面（含切回“招募问卷”页签、刷新）弹出中间选择框，选中后显示对应模块；“取消”保留默认模块；模块内“切换”按钮可再次打开选择框。

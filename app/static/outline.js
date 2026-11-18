@@ -20,9 +20,10 @@ async function outlineView(p) {
   const rec = await recP;
   const staged = (rec && rec.recruit_mode ? rec.recruit_mode : "screen_then_invite") !== "onelink";
   V = S.v;
-  let seg = sessionStorage.getItem("ol_seg") || "outline", editing = "", qmenu = "", viewer = "host", step = 0, pop = "", L = new Set(), F = new Set(), opened = new Set(), batch = false, picked = new Set(), autoPend = new Set(), autoFail = new Set();
+  // 2026-11-18 用户确认：这页只保留两个模块——生成大纲 / 预览测试（由左栏二级菜单决定，页内不再有页签、设置、导出、版本、下一步）
+  let seg = sessionStorage.getItem("ol_seg") === "test" ? "test" : "outline", editing = "", qmenu = "", viewer = "host", step = 0, pop = "", L = new Set(), F = new Set(), opened = new Set(), batch = false, picked = new Set(), autoPend = new Set(), autoFail = new Set();
   const RO = () => !!S.readonly;   // a client (viewer) sees the outline read-only but may still mark 重点关注
-  if (!["outline", "settings", "test"].includes(seg)) seg = "outline";
+  if (!["outline", "test"].includes(seg)) seg = "outline";
   const stat = (t) => { const s = $("#olstat"); if (s) s.textContent = t; else if (t) toast(t); };
   const take = (r) => { S = { ...S, ...r }; V = S.v; try { sessionStorage.setItem("ol_v_" + p.id, V); } catch { /* no storage */ } };
   const cur = () => S.versions.find((x) => x.key === V) || S.versions[0];
@@ -101,29 +102,16 @@ async function outlineView(p) {
   };
   function outlineHtml() {
     const sum = S.summary, live = cur().family === "live";
-    if (!sum) return famRow() + (S.text.trim() ? `<div class="empty"><b>文字还不能当大纲用</b><span>在左边修好或重新起草。</span></div>` : `<div class="empty"><b>还没有访谈大纲</b><span>在左边说“帮我起草大纲”。</span></div>`);
+    if (!sum) return (S.text.trim() ? `<div class="empty"><b>文字还不能当大纲用</b><span>在左边修好或重新起草。</span></div>` : `<div class="empty"><b>还没有访谈大纲</b><span>在左边说“帮我起草大纲”。</span></div>`);
     const mins = olMinutes(sum), cols = ["#9FC9B8", "#1F6B54", "#EF9F27", "#6FD3A6", "#E8CF7A", "#B84900"];
     let n0 = 0; const cards = sum.parts.map((x, i) => { const c = partCard(x, mins[i], i, n0); n0 += x.questions.filter((q) => !q.cover).length; return c; });
     const real = sum.parts.flatMap((x, i) => x.questions.map((q, qi) => (q.cover ? null : `${x.kind}:${x.ref}:${qi}`))).filter(Boolean), n = syncKeys().length + 1;
     const bar = batch ? `<div class="ol-bt" role="toolbar" aria-label="批量操作"><label class="ol-ba"><input type="checkbox" data-pkall="1" ${picked.size && picked.size === real.length ? "checked" : ""}>全选</label><span class="sp">已选 ${picked.size} 题${n > 1 ? ` · 将改到 ${n} 个版本` : ""}</span><select data-bdepth aria-label="追问深度" class="ol-bs"><option value="">追问深度 ▾</option>${Object.entries(DEPTH).map(([k, v]) => `<option value="${k}">${v[0]} · ${v[1]}</option>`).join("")}</select><button type="button" class="ol-bd" data-bdel="1">删除</button><button type="button" class="ol-bx" data-bt="1">完成</button></div>` : "";
-    return `${famRow()}<div class="row ol-hr"><h3 class="rf-h">共 ${sum.parts.length} 段 · ${sum.question_count} 题 · ${live ? `约 ${sum.minutes} 分钟` : "不计时长"}</h3><span class="sp"></span>${RO() || batch ? "" : `<button class="s" type="button" data-bt="1">批量</button>`}</div>${bar}
+    return `<div class="row ol-hr"><h3 class="rf-h">共 ${sum.parts.length} 段 · ${sum.question_count} 题 · ${live ? `约 ${sum.minutes} 分钟` : "不计时长"}</h3><span class="sp"></span>${RO() || batch ? "" : `<button class="s" type="button" data-bt="1">批量</button>`}</div>${bar}
       ${live ? `<div class="ol-bar" role="img" aria-label="各段时间分配">${sum.parts.map((x, i) => `<i style="flex:${mins[i]};background:${cols[i % cols.length]}" title="${esc(x.title)} ${mins[i]} 分钟"></i>`).join("")}</div>` : ""}
       ${cards.join("")}
       ${RO() ? "" : `<div class="row" style="margin-top:8px"><input id="olnewt" maxlength="60" placeholder="新话题的名字" aria-label="新话题的名字" style="flex:1;min-width:120px"><input id="olnewq" maxlength="300" placeholder="第一个问题" aria-label="第一个问题" style="flex:2;min-width:160px"><button class="s" type="button" id="oladdp">＋ 添加话题</button></div>`}`;
   }
-  const settingsHtml = () => {
-    const s = S.settings, ed = s.can_edit_langs, ok = !!S.summary;
-    const src = (x) => `<span class="ol-src">${x}</span>`;
-    const chip = (on, attr, label, off) => `<button type="button" class="ol-chip${on ? " on" : ""}" ${attr} aria-pressed="${on}" ${off ? "disabled" : ""}>${esc(label)}</button>`;
-    return `<div class="ol-card"><h3 class="rf-h">常规设置</h3><div class="ol-set">
-      <label class="f"><span>对外标题 ${src("跟随“同步到”")}</span><input id="olset-topic" maxlength="18" value="${esc(s.title)}" ${ok ? "" : "disabled"}><small class="sm mut">18 字以内，不写品牌</small></label>
-      <label class="f"><span>研究背景 ${src("与立项互通")}</span><textarea id="olset-brief" rows="4" maxlength="5000">${esc(s.brief)}</textarea></label>
-      <label class="f"><span>研究目标 ${src("与招募问卷互通")}</span><textarea id="olset-goals" rows="4" placeholder="每行一条">${esc(s.goals.join("\n"))}</textarea></label>
-      <div class="f"><span>访谈语言 ${src("与项目总览互通")}</span><div class="ol-chips">${s.languages.map((x) => chip(x.on, `data-sl="${x.code}"`, x.name, !ed || (x.on && x.in_use))).join("")}</div></div>
-      <div class="ol-two"><label class="f"><span>预计时长（分钟）</span><input id="olset-min" type="number" min="10" max="180" step="5" value="${s.minutes}" ${ok ? "" : "disabled"}></label>
-        <div class="f"><span>回答格式 ${src("与项目总览互通")}</span><div class="ol-chips">${Object.entries(s.format_names).map(([c, n]) => chip(s.formats.includes(c), `data-sf="${c}"`, n, !ed)).join("")}</div></div></div></div></div>
-      ${ok ? "" : `<p class="sm mut">先有一份大纲，对外标题和时长才会生效。</p>`}`;
-  };
   function testHtml() {
     const sum = S.summary; if (!sum) return `<div class="empty"><b>还没有可以试走的大纲</b><span>先在左边起草。</span></div>`;
     const flat = []; sum.parts.forEach((x, pi) => x.questions.forEach((q) => { if (!q.cover) flat.push({ part: x, pi, text: q.text }); }));
@@ -156,17 +144,13 @@ async function outlineView(p) {
     const rows = S.versions.map((x) => `<button type="button" class="rf-vi${x.key === V ? " on" : ""}" role="menuitemradio" aria-checked="${x.key === V}" data-ver="${x.key}"><span>${esc(x.name)}${x.base ? "（原文）" : ""}</span>${x.exists ? "" : autoPend.has(x.key) ? `<span class="rt-st o">正在生成…</span>` : autoFail.has(x.key) ? `<span class="rt-st r">生成失败 · 重试</span>` : `<span class="rt-st o">等待生成</span>`}</button>`).join("");
     return `<div class="rf-ver"><button type="button" data-pop="ver" aria-haspopup="true" aria-expanded="${pop === "ver"}">版本：${esc(c.name)} ▾</button>${pop === "ver" ? `<div class="rf-vm" role="menu">${rows}</div>` : ""}</div>`;
   };
-  const segHtml = () => (RO() ? [["outline", "大纲"]] : [["outline", "大纲"], ["settings", "设置"], ["test", "预览测试"]]).map(([k, n]) => `<button type="button" role="tab" data-seg="${k}" class="${seg === k ? "on" : ""}" aria-selected="${seg === k}">${n}</button>`).join("");   // 大纲/设置/预览测试：放在外壳固定的二级行里（#olseg 带 data-subrow），这里只更新里面的按钮
-  const rightHead = () => `<div class="rf-hd ol-hd"><span class="sp"></span><span class="sm mut" id="olstat" role="status" aria-live="polite"></span>${RO() ? "" : capsule()}${verMenu()}${RO() ? "" : exportMenu()}</div>`;
+  const rightHead = () => `<div class="rf-hd ol-hd"><span class="sp"></span><span class="sm mut" id="olstat" role="status" aria-live="polite"></span></div>`;
   const exportMenu = () => `<span class="ol-exp"><button type="button" data-pop="exp" aria-haspopup="true" aria-expanded="${pop === "exp"}" title="导出整份大纲">导出 ▾</button>${pop === "exp" ? `<div class="rf-vm ol-pop" role="menu"><button type="button" role="menuitem" data-exp="md">Markdown（.md）</button><button type="button" role="menuitem" data-exp="html">可打印网页（转 PDF / Word）</button></div>` : ""}</span>`;
   function drawRight() {
     const r = $("#olright"); if (!r) return;
-    if (RO() && seg !== "outline") seg = "outline";
-    const sg = $("#olseg"); if (sg) sg.innerHTML = segHtml();
     const keep = $("#olout") ? $("#olout").scrollTop : 0;
-    const body = seg === "outline" ? outlineHtml() : seg === "settings" ? settingsHtml() : testHtml();
-    const nextBtn = staged && !RO() ? `<button class="p" type="button" id="olnext" title="访问大纲确认好了，进入配额及受访者名单邀请人">确认并下一步 →</button>` : "";
-    r.innerHTML = `<div class="ol-segbar"><div class="rf-seg ol-seg" id="olseg" role="tablist" aria-label="大纲视图">${segHtml()}</div><span class="sp"></span>${nextBtn}</div>` + rightHead() + `<div class="rf-sc" id="olout"><div class="rf-col"><div id="olnotes">${notes()}</div>${body}</div></div>`;
+    const body = seg === "test" ? testHtml() : outlineHtml();
+    r.innerHTML = rightHead() + `<div class="rf-sc" id="olout"><div class="rf-col"><div id="olnotes">${notes()}</div>${body}</div></div>`;
     $("#olout").scrollTop = keep; wireRight();
   }
   const moveTo = async (from, to) => { const [kind, ref, idx] = from.split(":"); await edit({ op: "move", kind, ref: +ref, index: +idx, value: to }); drawRight(); };   // 失败时 edit 只弹提示，这里再画一遍，让卡片回到原位
@@ -245,25 +229,6 @@ async function outlineView(p) {
     document.querySelectorAll("[data-lang]").forEach((i) => (i.onchange = () => picks(L, i.dataset.lang, i.checked)));
     document.querySelectorAll("[data-fam]").forEach((i) => (i.onchange = () => picks(F, i.dataset.fam, i.checked)));
     document.querySelectorAll("[data-all]").forEach((i) => (i.onchange = () => { if (i.checked) { L = new Set(S.versions.map((x) => x.lang)); F = new Set(S.versions.map((x) => x.family)); } else resetSync(); drawRight(); }));
-    if (seg === "settings") {
-      const s = S.settings, topic = $("#olset-topic"), mins = $("#olset-min"), brief = $("#olset-brief"), goals = $("#olset-goals");
-      topic.onchange = () => putSettings({ title: topic.value.trim() });
-      mins.onchange = () => putSettings({ minutes: Math.min(180, Math.max(10, +mins.value || 45)) });
-      brief.onchange = () => putSettings({ brief: brief.value });
-      goals.onchange = () => putSettings({ goals: goals.value.split("\n").map((x) => x.trim()).filter(Boolean).slice(0, 8) });
-      document.querySelectorAll("[data-sl]").forEach((b) => (b.onclick = () => {
-        const on = s.languages.filter((x) => x.on).map((x) => x.code), c = b.dataset.sl, next = on.includes(c) ? on.filter((x) => x !== c) : [...on, c];
-        if (!next.length) return toast("至少保留一种语言", true);
-        const def = (s.languages.find((x) => x.default) || {}).code;
-        putSettings({ languages: next, default: next.includes(def) ? def : next[0] });
-      }));
-      document.querySelectorAll("[data-sf]").forEach((b) => (b.onclick = () => {
-        const c = b.dataset.sf, next = s.formats.includes(c) ? s.formats.filter((x) => x !== c) : [...s.formats, c];
-        if (!next.length) return toast("至少保留一种访谈形式", true);
-        putSettings({ formats: next });
-      }));
-      return;
-    }
     if (seg === "test") {
       document.querySelectorAll("[data-view]").forEach((b) => (b.onclick = () => { viewer = b.dataset.view; drawRight(); }));
       document.querySelectorAll("[data-step]").forEach((b) => (b.onclick = () => { step = b.dataset.step === "reset" ? 0 : Math.max(0, step + +b.dataset.step); drawRight(); }));
@@ -315,7 +280,8 @@ async function outlineView(p) {
   document.body.classList.add("rfmode", "pgw");
   const ws = $("#olws"), fit = () => { if (ws && ws.offsetParent) ws.style.height = Math.max(380, innerHeight - ws.getBoundingClientRect().top - 18) + "px"; };
   fit(); pageOn("fit", window, "resize", fit);
-  resetSync(); drawRight(); autoGen(); if (!RO()) CreationChat.mount($("#ccroot"), p, { onChange: reload });
+  resetSync(); drawRight(); autoGen();
+  if (!RO()) CreationChat.mount($("#ccroot"), p, { onChange: reload });
   const key = "ol_left_pct", setRatio = (pct) => ws.style.setProperty("--rfl", Math.min(60, Math.max(30, pct)) + "%");
   let saved = 42; try { saved = +localStorage.getItem(key) || 42; } catch { /* no storage: the default */ }
   setRatio(saved);

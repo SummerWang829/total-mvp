@@ -405,3 +405,18 @@ body.v11 .sub2 .l2slot a.l2e:hover{background:var(--chip);color:var(--ink)}
 .rf-steps i{flex:none;width:19px;height:19px;border-radius:99px;background:var(--wash);border:1px solid var(--line2);color:var(--muted);font-style:normal;font-size:12px;display:grid;place-items:center;margin-top:1px}
 .rf-steps b{color:var(--ink);font-weight:600}
 /* 导入态的“更换来源”只放在右栏标题行（左栏那个在 JS 里就不渲染了） */
+
+/* 2026-11-18：「生成访问大纲」下的两个二级项（生成大纲 / 预览测试），缩进一行，与父项区分 */
+body.v11 .sub2 .l2slot a.l2sub{padding-left:26px;font-size:13.5px;color:var(--muted)}
+body.v11 .sub2 .l2slot a.l2sub::after{content:"";position:absolute;left:12px;top:50%;width:6px;height:1px;background:var(--line2)}
+body.v11 .sub2 .l2slot a.l2sub:hover{color:var(--ink)}
+body.v11 .sub2 .l2slot a.l2sub.on{background:var(--act);color:var(--act-ink);font-weight:600;box-shadow:0 0 0 1px var(--line)}
+.v11app.sub-off .sub2 .l2slot a.l2sub{padding-left:0}
+/* 大纲页对话里的「设置」快捷条：设置项不另开页，直接在对话里点开改 */
+.ol-setbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:6px 10px 2px;border-top:1px solid var(--line);background:var(--surface)}
+.ol-setbar > span{font-size:11.5px;color:var(--muted)}
+.ol-setbar button{height:24px;padding:0 9px;border:1px solid var(--line);border-radius:999px;background:var(--surface);color:var(--ink2);font-size:11.5px;cursor:pointer}
+.ol-setbar button:hover{border-color:var(--pri);color:var(--pri)}
+
+/* 2026-11-18：「生成访问大纲」的两个子项默认收起，用 hidden 控制（左栏 a 有 display:flex!important，必须显式盖掉） */
+body.v11 .sub2 .l2slot a[hidden]{display:none!important}

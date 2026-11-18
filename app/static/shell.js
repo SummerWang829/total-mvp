@@ -238,3 +238,46 @@ function shMoveSub(a) {   // the page's own second-level controls go under the c
   });
   slot.hidden = !slot.firstChild;
 }
+
+/* ===== 对话内表格卡片（2026-11-18 用户确认）：AI 回复里的表格自动包成卡片，鼠标移上去出现「放大 / 下载」；
+   与 WorkBuddy 里的交互一致。只在对话区域内生效（问卷编辑区的表格不动）。 ===== */
+(function ccTableCards() {
+  const CHAT = "#ccroot, #ccscroll, .cc-sc, .cc-ai, .cc-msgs, .cc-body, .ol-notes";
+  const rowsOf = (tbl) => [...tbl.rows].map((r) => [...r.cells].map((c) => (c.innerText || "").replace(/\s+/g, " ").trim()));
+  const csvOf = (tbl) => "\uFEFF" + rowsOf(tbl).map((r) => r.map((x) => `"${x.replace(/"/g, '""')}"`).join(",")).join("\n");
+  const download = (tbl) => {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([csvOf(tbl)], { type: "text/csv;charset=utf-8" }));
+    a.download = "对话表格.csv"; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  };
+  const zoom = (tbl) => {
+    let m = document.getElementById("ccTblModal");
+    if (!m) {
+      m = document.createElement("div"); m.id = "ccTblModal"; m.className = "cc-tmodal";
+      m.innerHTML = `<div class="box"><div class="hd"><b>表格</b><span class="sp" style="flex:1"></span><button type="button" class="s" data-x>关闭</button></div><div data-body></div></div>`;
+      m.addEventListener("click", (e) => { if (e.target === m || e.target.hasAttribute("data-x")) m.remove(); });
+      document.body.appendChild(m);
+    }
+    const body = m.querySelector("[data-body]");
+    const t = document.createElement("table"); t.innerHTML = tbl.innerHTML;
+    body.innerHTML = ""; body.appendChild(t);
+  };
+  const wrap = (tbl) => {
+    if (!tbl || tbl.dataset.ccTbl || tbl.closest(".cc-tcard, .cc-tmodal")) return;
+    if (!tbl.closest(CHAT)) return;
+    tbl.dataset.ccTbl = "1";
+    const card = document.createElement("div"); card.className = "cc-tcard";
+    tbl.parentNode.insertBefore(card, tbl); card.appendChild(tbl);
+    const acts = document.createElement("div"); acts.className = "cc-tcart";
+    const b1 = document.createElement("button"); b1.type = "button"; b1.textContent = "⤢ 放大"; b1.onclick = (e) => { e.stopPropagation(); zoom(tbl); };
+    const b2 = document.createElement("button"); b2.type = "button"; b2.textContent = "⤓ 下载"; b2.onclick = (e) => { e.stopPropagation(); download(tbl); };
+    acts.append(b1, b2); card.appendChild(acts);
+  };
+  const sweep = (root) => { if (root.querySelectorAll) root.querySelectorAll("table").forEach(wrap); };
+  const start = () => {
+    sweep(document);
+    new MutationObserver((ms) => ms.forEach((m) => m.addedNodes.forEach((n) => { if (n.nodeType === 1) { if (n.tagName === "TABLE") wrap(n); else sweep(n); } })))
+      .observe(document.body, { childList: true, subtree: true });
+  };
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start); else start();
+})();

@@ -329,13 +329,13 @@ async function insightsHub(p, my) {
               ...qsOf().map((t) => ({ text: t, group: `访问大纲 · ${vn}` }))];
     };
     let items = itemsOf(), qs = items.map((x) => x.text), cur = 0, menu = false;
-    if (!qs.length && !(o.versions || []).length) { box.innerHTML = `<div class="card empty"><b>还没有访谈大纲。</b><span>先到“访谈”页写好大纲，这里会按每个问题归纳回答。</span><a class="btn p" href="#/p/${p.id}/outline">去访谈页</a></div>`; return; }
+    if (!qs.length && !(o.versions || []).length) { box.innerHTML = `<div class="card empty"><b>还没有访谈大纲。</b><span>先到“访谈”页写好大纲，这里会按每个问题归纳回答。</span><a class="btn p" href="#/p/${p.id}/people">去创建访谈</a></div>`; return; }
     const verBar = () => { const vs = (o.versions || []).filter((x) => x.exists !== false); if (vs.length < 2) return "";
       const c = vs.find((x) => x.key === o.v) || vs[0];
       return `<div class="row ins-tool"><span class="sm mut">访谈大纲版本</span><div class="rf-ver"><button type="button" id="qver" aria-haspopup="true" aria-expanded="${menu}">${esc(c.name)} ▾</button>${menu ? `<div class="rf-vm" role="menu">${vs.map((x) => `<button type="button" class="rf-vi${x.key === c.key ? " on" : ""}" role="menuitemradio" aria-checked="${x.key === c.key}" data-qv="${esc(x.key)}"><span>${esc(x.name)}${x.base ? "（原文）" : ""}</span></button>`).join("")}</div>` : ""}</div>${setup.source ? `<span class="sm mut" style="margin-left:auto">${esc(setup.country || "")} · 语言与形式同步自${esc(setup.source)}：${esc(setup.language || "")} · ${esc(setup.format_label || "")}</span>` : ""}</div>`; };
     const right = () => {
       const q = qs[cur], r = done[q];
-      if (!q) { $("#qapane").innerHTML = `<div class="card empty"><b>这个版本的大纲里还没有问题</b><a class="btn p" href="#/p/${p.id}/outline">去访谈页</a></div>`; return; }
+      if (!q) { $("#qapane").innerHTML = `<div class="card empty"><b>这个版本的大纲里还没有问题</b><a class="btn p" href="#/p/${p.id}/people">去创建访谈</a></div>`; return; }
       $("#qapane").innerHTML = `<div class="row ins-tool"><b>问题 ${cur + 1}</b>${items[cur] ? `<span class="sm mut">${esc(items[cur].group)}</span>` : ""}<span class="sp"></span><button type="button" class="p" id="qago">${r ? "重新生成这题的分析" : "生成这题的分析"}</button></div><div class="card"><div><b>${esc(q)}</b></div>${insAiNotice()}</div>
         ${r ? `<div class="card"><h4 style="margin:0 0 6px">受访者怎么回答的</h4>${insAnswer(r)}</div>` : `<div class="card empty"><b>还没有分析</b><span>点右上角的按钮，按已有的转写归纳这一题。</span></div>`}`;
       $("#qago").onclick = guard(async () => { const b = $("#qago"); b.disabled = true; b.textContent = "正在分析…"; try { done[q] = await api("/repo/ask", { method: "POST", body: { question: `受访者是怎么回答这个问题的：${q}`, project_id: p.id } }); } finally { right(); list(); } });
@@ -401,7 +401,7 @@ async function insightsHub(p, my) {
     </div>`;
     box.innerHTML = `<div class="row ins-tool"><b>综合看板</b><span class="sp"></span><span class="sm mut">按“访谈”页大纲里 ★ 重点关注 的问题汇总</span></div>
       <div class="rp-kpis bd-kpis"><div><b>${k.live}</b><span>进行中</span></div><div><b>${k.done} / ${k.total}</b><span>已完成</span></div><div><b>${k.focus}</b><span>关注点</span></div></div>
-      ${d.rows.length ? d.rows.map(card).join("") : `<div class="card empty"><b>还没有关注点。</b><span>到“访谈”页，在题目上点 ★ 标为重点关注（可写一句关注原因），这里就会按它聚合所有受访者的回答。</span><a class="btn p" href="#/p/${p.id}/outline">去访谈页</a></div>`}`;
+      ${d.rows.length ? d.rows.map(card).join("") : `<div class="card empty"><b>还没有关注点。</b><span>到“访谈”页，在题目上点 ★ 标为重点关注（可写一句关注原因），这里就会按它聚合所有受访者的回答。</span><a class="btn p" href="#/p/${p.id}/people">去创建访谈</a></div>`}`;
   }
 
   /* ---------- 对话：研究助手（接已配置的 AI 模型；回答 / 引用原话 / 建议 分开显示） ---------- */

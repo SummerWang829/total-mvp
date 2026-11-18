@@ -52,7 +52,7 @@ function rfCard(p, form, rec, plannedN) {
   let htmlLocked = !!form.html_url;   // the saved link is read-only until 编辑 is pressed (2026-11-03)
   let menu = null;   // the open ⋮ menu of a question ("q:<id>") or an option ("o:<id>:<number>"); one at a time
   let typeMenuOpen = null;   // 哪道题的题型下拉正打开（qid）
-  let askOpen = null, askBusy = false, askFail = "";   // 题旁「问 AI / 改这题」：正在改哪一题
+  let askOpen = null, askBusy = false, askFail = "", askDone = false, askDraft = {};   // 题旁「问 AI / 改这题」：正在改哪一题（面板就长在那道题里）
   let busy = false, focusGrip = null;   // busy: a moved card is still landing; focusGrip: the handle to focus after a keyboard move
   const snap = () => JSON.stringify({ Q, goals, need });
   const nextId = () => { let n = 0; Q.forEach((q) => { const m = /^q(\d+)$/.exec(q.id); if (m) n = Math.max(n, +m[1]); }); return "q" + (n + 1); };
@@ -131,6 +131,24 @@ function rfCard(p, form, rec, plannedN) {
   const quotaLabel = (q) => q.name || `${q.field}=${q.value}`;
   const fmtToggle = (c) => { fmtPicked = fmtPicked.includes(c) ? fmtPicked.filter((x) => x !== c) : [...fmtPicked, c]; saveFlow(); };
   const fmtBtn = (c) => `<button class="s${fmtPicked.includes(c) ? " on" : ""}" type="button" data-fmt="${c}">${fmtLabel(c)}</button>`;
+  // 2026-11-18 用户要求：访谈形式一改就同步到「项目总览 › 语言与受访形式」，两边永远一致（后端 confirm 接口写的就是 proj.formats）
+  let fmtSync = "";   // "" | "saving" | "ok" | 错误文案
+  const fmtSyncNote = () => {
+    if (!fmtDone || !fmtPicked.length) return "";
+    if (fmtSync === "saving") return `<div class="qf-hint">正在同步到项目总览…</div>`;
+    if (fmtSync && fmtSync !== "ok") return `<div class="qf-hint" style="color:#B3261E">同步失败：${esc2(fmtSync)}</div>`;
+    return `<div class="qf-hint" style="color:#1C7A55">✓ 已同步到「项目总览 › 语言与受访形式」：${esc2(fmtPicked.map(fmtLabel).join("、"))}</div>`;
+  };
+  const syncFormats = async () => {
+    if (!fmtPicked.length) return;
+    fmtSync = "saving"; drawLeft();
+    try {
+      const r = await api(`/projects/${p.id}/recruiting/form/questions/confirm`, { method: "POST", body: { formats: fmtPicked, quotas: [] } });
+      if (Array.isArray(r.formats) && r.formats.length) { fmtPicked = r.formats.slice(); f = { ...f, formats: r.formats.slice() }; }
+      fmtSync = "ok";
+    } catch (e) { fmtSync = e.message || "未知错误"; }
+    saveFlow(); drawLeft();
+  };
   // 建议条：贴在输入框上方，最多 3 条，可多选，点「确认」把选中的建议交给 AI 生效
   const curSuggestions = () => {
     const st = flowState();
@@ -170,11 +188,11 @@ function rfCard(p, form, rec, plannedN) {
     }
     if (!quotaDone) {
       return `<div class="cc-ai"><b>访谈形式已确认</b>${fmtPicked.length ? `：${esc2(fmtPicked.map(fmtLabel).join("、"))}` : ""}<br>下面按研究目标对齐配额口径，确认表格后即保存。</div>` +
-        `<div class="qf-panel"><h4>访谈形式（已确认）</h4><div class="row">${Object.keys(FORMATS).map(fmtBtn).join("")}</div><button class="s" type="button" id="qffmtredo">修改形式</button></div>` +
+        `<div class="qf-panel"><h4>访谈形式（已确认）</h4><div class="row">${Object.keys(FORMATS).map(fmtBtn).join("")}</div><button class="s" type="button" id="qffmtredo">修改形式</button>${fmtSyncNote()}</div>` +
         quotaPanelHtml();
     }
     return `<div class="cc-ai"><b>访谈形式与配额已保存</b><br>下面可以进入测试答题，或进入「配额与受访者名单」。</div>` +
-      `<div class="qf-panel"><h4>访谈形式</h4><div class="mut">${fmtPicked.length ? esc2(fmtPicked.map(fmtLabel).join("、")) : "（未选择）"}</div>` +
+      `<div class="qf-panel"><h4>访谈形式</h4><div class="row">${Object.keys(FORMATS).map(fmtBtn).join("")}</div>${fmtSyncNote()}` +
       `<h4>配额组</h4>${quotaList.length ? `<table><tr><th>分组</th><th>目标人数</th><th>条件</th></tr>${quotaList.map((q) => `<tr><td>${esc2(quotaLabel(q))}</td><td>${q.target}</td><td>${esc2(q.field === "answer" ? (q.question || "") : q.value || "")}</td></tr>`).join("")}</table>` : `<div class="mut">未设置配额组</div>`}</div>` +
       `<div class="qf-forward" style="margin-top:4px"><button class="p" type="button" id="qftest">进入测试答题 →</button><button class="s" type="button" id="qflist">进入配额与名单</button></div>`;
   };
@@ -206,21 +224,50 @@ function rfCard(p, form, rec, plannedN) {
     const sugN = (f.suggestions || []).length;
     return `<div class="cc-hd"><b>与小星星助手共同创建</b><span class="mut">小星星助手</span><span class="sp"></span><button class="cc-ck${sugN ? " on" : ""}" type="button" id="qfck" aria-expanded="${showChecks}">检查提示 ${sugN}</button></div>` +
       (showChecks ? `<div class="cc-cklist">${sugN ? (f.suggestions || []).map((x) => `<div class="cc-ci warn"><span>${esc2(x.text || x.label)}</span></div>`).join("") : `<div class="mut">现在没有需要处理的提示</div>`}</div>` : "") +
-      `<div class="cc-sc" id="ccscroll">${body}</div>` +
+      `<div class="cc-sc" id="ccscroll">${anchorBarHtml()}${body}</div>` +
       sugBarHtml() +
       `<div class="cc-box"><textarea id="ccmsg" rows="2" maxlength="1000" placeholder="说一句话，或点上面的按钮……" aria-label="对话输入"></textarea>` +
       `<button class="cc-att" type="button" aria-label="附件">📎</button><button class="p cc-send" type="button" id="ccsend" aria-label="发送">↑</button></div>`;
+  };
+
+  /**
+   * 2026-11-18 用户要求：AI 改完题目后，对话框要与「被修改的那道题」顶部对齐，
+   * 一眼能看出这段对话对应哪道题。做法：右侧把该题滚到顶部、左侧把这条回复滚到顶部，
+   * 两栏起始线一致；回复下方再给可点的「Q3 / Q5」锚点，点一下就定位到那道题。
+   */
+  const alignAnchor = (qid) => {
+    const out = $("#rfout");
+    if (out && qid) {
+      const qEl = out.querySelector(`.rf-q[data-qid="${qid}"]`);
+      if (qEl) out.scrollTop = Math.max(0, qEl.offsetTop - 8);
+    }
+    const sc = $("#ccscroll");
+    if (sc) {
+      const bar = sc.querySelector(".cc-anchorbar");
+      const target = bar || sc.querySelector(".cc-ai:last-of-type");
+      if (target) sc.scrollTop = Math.max(0, target.offsetTop - 4);
+    }
+  };
+  const anchorBarHtml = () => {
+    if (!changedIds.size) return "";
+    const ids = [...changedIds].filter((id) => Q.some((q) => q.id === id)).slice(0, 6);
+    if (!ids.length) return "";
+    return `<div class="cc-anchorbar"><b>这段对话改的是：</b>` +
+      ids.map((id) => `<button type="button" class="cc-anchor" data-anchor="${esc2(id)}">Q${Q.findIndex((q) => q.id === id) + 1}</button>`).join("") +
+      `<span class="mut">点题号跳到那道题</span></div>`;
   };
 
   const wireFlow = () => {
     const send = $("#ccsend"), box = $("#ccmsg");
     if (box) box.onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); if (send) send.click(); } };
     const chatTurn = async (text) => {
+      const before = JSON.parse(JSON.stringify(Q));
       const r = await api(`/projects/${p.id}/recruiting/form/chat`, { method: "POST", body: { message: text, questions: Q, goals, need, use_library: true, ask_only: false } });
-      if (Array.isArray(r.questions)) { pushHist(); Q = JSON.parse(JSON.stringify(r.questions)); }
+      if (Array.isArray(r.questions)) { pushHist(); Q = JSON.parse(JSON.stringify(r.questions)); changedIds = diffIds(before, Q); }
       if (Array.isArray(r.goals)) goals = r.goals.slice();
       if (typeof r.need === "string") need = r.need;
       f = { ...f, ...r }; save(); drawLeft(); drawRight(); toast(r.reply || "已更新");
+      const first = [...changedIds][0]; if (first) requestAnimationFrame(() => alignAnchor(first));
     };
     if (send) send.onclick = guard(async () => {
       const text = (box ? box.value : "").trim();
@@ -253,6 +300,11 @@ function rfCard(p, form, rec, plannedN) {
     const confirm = document.querySelector("[data-confirm]"); if (confirm) confirm.onclick = enterStep3;
     const ck = $("#qfck"); if (ck) ck.onclick = () => { showChecks = !showChecks; drawLeft(); };
     document.querySelectorAll("[data-say]").forEach((b) => (b.onclick = () => { if (box) { box.value = b.dataset.say; box.focus(); } }));
+    // 题号锚点：点一下对话与题目同时定位到那道题（顶部对齐）
+    document.querySelectorAll("[data-anchor]").forEach((b) => (b.onclick = () => {
+      document.querySelectorAll(".cc-anchor").forEach((x) => x.classList.toggle("on", x === b));
+      alignAnchor(b.dataset.anchor);
+    }));
     // 建议条：多选（局部更新不重绘）→ 确认后把选中的建议交给 AI 生效
     document.querySelectorAll("[data-sug]").forEach((b) => (b.onclick = () => {
       const id = b.dataset.sug;
@@ -297,12 +349,16 @@ function rfCard(p, form, rec, plannedN) {
       await api(`/projects/${p.id}/recruiting/form/questions/confirm`, { method: "POST", body: { formats: [], quotas: [] } });
       f = { ...f, questions_confirmed: true }; qfStep = 6; fmtDone = false; quotaDone = false; quotaPlan = null; drawLeft(); drawRight(); toast("问卷已确认");
     });
-    // 访谈形式：多选，单独确认（样式补 .on 后才能看出选中）
-    document.querySelectorAll("[data-fmt]").forEach((b) => (b.onclick = () => { fmtToggle(b.dataset.fmt); b.classList.toggle("on", fmtPicked.includes(b.dataset.fmt)); }));
+    // 访谈形式：多选，单独确认（样式补 .on 后才能看出选中）；已确认后再点任意一项即时同步到项目总览
+    let fmtTimer = 0;
+    document.querySelectorAll("[data-fmt]").forEach((b) => (b.onclick = () => {
+      fmtToggle(b.dataset.fmt); b.classList.toggle("on", fmtPicked.includes(b.dataset.fmt));
+      if (fmtDone) { clearTimeout(fmtTimer); fmtTimer = setTimeout(() => { syncFormats(); }, 350); }
+    }));
     const fmtgo = $("#qffmtgo"); if (fmtgo) fmtgo.onclick = guard(async () => {
       if (!fmtPicked.length) fmtPicked = ["video"];   // 未选时默认视频访谈
       try { await api(`/projects/${p.id}/recruiting/form/questions/confirm`, { method: "POST", body: { formats: fmtPicked, quotas: [] } }); } catch (e) { toast(e.message, true); return; }
-      fmtDone = true; f = { ...f, formats: fmtPicked }; saveFlow(); drawLeft(); toast("访谈形式已保存，接着对齐配额口径");
+      fmtDone = true; fmtSync = "ok"; f = { ...f, formats: fmtPicked }; saveFlow(); drawLeft(); toast("访谈形式已保存，接着对齐配额口径");
       loadQuotaPlan();   // 进入配额阶段才拉口径
     });
     const fmtredo = $("#qffmtredo"); if (fmtredo) fmtredo.onclick = () => { fmtDone = false; saveFlow(); drawLeft(); };
@@ -483,7 +539,23 @@ function rfCard(p, form, rec, plannedN) {
         <span class="rq-type-wrap"><button class="rq-type rq-type-btn" type="button" data-typetg="${q.id}" aria-haspopup="true" aria-expanded="false" title="点一下切换题型">${RF_TYPE[q.type] || q.type}${q.required ? " · 必答" : ""}${rfIcon(RF_IC.chev)}</button>${typeMenuOpen === q.id ? `<div class="rq-type-menu" role="menu">${Object.entries(RF_TYPE).map(([k, n]) => `<button type="button" role="menuitem" data-typeset="${q.id}" data-t="${k}" class="${q.type === k ? "on" : ""}">${n}</button>`).join("")}</div>` : ""}</span>
         <button class="rq-ask" type="button" data-ask="${q.id}" aria-label="对这题问问 AI" title="对这题问问 AI">💬</button>
         <button class="rq-more" type="button" data-menu="${qk}" aria-label="题目菜单" aria-expanded="${menu === qk}">${rfIcon(RF_IC.dots)}</button>${menu === qk ? qMenu(q, i) : ""}</div>
-      ${opts}${rules}${exWarn(q)}</div>`;
+      ${opts}${rules}${exWarn(q)}${askOpen === q.id ? askInline(q, i) : ""}</div>`;
+  }
+  /**
+   * 2026-11-18 用户确认（方案 B）：改这题目板直接长在这道题的卡片里（选项下面），
+   * 打开后常驻，只有点「关闭」才收起；翻到别的题点 💬 会换成那道题，内容与题号自动跟着变。
+   */
+  function askInline(q, i) {
+    const qn = i + 1;
+    return `<div class="rq-askin" role="region" aria-label="对第 ${qn} 题问问 AI">
+      <div class="rq-askin-hd"><b>改这题 · Q${qn}</b><span class="sm mut">${RF_TYPE[q.type] || q.type}${q.required ? " · 必答" : ""}</span><span class="sp"></span><button type="button" class="s" data-askclose="1">关闭</button></div>
+      <div class="rq-askin-bd">
+        <div class="sm mut rq-askin-q">${esc(q.text || "（还没写题目）")}</div>
+        <textarea data-asktext="1" placeholder="说说要怎么改这一题，例如：把选项改成……／加一道追问……">${esc(askDraft[q.id] || "")}</textarea>
+        ${askFail ? `<div class="rq-askerr">${esc(askFail)}</div>` : ""}
+        ${askDone ? `<div class="rq-askok">✓ 已按你的要求改好这一题</div>` : ""}
+      </div>
+      <div class="rq-askin-ft"><button type="button" class="p" data-asksend="1"${askBusy ? " disabled" : ""}>${askBusy ? "正在改…" : "改这题"}</button><span class="sm mut">只改这一题，其它题目不变</span></div></div>`;
   }
   // 研究背景: one bullet per line of the project's background; the numbering in front of a line is not shown
   const briefLines = () => (f.brief || p.brief || "").split("\n").map((l) => l.replace(/^\s*(?:\d+\s*[.、)]|[-•·])\s*/, "").trim()).filter(Boolean);
@@ -565,48 +637,61 @@ function rfCard(p, form, rec, plannedN) {
     const pill = live ? `<span class="pill">已锁定 · 第 ${f.version || 1} 版</span>` : f.status === "closed" ? `<span class="pill o">已停止</span>` : `<span class="pill o">编辑中 · 未发布</span>`;
     const pubBtn = live ? `<button class="s" type="button" id="rfunlock">解锁修改</button>`
       : `<button class="p" type="button" id="rfpub" ${Q.length ? "" : "disabled"}>${f.status === "closed" ? "重新发布" : "发布新版本"}</button>`;
+    // 2026-11-18 用户确认：顶部只留一行——删除「确认背景与目标 / 起草问卷 / 检查问卷」三个按钮（出题与检查都走左侧对话）
     return `<div class="rf-hd"><div class="rf-seg" role="tablist"><button type="button" role="tab" data-seg="outline" class="${seg === "outline" ? "on" : ""}" aria-selected="${seg === "outline"}">${rfIcon(RF_IC.list)}招募问卷</button><button type="button" role="tab" data-seg="test" class="${seg === "test" ? "on" : ""}" aria-selected="${seg === "test"}">${rfIcon(RF_IC.eye)}测试答题</button></div>
-      <span class="sp"></span><button class="s" type="button" id="rfframing" title="确认研究背景与目标后才开始出题">确认背景与目标</button><button class="s" type="button" id="rfdraft" title="按研究背景与目标一次起草 8-12 题">起草问卷</button><button class="s" type="button" id="rfreview" title="检查配额、筛除率、选项互斥、措辞与目标覆盖">检查问卷</button>${vers && vers.languages.length > 1 || (vers && vers.languages.length) ? verMenu() : ""}<span class="sm mut" id="rfstat" role="status" aria-live="polite">${f.version ? `第 ${f.version} 版` : ""}</span>${pill}
+      <span class="sp"></span>${vers && vers.languages.length > 1 || (vers && vers.languages.length) ? verMenu() : ""}<span class="sm mut" id="rfstat" role="status" aria-live="polite">${f.version ? `第 ${f.version} 版` : ""}</span>${pill}
       ${pubBtn}<button class="p" type="button" id="rfnext" title="甄别问卷测试好了，进入数据库筛选及发送">确认并下一步 →</button></div>`;
   };
 
-  // 右侧并排的「改这题」栏：点题目右上角 💬 打开，只改这一题，不遮住问卷
+  // 2026-11-18：改这题目板已改成行内（长在题目卡片里，见 askInline），这里只负责把旧浮层收掉
   function drawAskPanel() {
     const panel = $("#rfaskpanel"); if (!panel) return;
-    const qi = Q.findIndex((x) => x.id === askOpen);
-    if (qi < 0) { panel.hidden = true; panel.innerHTML = ""; return; }
-    panel.hidden = false;
-    const q = Q[qi], qn = qi + 1;
-    panel.innerHTML = `<div class="rq-askbox" role="dialog" aria-label="对第 ${qn} 题问问 AI">
-      <div class="rq-askhd"><b>改这题 · Q${qn}</b><span class="sm mut">${RF_TYPE[q.type] || q.type}${q.required ? " · 必答" : ""}</span><span class="sp"></span><button type="button" class="s" id="askclose">关闭</button></div>
-      <div class="rq-askbody"><div class="sm mut">${esc(q.text || "")}</div>
-        <textarea id="asktext" placeholder="说说要怎么改这一题，例如：把选项改成……／加一道追问……"></textarea>
-        ${askFail ? `<div class="rq-askerr">${esc(askFail)}</div>` : ""}</div>
-      <div class="rq-askft"><button type="button" class="p" id="asksend" ${askBusy ? "disabled" : ""}>${askBusy ? "正在改…" : "改这题"}</button><span class="sm mut">只改这一题，其它题目不变</span></div></div>`;
-    const cl = $("#askclose"); if (cl) cl.onclick = () => { askOpen = null; askFail = ""; drawRight(); };
-    const sd = $("#asksend"); if (sd) sd.onclick = guard(async () => {
-      const text = ($("#asktext") ? $("#asktext").value : "").trim();
+    panel.hidden = true; panel.innerHTML = "";
+  }
+  // 行内面板的事件：关闭 / 改这题（改完保持打开，只有点关闭才收）
+  function wireAskInline() {
+    const close = document.querySelector("[data-askclose]");
+    if (close) close.onclick = () => { askOpen = null; askFail = ""; askDone = false; drawRight(); };
+    const ta = document.querySelector("[data-asktext]");
+    if (ta) {
+      ta.oninput = () => { askDraft[askOpen] = ta.value; };
+      ta.onkeydown = (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); const b = document.querySelector("[data-asksend]"); if (b) b.click(); } };
+    }
+    const send = document.querySelector("[data-asksend]");
+    if (send) send.onclick = guard(async () => {
+      const q = Q.find((x) => x.id === askOpen); if (!q) return;
+      const box = document.querySelector("[data-asktext]");
+      const text = (box ? box.value : "").trim();
       if (!text) return toast("先说要怎么改这题", true);
-      askBusy = true; askFail = ""; drawAskPanel();
+      askBusy = true; askFail = ""; askDone = false; drawRight();
       try {
         const r = await api(`/projects/${p.id}/recruiting/form/ask`, { method: "POST", body: { qid: q.id, instruction: text, questions: Q, goals, need } });
         if (r.changed && Array.isArray(r.questions)) {
           pushHist(); changedIds = diffIds(Q, r.questions); Q = JSON.parse(JSON.stringify(r.questions)); editing = new Set();
-          askOpen = null; askFail = ""; save(); drawRight(); toast("已按你的要求改好这一题"); return;
+          askBusy = false; askFail = ""; askDone = true; askDraft[q.id] = ""; save(); drawRight();   // 面板保留，只有点「关闭」才收
+          toast("已按你的要求改好这一题"); return;
         }
         askFail = r.reply || "模型没有改这一题，换个说法试试";
       } catch (e) { askFail = e.message || "改题失败"; }
-      askBusy = false; drawAskPanel();
+      askBusy = false; drawRight();
     });
   }
 
   function drawRight() {
     const r = $("#rfright"); if (!r) return;
     const keep = $("#rfout") ? $("#rfout").scrollTop : 0;
-    r.innerHTML = rightHead() + `<div class="rf-sc" id="rfout"><div class="rf-col">${seg === "outline" ? (isSource() ? sugHtml() + outline() : `<div id="rftr"><div class="mut" style="padding:12px">加载中…</div></div>`) : `<p class="sm mut" style="margin:0">就是候选人看到的样子：直接填写，看会走到哪里。</p><div id="rfrun"></div><div class="note" id="rfresult" role="status" aria-live="polite" hidden></div>`}</div></div>`;
+    r.innerHTML = rightHead() + `<div class="rf-sc" id="rfout"><div class="rf-col">${seg === "outline" ? (isSource() ? outline() : `<div id="rftr"><div class="mut" style="padding:12px">加载中…</div></div>`) : `<p class="sm mut" style="margin:0">就是候选人看到的样子：直接填写，看会走到哪里。</p><div id="rfrun"></div><div class="note" id="rfresult" role="status" aria-live="polite" hidden></div>`}</div></div>`;
     $("#rfout").scrollTop = keep; wireRight(); wireVer(); syncUndo();
-    const rr = $("#rfright"); if (rr) rr.querySelectorAll("[data-ask]").forEach((b) => (b.onclick = (e) => { e.stopPropagation(); askOpen = b.dataset.ask; askFail = ""; drawRight(); }));
-    drawAskPanel();
+    const rr = $("#rfright"); if (rr) rr.querySelectorAll("[data-ask]").forEach((b) => (b.onclick = (e) => { e.stopPropagation(); if (askOpen === b.dataset.ask) { askOpen = null; askFail = ""; askDone = false; drawRight(); return; } askOpen = b.dataset.ask; askFail = ""; askDone = false; drawRight(); const ta = document.querySelector("[data-asktext]"); if (ta) ta.focus(); }));
+    drawAskPanel(); wireAskInline();
+    if (askOpen) {   // 只在这道题跑出视野时才滚，尽量保住原题（题干和选项）和修改框一起看得见
+      const sc = $("#rfout"), el = sc && sc.querySelector(`.rf-q[data-qid="${askOpen}"]`);
+      if (el) {
+        const top = el.offsetTop, bottom = top + el.offsetHeight, view = sc.clientHeight;
+        if (top < sc.scrollTop + 8) sc.scrollTop = Math.max(0, top - 12);
+        else if (bottom > sc.scrollTop + view - 8) sc.scrollTop = Math.max(0, top - 12);
+      }
+    }
     const g2 = $("#rfgooutline2"); if (g2) g2.onclick = goOutline;
   }
   const refreshVers = async () => {   // after the original is saved, other versions may have gone stale: update the menu (the banner shows when you open that version)
@@ -648,17 +733,29 @@ function rfCard(p, form, rec, plannedN) {
       step: async (answers) => { const r = await api(`/projects/${p.id}/recruiting/form/preview`, { method: "POST", body: { questions: Q, answers, lang: isSource() ? "" : ver } }); return r.result ? { result: r.result } : { question: r.question }; },
       onEnd: (result, answers, ctx) => {
         res.hidden = false;
-        const tail = ctx && ctx.back ? ` <button type="button" class="s" id="scrbackretry">返回上一题</button>` : "";
-        res.innerHTML = (result === "out" ? "测试结果：这位候选人会被筛掉（不符合），问卷到此结束。" : "测试结果：这位候选人符合，会进入留联系方式的步骤。") + tail;
+        const back = ctx && ctx.back ? `<button type="button" class="s" id="scrbackretry">← 返回上一题</button>` : "";
+        if (result === "out") {
+          // 被甄别：可以回到上一题改答案再试（2026-11-16 已做，这里保持）
+          res.innerHTML = "测试结果：这位候选人会被筛掉（不符合），问卷到此结束。 " + back;
+        } else {
+          // 通过：由你手动点「发布新版本」，发布后直接进入「数据库筛选及发送」（2026-11-18 用户确认）
+          res.innerHTML = `<b style="color:#1C7A55">✓ 测试通过</b>：流程能走完，没有死循环。确认无误后发布新版本。 ` +
+            `<button type="button" class="p" id="scrpub" style="border-radius:999px">发布新版本 → 第 ${(f.version || 0) + 1} 版</button> ${back}`;
+          const pb = $("#scrpub");
+          if (pb) pb.onclick = () => publish();   // 发布后留在本页，用户再点「确认并下一步」
+        }
         const b = $("#scrbackretry"); if (b && ctx && ctx.back) b.onclick = () => { res.hidden = true; ctx.back(); };
       },
     }).start();
   };
+  let publishNext = null;   // 保留变量：测试答题通过后点发布也不跳页，只留在本页
   const publish = guard(async () => {
     clearTimeout(timer); if (incomplete()) throw new Error("有题目或选项还没写完，写完再发布");
     f = { ...f, ...(await api(`/projects/${p.id}/recruiting/form`, { method: "PUT", body: body() })) };
-    f = { ...f, ...(await api(`/projects/${p.id}/recruiting/form/publish`, { method: "POST" })) }; toast("已发布，链接和二维码在“配额与受访者名单”页");
-    sessionStorage.setItem("ptab", "list"); render();
+    f = { ...f, ...(await api(`/projects/${p.id}/recruiting/form/publish`, { method: "POST" })) };
+    // 2026-11-18 用户确认：发布后留在本页（不跳名单/不跳数据库），由用户自己点「确认并下一步 →」
+    toast(`已发布第 ${f.version || ""} 版，链接和二维码在「配额及受访者名单」页；确认无误后点「确认并下一步 →」`);
+    drawRight();
   });
 
   function wireRight() {
@@ -789,7 +886,11 @@ function rfCard(p, form, rec, plannedN) {
       <div class="cc" id="ccroot"></div></div>
       <div class="rf-split" id="rfsplit" role="separator" aria-orientation="vertical" aria-label="拖动调整对话和大纲的宽度（双击恢复）" tabindex="0"><i></i></div><div class="rf-pane" id="rfright"></div></div><div class="rf-askpanel" id="rfaskpanel" hidden></div></div>`;
   }
-  const goOutline = () => { location.hash = `#/p/${p.id}/outline`; };
+  // 旧「访谈大纲」页已删：这里只切到「生成大纲」的空白占位页（2026-11-18）
+  const goOutline = () => {
+    try { sessionStorage.setItem("ol_menu", "1"); sessionStorage.setItem("ol_seg", "outline"); } catch (e) { /* 隐私窗口 */ }
+    if (window.__ptabGo) window.__ptabGo("ols-gen"); else location.hash = `#/p/${p.id}/people`;
+  };
   // 问卷来源选择弹窗已按需求删除：来源统一在「招募方式」页的「问卷来源」决定，
   // mode 在开头已取 form.source，进页面直接用，不再二次询问。
   const draw = () => { $("#rfbody").innerHTML = panels(); wire(); };

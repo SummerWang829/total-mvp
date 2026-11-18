@@ -16,7 +16,6 @@
 <script src="/rform.js"></script>
 <script src="/rtrans.js"></script>
 <script src="/rdash.js"></script>
-<script src="/outline.js"></script>
 <script src="/ai_console.js"></script>
 <script src="/creation.js"></script>
 <script src="/insights.js"></script>
@@ -141,7 +140,7 @@ async function render() {
       if (page === "rooms" && !VIEWER() && !RECRUITER()) return await roomsView(p);
       if (page === "insights" && !RECRUITER()) return await insightsListView(p);
       if (page === "analysis") { location.replace(`#/p/${p.id}/insights`); return; }  // the coding page is gone
-      if (page === "outline" && (STAFF() || VIEWER())) return await outlineView(p);
+      if (page === "outline") { location.replace(`#/p/${p.id}/people`); return; }  // 2026-11-18：旧「访谈大纲」页整页删除，正在重新设计
       if (page === "members" && STAFF()) return await membersView(p);
       if (page === "listening" && (STAFF() || VIEWER())) return await listeningView(p);
       if (page === "quant" && (STAFF() || VIEWER())) return await quantView(p);
@@ -370,7 +369,13 @@ async function peopleView(p) {
         ${RC ? "" : `<td class="acts">${x.anonymized || x.screening !== "eligible" || x.screen_result === "disqualified" ? "" : (() => { const iv = invOf(x); return iv ? `<button class="s" data-upd="${iv.id}"${iv.status === "ended" ? ' disabled title="访谈已结束"' : ""}>更新邀请函</button>${iv.mail_status === "failed" ? `<div class="mailwarn">邮件没发出去 · <a data-resend="${iv.id}" role="button" tabindex="0">重发</a></div>` : ""}` : `<button class="s p" data-inv="${x.id}">发送邀请函</button>`; })()}</td>`}
         ${RC ? "" : `<td class="c">${x.anonymized ? "" : `<button type="button" class="xdel" data-erase="${x.id}" data-name="${esc(x.name)}" aria-label="删除 ${esc(x.name)} 的数据" title="删除数据">×</button>`}</td>`}</tr>`; };
   const rm = rec.recruit_mode || "screen_then_invite", hm = rec.host_mode || "human";
-  const ptab = ["list", "form", "db"].includes(sessionStorage.getItem("ptab")) ? sessionStorage.getItem("ptab") : "mode";  // 从「深访」进来第一个部分一定是「招募/主持/问卷」（可返回改招募方式）；只有在本页内切过其他 tab 才记住
+  const ptab = ["list", "form", "db", "ols"].includes(sessionStorage.getItem("ptab")) ? sessionStorage.getItem("ptab") : "mode";  // 从「深访」进来第一个部分一定是「招募/主持/问卷」（可返回改招募方式）；只有在本页内切过其他 tab 才记住
+  // 2026-11-18：「生成访问大纲」下拆两个二级项——生成大纲 / 预览测试（各带左侧 AI 对话）；这里记住上次看的是哪个
+  const olSeg = () => (sessionStorage.getItem("ol_seg") === "test" ? "test" : "outline");
+  const olMenuOpen = () => sessionStorage.getItem("ol_menu") === "1";   // 子项默认收起，点「生成访问大纲」才展开
+  const olsTitle = () => (olSeg() === "test" ? "预览测试" : "生成大纲");
+
+  // 2026-11-18：旧「访谈大纲」页已整页删除；子项先只进空白占位页，不跳转、不生成
   // 招募方式/主持方式：作为「招募问卷」同级的 tab，排在它上方
   const modeBar = `<div class="card rmode-card" id="rmode"><h3 style="margin:0 0 12px">招募方式 · 主持方式</h3>
       <div class="rmode-t"><b>招募方式</b><span class="sm mut">怎么让候选人进入访谈</span></div>
@@ -405,9 +410,9 @@ async function peopleView(p) {
   </div>`;
   shell(`<div class="hubtabs sub" role="tablist" aria-label="创建访谈"><a href="#" role="tab" id="ptab-mode-t" class="${ptab === "mode" ? "on" : ""}" aria-selected="${ptab === "mode"}">招募/主持/问卷</a>${rm === "onelink"
       ? `<a href="#" role="tab" id="ptab-form-t" class="${ptab === "form" ? "on" : ""}" aria-selected="${ptab === "form"}">招募问卷</a><a href="#" role="tab" id="ptab-db-t" class="${ptab === "db" ? "on" : ""}" aria-selected="${ptab === "db"}">数据库发送</a>`
-      : `<a href="#" role="tab" id="ptab-form-t" class="${ptab === "form" ? "on" : ""}" aria-selected="${ptab === "form"}">甄别问卷</a><a href="#" role="tab" id="ptab-db-t" class="${ptab === "db" ? "on" : ""}" aria-selected="${ptab === "db"}">数据库筛选及发送</a><a href="#" role="tab" id="ptab-outline-t" class="${ptab === "outline" ? "on" : ""}" aria-selected="${ptab === "outline"}">生成访问大纲</a><a href="#" role="tab" id="ptab-list-t" class="${ptab === "list" ? "on" : ""}" aria-selected="${ptab === "list"}">配额及受访者名单</a>`}</div>
+      : `<a href="#" role="tab" id="ptab-form-t" class="${ptab === "form" ? "on" : ""}" aria-selected="${ptab === "form"}">甄别问卷</a><a href="#" role="tab" id="ptab-db-t" class="${ptab === "db" ? "on" : ""}" aria-selected="${ptab === "db"}">数据库筛选及发送</a><a href="#" role="tab" id="ptab-outline-t" aria-expanded="${olMenuOpen() ? "true" : "false"}">生成访问大纲</a><a href="#" role="tab" class="l2sub${olSeg() === "outline" ? " on" : ""}" id="ptab-ols-gen"${olMenuOpen() ? "" : " hidden"}>生成大纲</a><a href="#" role="tab" class="l2sub${olSeg() === "test" ? " on" : ""}" id="ptab-ols-test"${olMenuOpen() ? "" : " hidden"}>预览测试</a><a href="#" role="tab" id="ptab-list-t" class="${ptab === "list" ? "on" : ""}" aria-selected="${ptab === "list"}">配额及受访者名单</a>`}</div>
     <div id="ptab-mode" ${ptab === "mode" ? "" : "hidden"}>${modeBar}</div>
-    <div id="ptab-form" ${ptab === "form" ? "" : "hidden"}>${rf.html}</div><div id="ptab-db" ${ptab === "db" ? "" : "hidden"}>${dbHtml}</div><div id="ptab-list" ${ptab === "list" ? "" : "hidden"}>
+    <div id="ptab-ols" ${ptab === "ols" ? "" : "hidden"}><div class="card" style="min-height:420px"><h3 style="margin:0 0 6px" id="olstitle">${esc(olsTitle())}</h3><div class="sm mut">这个模块正在重新设计，先留空白。后面按新方案再放内容。</div></div></div><div id="ptab-form" ${ptab === "form" ? "" : "hidden"}>${rf.html}</div><div id="ptab-db" ${ptab === "db" ? "" : "hidden"}>${dbHtml}</div><div id="ptab-list" ${ptab === "list" ? "" : "hidden"}>
     ${rd.html}
     ${impBatchBar(impB.batches, impB.orphans_pending)}
     <div class="card" id="plist"><div class="row rd-tool"><h3 style="margin:0">受访者名单 <span class="sm mut" id="plcount">共 ${parts.length} 人${shown.length !== parts.length ? `，当前显示 ${shown.length}` : ""}</span></h3><span class="sp"></span>
@@ -423,26 +428,33 @@ async function peopleView(p) {
     <div class="lpop" id="lpop" hidden></div></div>`, { active: "people", p });
   // 兜底：若二级菜单里还有指向 outline 的静态项，一律移除（大纲已统一由「访问大纲生成及邀请」tab 承载）
   document.querySelectorAll('.sub2 .l2slot a.l2e').forEach((a) => { if (/\/outline/.test(a.getAttribute("href") || "")) a.remove(); });
-  const showTab = (name) => {
-    sessionStorage.setItem("ptab", name);
-    if (name === "outline") {   // 生成访问大纲：先按已做好的大纲算法生成，再打开大纲页（已有大纲不覆盖）
-      (async () => {
-        try { const r = await api(`/projects/${p.id}/outline/generate`, { method: "POST" }); if (r.generated) toast("已生成访问大纲"); else if (r.reason) toast(r.reason, true); }
-        catch (e) { toast("访问大纲生成未成功：" + (e.message || ""), true); }
-        location.hash = `#/p/${p.id}/outline`;
-      })();
-      return;
-    }
+  const showTab = (name) => {   // name: mode / form / db / list / ols-gen / ols-test
+    const blank = name === "ols-gen" || name === "ols-test";
+    sessionStorage.setItem("ptab", blank ? "ols" : name);
+    if (blank) sessionStorage.setItem("ol_seg", name === "ols-test" ? "test" : "outline");
     const set = (id, on) => { const el = $(id); if (el) el.hidden = !on; };
-    set("#ptab-mode", name === "mode"); set("#ptab-form", name === "form"); set("#ptab-db", name === "db"); set("#ptab-list", name === "list");
+    set("#ptab-mode", name === "mode"); set("#ptab-form", name === "form"); set("#ptab-db", name === "db"); set("#ptab-list", name === "list"); set("#ptab-ols", blank);
+    if (blank) { const t = $("#olstitle"); if (t) t.textContent = olsTitle(); }
     ["mode", "form", "db", "list"].forEach((k) => { const t = $(`#ptab-${k}-t`); if (t) { t.classList.toggle("on", name === k); t.setAttribute("aria-selected", name === k); } });
+    const g = $("#ptab-ols-gen"), s2 = $("#ptab-ols-test");
+    if (g) g.classList.toggle("on", name === "ols-gen");
+    if (s2) s2.classList.toggle("on", name === "ols-test");
     document.body.classList.toggle("rfmode", name === "form"); if (name === "form") rf.fit();
   };
   window.__ptabGo = showTab;   // 招募问卷页右上角「确认并下一步」跳到数据库筛选及发送
   const tMode = $("#ptab-mode-t"); if (tMode) tMode.onclick = (e) => { e.preventDefault(); showTab("mode"); };
   const tForm = $("#ptab-form-t"); if (tForm) tForm.onclick = (e) => { e.preventDefault(); showTab("form"); };
   const ptdb = $("#ptab-db-t"); if (ptdb) ptdb.onclick = (e) => { e.preventDefault(); showTab("db"); };
-  const ptol = $("#ptab-outline-t"); if (ptol) ptol.onclick = (e) => { e.preventDefault(); showTab("outline"); };
+  // 「生成访问大纲」只是展开两个子项，本身不是页面（2026-11-18 用户确认）
+  const ptol = $("#ptab-outline-t"); if (ptol) ptol.onclick = (e) => {
+    e.preventDefault();
+    const open = !olMenuOpen();
+    sessionStorage.setItem("ol_menu", open ? "1" : "0");
+    render();
+  };
+  const ols = (which) => (e) => { e.preventDefault(); sessionStorage.setItem("ol_menu", "1"); showTab(which); };
+  const olg = $("#ptab-ols-gen"); if (olg) olg.onclick = ols("ols-gen");
+  const olt = $("#ptab-ols-test"); if (olt) olt.onclick = ols("ols-test");
   const tList = $("#ptab-list-t"); if (tList) tList.onclick = (e) => { e.preventDefault(); showTab("list"); };
   // 同步发送甄别问卷链接（邮件）+ 假名化留痕（失败不影响发送）
   const dbsend = $("#dbsend"); if (dbsend) dbsend.onclick = guard(async () => {
