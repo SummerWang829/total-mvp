@@ -1,0 +1,64 @@
+/* 大纲工作台 · 生成大纲页（阶段 2）。颜色全部用外壳的变量，浅色/橙色/深色三种主题一起生效。 */
+html{--ow-ok:#0B7A4B;--ow-warn:#9A4208;--ow-bad:#B42318;--ow-cur:#C2500A}
+html[data-theme="orange"]{--ow-cur:#9A4208}
+html[data-theme="dark"]{--ow-ok:#5BD08F;--ow-warn:#F0A64B;--ow-bad:#FF8A7A;--ow-cur:#FF9A55}
+body.v11 .ow-chat .h a,body.v11 .ow-chat .h a:hover{color:var(--ink)!important}
+#owsteps{display:flex;flex-direction:column}
+#owsteps[hidden]{display:none}
+body.v11 .sub2 .l2slot #owsteps a.ow-l3{padding-left:40px;font-size:13px}
+body.v11 .sub2 .l2slot #owsteps a.ow-l4{padding-left:58px;font-size:12.5px}
+body.v11 .sub2 .l2slot #owsteps a.ow-l3::after,body.v11 .sub2 .l2slot #owsteps a.ow-l4::after{display:none}
+body.v11 .sub2 .l2slot #owsteps a.ow-off{pointer-events:none;cursor:default}
+#owsteps .ow-st{float:right;font-size:12px;margin-left:6px}.ow-st.ok{color:var(--ow-ok)}.ow-st.cur{color:var(--ow-cur)}
+.v11app.sub-off #owsteps{display:none}
+
+#owroot .ow{display:flex;gap:14px;height:calc(100vh - 150px);min-height:560px}
+#owroot .ow-main{flex:1;min-width:0;overflow:auto;display:flex;flex-direction:column;gap:12px;padding-right:2px}
+#owroot .ow-chat{flex:0 0 340px;width:340px;display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--line);border-radius:12px;min-height:0}
+.ow.busy{cursor:progress}.ow.busy button{pointer-events:none;opacity:.7}
+.ow-card{padding:14px 16px}.ow-card h3{margin:0 0 8px;font-size:14.5px}
+.ow-slot{display:flex;gap:10px;align-items:baseline;padding:6px 0;border-bottom:1px dashed var(--line)}.ow-slot:last-child{border:0}
+.ow-slot .k{flex:0 0 96px;color:var(--muted)}.ow-slot .v{flex:1;min-width:0}
+.ow-tag{display:inline-block;padding:0 9px;border-radius:999px;background:var(--chip);color:var(--muted);font-size:12px;white-space:nowrap}.ow-tag.w{color:var(--ow-warn)}
+.ow-q{background:var(--wash);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:10px}
+.ow-opts{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.ow-opt{border:1px solid var(--line2);border-radius:9px;padding:5px 12px;background:var(--surface);color:var(--ink);cursor:pointer;font:inherit}
+.ow-opt.rec{border-color:var(--pri);box-shadow:0 0 0 2px var(--orange-soft,#FFF4EA)}
+.ow-ta,.ow-in{width:100%;font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line2);border-radius:9px;padding:6px 9px}
+.ow-in:hover,.ow-ta:hover{background:var(--wash)}.ow-in:focus,.ow-ta:focus{border-color:var(--edit-bd,var(--pri));outline:0}
+.ow-in.num{width:70px}.ow-in.nm{font-weight:600}
+.ow-sel{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line2);border-radius:8px;padding:3px 6px}
+.ow-actions{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.ow-tbl{width:100%;border-collapse:collapse;font-size:13px}.ow-tbl th,.ow-tbl td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}.ow-tbl th{color:var(--muted);font-weight:600}
+.ow-tbl td.c{text-align:center}.ow-tbl tr.tot td{font-weight:700}.ow-tbl tr.tight td{background:var(--orange-soft,#FFF4EA)}
+.ow-tbl .ow-in+.ow-in{margin-top:4px;font-size:12.5px;color:var(--muted)}
+.ow-pill{display:inline-block;padding:0 9px;border-radius:999px;background:var(--chip);color:var(--ink);font-size:12px;margin-right:6px}
+.ow-pill.ok{color:var(--ow-ok)}.ow-pill.warn{color:var(--ow-warn)}.ow-pill.bad{color:var(--ow-bad)}
+.ow-find{display:flex;flex-wrap:wrap;gap:4px 0;align-items:center}.ow-find .fx{margin-right:12px}
+.ow-mh{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.ow-mh .sp{flex:1}
+.ow-item{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:9px 12px}
+.ow-item:hover{background:var(--wash)}.ow-item.sel{border-color:var(--ink);box-shadow:0 0 0 2px var(--chip)}
+.ow-item .h{display:flex;gap:8px;align-items:flex-start}.ow-item .lab{font-weight:700;flex:0 0 34px;padding-top:6px}.ow-item .kind{flex:0 0 52px;color:var(--muted);font-size:12px;padding-top:7px}
+.ow-item .t{flex:1;resize:vertical}.ow-min{flex:0 0 44px;color:var(--muted);padding-top:7px;text-align:right}
+.ow-x{border:0;background:none;color:var(--muted);font-size:18px;cursor:pointer;line-height:1}
+.ow-item .fu{margin:6px 0 0 42px;color:var(--muted);font-size:12.5px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}.ow-ctl{margin-left:auto;display:flex;gap:10px;align-items:center}
+.ow-ins{border:1px dashed var(--line2);border-radius:10px;padding:5px 12px;color:var(--muted);display:flex;gap:6px;align-items:center;flex-wrap:wrap}.ow-ins.open{flex-direction:column;align-items:stretch;gap:8px;color:var(--ink)}
+.ow-chipb{border:1px solid var(--line2);border-radius:8px;padding:1px 10px;background:var(--surface);color:var(--ink);cursor:pointer;font:inherit;font-size:12.5px}
+.ow-add{display:flex;gap:8px;margin-top:10px}
+.ow-chat .h{padding:10px 12px;border-bottom:1px solid var(--line);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.ow-chat .m{flex:1;min-height:0;overflow:auto;padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+.ow-chat .bub{padding:7px 11px;border-radius:12px;max-width:94%;background:var(--chip)}.ow-chat .bub.me{align-self:flex-end;background:var(--orange-soft,#FFF4EA)}
+.ow-rev{border:1px solid var(--line2);border-radius:10px;padding:9px 11px;background:var(--wash);display:flex;flex-direction:column;gap:4px;align-items:flex-start}.ow-rev.done .bf,.ow-rev.done .af{color:var(--muted)}
+.ow-rev .bf{color:var(--muted);text-decoration:line-through}.ow-rev .af{font-weight:600}
+.ow-sug{border-top:1px solid var(--line);padding:8px 12px;background:var(--wash)}
+.ow-sug .t{font-size:12.5px;color:var(--muted);margin-bottom:4px}
+.ow-sug label{display:flex;gap:8px;align-items:flex-start;padding:5px 8px;border:1px solid var(--line2);border-radius:9px;margin-bottom:5px;background:var(--surface);cursor:pointer}
+.ow-sug label b{font-weight:600}.ow-sug label small{display:block;color:var(--muted);font-size:14px;line-height:1.5}.ow-sug input{margin-top:4px;accent-color:var(--pri)}
+.ow-sug .x{display:inline-block;font-style:normal;font-size:12px;color:var(--muted);text-decoration:underline;margin-top:2px;cursor:pointer}
+.ow-chat form.f{display:flex;gap:8px;align-items:flex-end;padding:10px 12px;border-top:1px solid var(--line)}.ow-chat form.f textarea{flex:1}
+
+/* 表格里可以直接改的格子：平时没有框，移上去浅色，点进去换色加边框（外壳的统一规则） */
+.ow-tbl .ow-in{border-color:transparent;background:transparent;padding:3px 6px}.ow-tbl .ow-in:hover{background:var(--edit-h,var(--wash))}.ow-tbl .ow-in:focus{background:var(--surface);border-color:var(--edit-bd,var(--pri))}
+.ow-tbl td{padding:6px 8px}.ow-tbl .ow-sel{border-color:transparent;background:transparent}.ow-tbl .ow-sel:hover{background:var(--edit-h,var(--wash))}
+.ow-item textarea.ow-in{border-color:transparent;background:transparent}.ow-item textarea.ow-in:hover{background:var(--edit-h,var(--wash))}.ow-item textarea.ow-in:focus{background:var(--surface);border-color:var(--edit-bd,var(--pri))}
+.ow-item textarea.ow-in.t{min-height:34px;resize:vertical}.ow-mh .ow-sel{margin-left:-4px}

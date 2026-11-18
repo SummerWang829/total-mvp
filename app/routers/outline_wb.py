@@ -55,6 +55,15 @@ class ItemBody(BaseModel):
     depth: str | None = None
 
 
+class InsertBody(BaseModel):
+    kind: str = Field(default="question", max_length=12)
+    text: str = Field(min_length=1, max_length=300)
+    after_uid: str | None = Field(default=None, max_length=40)
+    module: str = Field(default="", max_length=40)
+    minutes: float | None = None
+    config: dict = Field(default_factory=dict)
+
+
 class FocusBody(BaseModel):
     text: str = Field(min_length=1, max_length=500)
     item_uid: str | None = Field(default=None, max_length=40)
@@ -181,6 +190,16 @@ def reject(pid: str, rid: str, ctx: Ctx = Depends(require_roles(*STAFF, *VIEWERS
 @router.put("/items/{uid}")
 def edit_item(pid: str, uid: str, body: ItemBody, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
     return _run(db, sess.edit_item, db, _project(db, ctx, pid), uid, body.model_dump(exclude_none=True), ctx.user.id)
+
+
+@router.post("/items")
+def insert_item(pid: str, body: InsertBody, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    return _run(db, sess.insert_item, db, _project(db, ctx, pid), body.model_dump(), ctx.user.id)
+
+
+@router.delete("/items/{uid}")
+def delete_item(pid: str, uid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    return _run(db, sess.delete_item, db, _project(db, ctx, pid), uid, ctx.user.id)
 
 
 @router.post("/focus")

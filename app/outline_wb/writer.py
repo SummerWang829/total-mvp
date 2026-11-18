@@ -76,7 +76,8 @@ def _mock_questions(module: dict, context: dict) -> list[dict]:
              "close": ["还有什么想补充的吗？"],
              "compare": ["你现在常用哪些品牌？", "你为什么换过或没换过？"]}.get(kind) or [f"最近一次和“{name}”有关的经历是什么时候？", "当时是怎么决定的？", "有什么让你犹豫的地方吗？"]
     n = max(1, module["questions"])
-    texts = (texts * 2)[:n]
+    extras = ["能举一个最近的具体例子吗？", "当时身边有人影响你的选择吗？", "有没有哪次你本来想买却没买？", "你会怎么向朋友描述这件事？", "后来有什么变化吗？"]
+    texts = (texts + [x for x in extras if x not in texts])[:n]
     fu = "" if module["depth"] == "none" else "为什么这样想？"
     return [{"text": t, "followups": [fu] if fu else [], "must_cover": [], "minutes": round(module["minutes"] / n, 1), "backup": False} for t in texts]
 

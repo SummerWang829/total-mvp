@@ -322,3 +322,55 @@ def link_focus(db: Session, proj: Project, fid: str, item_uid: str | None) -> di
         raise svc.OutlineError("关注问题不存在", 404)
     f.item_uid = item_uid
     return view(db, proj)
+
+
+MATERIAL_KINDS = ("concept", "video", "website", "rating")
+KIND_MINUTES = {"concept": 3.0, "video": 3.0, "website": 6.0, "rating": 2.0, "question": 2.0, "note": 0.0}
+
+
+def precheck(kind: str, config: dict) -> dict:
+    """The checks that can be made without opening the address: https, not a private or local host, a login-looking path. It does NOT open the address (no reachability, load time or phone check yet)."""
+    from urllib.parse import urlparse
+    url = str(config.get("url") or "").strip()
+    if kind not in ("website", "video") or not url:
+        return {}
+    u = urlparse(url)
+    host = (u.hostname or "").lower()
+    private = host in ("localhost", "") or host.endswith((".local", ".internal")) or host.replace(".", "").isdigit() and host.startswith(("10.", "127.", "192.168.", "169.254."))
+    return {"https": u.scheme == "https", "public_host": not private, "maybe_login": any(w in u.path.lower() for w in ("login", "signin", "account", "member")), "opened": False}
+
+
+def insert_item(db: Session, proj: Project, fields: dict, user_id: str = "") -> dict:
+    """Add a question or a material (concept card, video clip, website task, rating) after another item, or at the end of a module. A material's address must pass the basic check."""
+    o, v, st = ensure(db, proj, user_id)
+    ctx = context_of(db, proj, st)
+    kind = fields.get("kind", "question")
+    if kind not in svc.KINDS:
+        raise svc.OutlineError("条目类型不对")
+    text = str(fields.get("text", "")).strip()
+    if not text:
+        raise svc.OutlineError("请写一句要对受访者说的话")
+    if kind in ("question", "rating"):
+        res = quality.check_question(text, ctx["language"], ctx["format"])
+        if res["blocked"]:
+            raise svc.OutlineError("这句话碰到红线：" + "、".join(i["text"] for i in res["issues"] if i["level"] == "block"))
+    cfg = dict(fields.get("config") or {})
+    pre = precheck(kind, cfg)
+    if kind in ("website", "video") and pre and (not pre["https"] or not pre["public_host"]):
+        raise svc.OutlineError("物料地址必须是公开的 https 地址")
+    if pre:
+        cfg["precheck"] = pre
+    after = fields.get("after_uid") or None
+    mod = fields.get("module") or ""
+    if after:
+        mod = next((i.module for i in svc.items_of(db, v.id) if i.item_uid == after), mod)
+    if not mod:
+        raise svc.OutlineError("请指定放在哪个模块")
+    svc.add_item(db, v, after_uid=after, module=mod, kind=kind, texts={ctx["language"]: text[:300]}, minutes=float(fields.get("minutes") or KIND_MINUTES[kind]), config=cfg)
+    return view(db, proj, user_id)
+
+
+def delete_item(db: Session, proj: Project, uid: str, user_id: str = "") -> dict:
+    _, v, _ = ensure(db, proj, user_id)
+    svc.delete_item(db, v, uid)
+    return view(db, proj, user_id)

@@ -173,3 +173,16 @@ def test_another_company_cannot_see_the_outline(org, proj, client):
     from tests.conftest import Org
     other = Org(client, name="Other", email="b@other.com")
     assert client.get(f"/api/projects/{proj}/outline-wb", headers=other.h()).status_code == 404
+
+
+def test_insert_a_material_checks_its_address_and_a_question_its_wording(org, proj):
+    _api(org, proj, "post", "/overview")
+    _api(org, proj, "post", "/overview/confirm")
+    v = _api(org, proj, "post", "/modules/warm/generate").json()
+    uid = v["items"][0]["uid"]
+    ok = _api(org, proj, "post", "/items", json={"kind": "website", "text": "请打开官网，找到你会怎么买。", "after_uid": uid, "config": {"url": "https://example.com/shop", "time_limit_s": 240}})
+    assert ok.status_code == 200 and ok.json()["items"][1]["kind"] == "website" and ok.json()["items"][1]["config"]["precheck"]["https"] is True
+    assert _api(org, proj, "post", "/items", json={"kind": "website", "text": "打开它", "after_uid": uid, "config": {"url": "http://localhost/x"}}).status_code == 422
+    assert _api(org, proj, "post", "/items", json={"kind": "question", "text": "难道你不觉得它很好吗？", "after_uid": uid}).status_code == 422
+    gone = _api(org, proj, "delete", f"/items/{ok.json()['items'][1]['uid']}")
+    assert gone.status_code == 200 and all(i["kind"] != "website" for i in gone.json()["items"])

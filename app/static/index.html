@@ -3,7 +3,7 @@
 <link rel="icon" href="/logo_phoenix.svg" type="image/svg+xml">
 <title>星桐 TOTAL · 深访</title><link rel="stylesheet" href="/app.css">
 <link rel="stylesheet" href="/editorial.css"><link rel="stylesheet" href="/fonts.css"><link rel="stylesheet" href="/ui_v7.css"><link rel="stylesheet" href="/ui_v8.css"><link rel="stylesheet" href="/ui_rooms.css">
-<link rel="stylesheet" href="/chat.css"><link rel="stylesheet" href="/chatsel.css"><link rel="stylesheet" href="/ui_list.css"><link rel="stylesheet" href="/ui_screening.css"><link rel="stylesheet" href="/ui_outline.css"><link rel="stylesheet" href="/ui_wizard.css"><link rel="stylesheet" href="/ui_overview.css"><link rel="stylesheet" href="/ui_ai.css"><link rel="stylesheet" href="/ui_creation.css"><link rel="stylesheet" href="/ui_v6.css"><link rel="stylesheet" href="/ui_global.css"><link rel="stylesheet" href="/ui_v9.css"><link rel="stylesheet" href="/ui_v10.css"><link rel="stylesheet" href="/ui_responsive.css"><link rel="stylesheet" href="/ui_icons.css"><link rel="stylesheet" href="/ui_layout.css"><link rel="stylesheet" href="/ui_font.css"><link rel="stylesheet" href="/ui_v11.css"><link rel="stylesheet" href="/ui_v12.css"><link rel="stylesheet" href="/voice_fast.css?v=2"></head>
+<link rel="stylesheet" href="/chat.css"><link rel="stylesheet" href="/chatsel.css"><link rel="stylesheet" href="/ui_list.css"><link rel="stylesheet" href="/ui_screening.css"><link rel="stylesheet" href="/ui_outline.css"><link rel="stylesheet" href="/ui_wizard.css"><link rel="stylesheet" href="/ui_overview.css"><link rel="stylesheet" href="/ui_ai.css"><link rel="stylesheet" href="/ui_creation.css"><link rel="stylesheet" href="/ui_v6.css"><link rel="stylesheet" href="/ui_global.css"><link rel="stylesheet" href="/ui_v9.css"><link rel="stylesheet" href="/ui_v10.css"><link rel="stylesheet" href="/ui_responsive.css"><link rel="stylesheet" href="/ui_icons.css"><link rel="stylesheet" href="/ui_layout.css"><link rel="stylesheet" href="/ui_font.css"><link rel="stylesheet" href="/ui_v11.css"><link rel="stylesheet" href="/ui_v12.css"><link rel="stylesheet" href="/outline_wb.css"><link rel="stylesheet" href="/voice_fast.css?v=2"></head>
 <body>
 <div id="app"></div>
 <script src="/app.js"></script>
@@ -13,7 +13,7 @@
 <script src="/home.js"></script>
 <script src="/screen_run.js"></script>
 <script src="/chatsel.js"></script>
-<script src="/rform.js"></script>
+<script src="/rform.js"></script><script src="/outline_wb.js"></script>
 <script src="/rtrans.js"></script>
 <script src="/rdash.js"></script>
 <script src="/ai_console.js"></script>
@@ -410,9 +410,9 @@ async function peopleView(p) {
   </div>`;
   shell(`<div class="hubtabs sub" role="tablist" aria-label="创建访谈"><a href="#" role="tab" id="ptab-mode-t" class="${ptab === "mode" ? "on" : ""}" aria-selected="${ptab === "mode"}">招募/主持/问卷</a>${rm === "onelink"
       ? `<a href="#" role="tab" id="ptab-form-t" class="${ptab === "form" ? "on" : ""}" aria-selected="${ptab === "form"}">招募问卷</a><a href="#" role="tab" id="ptab-db-t" class="${ptab === "db" ? "on" : ""}" aria-selected="${ptab === "db"}">数据库发送</a>`
-      : `<a href="#" role="tab" id="ptab-form-t" class="${ptab === "form" ? "on" : ""}" aria-selected="${ptab === "form"}">甄别问卷</a><a href="#" role="tab" id="ptab-db-t" class="${ptab === "db" ? "on" : ""}" aria-selected="${ptab === "db"}">数据库筛选及发送</a><a href="#" role="tab" id="ptab-outline-t" aria-expanded="${olMenuOpen() ? "true" : "false"}">生成访问大纲</a><a href="#" role="tab" class="l2sub${olSeg() === "outline" ? " on" : ""}" id="ptab-ols-gen"${olMenuOpen() ? "" : " hidden"}>生成大纲</a><a href="#" role="tab" class="l2sub${olSeg() === "test" ? " on" : ""}" id="ptab-ols-test"${olMenuOpen() ? "" : " hidden"}>预览测试</a><a href="#" role="tab" id="ptab-list-t" class="${ptab === "list" ? "on" : ""}" aria-selected="${ptab === "list"}">配额及受访者名单</a>`}</div>
+      : `<a href="#" role="tab" id="ptab-form-t" class="${ptab === "form" ? "on" : ""}" aria-selected="${ptab === "form"}">甄别问卷</a><a href="#" role="tab" id="ptab-db-t" class="${ptab === "db" ? "on" : ""}" aria-selected="${ptab === "db"}">数据库筛选及发送</a><a href="#" role="tab" id="ptab-outline-t" aria-expanded="${olMenuOpen() ? "true" : "false"}">生成访问大纲</a><a href="#" role="tab" class="l2sub${olSeg() === "outline" ? " on" : ""}" id="ptab-ols-gen"${olMenuOpen() ? "" : " hidden"}>生成大纲</a><div id="owsteps"${olMenuOpen() && ptab === "ols" && olSeg() === "outline" ? "" : " hidden"}></div><a href="#" role="tab" class="l2sub${olSeg() === "test" ? " on" : ""}" id="ptab-ols-test"${olMenuOpen() ? "" : " hidden"}>预览测试</a><a href="#" role="tab" id="ptab-list-t" class="${ptab === "list" ? "on" : ""}" aria-selected="${ptab === "list"}">配额及受访者名单</a>`}</div>
     <div id="ptab-mode" ${ptab === "mode" ? "" : "hidden"}>${modeBar}</div>
-    <div id="ptab-ols" ${ptab === "ols" ? "" : "hidden"}><div class="card" style="min-height:420px"><h3 style="margin:0 0 6px" id="olstitle">${esc(olsTitle())}</h3><div class="sm mut">这个模块正在重新设计，先留空白。后面按新方案再放内容。</div></div></div><div id="ptab-form" ${ptab === "form" ? "" : "hidden"}>${rf.html}</div><div id="ptab-db" ${ptab === "db" ? "" : "hidden"}>${dbHtml}</div><div id="ptab-list" ${ptab === "list" ? "" : "hidden"}>
+    <div id="ptab-ols" ${ptab === "ols" ? "" : "hidden"}><div id="owroot" ${olSeg() === "outline" ? "" : "hidden"}></div><div class="card" id="olsblank" style="min-height:420px" ${olSeg() === "test" ? "" : "hidden"}><h3 style="margin:0 0 6px">预览测试</h3><div class="sm mut">这个模块正在重新设计，先留空白。</div></div></div><div id="ptab-form" ${ptab === "form" ? "" : "hidden"}>${rf.html}</div><div id="ptab-db" ${ptab === "db" ? "" : "hidden"}>${dbHtml}</div><div id="ptab-list" ${ptab === "list" ? "" : "hidden"}>
     ${rd.html}
     ${impBatchBar(impB.batches, impB.orphans_pending)}
     <div class="card" id="plist"><div class="row rd-tool"><h3 style="margin:0">受访者名单 <span class="sm mut" id="plcount">共 ${parts.length} 人${shown.length !== parts.length ? `，当前显示 ${shown.length}` : ""}</span></h3><span class="sp"></span>
@@ -434,14 +434,20 @@ async function peopleView(p) {
     if (blank) sessionStorage.setItem("ol_seg", name === "ols-test" ? "test" : "outline");
     const set = (id, on) => { const el = $(id); if (el) el.hidden = !on; };
     set("#ptab-mode", name === "mode"); set("#ptab-form", name === "form"); set("#ptab-db", name === "db"); set("#ptab-list", name === "list"); set("#ptab-ols", blank);
-    if (blank) { const t = $("#olstitle"); if (t) t.textContent = olsTitle(); }
+    if (blank) {
+      const gen = name === "ols-gen";
+      const root = $("#owroot"), blankCard = $("#olsblank"), steps = $("#owsteps");
+      if (root) root.hidden = !gen; if (blankCard) blankCard.hidden = gen; if (steps) steps.hidden = !gen;
+      if (gen && window.OutlineWb) window.OutlineWb.mount(p.id);
+    } else { const steps = $("#owsteps"); if (steps) steps.hidden = true; }
     ["mode", "form", "db", "list"].forEach((k) => { const t = $(`#ptab-${k}-t`); if (t) { t.classList.toggle("on", name === k); t.setAttribute("aria-selected", name === k); } });
     const g = $("#ptab-ols-gen"), s2 = $("#ptab-ols-test");
     if (g) g.classList.toggle("on", name === "ols-gen");
     if (s2) s2.classList.toggle("on", name === "ols-test");
     document.body.classList.toggle("rfmode", name === "form"); if (name === "form") rf.fit();
   };
-  window.__ptabGo = showTab;   // 招募问卷页右上角「确认并下一步」跳到数据库筛选及发送
+  window.__ptabGo = showTab;
+  if (ptab === "ols" && olSeg() === "outline" && window.OutlineWb) window.OutlineWb.mount(p.id);   // 招募问卷页右上角「确认并下一步」跳到数据库筛选及发送
   const tMode = $("#ptab-mode-t"); if (tMode) tMode.onclick = (e) => { e.preventDefault(); showTab("mode"); };
   const tForm = $("#ptab-form-t"); if (tForm) tForm.onclick = (e) => { e.preventDefault(); showTab("form"); };
   const ptdb = $("#ptab-db-t"); if (ptdb) ptdb.onclick = (e) => { e.preventDefault(); showTab("db"); };

@@ -1882,6 +1882,48 @@ def creation_section(br, D):
     ctx.close()
 
 
+def outline_wb_section(br, D):
+    """大纲工作台 · 生成大纲: the steps and modules are the side menu's sub-items, the assistant fills the page's height, the overview is confirmed before any question is written, suggestions are adopted
+    only by a click, a side-dialog edit is only a pending card until accepted."""
+    adm = D["tok"]["admin"]
+    pid = call("/projects", {"name": "大纲工作台测试", "market": "SG", "language": "zh", "brief": "A 品牌准备进入新加坡，了解都市女性怎么选护肤品。她们会比较多个品牌，价格是主要顾虑。"}, adm)["id"]
+    ctx, pg, errs = new_page(br, 1440, h=900, token=adm)
+    pg.goto(B + "/"); pg.evaluate("sessionStorage.setItem('ptab','ols'); sessionStorage.setItem('ol_menu','1'); sessionStorage.setItem('ol_seg','outline')")
+    pg.goto(B + f"/#/p/{pid}/people"); pg.wait_for_selector("#owroot .ow")
+    ok(wait_until(lambda: pg.locator(".l2slot #owsteps .ow-l3").count() == 5, 6), "[outline_wb] the five steps are sub-items in the side menu")
+    box = pg.locator("#owroot .ow-chat").bounding_box()
+    ok(box and box["height"] >= 500, "[outline_wb] the assistant panel fills the height of the page")
+    ok(pg.locator("#owroot .tabs, #owroot .steps").count() == 0, "[outline_wb] no horizontal bar of steps or tabs inside the page")
+    pg.fill('[data-ow-free="key_questions"]', "她们买护肤品最看重什么\n价格接受范围"); pg.click('[data-ow-freeok="key_questions"]')
+    ok(wait_until(lambda: "价格接受范围" in pg.inner_text("#owroot"), 6), "[outline_wb] the researcher's answer is kept")
+    audit_page(pg, "outline_wb goal/desktop", errs)
+    pg.click('[data-ow="goal-next"]'); pg.click('[data-ow="build"]'); pg.wait_for_selector("#owroot .ow-tbl")
+    ok("45 分" in pg.inner_text("#owroot .ow-tbl"), "[outline_wb] the overview table adds up to the interview length")
+    ok(pg.locator("#owroot [data-ow-m][data-f=depth]").count() >= 3, "[outline_wb] every module has a follow-up depth choice")
+    ok(pg.locator(".l2slot #owsteps [data-ow-step=questions].ow-off").count() == 1, "[outline_wb] the questions step is closed until the overview is confirmed")
+    audit_page(pg, "outline_wb overview/desktop", errs)
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "outline_wb_overview.png"))
+    n = pg.locator("#owroot .ow-sug label").count()
+    if n:
+        ok(pg.locator("#owroot .ow-sug label").count() <= 3, "[outline_wb] at most three suggestions")
+        pg.click('[data-ow="adopt"]'); ok(wait_until(lambda: "已按所选" in pg.inner_text("#ow-msgs"), 6), "[outline_wb] adopting needs a click and the dialog says what changed")
+    pg.click('[data-ow="confirm-ov"]'); ok(wait_until(lambda: pg.locator("#owroot [data-ow=gen]").count() == 1, 6), "[outline_wb] after confirming, questions are written one module at a time")
+    pg.click('[data-ow="gen"]'); ok(wait_until(lambda: pg.locator("#owroot .ow-item").count() >= 2, 8), "[outline_wb] the module's questions appear")
+    audit_page(pg, "outline_wb questions/desktop", errs)
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "outline_wb_questions.png"))
+    old = pg.locator("#owroot .ow-item textarea >> nth=0").input_value()
+    pg.click("#owroot .ow-item textarea >> nth=0"); pg.fill("#ow-in", "改得更口语一点"); pg.click("#ow-form button")
+    ok(wait_until(lambda: pg.locator("#ow-msgs [data-ow-rev=accept]").count() == 1, 8), "[outline_wb] the edit is a pending card with an accept button")
+    ok(pg.locator("#owroot .ow-item textarea >> nth=0").input_value() == old, "[outline_wb] nothing is written before it is accepted")
+    pg.click("#ow-msgs [data-ow-rev=accept]"); ok(wait_until(lambda: pg.locator("#owroot .ow-item textarea >> nth=0").input_value() != old, 6), "[outline_wb] accepting writes it into the outline")
+    pg.click('[data-ow="conf-mod"]'); ok(wait_until(lambda: pg.locator(".l2slot #owsteps [data-ow-mod] .ow-st.ok").count() == 1, 6), "[outline_wb] a confirmed module is ticked in the side menu")
+    for th in ("orange", "dark"):   # the three themes are all checked (contrast, sizes, names)
+        pg.evaluate(f"document.documentElement.dataset.theme = '{th}'"); pg.wait_for_timeout(300)
+        audit_page(pg, f"outline_wb questions/{th}", errs)
+    pg.evaluate("document.documentElement.dataset.theme = 'light'")
+    ctx.close()
+
+
 def voice_section(br, D):
     """Voice input: focusing a text box in the team's pages shows a small microphone; one click starts, the next stops and puts the recognised words into the box (not sent)."""
     adm, pid = D["tok"]["admin"], D["pid"]
@@ -2427,6 +2469,8 @@ def run():
         br = p.chromium.launch(executable_path=browser_path or None)
         if os.environ.get("QA_EARLY"):   # QA_EARLY=<section>: run just that section right after seeding (skips the long general sweep)
             globals()[os.environ["QA_EARLY"]](br, D); br.close(); print(f"{os.environ['QA_EARLY']}: {PASSES} passed, {len(FAILS)} failed"); sys.exit(1 if FAILS else 0)
+        if os.environ.get("QA_ONLY") == "outline_wb_section":   # also only needs a fresh project: run it before the long general sweep
+            outline_wb_section(br, D); br.close(); print(f"outline_wb_section: {PASSES} passed, {len(FAILS)} failed"); sys.exit(1 if FAILS else 0)
         if os.environ.get("QA_ONLY") == "tabs_section":   # this section only needs the seeded project: run it before the long general sweep
             tabs_section(br, D); br.close(); print(f"tabs_section: {PASSES} passed, {len(FAILS)} failed"); sys.exit(1 if FAILS else 0)
         # ---------- A. every role x page x viewport ----------
@@ -2700,6 +2744,7 @@ def run():
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "phone_room_section": guard_section(phone_room_section, br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "group_section": guard_section(group_section, br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "outline_section": guard_section(outline_section, br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "outline_wb_section": guard_section(outline_wb_section, br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "voice_section": guard_section(voice_section, br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "creation_section": guard_section(creation_section, br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "tabs_section": guard_section(tabs_section, br, D)
