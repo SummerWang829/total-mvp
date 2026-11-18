@@ -1952,7 +1952,9 @@ def outline_wb_test_section(br, D):
     pg.click("[data-ow-tab=rehearsal]"); pg.click('[data-ow="rh-run"]')
     ok(wait_until(lambda: pg.locator("#owroot3 .ow-kv").count() == 1 and "场数" in pg.inner_text("#owroot3"), 8), "[outline_wb_test] a rehearsal runs and reports")
     audit_page(pg, "outline_wb_test rehearsal/desktop", errs)
-    pg.click("[data-ow-tab=pilot]"); ok(wait_until(lambda: pg.locator("#ow-cand").count() == 1, 6), "[outline_wb_test] an interview can be chosen as the pilot")
+    pg.click("[data-ow-tab=pilot]"); ok(wait_until(lambda: "必须先做完至少一场 pilot" in pg.inner_text("#owroot3"), 6), "[outline_wb_test] the page reminds that a pilot is a must before publishing")
+    ok("还没做完 pilot" in pg.inner_text("#owstate"), "[outline_wb_test] the side menu says no pilot has been finished")
+    ok(wait_until(lambda: pg.locator("#ow-cand").count() == 1, 6), "[outline_wb_test] an interview can be chosen as the pilot")
     pg.click('[data-ow="pil-set"]'); ok(wait_until(lambda: "这场 pilot 还没有笔录" in pg.inner_text("#owroot3"), 8), "[outline_wb_test] the pilot is set (no transcript yet)")
     audit_page(pg, "outline_wb_test pilot/desktop", errs)
     pg.click("[data-ow-tab=publish]"); ok(wait_until(lambda: pg.locator("#owroot3 [data-ow=pub-go]").count() == 1, 6), "[outline_wb_test] the publish page lists checks and versions")
@@ -1968,6 +1970,15 @@ def outline_wb_test_section(br, D):
     ctx.close()
 
 
+def _finished_pilot(pid, adm):
+    """A pilot interview made through the API: set as pilot, started (it freezes the draft outline), ended. A pilot is a must before the outline can be published."""
+    part = call(f"/projects/{pid}/participants", {"name": "试访", "country": "SG", "language": "zh"}, adm)
+    itv = call(f"/projects/{pid}/interviews", {"participant_id": part["id"], "title": "Pilot", "observer_ids": []}, adm)
+    call(f"/projects/{pid}/outline-wb/pilots/{itv['id']}", {"value": True}, adm, "PUT")
+    call(f"/interviews/{itv['id']}/start", {}, adm); call(f"/interviews/{itv['id']}/end", {}, adm)
+    return itv["id"]
+
+
 def outline_board_section(br, D):
     """大纲工作台 · 实时看板 (访谈直播): the board sits beside the interview list, its three sub-items are in the side menu, a focus question shows counts (no percentages under 20 people), a
     coded answer opens a side panel, alerts are listed; alignment and the three themes are audited."""
@@ -1978,11 +1989,11 @@ def outline_board_section(br, D):
     for m in call(base, None, adm)["overview"]["modules"][:2]:
         call(base + f"/modules/{m['id']}/generate", {}, adm); call(base + f"/modules/{m['id']}/confirm", {}, adm)
     uid = call(base, None, adm)["items"][0]["uid"]
-    call(base + "/focus", {"text": "她们平时怎么买东西", "item_uid": uid}, adm); call(base + "/publish", {}, adm)
+    call(base + "/focus", {"text": "她们平时怎么买东西", "item_uid": uid}, adm); _finished_pilot(pid, adm); call(base + "/publish", {}, adm)
     ctx, pg, errs = new_page(br, 1440, h=900, token=adm)
     pg.goto(B + f"/#/p/{pid}/rooms"); pg.wait_for_selector("#owbbar [data-ob=board]")
     ok(pg.locator("#owbbar [data-ob=list]").count() == 1, "[outline_board] the interview list and the board are both in the side menu")
-    pg.click("[data-ob=board]"); ok(wait_until(lambda: pg.locator(".l2slot #owbbar [data-ob-tab]").count() == 3, 6), "[outline_board] the three sub-items are in the side menu")
+    pg.click("[data-ob=board]"); ok(wait_until(lambda: pg.locator(".l2slot #owbbar [data-ob-tab]").count() == 4, 6), "[outline_board] the four sub-items are in the side menu")
     ok(wait_until(lambda: pg.locator(".ob-card").count() == 1, 8), "[outline_board] each focus question is a card")
     box = pg.locator("#owbroot .ow-chat").bounding_box()
     ok(box and box["height"] >= 500, "[outline_board] the assistant panel fills the height of the page")
@@ -1996,6 +2007,13 @@ def outline_board_section(br, D):
         pg.evaluate(f"document.documentElement.dataset.theme = '{th}'"); pg.wait_for_timeout(300)
         audit_page(pg, f"outline_board alerts/{th}", errs)
     pg.evaluate("document.documentElement.dataset.theme = 'light'")
+    pg.click("[data-ob-tab=add]"); pg.fill("#ob-wtext", "她们平时怎么买东西的渠道"); pg.click("[data-ob=wfind]")
+    ok(wait_until(lambda: pg.locator(".ob-cand").count() >= 1 and pg.locator(".ob-cand input:checked").count() <= 2, 8), "[outline_board] the new focus question is matched to questions, at most two ticked")
+    audit_page(pg, "outline_board add/desktop", errs)
+    pg.click("[data-ob=wnext1]"); ok(wait_until(lambda: pg.locator("[data-ob-coding]").count() == 4, 5), "[outline_board] four ways of coding to choose from")
+    pg.click("[data-ob=wnext2]"); ok(wait_until(lambda: pg.locator("[data-ob=wfinish]").count() == 1, 8), "[outline_board] looking back through what was already said")
+    pg.click("[data-ob=wskip]"); ok(wait_until(lambda: "她们平时怎么买东西的渠道" in pg.inner_text("#owbroot"), 8), "[outline_board] the new focus question is on the board")
+    audit_page(pg, "outline_board added/desktop", errs)
     pg.click("[data-ob=list]"); ok(wait_until(lambda: pg.locator("#rmlistwrap:not([hidden])").count() == 1, 6), "[outline_board] back to the interview list")
     ctx.close()
 

@@ -163,6 +163,7 @@ class FocusQuestion(Base):
     asked_role: Mapped[str] = mapped_column(String(12), default="researcher")  # researcher | client
     timing: Mapped[str] = mapped_column(String(8), default="before")  # before | during the interviews
     item_uid: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    item_uids: Mapped[list] = mapped_column(JSON, default=list)  # every question it points at (item_uid is the first); a line under any of them is "asked"
     coding: Mapped[str] = mapped_column(String(10), default="preset")  # preset | template | collect | custom
     codes: Mapped[list] = mapped_column(JSON, default=list)  # the code list
     from_interview_seq: Mapped[int] = mapped_column(Integer, default=0)  # asked from this interview on (0 = all)

@@ -6,7 +6,7 @@
   const SRC = { project: "来自项目设置", answer: "你的回答", inferred: "AI 推测", default: "默认", none: "还没有" };
   const FORMAT = { audio: "纯音频", text: "文字访谈", text_voice: "文字+语音转录", video: "视频", video_screen: "视频+屏幕共享" };
   const KIND_LABEL = { question: "题目", concept: "概念卡", video: "视频片段", website: "网站任务", rating: "打分题", note: "说明" };
-  const S = { pid: "", d: null, step: "", mod: "", sel: "", msgs: [], adopt: null, busy: false, form: null, area: "gen", tab: "preview", pv: null, pvIdx: 0, pvLang: "", rh: null, pl: null, pil: null, cand: [], pilId: "", markForm: null, pub: null };
+  const S = { pid: "", d: null, step: "", mod: "", sel: "", msgs: [], adopt: null, busy: false, form: null, area: "gen", tab: "preview", pv: null, pvIdx: 0, pvLang: "", rh: null, pl: null, sum: null, pil: null, cand: [], pilId: "", markForm: null, pub: null };
   const TABS = [["preview", "受访者预览"], ["rehearsal", "模拟预演"], ["pilot", "Pilot 修正"], ["publish", "发布"]];
   const TAG = { unclear: "题目不清楚", leading: "诱导", missed: "漏追问", material: "物料问题", host: "主持问题", long: "太长", other: "其他" };
   const DEST = { outline: "大纲", material: "物料", host_engine: "主持引擎" };
@@ -35,7 +35,7 @@
     host.innerHTML = TABS.map(([k, l]) => `<a href="#" class="l2sub ow-l3${S.area === "test" && S.tab === k ? " on" : ""}" data-ow-tab="${k}">${l}<span class="ow-st ${S.area === "test" && S.tab === k ? "cur" : ""}">${S.area === "test" && S.tab === k ? "●" : ""}</span></a>`).join("");
     const st = q("#owstate"); if (!st || !S.d) return;
     const v = S.d.version, vs = S.d.versions || [];
-    st.innerHTML = `<div class="ow-state"><span><b>v${v.number}</b> ${v.status === "published" ? "已发布" : "草稿"} · 第 ${v.rev} 次修改</span><span class="mut">已被 ${v.used_by} 场使用</span><span class="mut">${S.d.context.language === "zh" ? "中文" : "English"}</span>
+    st.innerHTML = `<div class="ow-state">${S.d.pilot_done ? "" : `<span class="ow-pill warn">还没做完 pilot，不能发布</span>`}<span><b>v${v.number}</b> ${v.status === "published" ? "已发布" : "草稿"} · 第 ${v.rev} 次修改</span><span class="mut">已被 ${v.used_by} 场使用</span><span class="mut">${S.d.context.language === "zh" ? "中文" : "English"}</span>
       ${vs.length > 1 ? `<select class="ow-sel" aria-label="版本" disabled>${vs.map((x) => `<option${x.current ? " selected" : ""}>v${x.number} ${x.status === "published" ? "已发布" : "草稿"}</option>`).join("")}</select>` : ""}<button type="button" class="p s" data-ow="state-pub">发布</button></div>`;
   }
   function menu() {
@@ -180,10 +180,21 @@
       <div class="card ow-card"><h3>${last ? `上一次预演 · ${E(last.at.replace("T", " "))}` : "预演"}</h3>${kv}<div class="sm mut" style="margin-top:8px">${E(r.note)}</div></div>
       ${last ? `<div class="card ow-card"><h3>发现的问题</h3><table class="ow-tbl"><thead><tr><th style="width:56px">位置</th><th>问题</th><th style="width:90px">去向</th><th style="width:130px"></th></tr></thead><tbody>${fr || `<tr><td colspan="4" class="mut">没有发现问题。</td></tr>`}</tbody></table></div>` : ""}`;
   }
+
+  const LV3 = { now: ["立即", "bad"], watch: ["注意", "warn"], info: ["参考", ""] };
+  function summaryCard() {
+    const m = S.sum; if (!m) return "";
+    const req = m.ended ? "" : `<div class="ow-banner">必须先做完至少一场 pilot，再发布。选一场访谈设为 pilot，结束后在这里看它发现的问题。</div>`;
+    const g = m.groups.map((x) => `<span class="ow-dest d-${x.dest}"><b>${x.n}</b> ${E(x.label)}${x.open ? `<i>${x.open} 待处理</i>` : ""}</span>`).join("");
+    const rows = m.items.slice(0, 40).map((i) => `<div class="ow-sumrow"><span class="ow-pill ${LV3[i.level][1]}">${LV3[i.level][0]}</span><span class="ow-dest d-${i.dest}">${E(DEST[i.dest] || "大纲")}</span><span class="ow-pill">${E(i.label || "—")}</span><span>${E(i.text)}</span><span class="mut sm">${E(i.who)}</span></div>`).join("");
+    const host = m.host.length ? `<div class="ow-hostbox"><b>问话方式（给 AI 主持）</b>${m.host.map((h) => `<div class="ow-sumrow h"><span class="ow-pill ${h.status === "accepted" ? "ok" : ""}">${h.status === "accepted" ? "已接受" : h.status === "pending" ? "待你接受" : "已拒绝"}</span><span>${E(h.text)}</span></div>`).join("")}</div>` : "";
+    return `${req}<div class="card ow-card"><h3>pilot 发现的问题汇总 <span class="mut sm">（${m.pilots} 场 pilot，${m.ended} 场已结束）</span></h3><div class="ow-dests">${g}</div>${rows || `<div class="mut">还没有发现问题。</div>`}${host}
+      <div class="ow-actions"><span class="mut sm">建议：${m.revisions.pending} 待你接受 · ${m.revisions.accepted} 已接受 · ${m.revisions.rejected} 已拒绝</span><span class="sp"></span><button type="button" class="p" data-ow="pil-update"${m.can_update ? "" : " disabled"}>用已接受的修改生成更新版</button></div></div>`;
+  }
   function pilotView() {
     if (!S.pl) return `<div class="card ow-card mut">正在读取……</div>`;
     const pick = (S.cand || []).length ? `<div class="ow-add"><select class="ow-sel" id="ow-cand" aria-label="选一场访谈">${S.cand.map((x) => `<option value="${x.id}">${E(x.title)}（${{ scheduled: "待开始", live: "进行中", ended: "已结束" }[x.status] || x.status}）</option>`).join("")}</select><button type="button" class="s" data-ow="pil-set">设为 pilot</button></div>` : `<div class="mut">这个项目还没有访谈可以设为 pilot。</div>`;
-    if (!S.pl.length) return `<div class="ow-row"><b>Pilot 修正</b></div><div class="card ow-card"><h3>选一场访谈作为 pilot</h3>${pick}</div>`;
+    if (!S.pl.length) return `<div class="ow-row"><b>Pilot 修正</b></div>${summaryCard()}<div class="card ow-card"><h3>选一场访谈作为 pilot</h3>${pick}</div>`;
     const pv = S.pil; if (!pv) return `<div class="card ow-card mut">正在读取……</div>`;
     const sel = S.pl.length > 1 ? `<select class="ow-sel" aria-label="选择 pilot" data-ow-pil>${S.pl.map((x) => `<option value="${x.id}"${x.id === S.pilId ? " selected" : ""}>${E(x.title)}</option>`).join("")}</select>` : "";
     const lines = pv.lines.map((ln) => {
@@ -197,7 +208,7 @@
     const finds = pv.findings.filter((f) => !f.line_id).map((f) => `<tr><td style="width:64px">${E(f.label || "—")}</td><td>${E(f.text)}</td></tr>`).join("");
     const marks = pv.marks.map((m) => `<tr><td>${m.role === "client" ? "客户" : "研究员"}</td><td>“${E(m.quote)}”</td><td><span class="ow-pill">${E(m.tag_text)}</span></td><td>${E(m.note)}</td><td><span class="ow-pill ${m.status === "open" ? "warn" : "ok"}">${m.status === "open" ? "待处理" : "已解决"}</span></td></tr>`).join("");
     return `<div class="ow-row"><b>Pilot 修正</b>${sel}<span class="ow-pill">${pv.moderation === "ai" ? "AI 主持" : "真人主持"}</span><span class="sp"></span><button type="button" data-ow="pil-new">再设一场</button><button type="button" class="p" data-ow="pil-suggest">生成修改建议</button></div>
-      <div class="card ow-card">${lines || `<div class="mut">这场 pilot 还没有笔录。</div>`}</div>
+      ${summaryCard()}<div class="card ow-card">${lines || `<div class="mut">这场 pilot 还没有笔录。</div>`}</div>
       ${finds ? `<div class="card ow-card"><h3>其他自动发现</h3><table class="ow-tbl"><tbody>${finds}</tbody></table></div>` : ""}
       <div class="card ow-card"><h3>标记</h3><table class="ow-tbl"><thead><tr><th style="width:90px">谁圈的</th><th>引用</th><th style="width:110px">标签</th><th>意见</th><th style="width:80px">状态</th></tr></thead><tbody>${marks || `<tr><td colspan="5" class="mut">还没有标记。</td></tr>`}</tbody></table></div>`;
   }
@@ -214,7 +225,7 @@
     try {
       if (S.tab === "preview") { S.pv = await call(`/preview${S.pvLang ? "?lang=" + S.pvLang : ""}`); S.pvLang = S.pv.language; }
       else if (S.tab === "rehearsal") S.rh = await call("/rehearsal");
-      else if (S.tab === "pilot") { const r = await call("/pilots"); S.pl = r.pilots; S.cand = r.candidates; S.pil = null; if (S.pl.length) { if (!S.pl.some((x) => x.id === S.pilId)) S.pilId = S.pl[0].id; S.pil = await call(`/pilots/${S.pilId}`); } }
+      else if (S.tab === "pilot") { const r = await call("/pilots"); S.pl = r.pilots; S.cand = r.candidates; S.sum = await call("/pilot-summary"); S.pil = null; if (S.pl.length) { if (!S.pl.some((x) => x.id === S.pilId)) S.pilId = S.pl[0].id; S.pil = await call(`/pilots/${S.pilId}`); } }
       else if (S.tab === "publish") S.pub = await call("/publish/check");
     } catch { /* toast shown */ }
     paint();
@@ -254,6 +265,7 @@
       case "rh-fix": { S.msgs.push({ me: true, text: "请修改：" + d.t }); S.busy = true; paint(); try { const r = await call("/chat", "POST", { text: "请修改：" + d.t, selected: d.uid }); S.d = await call(""); S.msgs.push({ text: r.reply, revs: r.revisions }); } catch { /* toast */ } S.busy = false; return paint(); }
       case "pil-set": { const id = val("#ow-cand"); if (!id) return; try { await call(`/pilots/${id}`, "PUT", { value: true }); S.pilId = id; } catch { /* toast */ } return loadTab(); }
       case "pil-new": S.pl = []; return paint();
+      case "pil-update": { S.busy = true; paint(); try { const r = await call("/pilot-update", "POST"); S.d = await call(""); S.msgs.push({ text: `已生成 v${r.version}：${r.summary}。问话方式 ${r.host.length} 条已接受并记录为训练用例，需要开发处理后才会改变 AI 主持的问法。` }); toast("已生成更新版"); } catch { /* toast */ } S.busy = false; return loadTab(); }
       case "mark-open": S.markForm = d.line; return paint();
       case "mark-cancel": S.markForm = null; return paint();
       case "mark-ok": {

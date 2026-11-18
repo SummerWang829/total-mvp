@@ -13,7 +13,7 @@ from ..deps import STAFF, Ctx, ensure_project, require_roles
 from ..models import Project
 from ..moderator.compliance import moderator_runs_locally
 from ..moderator.providers import ChatError, ChatFatalError, get_moderator_chat
-from ..outline_wb import board, session as sess, stage3
+from ..outline_wb import board, focus_new, session as sess, stage3
 from ..outline_wb.service import OutlineError
 from ..recruit_form import MSG_VENDOR_MISSING
 
@@ -86,6 +86,25 @@ class BoardChatBody(BaseModel):
 
 class BoardAdoptBody(BaseModel):
     ids: list[str] = Field(max_length=3)
+
+
+class FocusSuggestBody(BaseModel):
+    text: str = Field(min_length=1, max_length=500)
+
+
+class FocusNewBody(BaseModel):
+    text: str = Field(min_length=1, max_length=500)
+    item_uids: list[str] = Field(default_factory=list, max_length=3)
+    coding: str = Field(default="collect", max_length=10)
+    codes: list[str] = Field(default_factory=list, max_length=12)
+
+
+class LinesBody(BaseModel):
+    line_ids: list[str] = Field(max_length=30)
+
+
+class GroupsBody(BaseModel):
+    groups: list[dict] = Field(max_length=12)
 
 
 class VersionBody(BaseModel):
@@ -265,6 +284,16 @@ def set_pilot(pid: str, iid: str, body: PilotBody, ctx: Ctx = Depends(require_ro
     return _run(db, stage3.set_pilot, db, _project(db, ctx, pid), iid, body.value)
 
 
+@router.get("/pilot-summary")
+def pilot_summary(pid: str, ctx: Ctx = Depends(require_roles(*STAFF, *VIEWERS)), db: Session = Depends(get_db)):
+    return _run(db, stage3.pilot_summary, db, _project(db, ctx, pid))
+
+
+@router.post("/pilot-update")
+def pilot_update(pid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    return _run(db, stage3.update_outline, db, _project(db, ctx, pid), ctx.user.id)
+
+
 @router.get("/pilots/{iid}")
 def pilot(pid: str, iid: str, ctx: Ctx = Depends(require_roles(*STAFF, *VIEWERS)), db: Session = Depends(get_db)):
     return _run(db, stage3.pilot_view, db, _project(db, ctx, pid), iid)
@@ -349,3 +378,43 @@ def board_chat(pid: str, body: BoardChatBody, ctx: Ctx = Depends(require_roles(*
 @router.post("/board/suggestions/adopt")
 def board_adopt(pid: str, body: BoardAdoptBody, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
     return _run(db, board.adopt, db, _project(db, ctx, pid), body.ids, ctx.user.id)
+
+
+# ---- 中途新增关注问题（阶段 5）------------------------------------------------------------------------------------------------------------
+
+@router.post("/board/focus/suggest")
+def focus_suggest(pid: str, body: FocusSuggestBody, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    return _run(db, focus_new.suggest_items, db, _project(db, ctx, pid), body.text)
+
+
+@router.post("/board/focus/new")
+def focus_create(pid: str, body: FocusNewBody, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    p = _project(db, ctx, pid)
+    f = _run(db, focus_new.create, db, p, body.text, body.item_uids, body.coding, body.codes, ctx.user.id, ctx.user.role)
+    return {"id": f.id}
+
+
+@router.post("/board/focus/{fid}/add-question")
+def focus_add_question(pid: str, fid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    r = _run(db, focus_new.add_question, db, _project(db, ctx, pid), fid, None, ctx.user.id)
+    return {"revision": {"id": r.id, "op": r.op, "after": r.after, "reason": r.reason, "quality": r.quality, "status": r.status}}
+
+
+@router.get("/board/focus/{fid}/backfill")
+def focus_backfill(pid: str, fid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    return _run(db, focus_new.backfill_candidates, db, _project(db, ctx, pid), fid)
+
+
+@router.post("/board/focus/{fid}/backfill")
+def focus_backfill_confirm(pid: str, fid: str, body: LinesBody, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    return _run(db, focus_new.backfill_confirm, db, _project(db, ctx, pid), fid, body.line_ids)
+
+
+@router.get("/board/focus/{fid}/clusters")
+def focus_clusters(pid: str, fid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    return _run(db, focus_new.clusters, db, _project(db, ctx, pid), fid)
+
+
+@router.post("/board/focus/{fid}/codes")
+def focus_codes(pid: str, fid: str, body: GroupsBody, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    return _run(db, focus_new.set_codes, db, _project(db, ctx, pid), fid, body.groups)

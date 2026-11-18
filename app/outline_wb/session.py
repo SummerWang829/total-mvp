@@ -6,7 +6,7 @@ Raises OutlineError (service.py) with a plain-Chinese message when an action is 
 import json
 from datetime import datetime, timezone
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from ..config import settings
@@ -95,7 +95,9 @@ def view(db: Session, proj: Project, user_id: str = "") -> dict:
     dismissed = set(ov.get("dismissed", []))
     sugg = flow.suggest(mods, ctx, slots, dismissed) if mods else []
     from . import stage3
-    return {"versions": stage3.versions(db, proj), "outline_id": o.id, "version": {"id": v.id, "number": v.number, "rev": v.rev, "status": v.status, "used_by": svc.usage_count(db, v.id)}, "context": ctx,
+    from ..models import Interview
+    done = db.scalar(select(func.count()).select_from(Interview).where(Interview.project_id == proj.id, Interview.is_pilot.is_(True), Interview.status == "ended")) or 0
+    return {"pilot_done": done, "versions": stage3.versions(db, proj), "outline_id": o.id, "version": {"id": v.id, "number": v.number, "rev": v.rev, "status": v.status, "used_by": svc.usage_count(db, v.id)}, "context": ctx,
             "slots": {k: {"value": s["value"], "source": s["source"], "confidence": s["confidence"]} for k, s in slots.items()}, "round_questions": rounds, "step": step, "gates": gates,
             "steps": [{"key": k, "label": lab} for k, lab in STEPS], "overview": {"modules": mods, "totals": flow.totals(mods) if mods else {}, "findings": flow.findings(mods, ctx, slots) if mods else [],
             "depth_labels": flow.DEPTH_LABELS}, "suggestions": sugg, "revisions": pending, "focus": [_focus_view(f, v.id, db) for f in db.scalars(select(FocusQuestion).where(FocusQuestion.project_id == proj.id))],
@@ -283,7 +285,9 @@ def decide(db: Session, proj: Project, rid: str, accept: bool, user_id: str, rol
     if accept and rev is not None and rev.org_id == proj.org_id and rev.destination == "host_engine" and not train_case_id.strip():
         train_case_id = "TC-" + rev.id[:8]
     if accept:
-        svc.accept(db, proj.org_id, rid, user_id, role, train_case_id)
+        done = svc.accept(db, proj.org_id, rid, user_id, role, train_case_id)
+        from . import focus_new
+        focus_new.link_after_accept(db, done)
     else:
         svc.reject(db, proj.org_id, rid, user_id, role)
     return view(db, proj, user_id)

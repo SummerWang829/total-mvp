@@ -6,7 +6,7 @@ Everything is plain code; the model only words a rewrite (writer.fix_question). 
 import re
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .. import guide_text, outline_versions
@@ -271,6 +271,11 @@ def publish_checks(db: Session, proj: Project) -> dict:
     mods = (st.overview or {}).get("modules", [])
     todo = [m["name"] for m in mods if m.get("status") != "confirmed"]
     checks.append({"id": "modules", "level": "warn", "text": "还有模块没有确认：" + "、".join(todo)} if todo else {"id": "modules", "level": "ok", "text": "每个模块都已确认，总时长 " + str((st.overview or {}).get("minutes", "")) + " 分"})
+    done = db.scalar(select(func.count()).select_from(Interview).where(Interview.project_id == proj.id, Interview.is_pilot.is_(True), Interview.status == "ended")) or 0
+    checks.append({"id": "pilot", "level": "ok", "text": f"已有 {done} 场 pilot 做完"} if done else {"id": "pilot", "level": "block", "text": "还没有做完一场 pilot：必须先用真实受访者（或同事）把大纲试一遍，再发布"})
+    openrev = db.scalar(select(func.count()).select_from(Revision).where(Revision.outline_id == o.id, Revision.source == "pilot", Revision.status == "pending")) or 0
+    if openrev:
+        checks.append({"id": "pilot_open", "level": "warn", "text": f"pilot 提出的 {openrev} 条修改建议还没处理（接受或拒绝）"})
     miss = [f.text for f in db.scalars(select(FocusQuestion).where(FocusQuestion.project_id == proj.id)) if not f.item_uid]
     checks.append({"id": "focus", "level": "block", "text": f"{len(miss)} 个关注问题没有对应的题"} if miss else {"id": "focus", "level": "ok", "text": "每个关注问题都对应到一道题"})
     last = db.scalar(select(RehearsalRun).where(RehearsalRun.outline_id == o.id).order_by(RehearsalRun.created_at.desc()))
@@ -329,8 +334,71 @@ def snapshot_on_start(db: Session, itv: Interview) -> None:
     if proj is None or not proj.outline_id:
         return
     v = db.scalar(select(OutlineVersion).where(OutlineVersion.outline_id == proj.outline_id, OutlineVersion.status == "published"))
+    if v is None and itv.is_pilot:   # a pilot is how the outline gets ready to publish: it runs on the current draft
+        o = db.get(Outline, proj.outline_id)
+        v = db.get(OutlineVersion, o.current_version_id) if o else None
     if v is None:
         return
     st = sess.ensure(db, proj)[2]
     ctx = sess.context_of(db, proj, st)
     svc.start_interview(db, itv, v, goal="；".join(ctx["goals"]) or ctx["background"], topic=(proj.name or "")[:20])
+
+
+# ---- pilot summary and the update version ---------------------------------------------------------------------------------------------------
+
+DEST_LABEL = {"outline": "大纲要改", "material": "物料要改", "host_engine": "问话方式"}
+LEVEL_OF = {"confused": "watch", "uncovered": "watch", "overtime": "watch", "skipped": "info"}
+TAG_LEVEL = {"leading": "now", "host": "now", "unclear": "watch", "missed": "watch", "material": "watch", "long": "watch", "other": "info"}
+
+
+def pilot_summary(db: Session, proj: Project) -> dict:
+    """Everything the pilots found, in one place and coloured by how serious it is (now = red, watch = orange, info = grey) and where it goes (outline / material / how the AI host asks).
+    It is what the updated outline and the way of asking are made from."""
+    o, v, st = sess.ensure(db, proj)
+    pl = pilots(db, proj)["pilots"]
+    items: list[dict] = []
+    for p in pl:
+        pv = pilot_view(db, proj, p["id"])
+        for m in pv["marks"]:
+            items.append({"kind": "mark", "pilot": p["title"], "level": TAG_LEVEL.get(m["tag"], "info"), "dest": TAG_DEST.get(m["tag"], "outline"), "label": m["label"], "text": f"{m['tag_text']}：{m['quote']}" + (f"（{m['note']}）" if m["note"] else ""), "who": "客户" if m["role"] == "client" else "研究员", "status": m["status"]})
+        for f in pv["findings"]:
+            items.append({"kind": "auto", "pilot": p["title"], "level": LEVEL_OF.get(f["kind"], "info"), "dest": f["destination"], "label": f.get("label", ""), "text": f["text"], "who": "系统", "status": "open"})
+    last = db.scalar(select(RehearsalRun).where(RehearsalRun.outline_id == o.id).order_by(RehearsalRun.created_at.desc()))
+    for f in (last.findings if last else []):
+        items.append({"kind": "rehearsal", "pilot": "模拟预演", "level": "watch", "dest": f.get("destination", "outline"), "label": f.get("label", ""), "text": f["text"], "who": "系统", "status": "open"})
+    revs = list(db.scalars(select(Revision).where(Revision.outline_id == o.id, Revision.source == "pilot").order_by(Revision.created_at)))
+    by_dest = {d: {"label": lab, "n": 0, "open": 0} for d, lab in DEST_LABEL.items()}
+    for it in items:
+        g = by_dest.get(it["dest"], by_dest["outline"])
+        g["n"] += 1
+        g["open"] += 1 if it["status"] == "open" else 0
+    host = [{"id": r.id, "text": (r.after or {}).get("text", ""), "reason": r.reason, "status": r.status, "case": r.train_case_id} for r in revs if r.destination == "host_engine"]
+    accepted = [r for r in revs if r.status == "accepted"]
+    ended = sum(1 for p in pl if p["status"] == "ended")
+    return {"pilots": len(pl), "ended": ended, "items": items, "groups": [{"dest": d, **g} for d, g in by_dest.items()], "host": host,
+            "revisions": {"pending": sum(1 for r in revs if r.status == "pending"), "accepted": len(accepted), "rejected": sum(1 for r in revs if r.status == "rejected")},
+            "can_update": ended > 0 and bool(accepted), "required": "必须先做完至少一场 pilot，再发布" if not ended else ""}
+
+
+def update_outline(db: Session, proj: Project, user_id: str = "") -> dict:
+    """Make the next version from what the pilots led to: the accepted outline changes are already in the current version, so this freezes that state as a new version (so the pilot's version stays as
+    it was), names what changed, and lists the accepted "how to ask" cases for the AI host.
+
+    Raises:
+        OutlineError: no pilot is finished, or no suggestion has been accepted yet.
+    """
+    sm = pilot_summary(db, proj)
+    if not sm["ended"]:
+        raise svc.OutlineError("必须先做完至少一场 pilot")
+    if not sm["can_update"]:
+        raise svc.OutlineError("还没有接受任何 pilot 的修改建议")
+    o, v, st = sess.ensure(db, proj, user_id)
+    acc = list(db.scalars(select(Revision).where(Revision.outline_id == o.id, Revision.source == "pilot", Revision.status == "accepted")))
+    n = {d: sum(1 for r in acc if r.destination == d) for d in DEST_LABEL}
+    for m in db.scalars(select(Mark).where(Mark.org_id == proj.org_id, Mark.status == "open", Mark.interview_id.in_([p["id"] for p in pilots(db, proj)["pilots"]] or [""]))):
+        rid = next((r.id for r in acc if r.source_ref == m.id), None)
+        if rid:
+            m.status, m.resolved_revision_id = "resolved", rid
+    nv = svc.new_version(db, v, user_id, f"Pilot 修正：大纲 {n['outline']} 处、物料 {n['material']} 处、问话方式 {n['host_engine']} 条")
+    db.flush()
+    return {"version": nv.number, "summary": nv.summary, "host": [h for h in sm["host"] if h["status"] == "accepted"], "versions": versions(db, proj)}

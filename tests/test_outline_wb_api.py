@@ -225,7 +225,6 @@ def _pilot_setup(org, proj):
     from app.models import CaptionLine, Interview, Participant, Project
     from app.outline_wb import service as svc, stage3
     _ready(org, proj)
-    assert _api(org, proj, "post", "/publish").status_code == 200
     items = _api(org, proj, "get", "").json()["items"]
     with SessionLocal() as db:
         p = db.get(Project, proj)
@@ -243,7 +242,9 @@ def _pilot_setup(org, proj):
             db.flush()
             svc.assign_line(ln, uid, src)
         db.commit()
-        return itv.id, [ln.id for ln in db.query(CaptionLine).filter_by(interview_id=itv.id).order_by(CaptionLine.seq)]
+        ids = [ln.id for ln in db.query(CaptionLine).filter_by(interview_id=itv.id).order_by(CaptionLine.seq)]
+    assert _api(org, proj, "post", "/publish").status_code == 200          # a pilot has been done: now it can be published
+    return itv.id, ids
 
 
 def test_publishing_freezes_for_new_interviews_and_keeps_the_older_pages_in_step(org, proj):
@@ -330,6 +331,16 @@ def _board_setup(org, proj):
     _ready(org, proj, ("warm",))
     uid = _api(org, proj, "get", "").json()["items"][0]["uid"]
     fid = _api(org, proj, "post", "/focus", json={"text": "她们平时怎么买东西", "item_uid": uid}).json()["focus"][0]["id"]
+    with SessionLocal() as db:
+        p = db.get(Project, proj)
+        pp = Participant(org_id=p.org_id, project_id=p.id, name="试访", country="SG", language="zh", code="M-900")
+        db.add(pp)
+        db.flush()
+        pil = Interview(org_id=p.org_id, project_id=p.id, participant_id=pp.id, title="Pilot", language="zh", status="ended", moderation="human", is_pilot=True, invite_hash="x-pilot0")
+        db.add(pil)
+        db.flush()
+        stage3.snapshot_on_start(db, pil)
+        db.commit()
     assert _api(org, proj, "post", "/publish").status_code == 200
     with SessionLocal() as db:
         p = db.get(Project, proj)
@@ -450,3 +461,115 @@ def test_saturation_needs_eight_answers_and_adopting_only_proposes(org, proj):
     assert board._saturated(["价格"] * 6 + ["新说法", "价格"]) is False
     iid, fid, uid = _board_setup(org, proj)
     assert _api(org, proj, "post", "/board/suggestions/adopt", json={"ids": ["sat_none"]}).json()["proposed"] == 0
+
+
+def test_a_pilot_is_a_must_before_publishing_and_it_runs_on_the_draft(org, proj):
+    _ready(org, proj)
+    r = _api(org, proj, "post", "/publish")
+    assert r.status_code == 422 and "pilot" in r.json()["detail"]
+    chk = _api(org, proj, "get", "/publish/check").json()
+    assert next(c for c in chk["checks"] if c["id"] == "pilot")["level"] == "block"
+    iid, _ = _pilot_setup(org, proj)                                          # a pilot (on the draft) and then the publish works
+    chk = _api(org, proj, "get", "/publish/check").json()
+    assert next(c for c in chk["checks"] if c["id"] == "pilot")["level"] == "ok"
+
+
+def test_the_pilot_summary_groups_findings_by_seriousness_and_place_and_makes_the_update(org, proj):
+    iid, lines = _pilot_setup(org, proj)
+    _api(org, proj, "post", f"/pilots/{iid}/marks", json={"line_id": lines[1], "start": 0, "end": 4, "tag": "leading", "note": "像在引导"})
+    _api(org, proj, "post", f"/pilots/{iid}/marks", json={"line_id": lines[0], "start": 0, "end": 3, "tag": "host", "note": "主持引导不当"})
+    sm = _api(org, proj, "get", "/pilot-summary").json()
+    assert sm["pilots"] == 1 and {g["dest"] for g in sm["groups"]} == {"outline", "material", "host_engine"}
+    assert {i["level"] for i in sm["items"]} >= {"now", "watch"} and sm["can_update"] is False
+    assert _api(org, proj, "post", "/pilot-update").status_code == 422        # nothing accepted yet
+    out = _api(org, proj, "post", f"/pilots/{iid}/suggest").json()
+    for r in out["revisions"]:
+        _api(org, proj, "post", f"/revisions/{r['id']}/accept")
+    sm = _api(org, proj, "get", "/pilot-summary").json()
+    assert sm["can_update"] is True and sm["host"] and sm["host"][0]["status"] == "accepted"
+    up = _api(org, proj, "post", "/pilot-update").json()
+    assert up["version"] == 2 and "Pilot 修正" in up["summary"] and up["host"]
+    assert _api(org, proj, "get", "").json()["version"]["number"] == 2
+
+
+# ---- stage 5: adding a focus question while the interviews run ------------------------------------------------------------------------------------------
+
+def test_a_new_focus_question_is_matched_to_questions_by_words_and_the_top_two_are_ticked(org, proj):
+    iid, fid, uid = _board_setup(org, proj)
+    out = _api(org, proj, "post", "/board/focus/suggest", json={"text": "她们平时怎么买东西"}).json()
+    assert out["candidates"] and out["candidates"][0]["score"] >= 0.25 and out["candidates"][0]["checked"] is True
+    assert sum(1 for c in out["candidates"] if c["checked"]) <= 2
+    none = _api(org, proj, "post", "/board/focus/suggest", json={"text": "完全无关的火星气候"}).json()
+    assert none["none_fit"] is True and not any(c["checked"] for c in none["candidates"])
+    assert _api(org, proj, "post", "/board/focus/suggest", json={"text": "x"}, role="observer").status_code == 403
+
+
+def test_coding_choices_are_checked_and_collect_mode_waits_to_be_grouped(org, proj):
+    iid, fid, uid = _board_setup(org, proj)
+    bad = _api(org, proj, "post", "/board/focus/new", json={"text": "包装环保", "coding": "custom", "codes": ["只有一个"]})
+    assert bad.status_code == 422
+    assert _api(org, proj, "post", "/board/focus/new", json={"text": "包装环保", "coding": "wrong"}).status_code == 422
+    new = _api(org, proj, "post", "/board/focus/new", json={"text": "她们平时怎么买东西的渠道", "item_uids": [uid], "coding": "collect"}).json()["id"]
+    items = _api(org, proj, "get", "").json()["items"]
+    _say(iid, "moderator", items[0]["text"], 1)
+    _say(iid, "participant", "我平时在网上买东西，渠道主要是电商。", 2)
+    assert _wait(lambda: _api(org, proj, "get", f"/board/focus/{new}").json()["pending"] == 1)
+    d = _api(org, proj, "get", f"/board/focus/{new}").json()
+    assert d["dist"] == [] and d["coding"] == "collect" and d["can_cluster"] is False      # waiting answers are not counted in the statistics
+    tpl = _api(org, proj, "post", "/board/focus/new", json={"text": "态度怎样", "coding": "attitude"}).json()["id"]
+    assert _api(org, proj, "get", f"/board/focus/{tpl}").json()["codes"] == ["很认可", "一般", "不认可", "说不清"]
+
+
+def test_eight_collected_answers_can_be_grouped_and_only_confirmed_groups_count(org, proj):
+    from app.db import SessionLocal
+    from app.outline_wb import service as svc
+    iid, fid, uid = _board_setup(org, proj)
+    new = _api(org, proj, "post", "/board/focus/new", json={"text": "她们平时怎么买东西的渠道", "item_uids": [uid], "coding": "collect"}).json()["id"]
+    items = _api(org, proj, "get", "").json()["items"]
+    _say(iid, "moderator", items[0]["text"], 1)
+    texts = ["我平时在网上买东西，电商比较方便。"] * 4 + ["我喜欢去实体店亲自挑选东西。"] * 4
+    for n, t in enumerate(texts, 2):
+        _say(iid, "participant", t, n)
+    assert _wait(lambda: _api(org, proj, "get", f"/board/focus/{new}").json()["can_cluster"] is True, 15)
+    cl = _api(org, proj, "get", f"/board/focus/{new}/clusters").json()
+    assert len(cl["groups"]) >= 2 and sum(len(g["members"]) for g in cl["groups"]) == 8
+    g0 = cl["groups"][0]
+    out = _api(org, proj, "post", f"/board/focus/{new}/codes", json={"groups": [{"name": "网购", "answer_ids": [m["id"] for m in g0["members"]]}]}).json()
+    assert out["codes"] == ["网购"] and out["dist"][0]["code"] == "网购" and out["pending"] == 8 - len(g0["members"])
+    assert _api(org, proj, "post", f"/board/focus/{new}/codes", json={"groups": []}).status_code == 422
+
+
+def test_looking_back_finds_lines_said_in_other_questions_and_counts_only_the_ticked(org, proj):
+    iid, fid, uid = _board_setup(org, proj)
+    items = _api(org, proj, "get", "").json()["items"]
+    _say(iid, "moderator", items[1]["text"], 1)                                   # another question is on ...
+    _say(iid, "participant", "说到价格，我觉得包装的环保材料比较重要。", 2)         # ... and she talks about packaging
+    new = _api(org, proj, "post", "/board/focus/new", json={"text": "包装的环保材料", "item_uids": [uid], "coding": "collect"}).json()["id"]
+    bf = _api(org, proj, "get", f"/board/focus/{new}/backfill").json()
+    assert bf["candidates"] and bf["candidates"][0]["in"] and "包装" in bf["candidates"][0]["text"]
+    lid = bf["candidates"][0]["line_id"]
+    assert _api(org, proj, "post", f"/board/focus/{new}/backfill", json={"line_ids": ["not-a-line"]}).json()["added"] == 0
+    assert _api(org, proj, "post", f"/board/focus/{new}/backfill", json={"line_ids": [lid]}).json()["added"] == 1
+    d = _api(org, proj, "get", f"/board/focus/{new}?origin=volunteered").json()
+    assert d["pending"] == 1 and d["quotes"][0]["origin"] == "volunteered"
+    assert _api(org, proj, "get", f"/board/focus/{new}/backfill").json()["candidates"] == []     # already counted: not offered again
+
+
+def test_a_question_added_for_the_next_interviews_is_a_pending_revision_that_links_when_accepted(org, proj):
+    iid, fid, uid = _board_setup(org, proj)
+    new = _api(org, proj, "post", "/board/focus/new", json={"text": "包装是否环保", "item_uids": [], "coding": "collect"}).json()["id"]
+    r = _api(org, proj, "post", f"/board/focus/{new}/add-question").json()["revision"]
+    assert r["status"] == "pending" and "包装是否环保" in r["after"]["texts"]["zh"]
+    n_before = len(_api(org, proj, "get", "").json()["items"])
+    assert _api(org, proj, "post", f"/revisions/{r['id']}/accept", role="observer").status_code == 403
+    assert _api(org, proj, "post", f"/revisions/{r['id']}/accept").status_code == 200
+    v = _api(org, proj, "get", "").json()
+    assert len(v["items"]) == n_before + 1
+    f = next(x for x in v["focus"] if x["id"] == new)
+    assert f["item_uid"] == v["items"][-1]["uid"]                               # the focus question now points at the new question
+    from app.db import SessionLocal
+    from app.models import Interview
+    with SessionLocal() as db:
+        running = db.get(Interview, iid)
+        from app.outline_wb.models import OutlineSnapshot
+        assert len(db.get(OutlineSnapshot, running.outline_snapshot_id).content["items"]) == n_before     # the interview already running keeps its snapshot

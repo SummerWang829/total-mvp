@@ -380,7 +380,8 @@ def _apply(db: Session, version: OutlineVersion, r: Revision) -> None:
     a = r.after or {}
     if r.op == "insert":
         fields = {k: v for k, v in a.items() if k in ITEM_FIELDS}
-        add_item(db, version, label=a.get("label", ""), after_uid=r.item_uid, **fields)
+        new = add_item(db, version, label=a.get("label", ""), after_uid=r.item_uid, **fields)
+        r.after = {**a, "new_uid": new.item_uid}   # remembered so whatever asked for the question (a focus question) can be pointed at it
         return
     it = _item(db, version, r.item_uid or "")
     if r.op == "rewrite":

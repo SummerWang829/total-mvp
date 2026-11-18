@@ -24,6 +24,7 @@ from .models import CodedAnswer, FocusQuestion, OutlineSnapshot
 
 log = logging.getLogger(__name__)
 REVIEW_BELOW = 0.75        # a code the AI is less sure of goes to review
+CLUSTER_MIN = 8            # answers to collect before they can be grouped
 MIN_FOR_PERCENT = 20       # fewer people than this: counts only, no percentages
 SATURATION_MIN = 8         # answers needed before "close to saturated" can be said
 SATURATION_WINDOW = 5      # the last this-many answers all fell into codes already seen twice
@@ -95,6 +96,30 @@ def relevance(text: str, focus: str, codes: list[str]) -> float:
     return sum(1 for b in bag if b in said) / len(bag)
 
 
+def submit_recode(coded_id: str) -> None:
+    """Code an answer that was added without a code (looking back through old transcripts): in the background, like a live one."""
+    _POOL.submit(_recode, coded_id)
+
+
+def _recode(coded_id: str) -> None:
+    try:
+        with SessionLocal() as db:
+            c = db.get(CodedAnswer, coded_id)
+            f = db.get(FocusQuestion, c.focus_id) if c else None
+            text = _line_text(db, c) if c else ""
+            if c is None or f is None or c.code or not text:
+                return
+            q, codes = f.text, list(f.codes or [])
+        code, conf, _ = _code(q, codes, text)
+        with SessionLocal() as db:
+            c = db.get(CodedAnswer, coded_id)
+            if c is not None and not c.code:
+                c.code, c.ai_code, c.confidence = code, code, conf
+                db.commit()
+    except Exception:   # noqa: BLE001 - background job: logged, never raised
+        log.exception("board: recode failed")
+
+
 def submit(task: Task | None) -> None:
     if task is not None:
         _POOL.submit(_run, task)
@@ -129,23 +154,26 @@ def _run(task: Task) -> None:
     t0 = time.monotonic()
     ok, used_model = True, False
     try:
-        todo: list[tuple[str, bool, str | None, str, list[str]]] = []
+        todo: list[tuple[str, bool, str | None, str, list[str], str]] = []
         with SessionLocal() as db:
             row = _text_of(db, task)
             if row is None:
                 raise LookupError("line never appeared")
             uid = row.item_uid or task.item_uid
             for f in db.scalars(select(FocusQuestion).where(FocusQuestion.project_id == task.project_id, FocusQuestion.org_id == task.org_id)):
-                asked = bool(f.item_uid) and f.item_uid == uid
+                asked = bool(uid) and uid in ([f.item_uid] + list(f.item_uids or []))
                 if not asked and relevance(task.text, f.text, f.codes or []) < RELEVANT:
                     continue
                 if db.scalar(select(CodedAnswer.id).where(CodedAnswer.focus_id == f.id, CodedAnswer.line_id == task.line_id)):
                     continue
-                todo.append((f.id, asked, uid, f.text, list(f.codes or [])))
+                todo.append((f.id, asked, uid, f.text, list(f.codes or []), f.coding))
             db.rollback()
         results = []
-        for fid, asked, uid, ftext, codes in todo:
-            code, conf, used_model = _code(ftext, codes, task.text)
+        for fid, asked, uid, ftext, codes, how in todo:
+            if how == "collect" and not codes:   # "collect the words first": nothing to choose from yet, so no model is asked; the answer waits to be grouped
+                code, conf, used_model = "", 1.0, False
+            else:
+                code, conf, used_model = _code(ftext, codes, task.text)
             results.append((fid, asked, uid, code, conf))
         if results:
             with SessionLocal() as db:
@@ -200,12 +228,14 @@ def _focus_card(db: Session, proj: Project, f: FocusQuestion, itvs: list[Intervi
     vol = {c.interview_id for c in cas if c.origin == "volunteered"}
     counts: dict[str, int] = {}
     for c in cas:
-        counts[c.code] = counts.get(c.code, 0) + 1
+        if c.code:   # an answer still waiting to be grouped has no code and is not counted in the statistics
+            counts[c.code] = counts.get(c.code, 0) + 1
     top = max(counts, key=lambda k: counts[k]) if counts else ""
     now = time.time()
     miss = sum(1 for i in itvs if i.id not in asked and i.id not in vol and (i.status == "ended" or (i.status == "live" and i.started_at and (now - i.started_at.timestamp()) / 60 > MISS_AFTER * (i.duration_min or 45))))
     return {"id": f.id, "text": f.text, "role": f.asked_role, "label": labels.get(f.item_uid or "", ""), "answered": len(asked | vol), "asked": len(asked), "volunteered": len(vol), "top": top, "top_n": counts.get(top, 0),
-            "new": sum(1 for c in cas if c.created_at.timestamp() > since), "missing": miss, "review": sum(1 for c in cas if c.confidence < REVIEW_BELOW and not c.confirmed), "saturated": _saturated([c.code for c in cas])}
+            "new": sum(1 for c in cas if c.created_at.timestamp() > since), "missing": miss, "review": sum(1 for c in cas if c.code and c.confidence < REVIEW_BELOW and not c.confirmed), "saturated": _saturated([c.code for c in cas if c.code]),
+            "pending": sum(1 for c in cas if not c.code), "coding": f.coding, "during": f.timing == "during"}
 
 
 def board(db: Session, proj: Project, since: float = 0.0) -> dict:
@@ -240,7 +270,7 @@ def alerts(db: Session, proj: Project, itvs: list[Interview], foc: list[FocusQue
         if left is not None and left < 8:
             got = {c.focus_id for c in db.scalars(select(CodedAnswer).where(CodedAnswer.interview_id == i.id))}
             for f in foc:
-                if f.item_uid and f.id not in got:
+                if (f.item_uid or f.item_uids) and f.id not in got:
                     out.append({"level": "watch", "who": parts[i.id], "interview_id": i.id, "text": f"关注问题“{f.text[:16]}”还没问到，距离结束约 {max(0, int(left))} 分钟", "kind": "missed"})
         short = [m.text for m in db.scalars(select(ChatMessage).where(ChatMessage.interview_id == i.id, ChatMessage.sender == "participant").order_by(ChatMessage.seq.desc()).limit(5))]
         if len(short) == 5 and all(len(re.sub(r"\W+", "", t)) < 4 for t in short):
@@ -270,7 +300,11 @@ def focus_detail(db: Session, proj: Project, fid: str, origin: str = "all") -> d
     n = len({c.interview_id for c in cas})
     counts: dict[str, int] = {}
     groups: dict[str, dict[str, int]] = {}
+    pending = 0
     for c in cas:
+        if not c.code:
+            pending += 1
+            continue
         counts[c.code] = counts.get(c.code, 0) + 1
         p = people.get(c.interview_id)
         g = (p.participant.tags[0] if p and p.participant and p.participant.tags else "未分组")
@@ -280,11 +314,12 @@ def focus_detail(db: Session, proj: Project, fid: str, origin: str = "all") -> d
     for i in people.values():
         for it in _items(db, i.outline_snapshot_id):
             labels.setdefault(it["item_uid"], it["label"])
-    return {"id": f.id, "text": f.text, "label": labels.get(f.item_uid or "", ""), "n": n, "percent": show_pct, "origin": origin,
+    return {"id": f.id, "text": f.text, "label": labels.get(f.item_uid or "", ""), "n": n, "percent": show_pct, "origin": origin, "coding": f.coding, "codes": list(f.codes or []), "pending": pending,
+            "can_cluster": f.coding == "collect" and pending >= CLUSTER_MIN, "during": f.timing == "during",
             "dist": [{"code": k, "n": v, "pct": round(v * 100 / max(1, len(cas))) if show_pct else None} for k, v in sorted(counts.items(), key=lambda x: -x[1])],
             "groups": [{"group": g, "dist": [{"code": k, "n": v} for k, v in sorted(d.items(), key=lambda x: -x[1])], "total": sum(d.values())} for g, d in groups.items()],
             "quotes": [{"id": c.id, "who": _label(people[c.interview_id].participant) if c.interview_id in people else "—", "text": _line_text(db, c), "code": c.code, "confidence": c.confidence,
-                        "review": c.confidence < REVIEW_BELOW and not c.confirmed, "confirmed": c.confirmed, "by": c.coded_by, "origin": c.origin, "in": labels.get(c.mentioned_in_item_uid or "", "")} for c in cas[:100]]}
+                        "review": bool(c.code) and c.confidence < REVIEW_BELOW and not c.confirmed, "confirmed": c.confirmed, "by": c.coded_by, "origin": c.origin, "in": labels.get(c.mentioned_in_item_uid or "", "")} for c in cas[:100]]}
 
 
 def answer_detail(db: Session, proj: Project, cid: str) -> dict:
