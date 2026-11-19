@@ -383,7 +383,7 @@ ul.rd-sum li{margin-bottom:6px}
 .rp-appendix>summary::-webkit-details-marker{display:none}
 .rp-appendix>summary:hover{background:var(--wash)}
 .rp-appendix[open]>summary{border-bottom:1px solid var(--line)}
-.rp-app-badge{flex:none;font-size:12px;font-weight:700;letter-spacing:.06em;color:var(--orange);background:var(--orange-soft);border-radius:4px;padding:3px 8px}
+.rp-app-badge{flex:none;font-size:12px;font-weight:700;letter-spacing:.06em;color:#A8430F;background:var(--orange-soft);border-radius:4px;padding:3px 8px}
 .rp-app-title{flex:1;min-width:0;font:700 17px/1.4 var(--fd);color:var(--ink)}
 .rp-app-chev{flex:none;font-size:18px;line-height:1;color:var(--muted);transition:transform .2s}
 .rp-appendix[open] .rp-app-chev{transform:rotate(180deg)}
@@ -391,18 +391,18 @@ ul.rd-sum li{margin-bottom:6px}
 .rp-appendix .rp-app-h1{font:700 20px/1.5 var(--fd);letter-spacing:.01em;color:var(--ink);margin:30px 0 14px;padding:22px 0 0;border-top:1px solid var(--line)}
 .rp-app-body>.rp-app-h1:first-child{border-top:0;padding-top:8px;margin-top:10px}
 .rp-appendix .rp-app-h2{font:600 14.5px/1.5 var(--fd);color:var(--ink);margin:20px 0 8px}
-.rp-appendix .rp-app-p{font-size:13.5px;line-height:1.9;color:var(--ink2);margin:0 0 14px;max-width:76ch}
-.rp-appendix .rp-app-note{font-size:12px;line-height:1.7;color:var(--muted);margin:0 0 10px}
+.rp-appendix .rp-app-p{font-size:14px;line-height:1.9;color:var(--ink2);margin:0 0 14px;max-width:76ch}
+.rp-appendix .rp-app-note{font-size:14px;line-height:1.7;color:var(--muted);margin:0 0 10px}
 .rp-appendix .rp-app-stat{display:inline-flex;align-items:center;background:var(--wash);border:1px solid var(--line);border-radius:6px;padding:5px 11px;font-size:12.5px;color:var(--ink2);margin:6px 0 16px}
 .rp-appendix .rp-app-list{list-style:none;padding:0;margin:0 0 16px;max-width:82ch}
-.rp-appendix .rp-app-list li{position:relative;padding-left:18px;font-size:13.5px;line-height:1.85;color:var(--ink2);margin:0 0 8px}
+.rp-appendix .rp-app-list li{position:relative;padding-left:18px;font-size:14px;line-height:1.85;color:var(--ink2);margin:0 0 8px}
 .rp-appendix .rp-app-list li:before{content:"";position:absolute;left:2px;top:.75em;width:5px;height:5px;border-radius:50%;background:var(--orange)}
-.rp-appendix .rp-app-quote{border-left:3px solid var(--orange);background:var(--wash);border-radius:0 8px 8px 0;padding:8px 12px;margin:8px 0 14px;font-size:13px;line-height:1.75;color:var(--ink2)}
+.rp-appendix .rp-app-quote{border-left:3px solid var(--orange);background:var(--wash);border-radius:0 8px 8px 0;padding:8px 12px;margin:8px 0 14px;font-size:14px;line-height:1.75;color:var(--ink2)}
 /* 统一列宽是「对齐」的关键：fixed + 第一列固定百分比，所有表的第二列从同一 x 开始 */
 .rp-appendix .rp-app-tbl{margin:0 0 18px;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--surface)}
-.rp-appendix .tbl{table-layout:fixed;width:100%;border-collapse:collapse;font-size:13px}
+.rp-appendix .tbl{table-layout:fixed;width:100%;border-collapse:collapse;font-size:14px}
 .rp-appendix .tbl th{background:var(--wash);text-align:left;font-size:12px;font-weight:700;letter-spacing:.04em;color:var(--muted);padding:10px 16px;border-bottom:1px solid var(--line2);white-space:normal;line-height:1.5}
-.rp-appendix .tbl td{padding:11px 16px;border-bottom:1px solid var(--line);color:var(--ink);white-space:normal;vertical-align:top;line-height:1.7;font-size:13px}
+.rp-appendix .tbl td{padding:11px 16px;border-bottom:1px solid var(--line);color:var(--ink);white-space:normal;vertical-align:top;line-height:1.7;font-size:14px}
 .rp-appendix .tbl tbody tr:last-child td{border-bottom:0}
 .rp-appendix .tbl tbody tr:hover td{background:#FAFCFB}
 .rp-appendix .tbl th:first-child,.rp-appendix .tbl td:first-child{width:46%;color:var(--ink2)}

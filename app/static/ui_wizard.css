@@ -46,3 +46,4 @@ html body .wzsubs .chk.wzbig { min-width: 0; min-height: 0; height: 24px; justif
 html body .wzsubs td input[type=checkbox] { margin: 0; }
 html body .wzsubs td > input:not([type=checkbox]),
 html body .wzsubs td > select { height: 24px; min-height: 0; line-height: 24px; margin-top: 0; vertical-align: top; }
+@media (max-width:900px){.wzsubs label.chk{display:inline-flex!important;align-items:center;justify-content:center;min-width:36px;min-height:36px!important;height:auto!important}.wzsubs{overflow-x:auto}.wzsubs>table.tbl{min-width:900px}.wzsubs button,.wzsubs select,.wzsubs input{min-height:36px!important;min-width:36px}}   /* phone: the sub-project table scrolls sideways instead of squeezing its fields below 36px */

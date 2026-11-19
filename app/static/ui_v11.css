@@ -436,3 +436,4 @@ body.v11 .sub2 .l2slot a[hidden]{display:none!important}
 .v11app.sub-off .sub2 .sgt .tx,.v11app.sub-off .sub2 .l2ver{display:none}
 .v11app.sub-off .sub2 .sgt{justify-content:center;padding:4px 0}
 @media (prefers-reduced-motion:reduce){.sub2 .sgt .ar{transition:none}}
+body.v11 .overview-band h1{color:#fff}   /* the project name on the dark banner was painted in the page ink colour and could not be read (qa 2026-11-19) */
