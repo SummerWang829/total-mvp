@@ -27,3 +27,4 @@
 .rmcard{width:min(640px,calc(100vw - 32px));max-width:none;max-height:min(70vh,560px)}
 .rmcard .rmx{margin-left:8px;flex:none}
 @media (max-width:600px){.rmbox td.acts .btn{height:36px;min-height:36px}}
+@media (max-width:900px){main #rmtabs{flex-wrap:wrap}main #rmtabs .rmt{flex:none;white-space:nowrap;min-height:36px;height:auto}}   /* the status buttons sit in the page now (修正方案第 1 轮): never squeezed below 36px on a phone */

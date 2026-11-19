@@ -105,9 +105,9 @@ body.v11 .sub2 .l2slot #owsteps3 a.ow-l3{padding-left:40px;font-size:13px}body.v
 body.v11 .ow-state button.p{background:var(--pri);border:1px solid var(--pri);color:var(--pri-ink,#fff);padding:3px 14px;border-radius:8px;height:28px;cursor:pointer;font:inherit}
 
 /* ---- 访谈直播 › 实时看板（阶段 4）---- */
-#owbbar{display:flex;flex-direction:column}
-body.v11 .sub2 .l2slot #owbbar a.ow-l3{padding-left:26px;font-size:13.5px}body.v11 .sub2 .l2slot #owbbar a.ow-l4{padding-left:50px;font-size:12.5px}
-body.v11 .sub2 .l2slot #owbbar a.ow-l3::after,body.v11 .sub2 .l2slot #owbbar a.ow-l4::after{display:none}
+
+
+
 #owbroot .ow{display:flex;gap:14px;height:calc(100vh - 150px);min-height:560px}#owbroot .ow-main{flex:1;min-width:0;overflow:auto;display:flex;flex-direction:column;gap:12px;position:relative}
 #owbroot .ow-chat{flex:0 0 340px;width:340px;display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--line);border-radius:12px;min-height:0}
 .ob-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
@@ -141,4 +141,38 @@ body.ob-on #rmtabs{display:none!important}
 .bk{display:inline-flex;align-items:center;gap:6px}
 .ow-lsel{height:28px;max-width:84px;padding:0 4px}.ow-lsel.guess{color:var(--ow-warn);border-color:var(--ow-warn)}
 .ow-tr{grid-template-columns:70px 56px 84px minmax(0,1fr) 54px}
-@media (max-width:900px){#owbbar a,#owsteps a,#owsteps3 a{min-height:40px!important;display:flex;align-items:center}}   /* 手机上点击区不小于 36px（全站检查的要求） */
+@media (max-width:900px){#owbbar a,.ow-tabs a,.ow-steps .ow-st{min-height:40px!important;display:flex;align-items:center}}   /* 手机上点击区不小于 36px（全站检查的要求） */
+
+/* 修正方案第 1 轮第 1 条：步骤条、模块目录、上一步/下一步、页内小页签、侧边栏底部一行版本卡 */
+.ow-steps{display:flex;align-items:center;flex-wrap:wrap;gap:0;background:var(--surface,#fff);border-radius:12px;padding:10px 14px;margin:0 0 12px}
+.ow-steps .ow-st{display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:999px;color:var(--ink2);text-decoration:none;font-weight:600;min-height:36px}
+.ow-steps .ow-st i{width:22px;height:22px;border-radius:50%;border:1.5px solid var(--line2);display:inline-flex;align-items:center;justify-content:center;font-style:normal;font-size:12px}
+.ow-steps .ow-st.done i{background:#E6F2EC;border-color:#2E7D5B;color:#1F6B4E}
+.ow-steps .ow-st.on{background:var(--chip);color:var(--ink)}
+.ow-steps .ow-st.on i{background:var(--pri);border-color:var(--pri);color:var(--pri-ink)}
+.ow-steps .ow-st.lock{color:var(--muted);cursor:not-allowed}
+.ow-steps .sep{flex:0 0 22px;height:1px;background:var(--line2)}
+.ow-qwrap{display:grid;grid-template-columns:180px minmax(0,1fr);gap:12px;align-items:start}
+.ow-toc{background:var(--surface,#fff);border-radius:12px;padding:8px;position:sticky;top:0}
+.ow-toc .t{font-size:12px;color:var(--muted);padding:4px 8px}
+.ow-toc a{display:flex;justify-content:space-between;gap:6px;padding:7px 8px;border-radius:8px;color:var(--ink2);text-decoration:none;min-height:36px;align-items:center}
+.ow-toc a.on{background:var(--chip);color:var(--ink);font-weight:700}
+.ow-toc a .ok{color:#1F6B4E}.ow-toc a .cur{color:var(--pri)}
+.ow-nav{display:flex;justify-content:space-between;margin:12px 0 4px}
+.ow-tabs{display:flex;gap:18px;border-bottom:1px solid var(--line);margin:0 0 12px}
+.ow-tabs a{padding:8px 2px;color:var(--ink2);text-decoration:none;min-height:36px;display:inline-flex;align-items:center}
+.ow-tabs a.on{font-weight:700;color:var(--ink);border-bottom:2px solid var(--ink)}
+.ow-vline{display:flex;align-items:center;gap:6px;color:inherit;text-decoration:none;width:100%}
+.ow-tbl th{text-transform:none;letter-spacing:0}
+.ow-toc a .cur{color:#A8430F}
+.ow-toc a.on{color:var(--ink2)}
+html[data-theme="dark"] .ow-toc a .ok,html[data-theme="dark"] .ow-steps .ow-st.done i{color:#7FD1A8}
+html[data-theme="dark"] .ow-steps .ow-st.done i{background:#173A2C;border-color:#7FD1A8}
+.ow-vline{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#owroot .ow-toc a.on{color:var(--ink)}
+#owroot .ow-toc a{color:var(--ink2)}
+.sub2 .l2ver .ow-vline{display:block}.sub2 .l2ver .ow-vline .dot{display:inline-block;margin-right:6px;vertical-align:middle}
+
+#owbbar.ow-tabs{display:flex;flex-direction:row}#owbbar[hidden]{display:none}
+.sub2 .sgrp .l1{padding:4px 10px}.sub2 .sgrp .l1 .it{width:24px;height:24px;border-radius:7px}.sub2 .sgt{min-height:28px;margin:2px 0}
+@media (max-width:900px){.sub2 .sgrp .l1{min-height:40px}.sub2 .sgt{min-height:36px}}   /* phone tap targets >= 36px */

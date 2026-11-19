@@ -115,10 +115,6 @@ class LineItemBody(BaseModel):
     item_uid: str = Field(max_length=40)
 
 
-class VersionBody(BaseModel):
-    summary: str = Field(default="", max_length=300)
-
-
 class FocusBody(BaseModel):
     text: str = Field(min_length=1, max_length=500)
     item_uid: str | None = Field(default=None, max_length=40)
@@ -330,11 +326,6 @@ def publish(pid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = D
     audit(db, ctx.org_id, ctx.actor, "outline_wb.publish", pid, ip=ctx.ip, version=out["version"])
     db.commit()
     return out
-
-
-@router.post("/versions")
-def new_version(pid: str, body: VersionBody, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
-    return _run(db, stage3.new_version, db, _project(db, ctx, pid), body.summary, ctx.user.id)
 
 
 # ---- 实时看板（访谈直播）----------------------------------------------------------------------------------------------------------

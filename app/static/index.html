@@ -29,6 +29,8 @@
 let ME = null, PROJECTS = null, DEMO_ORG = false;
 const app = $("#app");
 const route = () => location.hash.replace(/^#/, "") || "/projects";
+const PEOPLE_SUBS = ["mode", "form", "db", "outline", "test", "pilot", "list"];
+const peopleSubOf = () => { const t = sessionStorage.getItem("ptab"), o = sessionStorage.getItem("ol_seg"); return t === "ols" ? (["test", "pilot"].includes(o) ? o : "outline") : ["form", "db", "list"].includes(t) ? t : "mode"; };   // what this browser last opened under 创建访谈
 const STAFF = () => ["admin", "researcher", "support"].includes(ME.role);
 const VIEWER = () => ME.role === "viewer", RECRUITER = () => ME.role === "recruiter";   // a client who only reads, and someone who only recruits
 const FMT_NAME = { audio: "纯音频", text: "文字访谈", text_voice: "文字+语音转录", video: "视频", video_screen: "视频+屏幕共享" };   // the five interview formats
@@ -135,10 +137,16 @@ async function render() {
       if (page === "wiz" && (STAFF() || RECRUITER())) return await wizardView(p);
       if (page === "monitor" && STAFF()) return await monitorView(p);
       if (page === "home" && STAFF()) return await homeView(p);
-      if (page === "people" && (STAFF() || RECRUITER())) return await peopleView(p);
+      if (page === "people" && (STAFF() || RECRUITER())) {   // 修正方案第 1 轮第 1 条：每个部分一个地址（刷新停在原处，浏览器后退能回上一页）
+        const sub = seg[4] || "";
+        if (!PEOPLE_SUBS.includes(sub)) { location.replace(`#/p/${p.id}/people/${peopleSubOf()}`); return; }
+        sessionStorage.setItem("ptab", ["outline", "test", "pilot"].includes(sub) ? "ols" : sub);
+        if (["outline", "test", "pilot"].includes(sub)) sessionStorage.setItem("ol_seg", sub);
+        return await peopleView(p);
+      }
       if (page === "sessions") { location.replace(`#/p/${p.id}/rooms`); return; }  // the sessions-and-invitations page is gone
       if (page === "rooms" && !VIEWER() && !RECRUITER()) return await roomsView(p);
-      if (page === "insights" && !RECRUITER()) return await insightsListView(p);
+      if (page === "insights" && !RECRUITER()) { if (seg[4]) sessionStorage.setItem("itab", seg[4]); return await insightsListView(p); }
       if (page === "analysis") { location.replace(`#/p/${p.id}/insights`); return; }  // the coding page is gone
       if (page === "outline") { location.replace(`#/p/${p.id}/people`); return; }  // 2026-11-18：旧「访谈大纲」页整页删除，正在重新设计
       if (page === "members" && STAFF()) return await membersView(p);
@@ -371,9 +379,7 @@ async function peopleView(p) {
   const rm = rec.recruit_mode || "screen_then_invite", hm = rec.host_mode || "human";
   const ptab = ["list", "form", "db", "ols"].includes(sessionStorage.getItem("ptab")) ? sessionStorage.getItem("ptab") : "mode";  // 从「深访」进来第一个部分一定是「招募/主持/问卷」（可返回改招募方式）；只有在本页内切过其他 tab 才记住
   // 2026-11-18：「生成访问大纲」下拆两个二级项——生成大纲 / 预览测试（各带左侧 AI 对话）；这里记住上次看的是哪个
-  const olSeg = () => (sessionStorage.getItem("ol_seg") === "test" ? "test" : "outline");
-  const olMenuOpen = () => sessionStorage.getItem("ol_menu") === "1";   // 子项默认收起，点「生成访问大纲」才展开
-  const olsTitle = () => (olSeg() === "test" ? "预览测试" : "生成大纲");
+  const olSeg = () => (["test", "pilot"].includes(sessionStorage.getItem("ol_seg")) ? sessionStorage.getItem("ol_seg") : "outline");
 
   // 2026-11-18：旧「访谈大纲」页已整页删除；子项先只进空白占位页，不跳转、不生成
   // 招募方式/主持方式：作为「招募问卷」同级的 tab，排在它上方
@@ -408,11 +414,8 @@ async function peopleView(p) {
       <div class="sm mut au-estnote" id="auestnote">点右上角「人群规模估算」，结果出来后会自动同步到下方「N 人符合筛选」。</div></section>
     <div class="au-keep"><div class="rdb-total"><input class="rdb-num" id="dbnum" type="number" min="0" max="${dbTotal}" value="${dbTotal}" aria-label="符合筛选人数，可修改" style="width:64px;text-align:center;border:1px solid var(--line2);border-radius:6px;font:inherit;color:inherit;background:var(--surface,#fff)"><span class="rdb-u">人符合筛选</span><span class="sp"></span><button type="button" class="p" id="dbsend">同步发送甄别问卷链接</button></div></div>
   </div>`;
-  shell(`<div class="hubtabs sub" role="tablist" aria-label="创建访谈"><a href="#" role="tab" id="ptab-mode-t" class="${ptab === "mode" ? "on" : ""}" aria-selected="${ptab === "mode"}">招募/主持/问卷</a>${rm === "onelink"
-      ? `<a href="#" role="tab" id="ptab-form-t" class="${ptab === "form" ? "on" : ""}" aria-selected="${ptab === "form"}">招募问卷</a><a href="#" role="tab" id="ptab-db-t" class="${ptab === "db" ? "on" : ""}" aria-selected="${ptab === "db"}">数据库发送</a>`
-      : `<a href="#" role="tab" id="ptab-form-t" class="${ptab === "form" ? "on" : ""}" aria-selected="${ptab === "form"}">甄别问卷</a><a href="#" role="tab" id="ptab-db-t" class="${ptab === "db" ? "on" : ""}" aria-selected="${ptab === "db"}">数据库筛选及发送</a><a href="#" role="tab" id="ptab-outline-t" aria-expanded="${olMenuOpen() ? "true" : "false"}">生成访问大纲</a><a href="#" role="tab" class="l2sub${olSeg() === "outline" ? " on" : ""}" id="ptab-ols-gen"${olMenuOpen() ? "" : " hidden"}>生成大纲</a><div id="owsteps"${olMenuOpen() && ptab === "ols" && olSeg() === "outline" ? "" : " hidden"}></div><a href="#" role="tab" class="l2sub${olSeg() === "test" ? " on" : ""}" id="ptab-ols-test"${olMenuOpen() ? "" : " hidden"}>预览测试</a><div id="owsteps3"${olMenuOpen() && ptab === "ols" && olSeg() === "test" ? "" : " hidden"}></div><div id="owstate"${olMenuOpen() && ptab === "ols" ? "" : " hidden"}></div><a href="#" role="tab" id="ptab-list-t" class="${ptab === "list" ? "on" : ""}" aria-selected="${ptab === "list"}">配额及受访者名单</a>`}</div>
-    <div id="ptab-mode" ${ptab === "mode" ? "" : "hidden"}>${modeBar}</div>
-    <div id="ptab-ols" ${ptab === "ols" ? "" : "hidden"}><div id="owroot" ${olSeg() === "outline" ? "" : "hidden"}></div><div id="owroot3" ${olSeg() === "test" ? "" : "hidden"}></div></div></div><div id="ptab-form" ${ptab === "form" ? "" : "hidden"}>${rf.html}</div><div id="ptab-db" ${ptab === "db" ? "" : "hidden"}>${dbHtml}</div><div id="ptab-list" ${ptab === "list" ? "" : "hidden"}>
+  shell(`<div id="ptab-mode" ${ptab === "mode" ? "" : "hidden"}>${modeBar}</div>
+    <div id="ptab-ols" ${ptab === "ols" ? "" : "hidden"}><div id="owroot" ${olSeg() === "outline" ? "" : "hidden"}></div><div id="owroot3" ${olSeg() !== "outline" ? "" : "hidden"}></div></div></div><div id="ptab-form" ${ptab === "form" ? "" : "hidden"}>${rf.html}</div><div id="ptab-db" ${ptab === "db" ? "" : "hidden"}>${dbHtml}</div><div id="ptab-list" ${ptab === "list" ? "" : "hidden"}>
     ${rd.html}
     ${impBatchBar(impB.batches, impB.orphans_pending)}
     <div class="card" id="plist"><div class="row rd-tool"><h3 style="margin:0">受访者名单 <span class="sm mut" id="plcount">共 ${parts.length} 人${shown.length !== parts.length ? `，当前显示 ${shown.length}` : ""}</span></h3><span class="sp"></span>
@@ -426,42 +429,8 @@ async function peopleView(p) {
       <div class="card empty" id="pempty" ${shown.length ? "hidden" : ""}><b>没有符合筛选条件的人。</b></div>`
       : `<div class="card empty"><b>还没有受访者。</b><span>点“添加受访者”手动添加，“导入名单（外部渠道）”导入别处拿来的名单，或把招募问卷发出去。</span></div>`}
     <div class="lpop" id="lpop" hidden></div></div>`, { active: "people", p });
-  // 兜底：若二级菜单里还有指向 outline 的静态项，一律移除（大纲已统一由「访问大纲生成及邀请」tab 承载）
-  document.querySelectorAll('.sub2 .l2slot a.l2e').forEach((a) => { if (/\/outline/.test(a.getAttribute("href") || "")) a.remove(); });
-  const showTab = (name) => {   // name: mode / form / db / list / ols-gen / ols-test
-    const blank = name === "ols-gen" || name === "ols-test";
-    sessionStorage.setItem("ptab", blank ? "ols" : name);
-    if (blank) sessionStorage.setItem("ol_seg", name === "ols-test" ? "test" : "outline");
-    const set = (id, on) => { const el = $(id); if (el) el.hidden = !on; };
-    set("#ptab-mode", name === "mode"); set("#ptab-form", name === "form"); set("#ptab-db", name === "db"); set("#ptab-list", name === "list"); set("#ptab-ols", blank);
-    if (blank) {
-      const gen = name === "ols-gen";
-      const root = $("#owroot"), root3 = $("#owroot3"), steps = $("#owsteps"), steps3 = $("#owsteps3"), state = $("#owstate");
-      if (root) root.hidden = !gen; if (root3) root3.hidden = gen; if (steps) steps.hidden = !gen; if (steps3) steps3.hidden = gen; if (state) state.hidden = false;
-      if (window.OutlineWb) window.OutlineWb.mount(p.id, gen ? "gen" : "test");
-    } else { ["#owsteps", "#owsteps3", "#owstate"].forEach((k) => { const el = $(k); if (el) el.hidden = true; }); }
-    ["mode", "form", "db", "list"].forEach((k) => { const t = $(`#ptab-${k}-t`); if (t) { t.classList.toggle("on", name === k); t.setAttribute("aria-selected", name === k); } });
-    const g = $("#ptab-ols-gen"), s2 = $("#ptab-ols-test");
-    if (g) g.classList.toggle("on", name === "ols-gen");
-    if (s2) s2.classList.toggle("on", name === "ols-test");
-    document.body.classList.toggle("rfmode", name === "form"); if (name === "form") rf.fit();
-  };
-  window.__ptabGo = showTab;
-  if (ptab === "ols" && window.OutlineWb) window.OutlineWb.mount(p.id, olSeg() === "test" ? "test" : "gen");   // 招募问卷页右上角「确认并下一步」跳到数据库筛选及发送
-  const tMode = $("#ptab-mode-t"); if (tMode) tMode.onclick = (e) => { e.preventDefault(); showTab("mode"); };
-  const tForm = $("#ptab-form-t"); if (tForm) tForm.onclick = (e) => { e.preventDefault(); showTab("form"); };
-  const ptdb = $("#ptab-db-t"); if (ptdb) ptdb.onclick = (e) => { e.preventDefault(); showTab("db"); };
-  // 「生成访问大纲」只是展开两个子项，本身不是页面（2026-11-18 用户确认）
-  const ptol = $("#ptab-outline-t"); if (ptol) ptol.onclick = (e) => {
-    e.preventDefault();
-    const open = !olMenuOpen();
-    sessionStorage.setItem("ol_menu", open ? "1" : "0");
-    render();
-  };
-  const ols = (which) => (e) => { e.preventDefault(); sessionStorage.setItem("ol_menu", "1"); showTab(which); };
-  const olg = $("#ptab-ols-gen"); if (olg) olg.onclick = ols("ols-gen");
-  const olt = $("#ptab-ols-test"); if (olt) olt.onclick = ols("ols-test");
-  const tList = $("#ptab-list-t"); if (tList) tList.onclick = (e) => { e.preventDefault(); showTab("list"); };
+  window.__ptabGo = (name) => { location.hash = `#/p/${p.id}/people/${{ "ols-gen": "outline", "ols-test": "test" }[name] || name}`; };   // every part has its own address (修正方案第 1 轮第 1 条)
+  if (ptab === "ols" && window.OutlineWb) window.OutlineWb.mount(p.id, olSeg() === "outline" ? "gen" : olSeg());   // 招募问卷页右上角「确认并下一步」跳到数据库筛选及发送
   // 同步发送甄别问卷链接（邮件）+ 假名化留痕（失败不影响发送）
   const dbsend = $("#dbsend"); if (dbsend) dbsend.onclick = guard(async () => {
     const numEl = $("#dbnum"), want = numEl ? Math.max(0, Math.min(+numEl.value || 0, parts.length)) : parts.length;
@@ -472,7 +441,7 @@ async function peopleView(p) {
     const r = await api(`/projects/${p.id}/recruiting/screen-invite`, { method: "POST", body: { participant_ids: ids } });
     api(`/projects/${p.id}/audience/record-send`, { method: "POST", body: { participant_ids: ids } }).catch(() => {});
     toast(`已发送 ${r.sent} 封，跳过 ${(r.skipped || []).length} 位`);
-    sessionStorage.setItem("ptab", "list"); render();
+    location.hash = `#/p/${p.id}/people/list`;
   });
   // 人群圈选与假名化：加载 / 保存 / AI 提取标签 / 锁定 / 规模估算（结果同步到「N 人符合筛选」）
   (() => {
@@ -579,14 +548,14 @@ async function peopleView(p) {
   })();
   document.querySelectorAll("#rmode [data-rm]").forEach((b) => (b.onclick = guard(async () => {
     const nrm = b.dataset.rm; const nhm = nrm === "onelink" ? "ai" : hm;   // 一站式 = AI 问卷 + AI 访谈，主持强制 AI
-    rec.recruit_mode = nrm; rec.host_mode = nhm;
+    rec.recruit_mode = nrm; rec.host_mode = nhm; p.recruit_mode = nrm; p.host_mode = nhm;   // the side menu reads these from the project
     await api(`/projects/${p.id}/recruiting/mode`, { method: "PUT", body: { recruit_mode: nrm, host_mode: nhm } });
     if (nrm === "onelink") await api(`/projects/${p.id}/recruiting/form/source`, { method: "POST", body: { source: "ai" } }).catch(() => {});   // 一站式来源锁定为 AI，无需切换
     toast(nrm === "onelink" ? "一站式链接：AI 设计问卷 + AI 访谈，来源已锁定为 AI" : "已更新招募方式"); render();
   })));
   document.querySelectorAll("#rmode [data-hm]").forEach((b) => (b.onclick = guard(async () => {
     const nhm = b.dataset.hm; if (rm === "onelink" && nhm !== "ai") { toast("一站式链接只能由 AI 主持", true); return; }
-    rec.host_mode = nhm; await api(`/projects/${p.id}/recruiting/mode`, { method: "PUT", body: { recruit_mode: rm, host_mode: nhm } }); toast("已更新主持方式"); render();
+    rec.host_mode = nhm; p.host_mode = nhm; await api(`/projects/${p.id}/recruiting/mode`, { method: "PUT", body: { recruit_mode: rm, host_mode: nhm } }); toast("已更新主持方式"); render();
   })));
   // 问卷来源：AI 生成 / 导入 Confirmit 链接（只「先甄别后邀请」可选），导入后跳到问卷页由右侧直接展示该链接
   document.querySelectorAll("#rmode [data-src]").forEach((b) => (b.onclick = guard(async () => {
@@ -612,7 +581,7 @@ async function peopleView(p) {
     const box = $("#rmsrcurl"); if (box) box.hidden = false;
     toast("问卷链接已导入，点「下一步」进入数据库筛选及发送");
   });
-  const rmNext = $("#rmnext"); if (rmNext) rmNext.onclick = () => { showTab(rm === "onelink" ? "form" : (form.source === "html" ? "db" : "form")); };
+  const rmNext = $("#rmnext"); if (rmNext) rmNext.onclick = () => { window.__ptabGo(rm === "onelink" ? "form" : (form.source === "html" ? "db" : "form")); };
   document.body.classList.toggle("rfmode", ptab === "form");
   document.body.classList.add("pgw");  // this page runs the full width
   // ---- the list: filters, picking, tier, tags, bulk delete ----

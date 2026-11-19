@@ -288,9 +288,22 @@ def publish_checks(db: Session, proj: Project) -> dict:
 
 
 def versions(db: Session, proj: Project) -> list[dict]:
+    """The version table (修正方案第 1 轮第 10 条): where each version came from, its state (草稿 / Pilot 中 / 已发布 / 已被替代), how many pilot interviews ran on it and
+    how many interviews used it. A version made by the removed 新建版本 button with no change and no use is left out (it is kept in the database)."""
     o, v, st = sess.ensure(db, proj)
-    rows = db.scalars(select(OutlineVersion).where(OutlineVersion.outline_id == o.id).order_by(OutlineVersion.number.desc()))
-    return [{"id": x.id, "number": x.number, "rev": x.rev, "status": x.status, "summary": x.summary, "used_by": svc.usage_count(db, x.id), "current": x.id == v.id} for x in rows]
+    rows = list(db.scalars(select(OutlineVersion).where(OutlineVersion.outline_id == o.id).order_by(OutlineVersion.number.desc())))
+    out = []
+    for x in rows:
+        pil = [i for i in db.scalars(select(Interview).where(Interview.project_id == proj.id, Interview.is_pilot.is_(True), Interview.purged_at.is_(None)))
+               if i.outline_version_id == x.id or (i.outline_version_id is None and i.status != "ended" and x.id == v.id)]   # a pilot not started yet runs on the current draft
+        used = svc.usage_count(db, x.id)
+        source = x.summary if x.summary.startswith("Pilot") else ("生成大纲" if not x.base_version_id else "")
+        if not source and not used and not pil and x.id != v.id:
+            continue
+        state = x.status if x.status in ("published", "superseded") else ("pilot" if pil else "draft")
+        out.append({"id": x.id, "number": x.number, "rev": x.rev, "status": x.status, "state": state, "summary": x.summary, "source": source or "手动新建（旧）",
+                    "pilots": sum(1 for i in pil if i.status == "ended"), "pilots_open": sum(1 for i in pil if i.status != "ended"), "used_by": used, "current": x.id == v.id})
+    return out
 
 
 def write_legacy_text(db: Session, proj: Project, v: OutlineVersion, st) -> None:
@@ -319,12 +332,6 @@ def publish(db: Session, proj: Project, user_id: str = "") -> dict:
     write_legacy_text(db, proj, v, st)
     db.flush()
     return {"version": v.number, "versions": versions(db, proj)}
-
-
-def new_version(db: Session, proj: Project, summary: str = "", user_id: str = "") -> dict:
-    o, v, st = sess.ensure(db, proj, user_id)
-    nv = svc.new_version(db, v, user_id, summary)
-    return {"version": nv.number, "versions": versions(db, proj)}
 
 
 def snapshot_on_start(db: Session, itv: Interview) -> None:
@@ -401,5 +408,7 @@ def update_outline(db: Session, proj: Project, user_id: str = "") -> dict:
         if rid:
             m.status, m.resolved_revision_id = "resolved", rid
     nv = svc.new_version(db, v, user_id, f"Pilot 修正：大纲 {n['outline']} 处、物料 {n['material']} 处、问话方式 {n['host_engine']} 条")
+    if v.status == "draft":   # the draft it came from is replaced at once (a published one stays the one new interviews run on until the new one is published)
+        v.status = "superseded"
     db.flush()
     return {"version": nv.number, "summary": nv.summary, "host": [h for h in sm["host"] if h["status"] == "accepted"], "versions": versions(db, proj)}

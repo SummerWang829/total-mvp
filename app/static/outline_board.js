@@ -1,5 +1,5 @@
 /* 访谈直播 › 实时看板（阶段 4）。数据来自 /api/projects/{pid}/outline-wb/board*；页面只展示和提交，规则（哪句要编码、饱和、待复核、20 人才显示百分比）都在服务器上。
-   子栏（场次列表 / 实时看板 · 概览 / 单个关注问题 / 场次与告警）由 shell 搬进左侧第二层菜单。每 3 秒问一次“有没有变化”，变了才重读统计；列表要点“新到 N 条”才刷新。 */
+   场次列表 / 实时看板是侧边栏里的两个页面（#/p/<id>/rooms 与 #/p/<id>/rooms/board，修正方案第 1 轮第 8 条）；看板自己的“概览 / 单个关注问题 / 场次与告警”是页面里的小页签。每 3 秒问一次“有没有变化”，变了才重读统计；列表要点“新到 N 条”才刷新。 */
 (() => {
   const E = (s) => (typeof esc === "function" ? esc(s) : String(s ?? ""));
   const q = (s, r = document) => r.querySelector(s);
@@ -13,11 +13,11 @@
     catch (e) { toast(e.message || "没有成功", true); throw e; }
   }
 
-  function menu() {
+  function menu() {   // the board's own small tabs, inside the page (场次列表 / 实时看板 are side-menu pages now)
     const host = q("#owbbar"); if (!host) return;
-    const on = (k) => (B.on && B.tab === k ? " on" : "");
-    host.innerHTML = `<a href="#" class="l2sub ow-l3${B.on ? "" : " on"}" data-ob="list">场次列表</a><a href="#" class="l2sub ow-l3${B.on ? " on" : ""}" data-ob="board">实时看板</a>`
-      + (B.on ? [["overview", "概览"], ["focus", "单个关注问题"], ["alerts", "场次与告警"], ["add", "新增关注问题"]].map(([k, l]) => `<a href="#" class="l2sub ow-l4${on(k)}" data-ob-tab="${k}">${l}<span class="ow-st ${B.tab === k ? "cur" : ""}">${B.tab === k ? "●" : ""}</span></a>`).join("") : "");
+    host.hidden = !B.on;
+    const on = (k) => (B.tab === k ? " on" : "");
+    host.innerHTML = B.on ? [["overview", "概览"], ["focus", "单个关注问题"], ["alerts", "场次与告警"], ["add", "新增关注问题"]].map(([k, l]) => `<a href="#" role="tab" class="${on(k).trim()}" aria-selected="${B.tab === k}" data-ob-tab="${k}">${l}</a>`).join("") : "";
   }
   const pill = (t, c = "") => `<span class="ow-pill ${c}">${E(t)}</span>`;
   const when = (iso) => (iso ? iso.slice(11, 19) : "");
@@ -119,10 +119,13 @@
     if (!B.on || document.hidden) return;
     try { const t = (await api(`/projects/${B.pid}/outline-wb/board/changes`)).token; if (t !== B.token) { B.token = t; B.d = await call(`/board?since=${B.since}`); paint(); } } catch { /* the next poll tries again */ }
   }
+  async function show(on) {   // 场次列表 (false) or 实时看板 (true)
+    B.on = on; const lw = q("#rmlistwrap"); if (lw) lw.hidden = B.on; const br = q("#owbroot"); if (br) br.hidden = !B.on; document.body.classList.toggle("rfmode", !B.on); document.body.classList.toggle("ob-on", B.on); if (B.on) { clearInterval(B.timer); B.timer = setInterval(poll, 3000); await load(); } else { clearInterval(B.timer); menu(); }
+  }
   async function onClick(e) {
     const t = e.target.closest("[data-ob],[data-ob-tab],[data-ob-open],[data-ob-ans],[data-ob-origin],[data-ob-close],[data-ob-dis]"); if (!t) return;
     const d = t.dataset;
-    if (d.ob === "list" || d.ob === "board") { e.preventDefault(); B.on = d.ob === "board"; q("#rmlistwrap").hidden = B.on; q("#owbroot").hidden = !B.on; document.body.classList.toggle("rfmode", !B.on); document.body.classList.toggle("ob-on", B.on); if (B.on) { clearInterval(B.timer); B.timer = setInterval(poll, 3000); await load(); } else { clearInterval(B.timer); menu(); } return; }
+    if (d.ob === "list" || d.ob === "board") { e.preventDefault(); return show(d.ob === "board"); }
     if (d.obTab) { e.preventDefault(); B.tab = d.obTab; B.drawer = null; if (B.tab === "add" && !B.W) B.W = newW(); paint(); if (B.tab === "focus") loadFocus(); return; }
     if (d.obOpen) { B.focus = d.obOpen; B.tab = "focus"; B.fd = null; paint(); return loadFocus(); }
     if (d.obOrigin) { B.origin = d.obOrigin; return loadFocus(); }
@@ -180,9 +183,10 @@
   }
   let wired = false;
   window.OutlineBoard = {
-    init(p) {
+    init(p, board) {
       document.body.classList.remove("ob-on"); B.pid = p.id; B.on = false; B.d = null; B.fd = null; B.focus = ""; B.drawer = null; B.sel = null; clearInterval(B.timer);
       menu();
+      if (board) setTimeout(() => show(true));
       if (wired) return; wired = true;
       document.addEventListener("click", (e) => { if (q("#owbbar")?.contains(e.target) || q("#owbroot")?.contains(e.target)) onClick(e); });
       document.addEventListener("change", (e) => { if (q("#owbroot")?.contains(e.target)) onChange(e); });

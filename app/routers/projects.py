@@ -60,7 +60,8 @@ def project_out(p: Project, plan_status: str = "", setup: dict | None = None, ed
     pd = purge_date(p)
     return {"id": p.id, "name": p.name, "brief": p.brief, "market": p.market, "language": p.language, "languages": project_langs.of(p), "created_at": p.created_at.isoformat(),
             "closed_at": p.closed_at.isoformat() if p.closed_at else None, "purge_at": pd.isoformat() if pd else None,
-            "retention_days": days_of(p), "methods": methods_mod.of(p), "plan_status": plan_status, "setup": setup, "editing": editing}
+            "retention_days": days_of(p), "methods": methods_mod.of(p), "plan_status": plan_status, "setup": setup, "editing": editing,
+            "recruit_mode": p.recruit_mode or "screen_then_invite", "host_mode": p.host_mode or "human"}   # the side menu shows the pages these two choices allow
 
 
 def participant_out(p: Participant, screener_count: int = 0, key_answers: str = "", tier: str = "", kind: str = "") -> dict:

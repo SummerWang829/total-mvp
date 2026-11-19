@@ -1,5 +1,5 @@
 /* 大纲工作台 · 「生成访问大纲 › 生成大纲」页（阶段 2）。
-   左侧栏里的步骤和模块是“生成大纲”的子栏（#owsteps，由 index.html 的二级菜单带走）；内容区是当前这一步；右侧小星星助手占满高度，建议在它最下方。
+   修正方案第 1 轮（2026-11-19）：步骤条在内容区顶部（每一步可点），④ 题目的模块目录在内容区左侧，侧边栏只放页面；预览测试 / Pilot 是两个页面，各自的小页签在内容区顶部。右侧小星星助手占满高度。
    所有数据来自 GET /api/projects/{pid}/outline-wb；页面只展示和提交，规则都在服务器上。 */
 (() => {
   const DEPTH = [["none", "不追问"], ["shallow", "1 次"], ["deep", "1 次以上"]];
@@ -7,7 +7,8 @@
   const FORMAT = { audio: "纯音频", text: "文字访谈", text_voice: "文字+语音转录", video: "视频", video_screen: "视频+屏幕共享" };
   const KIND_LABEL = { question: "题目", concept: "概念卡", video: "视频片段", website: "网站任务", rating: "打分题", note: "说明" };
   const S = { pid: "", d: null, step: "", mod: "", sel: "", msgs: [], adopt: null, busy: false, form: null, area: "gen", tab: "preview", pv: null, pvIdx: 0, pvLang: "", rh: null, pl: null, sum: null, pil: null, cand: [], pilId: "", markForm: null, pub: null };
-  const TABS = [["preview", "受访者预览"], ["rehearsal", "模拟预演"], ["pilot", "Pilot 修正"], ["publish", "发布"]];
+  const TABS = { test: [["preview", "受访者预览"], ["rehearsal", "模拟预演"]], pilot: [["pilot", "Pilot 修正"], ["publish", "发布"]] };   // 预览测试 and Pilot are two pages of the side menu now (修正方案第 1 轮第 1 条)
+  const STATE = { draft: "草稿", pilot: "Pilot 中", published: "已发布", superseded: "已被替代" };
   const TAG = { unclear: "题目不清楚", leading: "诱导", missed: "漏追问", material: "物料问题", host: "主持问题", long: "太长", other: "其他" };
   const DEST = { outline: "大纲", material: "物料", host_engine: "主持引擎" };
   const q = (s, r = document) => r.querySelector(s);
@@ -30,23 +31,32 @@
   const stepOk = (k) => ({ goal: true, people: true, overview: mods().length > 0, questions: !!gates().overview, focus: mods().length > 0 }[k]);
   const stepDone = (k) => ({ goal: !!gates().goal, people: mods().length > 0, overview: !!gates().overview, questions: !!gates().questions, focus: false }[k]);
 
-  function menu3() {
-    const host = q("#owsteps3"); if (!host) return;
-    host.innerHTML = TABS.map(([k, l]) => `<a href="#" class="l2sub ow-l3${S.area === "test" && S.tab === k ? " on" : ""}" data-ow-tab="${k}">${l}<span class="ow-st ${S.area === "test" && S.tab === k ? "cur" : ""}">${S.area === "test" && S.tab === k ? "●" : ""}</span></a>`).join("");
+  /** The version card at the foot of the side menu: one line (修正方案第 1 轮第 1 条); a click opens the Pilot page. */
+  function menuState() {
     const st = q("#owstate"); if (!st || !S.d) return;
-    const v = S.d.version, vs = S.d.versions || [];
-    st.innerHTML = `<div class="ow-state">${S.d.pilot_done ? "" : `<span class="ow-pill warn">还没做完 pilot，不能发布</span>`}<span><b>v${v.number}</b> ${v.status === "published" ? "已发布" : "草稿"} · 第 ${v.rev} 次修改</span><span class="mut">已被 ${v.used_by} 场使用</span><span class="mut">${S.d.context.language === "zh" ? "中文" : "English"}</span>
-      ${vs.length > 1 ? `<select class="ow-sel" aria-label="版本" disabled>${vs.map((x) => `<option${x.current ? " selected" : ""}>v${x.number} ${x.status === "published" ? "已发布" : "草稿"}</option>`).join("")}</select>` : ""}<button type="button" class="p s" data-ow="state-pub">发布</button></div>`;
+    const v = S.d.version, pub = v.status === "published";
+    st.innerHTML = `<a class="ow-vline" href="#/p/${S.pid}/people/pilot" title="打开 Pilot 页"><span class="dot${pub ? " ok" : ""}"></span><b>v${v.number}</b> · ${S.d.pilot_done ? "已做 pilot" : "还没做 pilot"} · ${pub ? "已发布" : "未发布"}</a>`;
   }
-  function menu() {
-    menu3();
-    const host = q("#owsteps"); if (!host || !S.d) return;
-    host.innerHTML = S.d.steps.map((s, i) => {
-      const on = S.step === s.key, ok = stepOk(s.key);
-      const head = `<a href="#" class="l2sub ow-l3${on ? " on" : ""}${ok ? "" : " ow-off"}" data-ow-step="${s.key}">${"①②③④⑤"[i]} ${E(s.label)}<span class="ow-st ${stepDone(s.key) ? "ok" : on ? "cur" : ""}">${stepDone(s.key) ? "✓" : on ? "●" : ok ? "" : "🔒"}</span></a>`;
-      const sub = s.key === "questions" && ok ? mods().map((m) => `<a href="#" class="l2sub ow-l4${S.step === "questions" && S.mod === m.id ? " on" : ""}" data-ow-mod="${E(m.id)}">${E(m.name)}<span class="ow-st ${m.status === "confirmed" ? "ok" : m.status === "draft" ? "cur" : ""}">${m.status === "confirmed" ? "✓" : m.status === "draft" ? "●" : ""}</span></a>`).join("") : "";
-      return head + sub;
-    }).join("");
+  /** The step bar at the top of 生成大纲 (every reachable step can be clicked) and, on 预览测试 / Pilot, the page's own tabs. */
+  function stepBar() {
+    if (S.area !== "gen") return `<div class="ow-tabs" role="tablist">${TABS[S.area].map(([k, l]) => `<a href="#" role="tab" class="${S.tab === k ? "on" : ""}" aria-selected="${S.tab === k}" data-ow-tab="${k}">${l}</a>`).join("")}</div>`;
+    return `<div class="ow-steps" role="tablist" aria-label="生成大纲的步骤">${S.d.steps.map((x, i) => {
+      const on = S.step === x.key, ok = stepOk(x.key), done = stepDone(x.key);
+      return `${i ? `<span class="sep" aria-hidden="true"></span>` : ""}<a href="#" role="tab" class="ow-st${on ? " on" : ""}${done ? " done" : ""}${ok ? "" : " lock"}" aria-selected="${on}"${ok ? "" : ' aria-disabled="true" title="先完成前面的步骤"'} data-ow-step="${x.key}"><i>${done ? "✓" : ok ? i + 1 : "🔒"}</i>${E(x.label)}</a>`;
+    }).join("")}</div>`;
+  }
+  function tocHtml() {   // the modules of ④ 题目, on the left of the page (not in the side menu)
+    return `<nav class="ow-toc" aria-label="模块"><div class="t">模块</div>${mods().map((m) => `<a href="#" class="${S.mod === m.id ? "on" : ""}" data-ow-mod="${E(m.id)}">${E(m.name)}<span class="${m.status === "confirmed" ? "ok" : m.status === "draft" ? "cur" : ""}">${m.status === "confirmed" ? "✓" : m.status === "draft" ? "●" : ""}</span></a>`).join("")}</nav>`;
+  }
+  function stepNav() {   // 上一步 / 继续 at the foot of each step
+    const keys = S.d.steps.map((x) => x.key), i = keys.indexOf(S.step), prev = keys[i - 1], next = keys[i + 1];
+    return `<div class="ow-nav">${prev ? `<button type="button" data-ow-step="${prev}">‹ 上一步</button>` : "<span></span>"}${next && stepOk(next) ? `<button type="button" data-ow-step="${next}">下一步 ›</button>` : ""}</div>`;
+  }
+  /** Keep the step in the address so a reload stays on it (replace, not push: the steps are one page). */
+  function keepStep() {
+    if (S.area !== "gen" || !S.step) return;
+    const want = `#/p/${S.pid}/people/outline/${S.step}`;
+    if (location.hash !== want && location.hash.startsWith(`#/p/${S.pid}/people/outline`)) history.replaceState(null, "", want);
   }
 
   // ---- 内容区 -------------------------------------------------------------------------------------
@@ -150,7 +160,7 @@
     const pend = (S.d?.revisions || []).filter((r) => r.status === "pending" && !S.msgs.some((m) => (m.revs || []).some((x) => x.id === r.id)));
     const sel = S.sel ? S.d.items.find((i) => i.uid === S.sel) : null;
     return `<div class="h"><b>小星星助手</b>${sel ? `<span class="ow-pill">已选 ${E(sel.label)} · ${KIND_LABEL[sel.kind]}<a href="#" data-ow="unsel" aria-label="取消选择"> ×</a></span>` : ""}</div>
-      <div class="m" id="ow-msgs"><div class="bub">${S.area === "test" ? ({ preview: "这是受访者真实会看到的样子。切换语言看每种语言的版本；概念卡带受访者编号水印。", rehearsal: "模拟预演只看方向：我用三种不同的受访者把大纲走一遍，告诉你哪里时间不够、哪里可能听不懂。", pilot: "选一句话点“圈出”，写下问题；也可以直接点“生成修改建议”，我会把标记和自动发现合并成修改，每条写明去向。客户只能圈和写意见。", publish: "发布前先看检查。发布之后新场次会用这一版；仍然可以继续改。" }[S.tab]) : S.step === "overview" ? "总览按你的设定排好了。追问深度我按每个模块的目的给了默认值，你可以直接改；下面有建议，可以多选后一起采纳。" : S.step === "questions" ? "选中一道题，再告诉我怎么改；我给出的修改只是“待定”，点“接受”才会写进大纲。" : "我先把项目里已有的信息读了一遍，还缺的在左边问你。"}</div>
+      <div class="m" id="ow-msgs"><div class="bub">${S.area !== "gen" ? ({ preview: "这是受访者真实会看到的样子。切换语言看每种语言的版本；概念卡带受访者编号水印。", rehearsal: "模拟预演只看方向：我用三种不同的受访者把大纲走一遍，告诉你哪里时间不够、哪里可能听不懂。", pilot: "选一句话点“圈出”，写下问题；也可以直接点“生成修改建议”，我会把标记和自动发现合并成修改，每条写明去向。客户只能圈和写意见。", publish: "发布前先看检查。发布之后新场次会用这一版；仍然可以继续改。" }[S.tab]) : S.step === "overview" ? "总览按你的设定排好了。追问深度我按每个模块的目的给了默认值，你可以直接改；下面有建议，可以多选后一起采纳。" : S.step === "questions" ? "选中一道题，再告诉我怎么改；我给出的修改只是“待定”，点“接受”才会写进大纲。" : "我先把项目里已有的信息读了一遍，还缺的在左边问你。"}</div>
       ${S.msgs.map((m) => `<div class="bub ${m.me ? "me" : ""}">${E(m.text)}</div>${(m.revs || []).map((r) => revCard(S.d.revisions.find((x) => x.id === r.id) || r)).join("")}`).join("")}${pend.map(revCard).join("")}</div>
       ${sg.length ? `<div class="ow-sug"><div class="t"><b>建议</b>（最多 3 条，可多选）<span class="ow-pill">已选 ${S.adopt.size}</span></div>${sg.map((s) => `<label><input type="checkbox" aria-label="${E(s.title)}" data-ow-sg="${s.id}"${S.adopt.has(s.id) ? " checked" : ""}><span><b>${E(s.title)}</b><small>${E(s.reason)}${s.basis ? `（依据：“${E(s.basis)}”）` : ""}</small><i class="x" data-ow-dis="${s.id}">不再提醒</i></span></label>`).join("")}<button type="button" class="p s" data-ow="adopt"${S.adopt.size ? "" : " disabled"}>采纳所选，重排结构</button></div>` : ""}
       <form class="f" id="ow-form"><textarea class="ow-ta" id="ow-in" aria-label="对小星星助手说" rows="2" placeholder="跟 AI 说……"></textarea><button type="submit" class="p s">发送</button></form>`;
@@ -221,11 +231,13 @@
   const fmtT = (ms) => { const t = Math.floor((ms || 0) / 1000); return [Math.floor(t / 3600), Math.floor(t / 60) % 60, t % 60].map((x) => String(x).padStart(2, "0")).join(":"); };
   function publishView() {
     const p = S.pub; if (!p) return `<div class="card ow-card mut">正在读取……</div>`;
-    const vr = p.versions.map((v) => `<tr><td>v${v.number}${v.current ? " · 当前" : ""}</td><td>${E(v.summary || "—")}</td><td><span class="ow-pill ${v.status === "published" ? "ok" : ""}">${{ draft: "草稿", published: "已发布", superseded: "已被取代" }[v.status] || v.status}</span></td><td class="c">${v.used_by} 场</td></tr>`).join("");
-    return `<div class="ow-row"><b>发布</b><span class="ow-pill">v${S.d.version.number} · 第 ${S.d.version.rev} 次修改</span><span class="sp"></span><button type="button" data-ow="ver-new">新建版本</button><button type="button" class="p" data-ow="pub-go"${p.can_publish ? "" : " disabled"}>发布这一版</button></div>
+    const pil = (v) => (v.pilots ? `${v.pilots} 轮` : v.pilots_open ? "进行中" : "还没做");
+    const vr = p.versions.map((v) => `<tr><td><b>v${v.number}</b>${v.current ? " · 当前" : ""}</td><td>${E(v.source)}</td><td><span class="ow-pill ${v.state === "published" ? "ok" : v.state === "pilot" ? "warn" : ""}">${STATE[v.state] || "草稿"}</span></td><td class="c">${pil(v)}</td><td class="c">${v.used_by} 场</td></tr>`).join("");
+    return `<div class="ow-row"><b>发布</b><span class="ow-pill">v${S.d.version.number} · 第 ${S.d.version.rev} 次修改</span><span class="sp"></span><button type="button" class="p" data-ow="pub-go"${p.can_publish ? "" : " disabled"}>发布这一版</button></div>
       <div class="card ow-card"><h3>发布前检查</h3>${p.checks.map(chk).join("")}</div>
-      <div class="card ow-card"><h3>发布之后</h3><div class="ow-chk"><span class="ow-pill">新场次</span><span>开始时存一份快照，用这一版的内容；进行中的场次不受影响</span></div><div class="ow-chk"><span class="ow-pill">老场次</span><span>仍记着自己用的版本和修改次数</span></div><div class="ow-chk"><span class="ow-pill">再改</span><span>不锁定；改一次，修改次数加 1，并提示“这份大纲已被 N 场使用”</span></div></div>
-      <div class="card ow-card"><h3>版本</h3><table class="ow-tbl"><thead><tr><th style="width:110px">版本</th><th>改动</th><th style="width:100px">状态</th><th class="c" style="width:90px">已被使用</th></tr></thead><tbody>${vr}</tbody></table></div>`;
+      <div class="card ow-card"><h3>版本</h3><table class="ow-tbl"><thead><tr><th style="width:110px">版本</th><th>来源</th><th style="width:120px">状态</th><th class="c" style="width:90px">Pilot</th><th class="c" style="width:90px">已被使用</th></tr></thead><tbody>${vr}</tbody></table>
+      <div class="sm mut" style="margin-top:8px">新版本只在 Pilot 修正里接受修改、点“用已接受的修改生成更新版”时产生。</div></div>
+      <div class="card ow-card"><h3>发布之后</h3><div class="ow-chk"><span class="ow-pill">新场次</span><span>开始时存一份快照，用这一版的内容；进行中的场次不受影响</span></div><div class="ow-chk"><span class="ow-pill">老场次</span><span>仍记着自己用的版本和修改次数</span></div></div>`;
   }
   async function loadTab() {
     try {
@@ -239,13 +251,14 @@
 
   // ---- 绘制与事件 ---------------------------------------------------------------------------------
   function paint() {
-    const root = q(S.area === "test" ? "#owroot3" : "#owroot"); if (!root) return;
+    const root = q(S.area === "gen" ? "#owroot" : "#owroot3"); if (!root) return;
     if (!S.d) { root.innerHTML = `<div class="card ow-card mut">正在读取……</div>`; return; }
     const keep = { y: q("#owmain")?.scrollTop || 0, chat: q("#ow-msgs")?.scrollTop || 0, focusId: document.activeElement?.id || "" };
-    const view = S.area === "test" ? { preview: previewView, rehearsal: rehearsalView, pilot: pilotView, publish: publishView }[S.tab] : ({ goal: goalView, people: peopleView, overview: overviewView, questions: questionsView, focus: focusView }[S.step] || goalView);
-    root.innerHTML = `<div class="ow${S.busy ? " busy" : ""}"><div class="ow-main" id="owmain">${view()}</div><aside class="ow-chat" id="owchat">${chatHtml()}</aside></div>`;
+    const view = S.area !== "gen" ? { preview: previewView, rehearsal: rehearsalView, pilot: pilotView, publish: publishView }[S.tab] : ({ goal: goalView, people: peopleView, overview: overviewView, questions: questionsView, focus: focusView }[S.step] || goalView);
+    const body = S.area === "gen" && S.step === "questions" ? `<div class="ow-qwrap">${tocHtml()}<div>${view()}</div></div>` : view();
+    root.innerHTML = `<div class="ow${S.busy ? " busy" : ""}"><div class="ow-main" id="owmain">${stepBar()}${body}${S.area === "gen" ? stepNav() : ""}</div><aside class="ow-chat" id="owchat">${chatHtml()}</aside></div>`;
     q("#owmain").scrollTop = keep.y; const m = q("#ow-msgs"); if (m) m.scrollTop = keep.chat || m.scrollHeight;
-    menu();
+    menuState(); keepStep();
   }
   const val = (s) => q(s)?.value ?? "";
   const num = (s) => parseFloat(val(s)) || 0;
@@ -253,7 +266,7 @@
   async function onClick(e) {
     const t = e.target.closest("[data-ow-tab],[data-ow],[data-ow-ans],[data-ow-freeok],[data-ow-sel],[data-ow-del],[data-ow-ins],[data-ow-rev],[data-ow-dis],[data-ow-step],[data-ow-mod]"); if (!t) return;
     const d = t.dataset;
-    if (d.owTab !== undefined) { e.preventDefault(); S.area = "test"; S.tab = d.owTab; paint(); return loadTab(); }
+    if (d.owTab !== undefined) { e.preventDefault(); S.tab = d.owTab; paint(); return loadTab(); }
     if (d.owStep !== undefined) { e.preventDefault(); if (stepOk(d.owStep)) { S.step = d.owStep; paint(); } return; }
     if (d.owMod !== undefined) { e.preventDefault(); S.step = "questions"; S.mod = d.owMod; S.sel = ""; paint(); return; }
     if (d.owAns) return act("/answer", "POST", { slot: d.owAns, value: JSON.parse(d.v) });
@@ -283,8 +296,6 @@
       }
       case "pil-suggest": { S.busy = true; paint(); try { const r = await call(`/pilots/${S.pilId}/suggest`, "POST"); S.pil = r.view; S.d = await call(""); S.msgs.push({ text: r.revisions.length ? `我把标记和自动发现合并成 ${r.revisions.length} 条修改建议，每条写明去向。去向是“主持引擎”的不改大纲，接受后记入训练用例。` : "没有需要修改的地方。", revs: r.revisions }); } catch { /* toast */ } S.busy = false; return paint(); }
       case "pub-go": { S.busy = true; paint(); try { await call("/publish", "POST"); S.d = await call(""); S.pub = await call("/publish/check"); toast("已发布"); } catch { /* toast */ } S.busy = false; return paint(); }
-      case "ver-new": { S.busy = true; paint(); try { await call("/versions", "POST", { summary: "" }); S.d = await call(""); S.pub = await call("/publish/check"); toast("已新建版本"); } catch { /* toast */ } S.busy = false; return paint(); }
-      case "state-pub": S.area = "test"; S.tab = "publish"; paint(); return loadTab();
       case "goal-next": S.step = "people"; await call("/goal/confirm", "POST").then((v) => { S.d = v; }).catch(() => {}); return paint();
       case "build": S.step = "overview"; return act("/overview", "POST");
       case "back-people": S.step = "people"; return paint();
@@ -335,7 +346,7 @@
   let wired = false;
   function wire() {
     if (wired) return; wired = true;
-    document.addEventListener("click", (e) => { if (["#owroot", "#owroot3", "#owsteps", "#owsteps3", "#owstate"].some((k) => q(k)?.contains(e.target))) onClick(e); });
+    document.addEventListener("click", (e) => { if (["#owroot", "#owroot3"].some((k) => q(k)?.contains(e.target))) onClick(e); });
     document.addEventListener("change", (e) => { if (q("#owroot")?.contains(e.target) || q("#owroot3")?.contains(e.target)) onChange(e); });
     document.addEventListener("submit", onSubmit);
     document.addEventListener("focusin", onFocusIn);
@@ -345,11 +356,13 @@
     async mount(pid, area) {
       wire();
       if (S.pid !== pid) Object.assign(S, { pid, d: null, step: "", mod: "", sel: "", msgs: [], adopt: null, form: null, pv: null, rh: null, pl: null, pil: null, pub: null });
-      S.area = area || "gen";
+      S.area = ["test", "pilot"].includes(area) ? area : "gen";
+      if (S.area !== "gen" && !TABS[S.area].some(([k]) => k === S.tab)) S.tab = TABS[S.area][0][0];
+      const fromUrl = (location.hash.split("/")[5] || "").split("?")[0];   // #/p/<id>/people/outline/<step>: a reload stays on that step
       paint();
-      try { S.d = await call(""); S.step = S.step || S.d.step; S.adopt = null; } catch { return; }
+      try { S.d = await call(""); S.step = (fromUrl && S.d.steps.some((x) => x.key === fromUrl) && stepOk(fromUrl) ? fromUrl : "") || S.step || S.d.step; S.adopt = null; } catch { return; }
       paint();
-      if (S.area === "test") loadTab();
+      if (S.area !== "gen") loadTab();
     },
   };
 })();

@@ -52,7 +52,7 @@ async function rdBuild(p, rec) {
         <div style="margin-top:8px"><button class="p" type="button" id="rdsum">总结人群画像</button></div><div class="note" id="rdsumout" role="status" aria-live="polite" hidden></div></div></div>`, opened.has("quota"))}
     ${rdSection("compare", "合格 vs 被筛掉：每题的答案分布对比", d.compare.length ? `共 ${d.compare.length} 项，差异最大 ${Math.max(...d.compare.map((r) => r.gap))} 点` : "暂无数据", `<div class="card">${cmp}</div>`, opened.has("compare"))}</div>`;
   const wire = () => {
-    const go = $("#rdgo"); if (go) go.onclick = () => { sessionStorage.setItem("ptab", "form"); render(); };
+    const go = $("#rdgo"); if (go) go.onclick = () => { location.hash = `#/p/${CUR_PROJ}/people/form`; };
     const cl = $("#rdclose"); if (cl) cl.onclick = guard(async () => { await api(`/projects/${p.id}/recruiting/form/close`, { method: "POST" }); toast("已停止收集"); render(); });
     const cp = $("#rdcopy"); if (cp) cp.onclick = async () => { try { await navigator.clipboard.writeText($("#rdlink").value); toast("链接已复制"); } catch { $("#rdlink").select(); toast("请按 Ctrl+C 复制", true); } };
     const img = $("#rdqr"); if (img && f.link) fetch(`/api/projects/${p.id}/recruiting/form/qr.svg`, { headers: { Authorization: "Bearer " + store.get("tt_token") } }).then(async (r) => { if (r.ok) img.src = URL.createObjectURL(await r.blob()); }).catch(() => {});

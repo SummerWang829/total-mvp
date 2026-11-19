@@ -361,10 +361,10 @@ def tabflash_section(br, D):
     base = pg.evaluate("({cls: document.body.className, w: Math.round(document.querySelector('main').getBoundingClientRect().width)})")
     pg.evaluate("""() => { const f = window.fetch; window.fetch = (u, o) => (String(u).includes('/api/projects/') ? new Promise((r) => setTimeout(r, 1200)).then(() => f(u, o)) : f(u, o));
       window._log = []; const t0 = performance.now(); const tick = () => { const m = document.querySelector('main'); window._log.push([document.body.className, m ? Math.round(m.getBoundingClientRect().width) : null, document.documentElement.scrollHeight > innerHeight, (document.querySelector('.sub2 .l1.on .tx') || {}).textContent]); if (performance.now() - t0 < 2600) requestAnimationFrame(tick); }; tick(); }""")
-    pg.locator(".sub2 .l1", has_text="甄别设定").first.click()
+    pg.locator(".sub2 .l1", has_text="配额及受访者名单").first.click()   # (修正方案第 1 轮: the side menu names pages; 甄别设定 / 直播间 were renamed 创建访谈 / 访谈直播 on 2026-11-04)
     pg.wait_for_timeout(2800)
     log = pg.evaluate("window._log")
-    old = [r for r in log if r[3] and "直播间" in r[3]]   # frames in which the old page is still the one on screen
+    old = [r for r in log if r[3] and "场次列表" in r[3]]   # frames in which the old page is still the one on screen
     ok(len(old) >= 20, f"[tabflash] the old page stays on screen while the next one waits for its data (frames: {len(old)})")
     ok(all(r[0] == base["cls"] and r[1] == base["w"] and not r[2] for r in old), f"[tabflash] in those frames the layout never changes: classes {base['cls']!r}, main {base['w']}px wide, no page scrollbar (saw {sorted(set((r[0], r[1], r[2]) for r in old))})")
     pg.evaluate("() => { window._log = []; }")
@@ -1661,30 +1661,41 @@ def creation_section(br, D):
 
 
 def outline_wb_section(br, D):
-    """大纲工作台 · 生成大纲: the steps and modules are the side menu's sub-items, the assistant fills the page's height, the overview is confirmed before any question is written, suggestions are adopted
+    """大纲工作台 · 生成大纲 (修正方案第 1 轮 2026-11-19): the side menu has at most two levels, the five steps are a clickable bar at the top of the page and the modules a list on its left; a reload
+    stays on the step and Back goes to the page before; the assistant fills the page's height, the overview is confirmed before any question is written, suggestions are adopted
     only by a click, a side-dialog edit is only a pending card until accepted."""
     adm = D["tok"]["admin"]
     pid = call("/projects", {"name": "大纲工作台测试", "market": "SG", "language": "zh", "brief": "A 品牌准备进入新加坡，了解都市女性怎么选护肤品。她们会比较多个品牌，价格是主要顾虑。"}, adm)["id"]
     ctx, pg, errs = new_page(br, 1440, h=900, token=adm)
-    pg.goto(B + "/"); pg.evaluate("sessionStorage.setItem('ptab','ols'); sessionStorage.setItem('ol_menu','1'); sessionStorage.setItem('ol_seg','outline')")
-    pg.goto(B + f"/#/p/{pid}/people"); pg.wait_for_selector("#owroot .ow")
-    ok(wait_until(lambda: pg.locator(".l2slot #owsteps .ow-l3").count() == 5, 6), "[outline_wb] the five steps are sub-items in the side menu")
+    pg.goto(B + f"/#/p/{pid}/people/form"); pg.wait_for_selector(".sub2 .sgrp")
+    pg.goto(B + f"/#/p/{pid}/people/outline"); pg.wait_for_selector("#owroot .ow")
+    ok(wait_until(lambda: pg.locator("#owroot .ow-steps .ow-st").count() == 5, 6), "[outline_wb] the five steps are a bar at the top of the page")
+    ok(pg.locator(".sub2 .l1 .l1, .sub2 .l2slot, .sub2 .ow-l3, .sub2 .ow-l4, .sub2 .ow-st").count() == 0, "[outline_wb] the side menu has at most two levels (no steps or modules in it)")
+    ok([x.strip() for x in pg.locator(".sub2 .sgrp[data-grp=create] .l1 .tx").all_inner_texts()] == ["招募/主持/问卷", "甄别问卷", "数据库筛选及发送", "生成大纲", "预览测试", "Pilot", "配额及受访者名单"],
+       "[outline_wb] 生成大纲 and 预览测试 sit right under 数据库筛选及发送, at the same level")
+    ok(pg.locator(".sub2 .l1.on .tx").inner_text().strip() == "生成大纲", "[outline_wb] the side menu marks 生成大纲")
     box = pg.locator("#owroot .ow-chat").bounding_box()
     ok(box and box["height"] >= 500, "[outline_wb] the assistant panel fills the height of the page")
-    ok(pg.locator("#owroot .tabs, #owroot .steps").count() == 0, "[outline_wb] no horizontal bar of steps or tabs inside the page")
+    ok(pg.locator("#owroot .ow-steps").count() == 1, "[outline_wb] one step bar inside the page")
     pg.fill('[data-ow-free="key_questions"]', "她们买护肤品最看重什么\n价格接受范围"); pg.click('[data-ow-freeok="key_questions"]')
     ok(wait_until(lambda: "价格接受范围" in pg.inner_text("#owroot"), 6), "[outline_wb] the researcher's answer is kept")
     audit_page(pg, "outline_wb goal/desktop", errs)
     pg.click('[data-ow="goal-next"]'); pg.click('[data-ow="build"]'); pg.wait_for_selector("#owroot .ow-tbl")
     ok("45 分" in pg.inner_text("#owroot .ow-tbl"), "[outline_wb] the overview table adds up to the interview length")
     ok(pg.locator("#owroot [data-ow-m][data-f=depth]").count() >= 3, "[outline_wb] every module has a follow-up depth choice")
-    ok(pg.locator(".l2slot #owsteps [data-ow-step=questions].ow-off").count() == 1, "[outline_wb] the questions step is closed until the overview is confirmed")
+    ok(pg.locator("#owroot .ow-steps [data-ow-step=questions].lock").count() == 1, "[outline_wb] the questions step is closed until the overview is confirmed")
+    ok(pg.url.endswith("/people/outline/overview"), f"[outline_wb] the step is in the address ({pg.url})")
+    pg.reload(); pg.wait_for_selector("#owroot .ow-steps")
+    ok(wait_until(lambda: pg.locator("#owroot .ow-steps .ow-st.on").inner_text().strip().endswith("大纲总览"), 6), "[outline_wb] a reload stays on the same step")
+    pg.click("#owroot .ow-steps [data-ow-step=goal]"); ok(wait_until(lambda: pg.locator("#owroot .ow-steps .ow-st.on").inner_text().strip().endswith("目标"), 6), "[outline_wb] an earlier step can be clicked")
+    pg.click("#owroot .ow-steps [data-ow-step=overview]"); pg.wait_for_selector("#owroot .ow-tbl")
     off = pg.evaluate("""() => [...document.querySelectorAll('#owroot .ow-tbl tbody tr:not(.tot)')].map((tr) => { const cs = [...tr.querySelectorAll('td')].map((td) => { const ctl = td.querySelectorAll('input,select'); const el = ctl.length === 1 ? ctl[0] : td; const r = el.getBoundingClientRect(); return (r.top + r.bottom) / 2; }); return Math.max(...cs) - Math.min(...cs); })""")
     ok(off and max(off) <= 14, f"[outline_wb] in every overview row the cells sit on one line (largest spread {max(off) if off else '-'}px)")
-    ico = pg.evaluate("""() => { const t = [...document.querySelectorAll('#owsteps .ow-st')].filter((e) => e.textContent.trim()).map((e) => Math.round(e.getBoundingClientRect().right)); return Math.max(...t) - Math.min(...t); }""")
-    ok(ico <= 1, f"[outline_wb] the status marks in the side menu are in one column (spread {ico}px)")
+    ico = pg.evaluate("""() => { const t = [...document.querySelectorAll('#owroot .ow-steps .ow-st i')].map((e) => { const r = e.getBoundingClientRect(); return Math.round((r.top + r.bottom) / 2); }); return Math.max(...t) - Math.min(...t); }""")
+    ok(ico <= 1, f"[outline_wb] the step marks sit on one line (spread {ico}px)")
     audit_page(pg, "outline_wb overview/desktop", errs)
     pg.screenshot(path=os.path.join(ROOT, "qa_shots", "outline_wb_overview.png"))
+    pg.hover(".sub2"); pg.wait_for_timeout(400); pg.screenshot(path=os.path.join(ROOT, "qa_shots", "fix1_b1_outline_menu.png")); pg.mouse.move(900, 500)
     n = pg.locator("#owroot .ow-sug label").count()
     if n:
         ok(pg.locator("#owroot .ow-sug label").count() <= 3, "[outline_wb] at most three suggestions")
@@ -1700,7 +1711,10 @@ def outline_wb_section(br, D):
     ok(wait_until(lambda: pg.locator("#ow-msgs [data-ow-rev=accept]").count() == 1, 8), "[outline_wb] the edit is a pending card with an accept button")
     ok(pg.locator("#owroot .ow-item textarea >> nth=0").input_value() == old, "[outline_wb] nothing is written before it is accepted")
     pg.click("#ow-msgs [data-ow-rev=accept]"); ok(wait_until(lambda: pg.locator("#owroot .ow-item textarea >> nth=0").input_value() != old, 6), "[outline_wb] accepting writes it into the outline")
-    pg.click('[data-ow="conf-mod"]'); ok(wait_until(lambda: pg.locator(".l2slot #owsteps [data-ow-mod] .ow-st.ok").count() == 1, 6), "[outline_wb] a confirmed module is ticked in the side menu")
+    pg.click('[data-ow="conf-mod"]'); ok(wait_until(lambda: pg.locator("#owroot .ow-toc [data-ow-mod] .ok").count() == 1, 6), "[outline_wb] a confirmed module is ticked in the module list on the page")
+    ok(pg.locator("#owstate .ow-vline").count() == 1 and len(pg.inner_text("#owstate").strip().splitlines()) == 1, "[outline_wb] the version card at the foot of the side menu is one line")
+    pg.locator(".sub2 .l1", has_text="甄别问卷").click(); pg.wait_for_url("**/people/form"); pg.go_back()
+    ok(wait_until(lambda: "/people/outline" in pg.url and pg.locator("#owroot .ow-steps").count() == 1, 8), "[outline_wb] the browser's Back button returns to 生成大纲")
     for th in ("orange", "dark"):   # the three themes are all checked (contrast, sizes, names)
         pg.evaluate(f"document.documentElement.dataset.theme = '{th}'"); pg.wait_for_timeout(300)
         audit_page(pg, f"outline_wb questions/{th}", errs)
@@ -1709,7 +1723,7 @@ def outline_wb_section(br, D):
 
 
 def outline_wb_test_section(br, D):
-    """大纲工作台 · 预览测试: the four sub-items sit in the side menu, the preview shows what a participant sees, a rehearsal runs, a pilot can be set, a version is published; alignment and the three themes are audited."""
+    """大纲工作台 · 预览测试 and Pilot (two side-menu pages since 2026-11-19, each with its own small tabs at the top of the page), the preview shows what a participant sees, a rehearsal runs, a pilot can be set, a version is published; alignment and the three themes are audited."""
     adm = D["tok"]["admin"]
     pid = call("/projects", {"name": "预览测试页", "market": "SG", "language": "zh", "brief": "A 品牌准备进入新加坡，了解都市女性怎么选护肤品。价格是主要顾虑。"}, adm)["id"]
     base = f"/projects/{pid}/outline-wb"
@@ -1719,10 +1733,9 @@ def outline_wb_test_section(br, D):
     part = call(f"/projects/{pid}/participants", {"name": "演示", "country": "SG", "language": "zh"}, adm)
     itv = call(f"/projects/{pid}/interviews", {"participant_id": part["id"], "title": "Pilot 1", "observer_ids": []}, adm)
     ctx, pg, errs = new_page(br, 1440, h=900, token=adm)
-    pg.goto(B + "/"); pg.evaluate("sessionStorage.setItem('ptab','ols'); sessionStorage.setItem('ol_menu','1'); sessionStorage.setItem('ol_seg','test')")
-    pg.goto(B + f"/#/p/{pid}/people"); pg.wait_for_selector("#owroot3 .ow")
-    ok(wait_until(lambda: pg.locator(".l2slot #owsteps3 [data-ow-tab]").count() == 4, 6), "[outline_wb_test] the four sub-items are in the side menu")
-    ok(pg.locator("#owstate .ow-state").count() == 1 and "已被" in pg.inner_text("#owstate"), "[outline_wb_test] the version state sits at the bottom of the side menu")
+    pg.goto(B + f"/#/p/{pid}/people/test"); pg.wait_for_selector("#owroot3 .ow")
+    ok(wait_until(lambda: [x.strip() for x in pg.locator("#owroot3 .ow-tabs [data-ow-tab]").all_inner_texts()] == ["受访者预览", "模拟预演"], 6), "[outline_wb_test] 预览测试 has its two small tabs at the top of the page")
+    ok(wait_until(lambda: pg.locator("#owstate .ow-vline").count() == 1, 6), "[outline_wb_test] the version card sits at the bottom of the side menu")
     box = pg.locator("#owroot3 .ow-chat").bounding_box()
     ok(box and box["height"] >= 500, "[outline_wb_test] the assistant panel fills the height of the page")
     ok(wait_until(lambda: pg.locator("#owroot3 .ow-phone").count() == 1, 6), "[outline_wb_test] the preview shows a phone with what the participant sees")
@@ -1730,14 +1743,19 @@ def outline_wb_test_section(br, D):
     pg.click("[data-ow-tab=rehearsal]"); pg.click('[data-ow="rh-run"]')
     ok(wait_until(lambda: pg.locator("#owroot3 .ow-kv").count() == 1 and "场数" in pg.inner_text("#owroot3"), 8), "[outline_wb_test] a rehearsal runs and reports")
     audit_page(pg, "outline_wb_test rehearsal/desktop", errs)
-    pg.click("[data-ow-tab=pilot]"); ok(wait_until(lambda: "必须先做完至少一场 pilot" in pg.inner_text("#owroot3"), 6), "[outline_wb_test] the page reminds that a pilot is a must before publishing")
-    ok("还没做完 pilot" in pg.inner_text("#owstate"), "[outline_wb_test] the side menu says no pilot has been finished")
+    pg.locator(".sub2 .l1", has_text="Pilot").click(); pg.wait_for_url("**/people/pilot")
+    ok(wait_until(lambda: [x.strip() for x in pg.locator("#owroot3 .ow-tabs [data-ow-tab]").all_inner_texts()] == ["Pilot 修正", "发布"], 6), "[outline_wb_test] the Pilot page has Pilot 修正 and 发布")
+    ok(wait_until(lambda: "必须先做完至少一场 pilot" in pg.inner_text("#owroot3"), 6), "[outline_wb_test] the page reminds that a pilot is a must before publishing")
+    ok("还没做 pilot" in pg.inner_text("#owstate"), "[outline_wb_test] the side menu says no pilot has been finished")
     ok(wait_until(lambda: pg.locator("#ow-cand").count() == 1, 6), "[outline_wb_test] an interview can be chosen as the pilot")
     pg.click('[data-ow="pil-set"]'); ok(wait_until(lambda: "这场 pilot 还没有笔录" in pg.inner_text("#owroot3"), 8), "[outline_wb_test] the pilot is set (no transcript yet)")
     audit_page(pg, "outline_wb_test pilot/desktop", errs)
     pg.click("[data-ow-tab=publish]"); ok(wait_until(lambda: pg.locator("#owroot3 [data-ow=pub-go]").count() == 1, 6), "[outline_wb_test] the publish page lists checks and versions")
-    spread = pg.evaluate("""() => { const t = [...document.querySelectorAll('#owsteps3 .ow-st')].filter((e) => e.textContent.trim()).map((e) => Math.round(e.getBoundingClientRect().right)); return t.length ? Math.max(...t) - Math.min(...t) : 0; }""")
-    ok(spread <= 1, f"[outline_wb_test] the marks in the side menu are in one column (spread {spread}px)")
+    ok("新建版本" not in pg.inner_text("#owroot3") and pg.locator("[data-ow=ver-new]").count() == 0, "[outline_wb_test] there is no 新建版本 button")
+    heads = [x.strip() for x in pg.locator("#owroot3 .ow-tbl").last.locator("th").all_inner_texts()]
+    ok(heads == ["版本", "来源", "状态", "Pilot", "已被使用"], f"[outline_wb_test] the version table shows source, state and pilot rounds (got {heads})")
+    pg.hover(".sub2"); pg.wait_for_timeout(400); pg.screenshot(path=os.path.join(ROOT, "qa_shots", "fix1_b1_publish.png")); pg.mouse.move(900, 500)
+    ok("生成大纲" in pg.inner_text("#owroot3 .ow-tbl >> nth=-1") and "Pilot 中" in pg.inner_text("#owroot3 .ow-tbl >> nth=-1"), "[outline_wb_test] v1 came from 生成大纲 and is in pilot")
     audit_page(pg, "outline_wb_test publish/desktop", errs)
     for th in ("orange", "dark"):
         pg.evaluate(f"document.documentElement.dataset.theme = '{th}'"); pg.wait_for_timeout(300)
@@ -1758,7 +1776,7 @@ def _finished_pilot(pid, adm):
 
 
 def outline_board_section(br, D):
-    """大纲工作台 · 实时看板 (访谈直播): the board sits beside the interview list, its three sub-items are in the side menu, a focus question shows counts (no percentages under 20 people), a
+    """大纲工作台 · 实时看板 (访谈直播): 场次列表 and 实时看板 are two pages of the same side menu (修正方案第 1 轮第 8 条), the board's own small tabs are inside the page, a focus question shows counts (no percentages under 20 people), a
     coded answer opens a side panel, alerts are listed; alignment and the three themes are audited."""
     adm = D["tok"]["admin"]
     pid = call("/projects", {"name": "看板测试", "market": "SG", "language": "zh", "brief": "A 品牌准备进入新加坡，了解护肤品选购。"}, adm)["id"]
@@ -1769,9 +1787,19 @@ def outline_board_section(br, D):
     uid = call(base, None, adm)["items"][0]["uid"]
     call(base + "/focus", {"text": "她们平时怎么买东西", "item_uid": uid}, adm); _finished_pilot(pid, adm); call(base + "/publish", {}, adm)
     ctx, pg, errs = new_page(br, 1440, h=900, token=adm)
-    pg.goto(B + f"/#/p/{pid}/rooms"); pg.wait_for_selector("#owbbar [data-ob=board]")
-    ok(pg.locator("#owbbar [data-ob=list]").count() == 1, "[outline_board] the interview list and the board are both in the side menu")
-    pg.click("[data-ob=board]"); ok(wait_until(lambda: pg.locator(".l2slot #owbbar [data-ob-tab]").count() == 4, 6), "[outline_board] the four sub-items are in the side menu")
+    pg.goto(B + f"/#/p/{pid}/people/form"); pg.wait_for_selector(".sub2 .sgrp")
+    menu_before = pg.locator(".sub2 .l1 .tx").all_inner_texts()
+    pg.locator(".sub2 .l1", has_text="场次列表").click(); pg.wait_for_url("**/rooms"); wait_until(lambda: pg.locator(".sub2 .l1.on .tx").inner_text().strip() == "场次列表", 8)
+    ok(pg.locator(".sub2 .l1 .tx").all_inner_texts() == menu_before and pg.locator(".sub2 .l1.on .tx").inner_text().strip() == "场次列表", f"[outline_board] going to 访谈直播 keeps the same side menu, only the highlight moves ({set(menu_before) ^ set(pg.locator('.sub2 .l1 .tx').all_inner_texts())}, on {pg.locator('.sub2 .l1.on .tx').all_inner_texts()})")
+    pg.locator(".sub2 .l1", has_text="实时看板").click(); pg.wait_for_url("**/rooms/board")
+    ok(wait_until(lambda: pg.locator("#owbbar [data-ob-tab]").count() == 4 and pg.locator(".sub2 #owbbar").count() == 0, 6), "[outline_board] the board's four small tabs are inside the page")
+    ok(pg.locator(".sub2 .l1 .tx").all_inner_texts() == menu_before, "[outline_board] the side menu is still the same on the board")
+    pg.hover(".sub2"); pg.wait_for_timeout(400); pg.screenshot(path=os.path.join(ROOT, "qa_shots", "fix1_b1_board.png")); pg.mouse.move(900, 500)
+    pg.go_back(); ok(wait_until(lambda: pg.url.endswith("/rooms") and pg.locator(".sub2 .l1.on .tx").inner_text().strip() == "场次列表", 8), "[outline_board] Back returns to 场次列表")
+    pg.go_forward(); pg.wait_for_url("**/rooms/board")
+    pg.locator(".sub2 .sgt", has_text="创建访谈").click(); pg.reload(); pg.wait_for_selector(".sub2 .sgrp")
+    ok(pg.locator(".sub2 .sgrp[data-grp=create].closed").count() == 1, "[outline_board] a folded group stays folded after a reload (this browser only)")
+    pg.locator(".sub2 .sgt", has_text="创建访谈").click()
     ok(wait_until(lambda: pg.locator(".ob-card").count() == 1, 8), "[outline_board] each focus question is a card")
     box = pg.locator("#owbroot .ow-chat").bounding_box()
     ok(box and box["height"] >= 500, "[outline_board] the assistant panel fills the height of the page")
@@ -1792,7 +1820,7 @@ def outline_board_section(br, D):
     pg.click("[data-ob=wnext2]"); ok(wait_until(lambda: pg.locator("[data-ob=wfinish]").count() == 1, 8), "[outline_board] looking back through what was already said")
     pg.click("[data-ob=wskip]"); ok(wait_until(lambda: "她们平时怎么买东西的渠道" in pg.inner_text("#owbroot"), 8), "[outline_board] the new focus question is on the board")
     audit_page(pg, "outline_board added/desktop", errs)
-    pg.click("[data-ob=list]"); ok(wait_until(lambda: pg.locator("#rmlistwrap:not([hidden])").count() == 1, 6), "[outline_board] back to the interview list")
+    pg.locator(".sub2 .l1", has_text="场次列表").click(); ok(wait_until(lambda: pg.locator("#rmlistwrap:not([hidden])").count() == 1, 6), "[outline_board] back to the interview list")
     ctx.close()
 
 
@@ -2220,7 +2248,7 @@ def tabs_section(br, D):
     JS = """(() => { const b = (s) => { const e = document.querySelector(s); if (!e) return null; const r = e.getBoundingClientRect(); return [Math.round(r.left * 100) / 100, Math.round(r.top * 100) / 100, Math.round(r.width * 100) / 100, Math.round(r.height * 100) / 100]; };
       return { rail: b('.rail2'), top: b('.top2'), sub: b('.sub2'), main: b('.body2>main'), cw: document.documentElement.clientWidth, over: document.documentElement.scrollWidth > document.documentElement.clientWidth,
                same: ['.rail2', '.top2', '.sub2'].every((s) => document.querySelector(s) === window.__nodes[s]), reloaded: !window.__mark }; })()"""
-    steps = [("甄别设定", None), ("甄别设定", "配额与受访者名单"), ("甄别设定", "招募问卷"), ("访谈", None), ("直播间", None), ("洞察与片段", None)] + [("洞察与片段", n) for n in ["报告", "问题分析", "精彩片段", "对话", "受访者数据"]] + [("甄别设定", None)]
+    steps = [(n, None) for n in ["招募/主持/问卷", "配额及受访者名单", "甄别问卷", "生成大纲", "场次列表", "实时看板", "回复", "报告", "逐题分析", "片段", "AI 对话", "招募/主持/问卷"]]   # every page of the one side menu (修正方案第 1 轮)
     for w in ((1366, 1920) if os.environ.get("QA_DESKTOP") else (1366, 1920, 390)):
         ctx, pg, errs = new_page(real, w, 860, token=adm)
         pg.goto(B + f"/#/p/{pid}/people"); pick_mode(pg); pg.wait_for_selector(".sub2 .l1"); pg.wait_for_timeout(600)
@@ -2228,7 +2256,6 @@ def tabs_section(br, D):
         rows = []
         for i, (tab, sub) in enumerate(steps):
             pg.locator(".sub2 a.l1", has_text=tab).first.click(); pg.wait_for_timeout(900)
-            if sub: pg.locator(".sub2 .l2slot a, .sub2 .l2slot button", has_text=sub).first.click(); pg.wait_for_timeout(700)
             pg.wait_for_timeout(300); m = pg.evaluate(JS); rows.append((tab, sub, m))
             pg.screenshot(path=str(out / f"{w}_{i:02d}_{tab}{('_' + sub) if sub else ''}.png"), clip={"x": 0, "y": 0, "width": w, "height": 200})
         ok(all(not r[2]["over"] for r in rows), f"[tabs {w}] no horizontal scroll on any page")
@@ -2385,7 +2412,7 @@ def run():
         pg.goto(B + f"/#/p/{pid}/rooms"); pg.wait_for_selector(".rmtabs")
         cur = pg.locator(".top2 .mods [aria-current=page]").all_inner_texts()
         tabs = pg.locator(".sub2 .l1[aria-current=page] .tx").all_inner_texts()
-        ok(tabs == ["访谈直播"] and len(cur) == 1 and "深访" in cur[0], f"the menu marks 访谈直播 (renamed from 直播间 2026-11-04) and the top bar marks exactly one stage (深访), got menu {tabs} top {cur}")
+        ok(tabs == ["场次列表"] and len(cur) == 1 and "深访" in cur[0], f"the menu marks 场次列表 (访谈直播 › 场次列表, one side menu since 2026-11-19) and the top bar marks exactly one stage (深访), got menu {tabs} top {cur}")
         ok(pg.locator("main .head h1").count() == 0 or not pg.locator("main .head h1").first.is_visible(), "a page under tabs does not repeat its name as a big title")
         ok(pg.evaluate("parseInt(getComputedStyle(document.querySelector('.top2 .mod.on')).fontWeight) > parseInt(getComputedStyle(document.querySelector('.top2 .mod:not(.on)')).fontWeight)"), "the current stage in the top bar is bolder than the others")
         pg.goto(B + f"/#/p/{pid}/sessions"); pg.wait_for_selector(".rmtabs")
@@ -2623,7 +2650,7 @@ def run():
             pg.goto(B + f"/#/p/{pid}/people"); pick_mode(pg); pg.wait_for_selector("#np"); pg.click("#np"); pg.wait_for_selector(".modal form#f")
             audit_page(pg, f"dialog 添加受访者/{vp}", errs)
             pg.keyboard.press("Escape"); ok(pg.locator(".modal").count() == 0, f"[{vp}] Escape closes the dialog")
-            pg.evaluate("sessionStorage.setItem('ptab', 'list')"); pg.goto(B + f"/#/p/{pid}/people"); pick_mode(pg); pg.wait_for_selector("[data-inv], [data-upd]"); pg.locator("[data-inv], [data-upd]").first.click(); pg.wait_for_selector(".modal form#f [name=participant_id]")   # 发送邀请函, or 更新邀请函 once that person is invited (2026-10-27)
+            pg.evaluate("sessionStorage.setItem('ptab', 'list')"); pg.goto(B + f"/#/p/{pid}/people"); pick_mode(pg); pg.wait_for_selector("[data-inv], [data-upd]:not([disabled])"); pg.locator("[data-inv], [data-upd]:not([disabled])").first.click(); pg.wait_for_selector(".modal form#f [name=participant_id]")   # 发送邀请函, or 更新邀请函 once that person is invited (2026-10-27)
             audit_page(pg, f"dialog 新建场次/{vp}", errs)
             pg.keyboard.press("Escape")
             # the live room page: a status button shows only that status

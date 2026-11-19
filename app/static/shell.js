@@ -168,6 +168,27 @@ function shTop(p, active, title) {
     + `<div class="mods" role="navigation" aria-label="项目模块">${shModules(p, active)}</div><div class="tr">${sel}${shWho()}</div>`;
 }
 
+/** 深访（座谈会）这一阶段的侧边栏：创建访谈 / 访谈直播 / 洞察三组，每组下面直接是页面（最多两级，修正方案第 1 轮第 1、8 条）。 */
+const SH_PEOPLE_SUBS = ["mode", "form", "db", "outline", "test", "pilot", "list"];
+function shGroups(p) {
+  const one = p.recruit_mode === "onelink", M = p.methods || ["depth", "group"], live = M.includes("depth") || M.includes("group");
+  const it = (key, label, ic) => ({ href: `/p/${p.id}/${key}`, key, label, ic });
+  const create = [it("people/mode", "招募/主持/问卷", "flag"), it("people/form", one ? "招募问卷" : "甄别问卷", "user"), it("people/db", one ? "数据库发送" : "数据库筛选及发送", "users")]
+    .concat(one ? [] : [it("people/outline", "生成大纲", "chat"), it("people/test", "预览测试", "cam"), it("people/pilot", "Pilot", "flag"), it("people/list", "配额及受访者名单", "users")]);
+  const tabs = (typeof INS_TABS !== "undefined" ? INS_TABS : [["r", "回复"]]);
+  return [{ key: "create", title: "创建访谈", items: create }].concat(live ? [{ key: "live", title: "访谈直播", items: [it("rooms", "场次列表", "live"), it("rooms/board", "实时看板", "pulse")] }] : [])
+    .concat([{ key: "ins", title: "洞察", items: tabs.map(([k, n]) => it(`insights/${k}`, n, "bulb")) }]);
+}
+/** Which side-menu item the address points at: "people/form", "rooms/board", "insights/r" … (a bare page falls back to what this browser last opened there). */
+function shCurKey(p) {
+  const seg = location.hash.replace(/^#/, "").split("/"), page = seg[3] || "", sub = seg[4] || "";
+  if (page === "people") return "people/" + (SH_PEOPLE_SUBS.includes(sub) ? sub : "mode");
+  if (page === "rooms") return sub === "board" ? "rooms/board" : "rooms";
+  if (page === "insights") return "insights/" + (sub || sessionStorage.getItem("itab") || "r");
+  return page;
+}
+const shGrpClosed = (k) => { try { return localStorage.getItem("tt_grp_" + k) === "1"; } catch (e) { return false; } };
+
 /** 第二层菜单的内容：{head, items, slot}；没有就不显示这一层。 */
 function shSubMenu(p, active) {
   const ic = (k) => SH_ICON[k] || "grid", it = (page, label) => ({ href: `/p/${p.id}/${page}`, key: page, label, ic: ic(page) });
@@ -188,6 +209,7 @@ function shSubMenu(p, active) {
       items = SH_HUBS[2].tabs.filter((t) => t[0] !== "studies" && t[0] !== "outline" && shPageOk(t[0], p)).map(([k, n]) => it(k, n));
       if (merged) { onKey = "people"; }   // 「访谈大纲」已并入「创建访谈」下的「访问大纲生成及邀请」tab，不再单独加菜单项
     }
+    if (hub === "ql" && active !== "studies") { const g = shGroups(p); return { head, items: g.flatMap((x) => x.items), groups: g, staff: true, onKey: shCurKey(p) }; }   // 修正方案第 1 轮第 1、8 条：一个侧边栏，三组同时在
     else head = { ic: hub === "qt" ? "pie" : hub === "cr" ? "listen" : "spark", title: hub === "qt" ? "定量" : hub === "cr" ? "舆情采集" : "异步研究", meta: stLabel };
     return { head, items, staff: true, extra, onKey };
   }
@@ -199,6 +221,14 @@ function shSubHtml(p, active, menu) {
   if (!menu) return "";
   const h = menu.head, on = menu.items.find((i) => i.key === (menu.onKey || active));
   const close = p && menu.staff && !shSetup(p) ? (p.closed_at ? `<button class="s" id="reopen" aria-label="重新打开" data-tip="重新打开"><span class="cf">重新打开</span><span class="cs">开</span></button>` : `<button class="s" id="closeproj" aria-label="结项" title="从结项那天起 ${p.retention_days} 天，受访者数据会自动删除" data-tip="结项"><span class="cf">结项</span><span class="cs">结</span></button>`) : "";
+  if (menu.groups) {   // one side menu for the whole stage: groups (folded state kept in this browser) and their pages; the current one is highlighted
+    const cur = menu.onKey;
+    const grp = (g) => { const has = g.items.some((i) => i.key === cur), closed = !has && shGrpClosed(g.key);
+      return `<div class="sgrp${closed ? " closed" : ""}" data-grp="${g.key}"><button type="button" class="sgt" aria-expanded="${!closed}" data-tip="${esc(g.title)}"><span class="tx">${esc(g.title)}</span><span class="ar" aria-hidden="true"></span></button>`
+        + g.items.map((i) => `<a class="l1${i.key === cur ? " on" : ""}" href="#${i.href}" ${i.key === cur ? 'aria-current="page"' : ""} data-tip="${esc(i.label)}"><span class="it">${vIc(i.ic)}</span><span class="tx">${esc(i.label)}</span></a>`).join("") + `</div>`; };
+    return `<div class="shead"><span class="stile">${vIc(h.ic)}</span><div><b>${esc(h.title)}</b>${h.meta ? `<small>${esc(h.meta)}</small>` : ""}</div></div>`
+      + `<div class="mn">${menu.groups.map(grp).join("")}</div><div class="l2ver" id="owstate"></div><div class="bot"><button type="button" class="fold" aria-label="收起或展开这一栏" aria-expanded="true" data-tip="收起这一栏"></button>${close}</div>`;
+  }
   return `<div class="shead"><span class="stile">${vIc(h.ic)}</span><div><b>${esc(h.title)}</b>${h.meta ? `<small>${esc(h.meta)}</small>` : ""}</div></div>`
     + `<div class="mn">${menu.items.map((i) => `<a class="l1${i === on ? " on" : ""}" href="#${i.href}" ${i === on ? 'aria-current="page"' : ""} data-tip="${esc(i.label)}"><span class="it">${vIc(i.ic)}</span><span class="tx">${i.label}</span></a>${i === on ? `<div class="l2slot" id="l2slot">${(menu.extra || []).map((x) => `<a class="l2e${x.on ? " on" : ""}" href="#${x.href}"${x.on ? ' aria-current="page"' : ""}>${x.label}</a>`).join("")}</div>` : ""}`).join("")}</div><div class="bot"><button type="button" class="fold" aria-label="收起或展开这一栏" aria-expanded="true" data-tip="收起这一栏"></button>${close}</div>`;
 }
@@ -218,6 +248,7 @@ function shMount({ rail, top, sub, notice, inner, cls, thin }) {
     const was = (k) => { try { return !!localStorage.getItem(k); } catch (e) { return false; } };   // the fold choice is only a convenience of this browser
     const keep = (k, on) => { try { localStorage.setItem(k, on ? "1" : ""); } catch (e) { /* private window: this page only */ } };
     a.classList.toggle("sub-off", was("tt_fold_sub"));
+    a.addEventListener("click", (e) => { const g = e.target.closest(".sub2 .sgt"); if (!g) return; const box = g.parentElement, off = !box.classList.contains("closed"); box.classList.toggle("closed", off); g.setAttribute("aria-expanded", String(!off)); try { localStorage.setItem("tt_grp_" + box.dataset.grp, off ? "1" : ""); } catch (er) { /* private window: this page only */ } });
     a.addEventListener("click", (e) => { const b = e.target.closest(".sub2 .fold"); if (!b) return; const off = !a.classList.contains("sub-off"); a.classList.toggle("sub-off", off); keep("tt_fold_sub", off); a.querySelectorAll(".sub2 .fold").forEach((x) => x.setAttribute("aria-expanded", String(!off))); });
   }
   const set = (el, h) => { if (el._h !== h) { el.innerHTML = h; el._h = h; } };

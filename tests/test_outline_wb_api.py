@@ -303,13 +303,11 @@ def test_pilot_suggestions_merge_by_question_and_have_three_possible_destination
     assert _api(org, proj, "post", f"/revisions/{outline_rev['id']}/accept").json()["items"][0]["text"] != before
 
 
-def test_a_new_version_is_a_copy_with_the_same_permanent_ids(org, proj):
+def test_there_is_no_button_or_api_to_make_an_empty_version(org, proj):
+    """修正方案第 1 轮第 10 条：版本只在 pilot 修正时产生，不能手动新建（原来会产生没有改动的空版本）。新版本保留 item_uid 由 test_outline_wb.py 覆盖。"""
     _ready(org, proj)
-    v1 = _api(org, proj, "get", "").json()
-    out = _api(org, proj, "post", "/versions", json={"summary": "第二版"}).json()
-    assert out["version"] == 2 and {v["number"] for v in out["versions"]} == {1, 2}
-    v2 = _api(org, proj, "get", "").json()
-    assert [i["uid"] for i in v2["items"]] == [i["uid"] for i in v1["items"]] and v2["version"]["number"] == 2
+    assert _api(org, proj, "post", "/versions", json={"summary": "第二版"}).status_code in (404, 405)
+    assert [v["number"] for v in _api(org, proj, "get", "/publish/check").json()["versions"]] == [1]
 
 
 def test_an_interview_can_be_marked_as_a_pilot_and_then_lists_there(org, proj):

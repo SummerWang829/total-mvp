@@ -420,3 +420,19 @@ body.v11 .sub2 .l2slot a.l2sub.on{background:var(--act);color:var(--act-ink);fon
 
 /* 2026-11-18：「生成访问大纲」的两个子项默认收起，用 hidden 控制（左栏 a 有 display:flex!important，必须显式盖掉） */
 body.v11 .sub2 .l2slot a[hidden]{display:none!important}
+
+/* 修正方案第 1 轮第 1、8 条（2026-11-19）：深访阶段只有一个侧边栏，三组（创建访谈 / 访谈直播 / 洞察）同时在，组标题可折叠（只存这台浏览器），每组下面直接是页面 */
+.sub2 .sgrp{margin:0 0 6px}
+.sub2 .sgt{display:flex;align-items:center;justify-content:space-between;width:100%;border:0;background:none;padding:6px 10px;margin:4px 0 2px;border-radius:8px;font:inherit;font-size:12px;font-weight:700;letter-spacing:.04em;color:var(--muted);cursor:pointer;min-height:30px}
+.sub2 .sgt:hover{background:var(--chip)}
+.sub2 .sgt .ar{width:7px;height:7px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(45deg);margin:-3px 4px 0 0;transition:transform .15s}
+.sub2 .sgrp.closed .sgt .ar{transform:rotate(-45deg);margin-top:0}
+.sub2 .sgrp.closed .l1{display:none}
+.sub2 .sgrp .l1{padding:5px 10px;gap:10px;font-size:14px}
+.sub2 .sgrp .l1 .it{width:28px;height:28px;border-radius:8px}
+.sub2 .l2ver:not(:empty){margin:auto 4px 8px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--wash);font-size:13px;color:var(--ink2);display:flex;align-items:center;gap:6px;cursor:pointer;text-decoration:none}
+.sub2 .l2ver b{color:var(--ink)}
+.sub2 .l2ver .dot{width:8px;height:8px;border-radius:50%;background:#E0A100;flex:none}.sub2 .l2ver .dot.ok{background:#2E7D5B}
+.v11app.sub-off .sub2 .sgt .tx,.v11app.sub-off .sub2 .l2ver{display:none}
+.v11app.sub-off .sub2 .sgt{justify-content:center;padding:4px 0}
+@media (prefers-reduced-motion:reduce){.sub2 .sgt .ar{transition:none}}
