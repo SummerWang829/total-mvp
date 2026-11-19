@@ -243,6 +243,7 @@ def _pilot_setup(org, proj):
             svc.assign_line(ln, uid, src)
         db.commit()
         ids = [ln.id for ln in db.query(CaptionLine).filter_by(interview_id=itv.id).order_by(CaptionLine.seq)]
+    _api(org, proj, "put", "/ready", json={"value": True})                # the researcher says 可以正式开始 (修正方案第 1 轮第 9 条)
     assert _api(org, proj, "post", "/publish").status_code == 200          # a pilot has been done: now it can be published
     return itv.id, ids
 
@@ -265,11 +266,13 @@ def test_publishing_freezes_for_new_interviews_and_keeps_the_older_pages_in_step
         assert [i["texts"]["zh"] for i in db.get(OutlineSnapshot, itv.outline_snapshot_id).content["items"]] == before
 
 
-def test_publish_is_refused_while_a_focus_question_has_no_question(org, proj):
+def test_a_focus_question_without_a_question_only_warns_before_publishing(org, proj):
+    """修正方案第 1 轮第 10 条 (user 2026-11-19): only the real gates block; an unmatched focus question is a reminder."""
     _ready(org, proj)
     _api(org, proj, "post", "/focus", json={"text": "对包装颜色有什么看法？"})
     r = _api(org, proj, "post", "/publish")
-    assert r.status_code == 422 and "关注问题" in r.json()["detail"]
+    assert r.status_code == 422 and "关注问题" not in r.json()["detail"]
+    assert next(c for c in _api(org, proj, "get", "/publish/check").json()["checks"] if c["id"] == "focus")["level"] == "warn"
     chk = _api(org, proj, "get", "/publish/check").json()
     assert chk["can_publish"] is False and chk["versions"]
 
@@ -339,6 +342,7 @@ def _board_setup(org, proj):
         db.flush()
         stage3.snapshot_on_start(db, pil)
         db.commit()
+    _api(org, proj, "put", "/ready", json={"value": True})
     assert _api(org, proj, "post", "/publish").status_code == 200
     with SessionLocal() as db:
         p = db.get(Project, proj)

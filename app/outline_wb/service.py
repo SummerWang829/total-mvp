@@ -357,7 +357,7 @@ def accept(db: Session, org_id: str, revision_id: str, user_id: str, role: str, 
         if not train_case_id.strip():
             raise OutlineError("去向是主持引擎，要先写入训练集并填用例编号")
         r.train_case_id = train_case_id.strip()[:60]
-    elif r.destination == "outline":
+    elif r.destination == "outline" and not (r.source == "pilot" and r.round_id):   # a pilot round's change goes into the NEXT version (pilot.next_version), never into the one the round ran on
         _apply(db, get_version(db, org_id, r.base_version_id or ""), r)
     r.status, r.decided_by, r.decided_at = "accepted", user_id, utcnow()
     db.flush()

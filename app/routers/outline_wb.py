@@ -2,6 +2,8 @@
 
 Researchers (admin, researcher, support) work on the outline; a client (viewer) can read it and add focus questions, nothing else. A client can never accept a revision.
 """
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -13,7 +15,7 @@ from ..deps import STAFF, Ctx, ensure_project, require_roles, visible_interview
 from ..models import Project
 from ..moderator.compliance import moderator_runs_locally
 from ..moderator.providers import ChatError, ChatFatalError, get_moderator_chat
-from ..outline_wb import board, focus_new, session as sess, stage3
+from ..outline_wb import board, focus_new, pilot as wbpilot, session as sess, stage3
 from ..outline_wb.service import OutlineError
 from ..recruit_form import MSG_VENDOR_MISSING
 
@@ -328,6 +330,81 @@ def publish(pid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = D
     return out
 
 
+# ---- 真人 Pilot 多轮（修正方案第 1 轮第 9、10 条）--------------------------------------------------------------------------------------
+
+class RoundBody(BaseModel):
+    participant_id: str = Field(min_length=1, max_length=40)
+    scheduled_at: datetime | None = None
+    watcher_ids: list[str] = Field(default_factory=list, max_length=40)
+    send_email: bool = True
+
+
+class DecisionBody(BaseModel):
+    decision: str = Field(max_length=10)
+
+
+class ReadyBody(BaseModel):
+    value: bool = True
+
+
+@router.get("/pilot-rounds")
+def pilot_rounds(pid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    return _run(db, wbpilot.rounds, db, _project(db, ctx, pid))
+
+
+@router.post("/pilot-rounds")
+def start_pilot(pid: str, body: RoundBody, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    """发起一轮 Pilot: a real interview on the current version (host as the project chose), the participant invited, the chosen team members emailed to watch hidden."""
+    from .interviews import NewInterview, create_interview
+    p = _project(db, ctx, pid)
+    r = _run(db, wbpilot.open_round, db, p, ctx.user.id)
+    ctx_min = sess.context_of(db, p, sess.ensure(db, p)[2]).get("minutes") or 45
+    made = create_interview(pid, NewInterview(participant_id=body.participant_id, title=f"Pilot 第 {r.number} 轮", scheduled_at=body.scheduled_at, duration_min=max(15, min(240, int(ctx_min))),
+                                              send_email=body.send_email, moderation="ai" if p.host_mode == "ai" else "human", moderator_id=ctx.user.id if ctx.user.role in ("researcher", "admin") and p.host_mode != "ai" else None), ctx, db)
+    from ..models import Interview
+    itv = db.get(Interview, made["id"])
+    r = db.get(type(r), r.id)
+    watchers = _run(db, wbpilot.attach, db, p, itv, r, body.watcher_ids)
+    audit(db, ctx.org_id, ctx.actor, "outline_wb.pilot.start", pid, ip=ctx.ip, round=r.number, invited=len(watchers))   # how many, never who
+    db.commit()
+    return {"round": r.number, "interview": made, "watchers": watchers, "rounds": _run(db, wbpilot.rounds, db, p)}
+
+
+@router.get("/pilot-rounds/{rid}")
+def pilot_review(pid: str, rid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    return _run(db, wbpilot.review, db, _project(db, ctx, pid), rid, ctx.user.role)
+
+
+@router.post("/pilot-rounds/{rid}/suggest")
+def pilot_suggest(pid: str, rid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    return _run(db, wbpilot.suggest, db, _project(db, ctx, pid), rid, _chat(), ctx.user.id)
+
+
+@router.put("/marks/{mid}/decision")
+def mark_decision(pid: str, mid: str, body: DecisionBody, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    return _run(db, wbpilot.decide, db, _project(db, ctx, pid), mid, body.decision, ctx.user.id, ctx.user.role)
+
+
+@router.post("/pilot-rounds/{rid}/next-version")
+def pilot_next_version(pid: str, rid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    p = _project(db, ctx, pid)
+    out = _run(db, wbpilot.next_version, db, p, rid, ctx.user.id)
+    audit(db, ctx.org_id, ctx.actor, "outline_wb.wbpilot.next_version", pid, ip=ctx.ip, version=out["version"])
+    db.commit()
+    return out
+
+
+@router.put("/ready")
+def pilot_ready(pid: str, body: ReadyBody, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    return _run(db, wbpilot.ready, db, _project(db, ctx, pid), ctx.user.id, body.value)
+
+
+@router.post("/publish/skip-pilot")
+def publish_skip_pilot(pid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    """跳过 Pilot，直接上线 (the user's design, 2026-11-19: no reason to fill in and no audit entry; only the red-line check stays)."""
+    return _run(db, wbpilot.skip_publish, db, _project(db, ctx, pid), ctx.user.id)
+
+
 # ---- 实时看板（访谈直播）----------------------------------------------------------------------------------------------------------
 
 @router.get("/board")
@@ -452,3 +529,23 @@ def room_current_question(iid: str, body: CurrentBody, ctx: Ctx = Depends(requir
         raise HTTPException(409, "AI 主持的场次不需要指定")
     _run(db, board.set_current, db, itv, body.item_uid)
     return {"current": itv.current_item_uid}
+
+
+class RoomMarkBody(BaseModel):
+    note: str = Field(min_length=1, max_length=500)
+    tag: str = Field(default="other", max_length=12)
+
+
+@room_router.get("/interviews/{iid}/pilot-marks")
+def room_pilot_marks(iid: str, ctx: Ctx = Depends(require_roles(*STAFF, "moderator", "observer")), db: Session = Depends(get_db)):
+    """The 标记问题 panel of a pilot room (404 when the interview is not a pilot: the room then shows no panel). Never for the participant."""
+    itv = visible_interview(db, ctx, iid)
+    return _run(db, wbpilot.room_marks, db, itv, ctx.user.role)
+
+
+@room_router.post("/interviews/{iid}/pilot-marks")
+def room_add_pilot_mark(iid: str, body: RoomMarkBody, ctx: Ctx = Depends(require_roles(*STAFF, "moderator", "observer")), db: Session = Depends(get_db)):
+    """Mark a problem during a pilot: only the words are sent; the time and the question number are set by the server."""
+    itv = visible_interview(db, ctx, iid)
+    _run(db, wbpilot.add_room_mark, db, itv, ctx.user.id, ctx.user.role, body.note, body.tag)
+    return _run(db, wbpilot.room_marks, db, itv, ctx.user.role)

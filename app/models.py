@@ -146,6 +146,7 @@ class Interview(Base):
     outline_rev: Mapped[int | None] = mapped_column(Integer, nullable=True)  # that version's edit count at that moment
     outline_snapshot_id: Mapped[str | None] = mapped_column(String(32), nullable=True)  # the frozen copy of the outline this interview runs on, even when the outline is edited meanwhile
     is_pilot: Mapped[bool] = mapped_column(Boolean, default=False)  # a pilot run: its transcript feeds the Pilot correction page
+    pilot_round_id: Mapped[str | None] = mapped_column(String(32), nullable=True)  # the pilot round it belongs to (app/outline_wb, 修正方案第 1 轮第 9 条)
     current_item_uid: Mapped[str | None] = mapped_column(String(32), nullable=True)  # the question the human moderator says is being asked now (app/outline_wb); lines are put under it while it is set
     current_item_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     kind: Mapped[str] = mapped_column(String(10), default="depth")  # depth (1:1) | group (focus group, up to 10 participants; see app/groups.py) | async (a study done alone, any time; see app/studies.py)

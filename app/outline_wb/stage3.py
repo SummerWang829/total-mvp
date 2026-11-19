@@ -199,7 +199,7 @@ def pilot_view(db: Session, proj: Project, iid: str) -> dict:
     notes = {d.line_id: d for d in db.scalars(select(HostDecision).where(HostDecision.interview_id == itv.id))}
     raw = [{"id": ln.id, "speaker": ln.speaker, "text": _text(ln), "at_ms": _at(ln), "item_uid": ln.item_uid, "source": ln.item_source or ""} for ln in _lines(db, itv)]
     lines = [{**ln, "label": now_labels.get(ln["item_uid"] or "") or labels.get(ln["item_uid"] or "", ""), "why": ({"action": notes[ln["id"]].action, "reason": notes[ln["id"]].reason, "saturation": notes[ln["id"]].saturation, "uncovered": notes[ln["id"]].uncovered} if ln["id"] in notes else None)} for ln in raw]
-    marks = [{"id": m.id, "line_id": m.line_id, "quote": m.quote, "tag": m.tag, "tag_text": TAG_TEXT.get(m.tag, m.tag), "note": m.note, "role": m.author_role, "status": m.status, "label": now_labels.get(m.item_uid or "", "")}
+    marks = [{"id": m.id, "line_id": m.line_id, "item_uid": m.item_uid, "quote": m.quote, "tag": m.tag, "tag_text": TAG_TEXT.get(m.tag, m.tag), "note": m.note, "role": m.author_role, "status": m.status, "label": now_labels.get(m.item_uid or "", "")}
              for m in db.scalars(select(Mark).where(Mark.interview_id == itv.id).order_by(Mark.created_at))]
     finds = auto_findings(snap_items, raw)
     for f in finds:
@@ -229,13 +229,16 @@ def suggest_fixes(db: Session, proj: Project, iid: str, chat, user_id: str = "")
     ctx = sess.context_of(db, proj, st)
     items = {i.item_uid: i for i in svc.items_of(db, v.id)}
     groups: dict[str, dict] = {}
+    decided = {x.id for x in db.scalars(select(Mark).where(Mark.interview_id == itv.id, Mark.decision != ""))}
     for m in pv["marks"]:
-        if m["status"] == "open":
+        if m["status"] == "open" and m["id"] not in decided:
             line = next((ln for ln in pv["lines"] if ln["id"] == m["line_id"]), None)
-            g = groups.setdefault((line or {}).get("item_uid") or "", {"marks": [], "finds": []})
+            g = groups.setdefault(m.get("item_uid") or (line or {}).get("item_uid") or "", {"marks": [], "finds": []})
             g["marks"].append(m)
+    kept = {x.auto_key for x in db.scalars(select(Mark).where(Mark.interview_id == itv.id, Mark.origin == "auto"))}   # already a mark (pilot.persist_auto): counted once
     for f in pv["findings"]:
-        groups.setdefault(f["item_uid"] or "", {"marks": [], "finds": []})["finds"].append(f)
+        if f["id"] not in kept:
+            groups.setdefault(f["item_uid"] or "", {"marks": [], "finds": []})["finds"].append(f)
     made: list[Revision] = []
     for uid, g in groups.items():
         it = items.get(uid)
@@ -250,9 +253,9 @@ def suggest_fixes(db: Session, proj: Project, iid: str, chat, user_id: str = "")
             made += svc.propose(db, proj.org_id, o.id, v.id, [{"op": "rewrite", "item_uid": uid, "before": {"text": before}, "after": {"lang": ctx["language"], "text": new}, "reason": "；".join(notes)[:300]}],
                                 proposed_by="ai", source="pilot", source_ref=g["marks"][0]["id"] if g["marks"] else "", quality=q)
         if "material" in dests and it.kind in ("concept", "video", "website", "rating"):
-            made += svc.propose(db, proj.org_id, o.id, v.id, [{"op": "config", "item_uid": uid, "after": {"config": {"note": "；".join(notes)[:200]}}, "reason": "；".join(notes)[:300], "destination": "material"}], source="pilot")
+            made += svc.propose(db, proj.org_id, o.id, v.id, [{"op": "config", "item_uid": uid, "after": {"config": {"note": "；".join(notes)[:200]}}, "reason": "；".join(notes)[:300], "destination": "material"}], source="pilot", source_ref=g["marks"][0]["id"] if g["marks"] else "")
         if "host_engine" in dests or any(f["kind"] == "confused" for f in g["finds"]):
-            made += svc.propose(db, proj.org_id, o.id, v.id, [{"op": "rewrite", "item_uid": uid, "after": {"text": "受访者问“什么意思”时，换个说法再问，不要直接解释产品"}, "reason": "；".join(notes)[:300], "destination": "host_engine"}], source="pilot")
+            made += svc.propose(db, proj.org_id, o.id, v.id, [{"op": "rewrite", "item_uid": uid, "after": {"text": "受访者问“什么意思”时，换个说法再问，不要直接解释产品"}, "reason": "；".join(notes)[:300], "destination": "host_engine"}], source="pilot", source_ref=g["marks"][0]["id"] if g["marks"] else "")
     return {"revisions": [{"id": r.id, "op": r.op, "item_uid": r.item_uid, "before": r.before, "after": r.after, "reason": r.reason, "quality": r.quality, "destination": r.destination, "status": r.status} for r in made], "view": pilot_view(db, proj, iid)}
 
 
@@ -272,18 +275,17 @@ def publish_checks(db: Session, proj: Project) -> dict:
     mods = (st.overview or {}).get("modules", [])
     todo = [m["name"] for m in mods if m.get("status") != "confirmed"]
     checks.append({"id": "modules", "level": "warn", "text": "还有模块没有确认：" + "、".join(todo)} if todo else {"id": "modules", "level": "ok", "text": "每个模块都已确认，总时长 " + str((st.overview or {}).get("minutes", "")) + " 分"})
-    done = db.scalar(select(func.count()).select_from(Interview).where(Interview.project_id == proj.id, Interview.is_pilot.is_(True), Interview.status == "ended")) or 0
-    checks.append({"id": "pilot", "level": "ok", "text": f"已有 {done} 场 pilot 做完"} if done else {"id": "pilot", "level": "block", "text": "还没有做完一场 pilot：必须先用真实受访者（或同事）把大纲试一遍，再发布"})
+    from . import pilot   # the pilot gates (修正方案第 1 轮第 9、10 条): a finished round, 可以正式开始, every mark decided
+    checks += pilot.gates(db, proj)
     openrev = db.scalar(select(func.count()).select_from(Revision).where(Revision.outline_id == o.id, Revision.source == "pilot", Revision.status == "pending")) or 0
     if openrev:
-        checks.append({"id": "pilot_open", "level": "warn", "text": f"pilot 提出的 {openrev} 条修改建议还没处理（接受或拒绝）"})
-    miss = [f.text for f in db.scalars(select(FocusQuestion).where(FocusQuestion.project_id == proj.id)) if not f.item_uid]
-    checks.append({"id": "focus", "level": "block", "text": f"{len(miss)} 个关注问题没有对应的题"} if miss else {"id": "focus", "level": "ok", "text": "每个关注问题都对应到一道题"})
-    last = db.scalar(select(RehearsalRun).where(RehearsalRun.outline_id == o.id).order_by(RehearsalRun.created_at.desc()))
-    if last is None or last.version_id != v.id or last.rev != v.rev:
-        checks.append({"id": "rehearsal", "level": "warn", "text": "还没有模拟预演，或预演之后又改过大纲，建议重新跑一次"})
-    else:
-        checks.append({"id": "rehearsal", "level": "ok", "text": "模拟预演是最新的"})
+        checks.append({"id": "pilot_open", "level": "warn", "text": f"pilot 提出的 {openrev} 条修改建议还没处理"})
+    fq = list(db.scalars(select(FocusQuestion).where(FocusQuestion.project_id == proj.id)))
+    miss = [f.text for f in fq if not f.item_uid and getattr(f, "link_state", "") != "none"]
+    none = [f.text for f in fq if getattr(f, "link_state", "") == "none"]
+    checks.append({"id": "focus", "level": "warn", "text": f"{len(miss)} 个关注问题没有对应的题（不挡发布）"} if miss else {"id": "focus", "level": "ok", "text": "每个关注问题都对应到一道题"})
+    if none:
+        checks.append({"id": "focus_none", "level": "warn", "text": f"{len(none)} 个关注问题暂不对应（不挡发布）"})
     return {"checks": checks, "can_publish": not any(c["level"] == "block" for c in checks)}
 
 
@@ -293,16 +295,22 @@ def versions(db: Session, proj: Project) -> list[dict]:
     o, v, st = sess.ensure(db, proj)
     rows = list(db.scalars(select(OutlineVersion).where(OutlineVersion.outline_id == o.id).order_by(OutlineVersion.number.desc())))
     out = []
+    from .models import PilotRound
+    rounds = list(db.scalars(select(PilotRound).where(PilotRound.outline_id == o.id)))
+    all_pil = list(db.scalars(select(Interview).where(Interview.project_id == proj.id, Interview.is_pilot.is_(True), Interview.purged_at.is_(None))))
     for x in rows:
-        pil = [i for i in db.scalars(select(Interview).where(Interview.project_id == proj.id, Interview.is_pilot.is_(True), Interview.purged_at.is_(None)))
-               if i.outline_version_id == x.id or (i.outline_version_id is None and i.status != "ended" and x.id == v.id)]   # a pilot not started yet runs on the current draft
+        mine = [r for r in rounds if r.version_id == x.id]
+        ended = sum(1 for r in mine if any(i.pilot_round_id == r.id and i.status == "ended" for i in all_pil))
+        legacy = [i for i in all_pil if not i.pilot_round_id and (i.outline_version_id == x.id or (i.outline_version_id is None and i.status != "ended" and x.id == v.id))]   # pilots set before rounds existed
+        ended += 1 if any(i.status == "ended" for i in legacy) else 0
+        live = any(r.status == "planned" for r in mine) or any(i.status != "ended" for i in legacy)
         used = svc.usage_count(db, x.id)
         source = x.summary if x.summary.startswith("Pilot") else ("生成大纲" if not x.base_version_id else "")
-        if not source and not used and not pil and x.id != v.id:
+        if not source and not used and not mine and not legacy and x.id != v.id:
             continue
-        state = x.status if x.status in ("published", "superseded") else ("pilot" if pil else "draft")
+        state = x.status if x.status in ("published", "superseded") else ("pilot" if live else "draft")
         out.append({"id": x.id, "number": x.number, "rev": x.rev, "status": x.status, "state": state, "summary": x.summary, "source": source or "手动新建（旧）",
-                    "pilots": sum(1 for i in pil if i.status == "ended"), "pilots_open": sum(1 for i in pil if i.status != "ended"), "used_by": used, "current": x.id == v.id})
+                    "pilots": ended, "pilots_open": 1 if live and not ended else 0, "skipped": x.pilot_skipped, "round": max([r.number for r in mine] or [0]), "used_by": used, "current": x.id == v.id})
     return out
 
 
@@ -325,6 +333,11 @@ def publish(db: Session, proj: Project, user_id: str = "") -> dict:
     chk = publish_checks(db, proj)
     if not chk["can_publish"]:
         raise svc.OutlineError("还不能发布：" + "；".join(c["text"] for c in chk["checks"] if c["level"] == "block"))
+    return do_publish(db, proj, o, v, st)
+
+
+def do_publish(db: Session, proj: Project, o: Outline, v: OutlineVersion, st) -> dict:
+    """Make `v` the published version (the others published before become 已被替代) and keep the older pages' outline text in step."""
     for other in db.scalars(select(OutlineVersion).where(OutlineVersion.outline_id == o.id, OutlineVersion.status == "published", OutlineVersion.id != v.id)):
         other.status = "superseded"
     v.status = "published"
@@ -371,9 +384,7 @@ def pilot_summary(db: Session, proj: Project) -> dict:
             items.append({"kind": "mark", "pilot": p["title"], "level": TAG_LEVEL.get(m["tag"], "info"), "dest": TAG_DEST.get(m["tag"], "outline"), "label": m["label"], "text": f"{m['tag_text']}：{m['quote']}" + (f"（{m['note']}）" if m["note"] else ""), "who": "客户" if m["role"] == "client" else "研究员", "status": m["status"]})
         for f in pv["findings"]:
             items.append({"kind": "auto", "pilot": p["title"], "level": LEVEL_OF.get(f["kind"], "info"), "dest": f["destination"], "label": f.get("label", ""), "text": f["text"], "who": "系统", "status": "open"})
-    last = db.scalar(select(RehearsalRun).where(RehearsalRun.outline_id == o.id).order_by(RehearsalRun.created_at.desc()))
-    for f in (last.findings if last else []):
-        items.append({"kind": "rehearsal", "pilot": "模拟预演", "level": "watch", "dest": f.get("destination", "outline"), "label": f.get("label", ""), "text": f["text"], "who": "系统", "status": "open"})
+    # (the AI 快速检查 — formerly 模拟预演 — is only a reference: its findings are not pilot findings, 修正方案第 1 轮第 9 条)
     revs = list(db.scalars(select(Revision).where(Revision.outline_id == o.id, Revision.source == "pilot").order_by(Revision.created_at)))
     by_dest = {d: {"label": lab, "n": 0, "open": 0} for d, lab in DEST_LABEL.items()}
     for it in items:

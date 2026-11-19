@@ -7,7 +7,7 @@
   const FORMAT = { audio: "纯音频", text: "文字访谈", text_voice: "文字+语音转录", video: "视频", video_screen: "视频+屏幕共享" };
   const KIND_LABEL = { question: "题目", concept: "概念卡", video: "视频片段", website: "网站任务", rating: "打分题", note: "说明" };
   const S = { pid: "", d: null, step: "", mod: "", sel: "", msgs: [], adopt: null, busy: false, form: null, area: "gen", tab: "preview", pv: null, pvIdx: 0, pvLang: "", rh: null, pl: null, sum: null, pil: null, cand: [], pilId: "", markForm: null, pub: null };
-  const TABS = { test: [["preview", "受访者预览"], ["rehearsal", "模拟预演"]], pilot: [["pilot", "Pilot 修正"], ["publish", "发布"]] };   // 预览测试 and Pilot are two pages of the side menu now (修正方案第 1 轮第 1 条)
+  const TABS = { test: [["preview", "受访者预览"], ["rehearsal", "AI 快速检查"]], pilot: [["round", "本轮 Pilot"], ["pilot", "Pilot 修正"], ["publish", "发布"]] };   // 修正方案第 1 轮第 9 条: 模拟预演 is now AI 快速检查 (only a reference)   // 预览测试 and Pilot are two pages of the side menu now (修正方案第 1 轮第 1 条)
   const STATE = { draft: "草稿", pilot: "Pilot 中", published: "已发布", superseded: "已被替代" };
   const TAG = { unclear: "题目不清楚", leading: "诱导", missed: "漏追问", material: "物料问题", host: "主持问题", long: "太长", other: "其他" };
   const DEST = { outline: "大纲", material: "物料", host_engine: "主持引擎" };
@@ -34,8 +34,9 @@
   /** The version card at the foot of the side menu: one line (修正方案第 1 轮第 1 条); a click opens the Pilot page. */
   function menuState() {
     const st = q("#owstate"); if (!st || !S.d) return;
-    const v = S.d.version, pub = v.status === "published";
-    st.innerHTML = `<a class="ow-vline" href="#/p/${S.pid}/people/pilot" title="打开 Pilot 页"><span class="dot${pub ? " ok" : ""}"></span><b>v${v.number}</b> · ${S.d.pilot_done ? "已做 pilot" : "还没做 pilot"} · ${pub ? "已发布" : "未发布"}</a>`;
+    const v = S.d.version, pub = v.status === "published", rd = S.rd, last = rd && rd.rounds.length ? rd.rounds[rd.rounds.length - 1] : null;
+    const mid = rd && rd.version.skipped ? "跳过 Pilot" : last ? `Pilot 第 ${last.status === "reviewed" ? last.number + 1 : last.number} 轮` : S.d.pilot_done ? "已做 pilot" : "还没做 pilot";
+    st.innerHTML = `<a class="ow-vline" href="#/p/${S.pid}/people/pilot" title="打开 Pilot 页"><span class="dot${pub ? " ok" : ""}"></span><b>v${v.number}</b> · ${mid} · ${pub ? "已发布" : "未发布"}</a>`;
   }
   /** The step bar at the top of 生成大纲 (every reachable step can be clicked) and, on 预览测试 / Pilot, the page's own tabs. */
   function stepBar() {
@@ -160,7 +161,7 @@
     const pend = (S.d?.revisions || []).filter((r) => r.status === "pending" && !S.msgs.some((m) => (m.revs || []).some((x) => x.id === r.id)));
     const sel = S.sel ? S.d.items.find((i) => i.uid === S.sel) : null;
     return `<div class="h"><b>小星星助手</b>${sel ? `<span class="ow-pill">已选 ${E(sel.label)} · ${KIND_LABEL[sel.kind]}<a href="#" data-ow="unsel" aria-label="取消选择"> ×</a></span>` : ""}</div>
-      <div class="m" id="ow-msgs"><div class="bub">${S.area !== "gen" ? ({ preview: "这是受访者真实会看到的样子。切换语言看每种语言的版本；概念卡带受访者编号水印。", rehearsal: "模拟预演只看方向：我用三种不同的受访者把大纲走一遍，告诉你哪里时间不够、哪里可能听不懂。", pilot: "选一句话点“圈出”，写下问题；也可以直接点“生成修改建议”，我会把标记和自动发现合并成修改，每条写明去向。客户只能圈和写意见。", publish: "发布前先看检查。发布之后新场次会用这一版；仍然可以继续改。" }[S.tab]) : S.step === "overview" ? "总览按你的设定排好了。追问深度我按每个模块的目的给了默认值，你可以直接改；下面有建议，可以多选后一起采纳。" : S.step === "questions" ? "选中一道题，再告诉我怎么改；我给出的修改只是“待定”，点“接受”才会写进大纲。" : "我先把项目里已有的信息读了一遍，还缺的在左边问你。"}</div>
+      <div class="m" id="ow-msgs"><div class="bub">${S.area !== "gen" ? ({ preview: "这是受访者真实会看到的样子。切换语言看每种语言的版本；概念卡带受访者编号水印。", rehearsal: "AI 快速检查只看方向、只作参考：我用三种不同的受访者把大纲走一遍，告诉你哪里时间不够、哪里可能听不懂。", round: "先选：做 Pilot（推荐），或者客户不做时跳过 Pilot 直接上线。发起一轮后，被邀请的人在直播间里可以按 M 标记问题。", pilot: "每条标记都要处理：接受、拒绝或暂缓；也可以在笔录里选一句话点“圈出”，写下问题；也可以直接点“生成修改建议”，我会把标记和自动发现合并成修改，每条写明去向。客户只能圈和写意见。", publish: "发布前先看检查。发布之后新场次会用这一版；仍然可以继续改。" }[S.tab]) : S.step === "overview" ? "总览按你的设定排好了。追问深度我按每个模块的目的给了默认值，你可以直接改；下面有建议，可以多选后一起采纳。" : S.step === "questions" ? "选中一道题，再告诉我怎么改；我给出的修改只是“待定”，点“接受”才会写进大纲。" : "我先把项目里已有的信息读了一遍，还缺的在左边问你。"}</div>
       ${S.msgs.map((m) => `<div class="bub ${m.me ? "me" : ""}">${E(m.text)}</div>${(m.revs || []).map((r) => revCard(S.d.revisions.find((x) => x.id === r.id) || r)).join("")}`).join("")}${pend.map(revCard).join("")}</div>
       ${sg.length ? `<div class="ow-sug"><div class="t"><b>建议</b>（最多 3 条，可多选）<span class="ow-pill">已选 ${S.adopt.size}</span></div>${sg.map((s) => `<label><input type="checkbox" aria-label="${E(s.title)}" data-ow-sg="${s.id}"${S.adopt.has(s.id) ? " checked" : ""}><span><b>${E(s.title)}</b><small>${E(s.reason)}${s.basis ? `（依据：“${E(s.basis)}”）` : ""}</small><i class="x" data-ow-dis="${s.id}">不再提醒</i></span></label>`).join("")}<button type="button" class="p s" data-ow="adopt"${S.adopt.size ? "" : " disabled"}>采纳所选，重排结构</button></div>` : ""}
       <form class="f" id="ow-form"><textarea class="ow-ta" id="ow-in" aria-label="对小星星助手说" rows="2" placeholder="跟 AI 说……"></textarea><button type="submit" class="p s">发送</button></form>`;
@@ -184,10 +185,10 @@
   function rehearsalView() {
     const r = S.rh; if (!r) return `<div class="card ow-card mut">正在读取……</div>`;
     const last = r.runs[0];
-    const kv = last ? `<div class="ow-kv"><div><span class="mut sm">场数</span><b>${last.sessions}</b></div><div><span class="mut sm">平均时长</span><b>${last.avg_minutes} 分</b><span class="sm mut">计划 ${last.planned} 分</span></div><div><span class="mut sm">必问覆盖</span><b>${Math.round(last.must_cover_rate * 100)}%</b></div><div><span class="mut sm">发现</span><b>${last.findings.length} 个</b></div></div>` : `<div class="mut">还没有跑过。点右上角“运行 3 场模拟”。</div>`;
+    const kv = last ? `<div class="ow-kv"><div><span class="mut sm">场数</span><b>${last.sessions}</b></div><div><span class="mut sm">平均时长</span><b>${last.avg_minutes} 分</b><span class="sm mut">计划 ${last.planned} 分</span></div><div><span class="mut sm">必问覆盖</span><b>${Math.round(last.must_cover_rate * 100)}%</b></div><div><span class="mut sm">发现</span><b>${last.findings.length} 个</b></div></div>` : `<div class="mut">还没有跑过。点右上角“运行 AI 快速检查”。</div>`;
     const fr = last ? last.findings.map((f) => `<tr><td>${E(f.label)}</td><td>${E(f.text)}</td><td><span class="ow-pill">${DEST[f.destination] || "大纲"}</span></td><td><button type="button" class="s" data-ow="rh-fix" data-uid="${f.item_uid}" data-t="${E(f.text)}">生成修改建议</button></td></tr>`).join("") : "";
-    return `<div class="ow-row"><b>模拟预演</b><span class="ow-pill">基于 v${r.version.number} · 第 ${r.version.rev} 次修改</span>${last && last.stale ? `<span class="ow-pill warn">预演之后又改过大纲</span>` : ""}<span class="sp"></span><button type="button" class="p" data-ow="rh-run">运行 3 场模拟</button></div>
-      <div class="card ow-card"><h3>${last ? `上一次预演 · ${E(last.at.replace("T", " "))}` : "预演"}</h3>${kv}<div class="sm mut" style="margin-top:8px">${E(r.note)}</div></div>
+    return `<div class="ow-row"><b>AI 快速检查</b><span class="ow-pill warn">仅供参考，不算 pilot，也不是发布的前提</span><span class="ow-pill">基于 v${r.version.number} · 第 ${r.version.rev} 次修改</span>${last && last.stale ? `<span class="ow-pill warn">检查之后又改过大纲</span>` : ""}<span class="sp"></span><button type="button" class="p" data-ow="rh-run">运行 AI 快速检查</button></div>
+      <div class="card ow-card"><h3>${last ? `上一次检查 · ${E(last.at.replace("T", " "))}` : "AI 快速检查"}</h3>${kv}<div class="sm mut" style="margin-top:8px">${E(r.note)}</div></div>
       ${last ? `<div class="card ow-card"><h3>发现的问题</h3><table class="ow-tbl"><thead><tr><th style="width:56px">位置</th><th>问题</th><th style="width:90px">去向</th><th style="width:130px"></th></tr></thead><tbody>${fr || `<tr><td colspan="4" class="mut">没有发现问题。</td></tr>`}</tbody></table></div>` : ""}`;
   }
 
@@ -210,7 +211,7 @@
   function pilotView() {
     if (!S.pl) return `<div class="card ow-card mut">正在读取……</div>`;
     const pick = (S.cand || []).length ? `<div class="ow-add"><select class="ow-sel" id="ow-cand" aria-label="选一场访谈">${S.cand.map((x) => `<option value="${x.id}">${E(x.title)}（${{ scheduled: "待开始", live: "进行中", ended: "已结束" }[x.status] || x.status}）</option>`).join("")}</select><button type="button" class="s" data-ow="pil-set">设为 pilot</button></div>` : `<div class="mut">这个项目还没有访谈可以设为 pilot。</div>`;
-    if (!S.pl.length) return `<div class="ow-row"><b>Pilot 修正</b></div>${summaryCard()}<div class="card ow-card"><h3>选一场访谈作为 pilot</h3>${pick}</div>`;
+    if (!S.pl.length) return reviewCard();
     const pv = S.pil; if (!pv) return `<div class="card ow-card mut">正在读取……</div>`;
     const sel = S.pl.length > 1 ? `<select class="ow-sel" aria-label="选择 pilot" data-ow-pil>${S.pl.map((x) => `<option value="${x.id}"${x.id === S.pilId ? " selected" : ""}>${E(x.title)}</option>`).join("")}</select>` : "";
     const lines = pv.lines.map((ln) => {
@@ -223,15 +224,63 @@
     }).join("");
     const finds = pv.findings.filter((f) => !f.line_id).map((f) => `<tr><td style="width:64px">${E(f.label || "—")}</td><td>${E(f.text)}</td></tr>`).join("");
     const marks = pv.marks.map((m) => `<tr><td>${m.role === "client" ? "客户" : "研究员"}</td><td>“${E(m.quote)}”</td><td><span class="ow-pill">${E(m.tag_text)}</span></td><td>${E(m.note)}</td><td><span class="ow-pill ${m.status === "open" ? "warn" : "ok"}">${m.status === "open" ? "待处理" : "已解决"}</span></td></tr>`).join("");
-    return `<div class="ow-row"><b>Pilot 修正</b>${sel}<span class="ow-pill">${pv.moderation === "ai" ? "AI 主持" : "真人主持"}</span><span class="sp"></span><button type="button" data-ow="pil-new">再设一场</button><button type="button" class="p" data-ow="pil-suggest">生成修改建议</button></div>
-      ${summaryCard()}<div class="card ow-card">${lines || `<div class="mut">这场 pilot 还没有笔录。</div>`}</div>
+    return `${reviewCard()}<div class="ow-row"><b>笔录</b>${sel}<span class="ow-pill">${pv.moderation === "ai" ? "AI 主持" : "真人主持"}</span><span class="sm mut">可以选一句话“圈出”，补一条标记</span></div>
+      <div class="card ow-card">${lines || `<div class="mut">这场 pilot 还没有笔录。</div>`}</div>
       ${finds ? `<div class="card ow-card"><h3>其他自动发现</h3><table class="ow-tbl"><tbody>${finds}</tbody></table></div>` : ""}
       <div class="card ow-card"><h3>标记</h3><table class="ow-tbl"><thead><tr><th style="width:90px">谁圈的</th><th>引用</th><th style="width:110px">标签</th><th>意见</th><th style="width:80px">状态</th></tr></thead><tbody>${marks || `<tr><td colspan="5" class="mut">还没有标记。</td></tr>`}</tbody></table></div>`;
   }
+  // ---- 真人 Pilot 多轮（修正方案第 1 轮第 9 条，效果图 qa_shots/fix1_batch2_mockup.html）------------------------------------------------
+  const HOST = { ai: "AI 主持", human: "真人主持" };
+  const DEC = [["accepted", "接受"], ["rejected", "拒绝"], ["deferred", "暂缓"]];
+  const clock = (ms) => (ms == null ? "—" : `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, "0")}`);
+  function roundView() {
+    const rd = S.rd; if (!rd) return `<div class="card ow-card mut">正在读取……</div>`;
+    const choose = rd.can_skip && !S.startOpen ? `<div class="card ow-card"><h3>这一版大纲怎么上线？</h3><div class="ow-two">
+        <div class="ow-choice"><b>做 Pilot（推荐）</b><p class="sm mut">先在直播间真的访一场，标记问题、修正出新版本，再上线。</p><button type="button" data-ow="rd-open">发起第 1 轮 Pilot</button></div>
+        <div class="ow-choice on"><b>跳过 Pilot，直接上线</b><p class="sm mut">客户看完大纲就要开始时用。直接发布当前这一版 v${rd.version.number}，正式场次马上可以用。</p><button type="button" class="p" data-ow="rd-skip">跳过 Pilot，直接上线</button></div></div></div>` : "";
+    const ask = S.skipAsk ? `<div class="card ow-card ow-ask"><h3>跳过 Pilot，直接上线 v${rd.version.number}？</h3>${S.pub ? S.pub.checks.filter((c) => ["quality", "empty", "modules"].includes(c.id)).map((c) => chk(c.id === "modules" && c.level !== "ok" ? { ...c, level: "warn", text: c.text + "（不挡上线）" } : c)).join("") : `<div class="mut">正在检查……</div>`}
+        <p class="sm mut">上线后仍然可以改大纲；改了以后新开始的场次用新内容，已开始的不受影响。</p><div class="ow-actions"><button type="button" class="p" data-ow="rd-skip-ok">确认上线</button><button type="button" data-ow="rd-skip-cancel">取消</button></div></div>` : "";
+    const rows = rd.rounds.map((r) => `<tr><td><b>第 ${r.number} 轮</b></td><td>v${r.version}</td><td>${r.interviews.map((i) => `${E(i.who || "受访者")} · ${E(i.scheduled_at ? i.scheduled_at.replace("T", " ").slice(0, 16) : "时间待定")} · ${HOST[i.moderation] || "真人主持"} · ${{ scheduled: "待开始", live: "进行中", ended: "已结束" }[i.status] || "待开始"}`).join("<br>") || "还没有场次"}</td>
+        <td><span class="ow-pill ${r.status === "reviewed" ? "" : "warn"}">${r.status === "reviewed" ? "已修正" : r.ended ? "待修正" : "进行中"}</span></td><td>${r.marks ? `接受 ${r.accepted} · 拒绝 ${r.rejected} · 暂缓 ${r.deferred}${r.open ? ` · 待处理 ${r.open}` : ""}` : "—"}${r.next_version ? ` → 生成 v${r.next_version}` : ""}</td></tr>`).join("");
+    const table = rd.rounds.length ? `<div class="card ow-card"><h3>各轮 Pilot</h3><table class="ow-tbl"><thead><tr><th style="width:80px">轮次</th><th style="width:70px">用的大纲</th><th>场次</th><th style="width:90px">状态</th><th>结果</th></tr></thead><tbody>${rows}</tbody></table></div>` : "";
+    const n = rd.rounds.length && rd.rounds[rd.rounds.length - 1].status !== "reviewed" ? rd.rounds[rd.rounds.length - 1].number : rd.next_number;
+    const parts = (S.parts || []).filter((x) => !x.anonymized);
+    const form = (!rd.can_skip || S.startOpen) ? `<div class="card ow-card"><h3>发起第 ${n} 轮 Pilot</h3><div class="ow-form">
+        <span class="k">大纲</span><span>v${rd.version.number}</span>
+        <span class="k">主持方式</span><span>${HOST[rd.host] || "真人主持"} <span class="sm mut">（按立项的选择）</span></span>
+        <span class="k">时间</span><span><input class="ow-in" id="ow-r-time" type="datetime-local" aria-label="Pilot 时间"></span>
+        <span class="k">受访者</span><span><span class="ow-seg"><button type="button" class="${S.rpk !== "col" ? "on" : ""}" data-ow="rd-pk" data-v="list">从名单选</button><button type="button" class="${S.rpk === "col" ? "on" : ""}" data-ow="rd-pk" data-v="col">同事</button></span>
+          ${S.rpk === "col" ? `<input class="ow-in" id="ow-r-name" aria-label="同事姓名" placeholder="姓名"> <input class="ow-in" id="ow-r-email" type="email" aria-label="同事邮箱" placeholder="邮箱">`
+            : parts.length ? `<select class="ow-sel" id="ow-r-part" aria-label="选一位受访者">${parts.map((x) => `<option value="${x.id}">${E(x.code || "")} · ${E(x.name)}</option>`).join("")}</select>` : `<span class="mut sm">名单里还没有人，选“同事”</span>`}</span>
+        <span class="k">邮件邀请旁听</span><span class="ow-mem">${rd.people.map((u) => `<label><input type="checkbox" data-ow-w="${u.id}" checked> ${E(u.name)}<span class="mut sm">（${E(u.role_name)}）</span></label>`).join("")}</span>
+        <span></span><span class="sm mut">他们收到一封邮件，里面是直播间链接；用自己的账号登录后隐身旁听，可以标记问题。${rd.mail ? "" : "没配邮件服务：发起后在这里显示链接让你复制。"}</span>
+        <span></span><span><button type="button" class="p" data-ow="rd-start">发起第 ${n} 轮，发送邀请</button>${rd.can_skip ? ` <button type="button" data-ow="rd-close">返回</button>` : ""}</span></div>
+        ${(S.started || []).length ? `<div class="ow-links">${S.started.map((w) => `<div><b>${E(w.name)}</b> ${w.status === "queued" ? `<span class="ow-pill ok">邮件已发出</span>` : `<span class="ow-pill">复制链接</span> <code>${E(w.link)}</code>`}</div>`).join("")}</div>` : ""}</div>` : "";
+    return ask + choose + table + form;
+  }
+  function reviewCard() {
+    const rd = S.rd, rv = S.rv;
+    if (!rd) return "";
+    if (!rd.rounds.length) return `<div class="card ow-card mut">还没有发起 Pilot。到“本轮 Pilot”发起一轮${rd.can_skip ? "，或者选“跳过 Pilot，直接上线”" : ""}。</div>`;
+    if (!rv) return `<div class="card ow-card mut">正在读取……</div>`;
+    const sel = rd.rounds.length > 1 ? `<select class="ow-sel" aria-label="选择一轮" data-ow-rid>${rd.rounds.map((r) => `<option value="${r.id}"${r.id === S.rid ? " selected" : ""}>第 ${r.number} 轮 · v${r.version}</option>`).join("")}</select>` : "";
+    const done = rv.status === "reviewed", c = rv.counts;
+    const canNext = !done && rv.ended > 0 && !c.open;
+    const rows = rv.marks.map((m) => `<tr><td class="sm">${E(m.who)} · ${clock(m.at_ms)}${m.label ? ` · ${E(m.label)}` : ""}</td><td>${E(m.note)}</td>
+        <td class="sm">${m.suggestions.length ? m.suggestions.map((x) => `${E(DEST[x.destination] || "大纲")}：${E(x.after?.text || x.after?.config?.note || "")}${x.blocked ? ` <span class="ow-pill bad">碰红线</span>` : ""}`).join("<br>") : `<span class="mut">（没有修改建议）</span>`}</td>
+        <td><span class="ow-dec">${DEC.map(([k, l]) => `<button type="button" class="${m.decision === k ? "on" : ""}" data-ow-dec="${k}" data-id="${m.id}"${done ? " disabled" : ""}>${l}</button>`).join("")}</span></td></tr>`).join("");
+    return `<div class="card ow-card ow-row2"><b>第 ${rv.number} 轮 · 大纲 v${rv.version}</b>${sel}<span class="ow-pill ${rv.ended ? "ok" : "warn"}">${rv.ended ? `${rv.ended}/${rv.interviews} 场已结束` : "还没有结束的场次"}</span>${done ? `<span class="ow-pill">已生成 v${rv.next_version}</span>` : ""}<span class="sp"></span>
+        ${done ? "" : `<button type="button" data-ow="rv-suggest">生成修改建议</button><button type="button" class="p" data-ow="rv-next"${canNext ? "" : " disabled"} title="${canNext ? "" : rv.ended ? "每条标记都要先处理" : "这一轮还没有做完一场"}">用接受的修改生成 v${rd.version.number + 1}</button>`}
+        <button type="button" data-ow="rv-ready" class="${rd.version.ready ? "on" : ""}">${rd.version.ready ? "✓ 已确认可以正式开始" : "可以正式开始"}</button></div>
+      <div class="card ow-card"><h3>这一轮的标记 <span class="mut sm">（${c.marks} 条，都要处理：接受 / 拒绝 / 暂缓）</span></h3>
+        <table class="ow-tbl"><thead><tr><th style="width:170px">谁 · 时间 · 题号</th><th>标记</th><th>修改建议</th><th style="width:190px">处理</th></tr></thead><tbody>${rows || `<tr><td colspan="4" class="mut">还没有标记。</td></tr>`}</tbody></table>
+        <div class="sm mut" style="margin-top:8px">接受的修改不会改动 v${rv.version} 本身：生成下一版时，复制 v${rv.version} 再写入这些修改，v${rv.version} 原样保留。</div></div>`;
+  }
+
   const fmtT = (ms) => { const t = Math.floor((ms || 0) / 1000); return [Math.floor(t / 3600), Math.floor(t / 60) % 60, t % 60].map((x) => String(x).padStart(2, "0")).join(":"); };
   function publishView() {
     const p = S.pub; if (!p) return `<div class="card ow-card mut">正在读取……</div>`;
-    const pil = (v) => (v.pilots ? `${v.pilots} 轮` : v.pilots_open ? "进行中" : "还没做");
+    const pil = (v) => (v.skipped ? "跳过" : v.pilots ? `${v.pilots} 轮` : v.pilots_open ? "进行中" : "还没做");
     const vr = p.versions.map((v) => `<tr><td><b>v${v.number}</b>${v.current ? " · 当前" : ""}</td><td>${E(v.source)}</td><td><span class="ow-pill ${v.state === "published" ? "ok" : v.state === "pilot" ? "warn" : ""}">${STATE[v.state] || "草稿"}</span></td><td class="c">${pil(v)}</td><td class="c">${v.used_by} 场</td></tr>`).join("");
     return `<div class="ow-row"><b>发布</b><span class="ow-pill">v${S.d.version.number} · 第 ${S.d.version.rev} 次修改</span><span class="sp"></span><button type="button" class="p" data-ow="pub-go"${p.can_publish ? "" : " disabled"}>发布这一版</button></div>
       <div class="card ow-card"><h3>发布前检查</h3>${p.checks.map(chk).join("")}</div>
@@ -243,7 +292,8 @@
     try {
       if (S.tab === "preview") { S.pv = await call(`/preview${S.pvLang ? "?lang=" + S.pvLang : ""}`); S.pvLang = S.pv.language; }
       else if (S.tab === "rehearsal") S.rh = await call("/rehearsal");
-      else if (S.tab === "pilot") { const r = await call("/pilots"); S.pl = r.pilots; S.cand = r.candidates; S.sum = await call("/pilot-summary"); S.pil = null; if (S.pl.length) { if (!S.pl.some((x) => x.id === S.pilId)) S.pilId = S.pl[0].id; S.pil = await call(`/pilots/${S.pilId}`); } }
+      else if (S.tab === "round") { S.rd = await call("/pilot-rounds"); S.parts = await api(`/projects/${S.pid}/participants`).catch(() => []); }
+      else if (S.tab === "pilot") { S.rd = await call("/pilot-rounds"); const rs = S.rd.rounds; if (!rs.some((x) => x.id === S.rid)) S.rid = rs.length ? rs[rs.length - 1].id : ""; S.rv = S.rid ? await call(`/pilot-rounds/${S.rid}`) : null; const r = await call("/pilots"); S.pl = r.pilots; S.cand = r.candidates; S.sum = await call("/pilot-summary"); S.pil = null; if (S.pl.length) { if (!S.pl.some((x) => x.id === S.pilId)) S.pilId = S.pl[0].id; S.pil = await call(`/pilots/${S.pilId}`); } }
       else if (S.tab === "publish") S.pub = await call("/publish/check");
     } catch { /* toast shown */ }
     paint();
@@ -254,7 +304,7 @@
     const root = q(S.area === "gen" ? "#owroot" : "#owroot3"); if (!root) return;
     if (!S.d) { root.innerHTML = `<div class="card ow-card mut">正在读取……</div>`; return; }
     const keep = { y: q("#owmain")?.scrollTop || 0, chat: q("#ow-msgs")?.scrollTop || 0, focusId: document.activeElement?.id || "" };
-    const view = S.area !== "gen" ? { preview: previewView, rehearsal: rehearsalView, pilot: pilotView, publish: publishView }[S.tab] : ({ goal: goalView, people: peopleView, overview: overviewView, questions: questionsView, focus: focusView }[S.step] || goalView);
+    const view = S.area !== "gen" ? { preview: previewView, rehearsal: rehearsalView, round: roundView, pilot: pilotView, publish: publishView }[S.tab] : ({ goal: goalView, people: peopleView, overview: overviewView, questions: questionsView, focus: focusView }[S.step] || goalView);
     const body = S.area === "gen" && S.step === "questions" ? `<div class="ow-qwrap">${tocHtml()}<div>${view()}</div></div>` : view();
     root.innerHTML = `<div class="ow${S.busy ? " busy" : ""}"><div class="ow-main" id="owmain">${stepBar()}${body}${S.area === "gen" ? stepNav() : ""}</div><aside class="ow-chat" id="owchat">${chatHtml()}</aside></div>`;
     q("#owmain").scrollTop = keep.y; const m = q("#ow-msgs"); if (m) m.scrollTop = keep.chat || m.scrollHeight;
@@ -264,9 +314,10 @@
   const num = (s) => parseFloat(val(s)) || 0;
 
   async function onClick(e) {
-    const t = e.target.closest("[data-ow-tab],[data-ow],[data-ow-ans],[data-ow-freeok],[data-ow-sel],[data-ow-del],[data-ow-ins],[data-ow-rev],[data-ow-dis],[data-ow-step],[data-ow-mod]"); if (!t) return;
+    const t = e.target.closest("[data-ow-tab],[data-ow-dec],[data-ow],[data-ow-ans],[data-ow-freeok],[data-ow-sel],[data-ow-del],[data-ow-ins],[data-ow-rev],[data-ow-dis],[data-ow-step],[data-ow-mod]"); if (!t) return;
     const d = t.dataset;
     if (d.owTab !== undefined) { e.preventDefault(); S.tab = d.owTab; paint(); return loadTab(); }
+    if (d.owDec !== undefined) { e.preventDefault(); try { S.rv = await call(`/marks/${d.id}/decision`, "PUT", { decision: d.owDec }); S.rd = await call("/pilot-rounds"); } catch { /* toast */ } return paint(); }
     if (d.owStep !== undefined) { e.preventDefault(); if (stepOk(d.owStep)) { S.step = d.owStep; paint(); } return; }
     if (d.owMod !== undefined) { e.preventDefault(); S.step = "questions"; S.mod = d.owMod; S.sel = ""; paint(); return; }
     if (d.owAns) return act("/answer", "POST", { slot: d.owAns, value: JSON.parse(d.v) });
@@ -295,6 +346,32 @@
         return paint();
       }
       case "pil-suggest": { S.busy = true; paint(); try { const r = await call(`/pilots/${S.pilId}/suggest`, "POST"); S.pil = r.view; S.d = await call(""); S.msgs.push({ text: r.revisions.length ? `我把标记和自动发现合并成 ${r.revisions.length} 条修改建议，每条写明去向。去向是“主持引擎”的不改大纲，接受后记入训练用例。` : "没有需要修改的地方。", revs: r.revisions }); } catch { /* toast */ } S.busy = false; return paint(); }
+      case "rd-open": S.startOpen = true; return paint();
+      case "rd-close": S.startOpen = false; return paint();
+      case "rd-pk": S.rpk = d.v; return paint();
+      case "rd-skip": S.skipAsk = true; paint(); try { S.pub = await call("/publish/check"); } catch { /* toast */ } return paint();
+      case "rd-skip-cancel": S.skipAsk = false; return paint();
+      case "rd-skip-ok": { S.busy = true; paint(); try { await call("/publish/skip-pilot", "POST"); S.skipAsk = false; S.d = await call(""); toast("已上线：这一版已发布，正式场次可以开始"); } catch { /* toast */ } S.busy = false; return loadTab(); }
+      case "rd-start": {
+        if (S.busy) return;
+        const t = val("#ow-r-time"), watchers = qa("[data-ow-w]").filter((x) => x.checked).map((x) => x.dataset.owW);
+        const picked = val("#ow-r-part"), name = val("#ow-r-name").trim(), email = val("#ow-r-email").trim();   // read before the page is redrawn
+        S.busy = true; paint();
+        try {
+          let pid = picked;
+          if (S.rpk === "col") {
+            if (!name) { toast("写下同事的姓名", true); throw new Error("name"); }
+            pid = (await api(`/projects/${S.pid}/participants`, { method: "POST", body: { name, email, country: "SG", language: S.d.context.language } })).id;
+          }
+          if (!pid) { toast("先选一位受访者", true); throw new Error("who"); }
+          const r = await call("/pilot-rounds", "POST", { participant_id: pid, scheduled_at: t ? new Date(t).toISOString().slice(0, 19) : null, watcher_ids: watchers, send_email: true });
+          S.started = r.watchers; S.startOpen = false; toast(`已发起第 ${r.round} 轮 Pilot`);
+        } catch { /* toast */ }
+        S.busy = false; return loadTab();
+      }
+      case "rv-suggest": { S.busy = true; paint(); try { S.rv = await call(`/pilot-rounds/${S.rid}/suggest`, "POST"); } catch { /* toast */ } S.busy = false; return paint(); }
+      case "rv-next": { S.busy = true; paint(); try { const r = await call(`/pilot-rounds/${S.rid}/next-version`, "POST"); S.d = await call(""); toast(`已生成 v${r.version}（${r.changes} 处修改）`); } catch { /* toast */ } S.busy = false; return loadTab(); }
+      case "rv-ready": { try { await call("/ready", "PUT", { value: !S.rd.version.ready }); } catch { /* toast */ } return loadTab(); }
       case "pub-go": { S.busy = true; paint(); try { await call("/publish", "POST"); S.d = await call(""); S.pub = await call("/publish/check"); toast("已发布"); } catch { /* toast */ } S.busy = false; return paint(); }
       case "goal-next": S.step = "people"; await call("/goal/confirm", "POST").then((v) => { S.d = v; }).catch(() => {}); return paint();
       case "build": S.step = "overview"; return act("/overview", "POST");
@@ -321,6 +398,7 @@
     if (d.owM !== undefined && d.f) return act(`/overview/modules/${d.owM}`, "PUT", { [d.f]: d.f === "minutes" ? parseInt(t.value, 10) : t.value });
     if (d.owI !== undefined && d.f) return act(`/items/${d.owI}`, "PUT", { [d.f]: d.f === "backup" ? t.checked : t.value });
     if (d.owLine !== undefined) { if (!t.value) return paint(); try { await call(`/interviews/${S.pilId}/lines/${d.owLine}/item`, "PUT", { item_uid: t.value }); toast("题号已改，AI 之前对这句编的码作废并重新编"); S.pil = await call(`/pilots/${S.pilId}`); } catch { /* toast */ } return paint(); }
+    if (d.owRid !== undefined) { S.rid = t.value; S.rv = null; paint(); return loadTab(); }
     if (d.owPil !== undefined) { S.pilId = t.value; S.pil = null; paint(); return loadTab(); }
     if (d.owLink !== undefined) return act(`/focus/${d.owLink}`, "PUT", { item_uid: t.value || null });
   }
@@ -360,6 +438,7 @@
       if (S.area !== "gen" && !TABS[S.area].some(([k]) => k === S.tab)) S.tab = TABS[S.area][0][0];
       const fromUrl = (location.hash.split("/")[5] || "").split("?")[0];   // #/p/<id>/people/outline/<step>: a reload stays on that step
       paint();
+      call("/pilot-rounds").then((r) => { S.rd = r; menuState(); }).catch(() => {});   // the version card says which pilot round we are at
       try { S.d = await call(""); S.step = (fromUrl && S.d.steps.some((x) => x.key === fromUrl) && stepOk(fromUrl) ? fromUrl : "") || S.step || S.d.step; S.adopt = null; } catch { return; }
       paint();
       if (S.area !== "gen") loadTab();

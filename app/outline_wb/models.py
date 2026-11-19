@@ -36,6 +36,9 @@ class OutlineVersion(Base):
     base_version_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     summary: Mapped[str] = mapped_column(String(300), default="")  # what changed compared with the base
     rev: Mapped[int] = mapped_column(Integer, default=0)  # +1 at every edit
+    ready_by: Mapped[str] = mapped_column(String(32), default="")  # 修正方案第 1 轮第 9 条: the researcher said "可以正式开始" on this version
+    ready_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    pilot_skipped: Mapped[bool] = mapped_column(Boolean, default=False)  # published without any pilot (跳过 Pilot，直接上线)
     created_by: Mapped[str] = mapped_column(String(32), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
@@ -125,6 +128,7 @@ class Revision(Base):
     train_case_id: Mapped[str] = mapped_column(String(60), default="")  # destination host_engine: the training-set case it was written to
     source: Mapped[str] = mapped_column(String(12), default="editor")  # generate | editor | pilot | board
     source_ref: Mapped[str] = mapped_column(String(32), default="")  # the mark or alert it came from
+    round_id: Mapped[str] = mapped_column(String(32), default="")  # source pilot: the round it came from (applied to the NEXT version, never to the one the round ran on)
     proposed_by: Mapped[str] = mapped_column(String(6), default="ai")  # ai | human
     status: Mapped[str] = mapped_column(String(10), default="pending")  # pending | accepted | rejected
     decided_by: Mapped[str] = mapped_column(String(32), default="")
@@ -148,6 +152,11 @@ class Mark(Base):
     author_id: Mapped[str] = mapped_column(String(32), default="")
     author_role: Mapped[str] = mapped_column(String(12), default="researcher")  # researcher | client
     status: Mapped[str] = mapped_column(String(10), default="open")  # open | resolved
+    at_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)  # a mark made in the room: when, from the interview's start (set by the server, never by the browser)
+    origin: Mapped[str] = mapped_column(String(10), default="transcript")  # room | transcript | auto
+    auto_key: Mapped[str] = mapped_column(String(80), default="")  # origin auto: which automatic finding it is (so it is written once)
+    round_id: Mapped[str] = mapped_column(String(32), default="")  # the pilot round it belongs to
+    decision: Mapped[str] = mapped_column(String(10), default="")  # "" | accepted | rejected | deferred (暂缓)
     resolved_revision_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
@@ -216,5 +225,19 @@ class RehearsalRun(Base):
     must_cover_rate: Mapped[float] = mapped_column(Float, default=0.0)  # 0..1
     findings: Mapped[list] = mapped_column(JSON, default=list)  # problems found (confusing questions, overruns ...)
     eval_report: Mapped[str] = mapped_column(String(200), default="")  # file name under eval_reports/, "" = none
+    created_by: Mapped[str] = mapped_column(String(32), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class PilotRound(Base):
+    """One round of a real pilot (修正方案第 1 轮第 9 条): it runs on one version; what it finds is decided mark by mark; the accepted changes make the next version."""
+    __tablename__ = "pilot_rounds"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
+    org_id: Mapped[str] = mapped_column(String(32), index=True)
+    outline_id: Mapped[str] = mapped_column(ForeignKey("outlines.id"), index=True)
+    version_id: Mapped[str] = mapped_column(String(32))
+    number: Mapped[int] = mapped_column(Integer)  # 1, 2, 3 ... within the outline
+    status: Mapped[str] = mapped_column(String(10), default="planned")  # planned | reviewed (made the next version)
+    next_version_id: Mapped[str] = mapped_column(String(32), default="")
     created_by: Mapped[str] = mapped_column(String(32), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
