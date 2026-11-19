@@ -42,8 +42,8 @@ html body.rfmode .v11app .body2>main{scrollbar-gutter:auto}
 #rfright .rf-total-u{font-size:14px;color:var(--ink2)}
 #rfright .rf-flow-h{margin-top:20px}
 #rfright .rf-flow-part{display:flex;align-items:center;gap:8px;margin:6px 0;padding:8px 10px;border:1px solid var(--line2);border-radius:10px;background:var(--wash)}
-#rfright .rf-flow-no{flex:none;width:22px;height:22px;border-radius:50%;background:var(--pri);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:700}
-#rfright .rf-welcome{font-size:13px;line-height:1.7;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:4px 0 12px}
+#rfright .rf-flow-no{flex:none;width:22px;height:22px;border-radius:50%;background:var(--pri);color:var(--pri-ink,#0B2E25);display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:700}
+#rfright .rf-welcome{font-size:14px;line-height:1.7;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:4px 0 12px}
 #rfright .rf-flow-step{border:1px solid var(--line);border-radius:10px;margin:8px 0;overflow:hidden}
 #rfright .rf-flow-step-hd{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--wash);border-bottom:1px solid var(--line)}
 #rfright .rf-flow-step-hd b{font-size:13px;color:var(--ink)}
@@ -73,7 +73,7 @@ html body.rfmode .v11app .body2>main{scrollbar-gutter:auto}
 #rfws .rq-ic.rq-ic-btn:hover{transform:scale(1.18);box-shadow:0 0 0 3px rgba(11,56,44,.12)}
 #rfws .rq-ic.rq-ic-btn:focus-visible{outline:2px solid var(--pri);outline-offset:2px}
 #rfws .rf-pass-tip{display:inline-flex;align-items:center;gap:5px;margin-left:10px;font-size:12px;font-weight:400;color:var(--mut);white-space:nowrap}
-#rfws .rf-pass-tip .rq-ic{width:15px;height:15px;font-size:10px;line-height:1}
+#rfws .rf-pass-tip .rq-ic{width:18px;height:18px;font-size:12px;line-height:1}
 #rfws .rq-add{min-height:36px;background:none;border:0;padding:4px 0;color:var(--green);font-size:13px;cursor:pointer;text-align:left}
 #rfws .rq-menu{position:absolute;right:8px;top:44px;z-index:30;min-width:200px;background:var(--surface);border:1px solid var(--line2);border-radius:10px;box-shadow:0 8px 22px rgba(11,56,44,.15);padding:6px 0;display:flex;flex-direction:column}
 #rfws .rq-menu.rq-om{top:26px;right:0}
@@ -158,7 +158,7 @@ html body.rfmode .v11app .body2>main{scrollbar-gutter:auto}
 #rfws .rq-stages{display:flex;flex-wrap:wrap;gap:4px;padding:8px 10px;border-bottom:1px solid var(--line);margin-bottom:10px}
 #rfws .rq-stg{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--line);border-radius:999px;background:var(--surface);color:var(--mut);font-size:12px;line-height:22px;padding:0 9px;cursor:pointer;white-space:nowrap}
 #rfws .rq-stg:hover{border-color:var(--ink2);color:var(--ink)}
-#rfws .rq-stg.on{border-color:var(--pri);background:var(--pri);color:#fff;font-weight:700}
+#rfws .rq-stg.on{border-color:var(--pri);background:var(--pri);color:var(--pri-ink,#0B2E25);font-weight:700}
 #rfws .rq-stg.done{border-color:var(--line);color:var(--ink2)}
 #rfws .rq-stg.done span{text-decoration:none}
 
