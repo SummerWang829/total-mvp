@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 
 from sqlalchemy.orm import Session
 
-from .. import ai_prompts, assistant_identity, library_context
+from .. import ai_calls, ai_prompts, assistant_identity, library_context
 from ..config import settings
 from ..models import Project, RecruitForm
 from ..moderator.providers import ChatError, ChatFatalError, ChatFormatError, ModeratorChatProvider, text_extras
@@ -95,7 +95,7 @@ def converse(chat: ModeratorChatProvider, db: Session, project: Project, state: 
     try:
         # A worker thread does not inherit contextvars, so copy the context: text_extras() and the AI
         # call-log company both reach the model call. The hard timeout below is unchanged.
-        with text_extras():
+        with text_extras(), ai_calls.feature_scope("creation.chat"):
             ctx = contextvars.copy_context()
             future = pool.submit(ctx.run, chat.complete, msgs, temperature=settings.ai_temperature)
         raw = future.result(timeout=max(1.0, timeout_s))

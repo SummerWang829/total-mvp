@@ -46,7 +46,7 @@ function rfCard(p, form, rec, plannedN) {
   let ver = "", vers = null;   // the language version being looked at (""/the source = the original) and the versions' states (app/static/rtrans.js)
   const isSource = () => !ver || (vers && ver === vers.source);
   let olSum = null;   // the interview outline as the 访谈 page has it (summary), shown on the right as the 访谈大纲结构
-  const loadOl = () => api(`/projects/${p.id}/outline`).then((r) => { olSum = r.summary || null; drawRight(); }).catch(() => {});
+  const loadOl = () => !STAFF() ? Promise.resolve() : api(`/projects/${p.id}/outline`).then((r) => { olSum = r.summary || null; drawRight(); }).catch(() => {});
   let changedIds = new Set();   // the questions the last change of the dialog touched ("刚改")
   const diffIds = (before, after) => { const b = Object.fromEntries(before.map((q) => [q.id, JSON.stringify(q)])); return new Set(after.filter((q) => b[q.id] !== JSON.stringify(q)).map((q) => q.id)); };
   let htmlLocked = !!form.html_url;   // the saved link is read-only until 编辑 is pressed (2026-11-03)

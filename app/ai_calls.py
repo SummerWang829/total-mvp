@@ -3,6 +3,7 @@
 Only counts, durations and an error *category* are kept. Never the conversation, the prompt text, the model's reply, or a name: those may hold what a
 participant or a researcher said (the same rule as app/moderator/providers.py). Writing the log can never break the call it describes.
 """
+import contextlib
 import contextvars
 import functools
 import logging
@@ -26,6 +27,17 @@ STATUS_OK, STATUS_ERROR = "ok", "error"
 ERR_FORMAT, ERR_CUT, ERR_REFUSED, ERR_TIMEOUT, ERR_NETWORK, ERR_OTHER = "格式错误", "被截断", "服务拒绝", "超时", "网络或服务繁忙", "其他"
 
 _org: contextvars.ContextVar[str] = contextvars.ContextVar("ai_call_org", default="")
+_feature: contextvars.ContextVar[str] = contextvars.ContextVar("ai_call_feature", default="")  # set by code that calls the model from a worker thread, where the stack no longer shows who asked
+
+
+@contextlib.contextmanager
+def feature_scope(key: str) -> Iterator[None]:
+    """Name the feature for model calls made inside this block (and in contexts copied from it, e.g. a worker thread)."""
+    token = _feature.set(key)
+    try:
+        yield
+    finally:
+        _feature.reset(token)
 
 
 class AiCallLog(Base):
@@ -90,7 +102,7 @@ def _feature_of_caller(skip: int) -> str:
         if key:
             return key
         frame = frame.f_back
-    return OTHER_KEY
+    return _feature.get() or OTHER_KEY
 
 
 def _prompt_of(db: Session, org_id: str, feature: str) -> str:

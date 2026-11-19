@@ -97,7 +97,7 @@ def test_hate_or_a_threat_raises_a_red_alert_for_the_team_without_the_words(room
 
 def test_while_a_human_has_taken_over_the_message_is_still_hidden_the_ai_stays_silent_and_the_team_is_told(room):
     org, itv, rec = room
-    assert org.c.post(f"/api/interviews/{itv['id']}/ai/takeover", headers=org.h("moderator")).status_code in (200, 204)
+    assert org.c.post(f"/api/interviews/{itv['id']}/ai/takeover", headers=org.h("researcher")).status_code in (200, 204)   # only admin / researcher / support may take over (2026-11-01)
     n_before = len(_chat(org, itv))
     _say(org, itv, f"傻逼，打电话 {PHONE}")
     chat = _chat(org, itv)

@@ -356,54 +356,40 @@ def run(tmp):
 
         # ---- the researcher's own pages after the interview ----
         cr, pr2 = ctx("researcher", tok["researcher"])
-        pr2.goto(f"{B}/#/i/{iid}/transcript")
-        pr2.wait_for_selector(".rsp .rsp-ln")
-        ok(bool(wait_for(lambda: pr2.locator("#rsp-v").count() == 1 and pr2.get_attribute("#rsp-v", "src"), 15)), "researcher gets a player for the full recording in the respondent window")
-        ok(pr2.locator(".rsp-ln").count() == len(segs), "every transcript line is there and a click on it seeks the video")
-        pr2.locator(".rsp-ln").nth(min(2, len(segs) - 1)).click()
-        ok(wait_for(lambda: pr2.evaluate("document.getElementById('rsp-v').currentTime") > 0 or len(segs) < 3, 5), "clicking a line moves the video to that time")
-        ok(not pr2.is_disabled("#tr"), "transcribe button is enabled once the recording is ready")
+        pr2.goto(f"{B}/#/i/{iid}")   # the respondent window (v2 only since 2026-11-19): recording on top, answers grouped by question below
+        pr2.wait_for_selector(".rsp .rd-hd"); pr2.wait_for_selector("#rd-rest .rd-sec")
+        ok(bool(wait_for(lambda: pr2.locator("#rd-v").count() == 1 and pr2.get_attribute("#rd-v", "src"), 15)), "researcher gets a player for the full recording in the respondent window")
+        said = pr2.inner_text("#rd-rest")
+        ok(all((s["text_orig"] or "")[:12] in said for s in segs if s["speaker"] != "moderator" and s["text_orig"]), "every participant line is in the answers")
+        pr2.locator(".rd-bubble").last.click()
+        ok(wait_for(lambda: pr2.evaluate("document.getElementById('rd-v').currentTime") > 0 or pr2.locator(".rd-bubble").count() < 2, 5), "clicking an answer moves the video to that time")
         pr2.screenshot(path=f"{SHOTS}/e2e_staff_transcript.png", full_page=True)
-        # proofread a line that an approved insight quotes -> that insight must flip to "needs review"
+        # proofread the line that an approved insight quotes -> that insight must flip to "needs review"
         quoted = ins["evidence"][0]["segment_idx"]
-        pr2.locator("[data-edit]").nth(quoted).click()
-        pr2.wait_for_selector("form#f textarea[name=text_zh]")
+        qtext = next(s["text_orig"] for s in segs if s["idx"] == quoted)
+        hit = None
+        for k in range(pr2.locator("[data-rd-edit]").count()):
+            pr2.locator("[data-rd-edit]").nth(k).click(); pr2.wait_for_selector("form#f textarea[name=text_orig]")
+            if pr2.input_value("form#f textarea[name=text_orig]") == qtext:
+                hit = k
+                break
+            pr2.click("form#f #c")
+        ok(hit is not None, "the quoted line can be opened for proofreading from the window")
         pr2.fill("form#f textarea[name=text_zh]", "（人工校对后的中文）")
         pr2.click("form#f button:has-text('保存')")
         pr2.wait_for_selector(".toast:has-text('需要重新复核')")
         ok(call(f"/interviews/{iid}/insights", token=tok["researcher"])[0]["status"] == "needs_review", "editing the quoted line flips the approved insight to needs_review")
         ok(not any(i["status"] == "approved" for i in call(f"/interviews/{iid}/insights", token=tok["researcher"])), "clients no longer see the insight whose quote vanished")
-        # write a new insight by hand from a transcript line (the quote is checked against the transcript)
-        pr2.goto(f"{B}/#/i/{iid}/transcript")
-        pr2.wait_for_selector("[data-ins]")
-        pr2.locator("[data-ins]").nth(1).click()
-        pr2.fill("form#f input[name=theme]", "比价习惯")
-        pr2.fill("form#f textarea[name=statement]", "受访者会先看评价再比价")
-        pr2.click("form#f button:has-text('保存洞察')")
-        pr2.wait_for_selector(".card:has-text('比价习惯')")
+        # hand-written insights, clip preview and per-clip share records were in the old respondent window (removed, user 2026-11-19): the rules behind them are checked through the API
+        ln = next(s for s in segs if s["speaker"] != "moderator" and s["text_orig"])
+        call(f"/interviews/{iid}/insights", {"theme": "比价习惯", "statement": "受访者会先看评价再比价", "evidence": [{"segment_id": ln["id"], "quote": ln["text_orig"], "lang": "orig"}]}, tok["researcher"])
         ok(any(i["theme"] == "比价习惯" and i["kind"] == "manual" for i in call(f"/interviews/{iid}/insights", token=tok["researcher"])), "a hand-written insight with verified evidence is saved")
-        pr2.goto(f"{B}/#/i/{iid}/transcript"); pr2.wait_for_selector("[data-ins]")
-        pr2.locator("[data-ins]").nth(1).click()
-        pr2.fill("form#f input[name=theme]", "编造"); pr2.fill("form#f textarea[name=statement]", "x")
-        pr2.fill("form#f textarea[name=quote]", "this sentence was never said by anyone")
-        n0 = len(errs)
-        pr2.click("form#f button:has-text('保存洞察')")
-        pr2.wait_for_selector(".toast.err")
-        del errs[n0:]  # the browser logs the deliberate 422 as a console error: expected here
-        ok(not any(i["theme"] == "编造" for i in call(f"/interviews/{iid}/insights", token=tok["researcher"])), "a fabricated quote is refused in the UI")
-
-        pr2.goto(f"{B}/#/i/{iid}/clips")
-        pr2.wait_for_selector("[data-pv]")
-        pr2.click("[data-pv]")
-        pr2.wait_for_selector("#cv")
-        ok(bool(pr2.get_attribute("#cv", "src")) and "api/public/media" in pr2.get_attribute("#cv", "src"), "clip preview opens a player")
-        pr2.screenshot(path=f"{SHOTS}/e2e_staff_clip_preview.png")
-        pr2.click("#cx")
-        pr2.click("[data-sl]")
-        pr2.wait_for_selector("[data-rv]")
-        ok("有效" in pr2.inner_text("[id^=sl_]"), "share records list the active link")
-        pr2.click("[data-rv]")  # dialog auto-accepted
-        pr2.wait_for_selector(".tag.bad:has-text('已撤销')")
+        try:
+            call(f"/interviews/{iid}/insights", {"theme": "编造", "statement": "x", "evidence": [{"segment_id": ln["id"], "quote": "this sentence was never said by anyone", "lang": "orig"}]}, tok["researcher"])
+            ok(False, "a fabricated quote is refused")
+        except urllib.error.HTTPError as e:
+            ok(e.code in (400, 422), "a fabricated quote is refused")
+        call(f"/shares/{sh['id']}", None, tok["researcher"], method="DELETE")
         n0 = len(errs)
         ok(ps.evaluate("async (u) => (await fetch(u)).status", B + "/api/public/share/" + sh["token"]) == 404, "a revoked share link stops working immediately")
         time.sleep(0.5); del errs[n0:]  # deliberate 404

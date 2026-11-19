@@ -97,7 +97,7 @@ def compose(itv: Interview, part: Participant, moderator_name: str, link: str | 
     when = local_time(itv.scheduled_at, lang)
     subject = (w["subject_update" if update else "subject"].format(when=when) if when else w["subject_update_any" if update else "subject_any"])
     ai = itv.moderation == "ai"
-    topic = (itv.participant_topic or "").strip() or (itv.title or "").strip()
+    topic = (getattr(itv, "participant_topic", "") or "").strip()   # only a participant-facing topic; the session title is internal (it carries the participant code) and never goes in the letter
     rows = [
         (w["topic"], topic) if topic else None,
         (w["when"], f"{when}（{w['sgt']}）" if when else w["anytime"]),

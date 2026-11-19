@@ -15,8 +15,8 @@ const insEvidence = (hits) => hits.map((h) => `<div class="ins-q" data-nosel>“
 const insAnswer = (r) => (r.insufficient ? `<div class="mut">${esc(r.message)}</div>` : r.answer.map((c, ci) => `<div class="ins-claim"><div data-selk="c:${ci}">${esc(c.text)}</div>${insEvidence(c.evidence)}</div>`).join(""));
 
 async function insightsHub(p, my) {
-  const team = STAFF(), tabs = team ? INS_TABS : [["b", "看板"]];   // a client sees only the focus board (aggregated, de-identified)
-  let tab = sessionStorage.getItem("itab") || (team ? "r" : "b"); if (!tabs.some((t) => t[0] === tab)) tab = tabs[0][0];
+  const team = STAFF(), tabs = team ? INS_TABS : VIEWER() ? [["b", "看板"]] : [["r", "回复"]];   // a client (viewer) sees only the focus board (aggregated, de-identified); moderators and observers see the respondent data only (rule 2026-10-27; /board is not theirs)
+  let tab = sessionStorage.getItem("itab") || tabs[0][0]; if (!tabs.some((t) => t[0] === tab)) tab = tabs[0][0];
   let themesBackfilled = false;   // one automatic theme-label backfill per page load, before the table is drawn
   shell(`${team ? `<div class="hubtabs sub" id="itabs" role="tablist" aria-label="洞察">${team ? `<span class="l2grp">洞察 · AI 分析</span>` : ""}${tabs.map(([k, n]) => `<a href="#" role="tab" data-k="${k}">${n}</a>`).join("")}</div>` : ""}<div id="ipanel" class="ins ins-ws"></div>`, { active: "insights", p });
   document.body.classList.add("rfmode", "pgw");   // the page itself does not scroll: each tab's content scrolls inside its own box

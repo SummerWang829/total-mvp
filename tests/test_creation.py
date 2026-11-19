@@ -170,8 +170,10 @@ def test_a_leading_question_never_reaches_the_outline(org, monkeypatch):
     bad = json.loads(json.dumps(OUTLINE))
     bad["topics"][0]["questions"][0] = "你是不是觉得护手霜很有必要？"
     use(monkeypatch, reply("起草好了。", {"outline": bad}))
-    assert say(org, pid, "起草大纲").status_code == 502
-    assert not (org.c.get(f"/api/projects/{pid}/outline", headers=org.h()).json()["text"] or "").strip()
+    r = say(org, pid, "起草大纲")   # since 2026-11-07 the bad line is dropped (patches.repair_outline) instead of refusing the whole outline
+    text = org.c.get(f"/api/projects/{pid}/outline", headers=org.h()).json()["text"] or ""
+    assert "你是不是觉得护手霜很有必要" not in text
+    assert r.status_code == 502 or OUTLINE["topics"][0]["questions"][1] in text   # either refused, or kept without the leading question
 
 
 def test_what_was_said_is_not_written_to_the_audit_trail(org, monkeypatch):

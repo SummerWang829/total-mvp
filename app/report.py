@@ -79,7 +79,7 @@ def build(db: Session, project: Project, now: datetime, client: bool = False) ->
         summary.append("被多种来源印证的发现：" + "；".join(f"{f.theme}（{'、'.join(pool.KIND_LABEL[k] for k in f.kinds)}）" for f in confirmed[:5]) + "。")
     elif findings:
         summary.append(f"共整理出 {len(findings)} 条发现，目前还没有被两种以上来源印证的。")
-    blocks += [("h1", "摘要")] + ([("bullet", s) for s in summary] if summary else [("p", "这个项目还没有可汇总的数据。")])
+    blocks += [("h1", "摘要")] + [("bullet", s) for s in summary] + ([("p", "这个项目还没有可汇总的数据。")] if len(summary) <= 1 else [])   # the first line is only the project setup, not data
 
     # 研究背景 / 目的 / 目标 / 受访者条件：全部来自本项目立项数据与大纲，不再用占位文案。
     blocks += [("h1", "研究背景与目的")]

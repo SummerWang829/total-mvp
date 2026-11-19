@@ -10,8 +10,8 @@ async function openRespondent(iid, tab) {   // eslint-disable-line no-redeclare
     api(`/interviews/${iid}`),
     api(`/interviews/${iid}/transcript`).catch(() => []),
     staff ? api(`/interviews/${iid}/recordings`).catch(() => []) : [],
-    api(`/interviews/${iid}/timeline/segments`).catch(() => ({ segments: [], needs_generate: false })),
-    api(`/interviews/${iid}/detail`).catch(() => ({ data: {}, needs_generate: false }))
+    staff ? api(`/interviews/${iid}/timeline/segments`).catch(() => ({ segments: [], needs_generate: false })) : { segments: [], needs_generate: false },   // research team only (moderators and observers get 403)
+    staff ? api(`/interviews/${iid}/detail`).catch(() => ({ data: {}, needs_generate: false })) : { data: {}, needs_generate: false }
   ]);
   if (my !== renderSeq) return;
   const segList = Array.isArray(segs) ? segs : [], recList = Array.isArray(recs) ? recs : [];
@@ -74,12 +74,12 @@ async function openRespondent(iid, tab) {   // eslint-disable-line no-redeclare
           <button type="button" data-rd-lang="zh">中文</button>
           <button type="button" data-rd-lang="en">English</button>
         </div>
-        <div class="rd-dd"><button type="button" class="s" id="rd-dl">${L("↓ 下载 ▾", "↓ Export ▾")}</button>
+        ${staff ? `<div class="rd-dd"><button type="button" class="s" id="rd-dl">${L("↓ 下载 ▾", "↓ Export ▾")}</button>
           <div class="rd-ddmenu" id="rd-dlmenu" hidden>
             <button type="button" data-rd-dl="xlsx">${L("导出为 Excel（.xlsx）", "Export as Excel (.xlsx)")}</button>
             <button type="button" data-rd-dl="docx">${L("导出为 Word（.docx）", "Export as Word (.docx)")}</button>
             <button type="button" data-rd-dl="csv">${L("导出逐字稿（.csv）", "Export transcript (.csv)")}</button>
-          </div></div>
+          </div></div>` : ""}
         ${hasNav ? `<button type="button" class="s" id="rsp-prev" ${idx > 0 ? "" : "disabled"}>${L("上一位", "Previous")}</button><button type="button" class="s" id="rsp-next" ${idx < RSP.list.length - 1 ? "" : "disabled"}>${L("下一位", "Next")}</button>` : ""}
         <button type="button" class="s" id="rsp-x" aria-label="${L("关闭", "Close")}">✕</button>
       </div>
@@ -190,7 +190,7 @@ async function openRespondent(iid, tab) {   // eslint-disable-line no-redeclare
   function drawRest() {
     const qaHtml = qa.length ? qa.map((g, i) => `<div class="rd-qcard">
         <div class="rd-qhd"><span class="rd-qno">Q${g.q || i + 1}</span><span class="rd-qtx">${escAttr(askOf(g))}</span></div>
-        <div class="rd-turn"><div class="rd-lbl"><i></i>${L("主持人", "Moderator")}</div><div class="rd-modtxt">${escAttr(askOf(g))}</div></div>
+        <div class="rd-turn"><div class="rd-lbl"><i></i>${it.moderation === "ai" ? L("AI 主持人", "AI moderator") : L("主持人", "Moderator")}</div><div class="rd-modtxt">${escAttr(askOf(g))}</div></div>
         <div class="rd-turn part"><div class="rd-bubble" data-rd-i="${i}" data-rd-at="${g.at}">
             <div class="rd-lbl"><i></i>${L("受访者", "Participant")}</div>
             <div class="rd-acts"><span>${clock(g.at)}</span>${staff && g.parts.length ? `<button type="button" data-rd-edit="${i}" title="${L("校对转写", "Edit transcript")}">✎</button>` : ""}<button type="button" data-rd-seek="${i}" title="${L("播放这一段", "Play this segment")}">▶</button></div>
@@ -336,12 +336,12 @@ async function openRespondent(iid, tab) {   // eslint-disable-line no-redeclare
     $("#f", m).onsubmit = guard(async (ev) => {
       ev.preventDefault(); const fd = new FormData(ev.target);
       const no = String(fd.get("text_orig") || ""), nz = String(fd.get("text_zh") || "");
-      await api(`/transcript/${s.id}`, { method: "PATCH", body: { text_orig: no, text_zh: nz } });
+      const r = await api(`/transcript/${s.id}`, { method: "PATCH", body: { text_orig: no, text_zh: nz } });
       s.text_orig = no; s.text_zh = nz;
       g.text = g.parts.map((p) => p.text_orig || "").join(" ");
       g.zh = g.parts.map((p) => p.text_zh || "").filter(Boolean).join(" ");
       const cell = document.querySelector(`[data-rd-txt="${i}"]`); if (cell) cell.textContent = txtOf(g) || no;
-      m.remove(); toast(L("已保存（已记入审计日志）", "Saved (audit logged)"));
+      m.remove(); toast(r && r.insights_flagged ? L(`已保存，${r.insights_flagged} 条洞察需要重新复核`, `Saved; ${r.insights_flagged} insight(s) need review again`) : L("已保存（已记入审计日志）", "Saved (audit logged)"));   // an approved insight that quoted the old words goes back to review
     });
   }
   async function exportDoc(kind) {

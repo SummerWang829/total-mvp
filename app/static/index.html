@@ -320,7 +320,7 @@ const RULE_OPS = [["equals", "等于"], ["in", "是其中之一"], ["not_in", "�
 const RULE_EFFECTS = [["require", "必须满足"], ["exclude", "命中就排除"], ["flag", "命中就让人工看"]];
 async function peopleView(p) {
   const my = renderSeq;
-  let [parts, its, rec, form, lib, impB, mon, aud] = await Promise.all([api(`/projects/${p.id}/participants`), api(`/projects/${p.id}/interviews`), api(`/projects/${p.id}/recruiting`), api(`/projects/${p.id}/recruiting/form`), api(`/projects/${p.id}/recruiting/tags`), api(`/projects/${p.id}/recruiting/import/batches`).catch(() => ({ batches: [], orphans_pending: 0 })), api(`/projects/${p.id}/monitor`).catch(() => ({})), api(`/projects/${p.id}/creation/audience`).catch(() => ({}))]);
+  let [parts, its, rec, form, lib, impB, mon, aud] = await Promise.all([api(`/projects/${p.id}/participants`), api(`/projects/${p.id}/interviews`), api(`/projects/${p.id}/recruiting`), api(`/projects/${p.id}/recruiting/form`), api(`/projects/${p.id}/recruiting/tags`), api(`/projects/${p.id}/recruiting/import/batches`).catch(() => ({ batches: [], orphans_pending: 0 })), api(`/projects/${p.id}/monitor`).catch(() => ({})), (STAFF() ? api(`/projects/${p.id}/creation/audience`).catch(() => ({})) : {})]);
   const plannedN = (aud && aud.total) || (mon && mon.i && mon.i.target) || 0;   // 创建访谈里定的深访总人数，回退立项配额表
   const rf = rfCard(p, form, rec, plannedN), rd = await rdBuild(p, rec);
   if (stale(my)) return;
@@ -524,6 +524,7 @@ async function peopleView(p) {
     const load = async () => {
       drawTags();
       try {
+        if (!STAFF()) return;   // the audience definition is the research team's (a project manager gets 403)
         const d = await api(`/projects/${p.id}/audience/definition${subQ()}`);
         st.id = d.id || ""; st.tags = [...(d.tags || [])]; st.conditions = [...(d.conditions || [])];
         st.saved = !!d.saved; st.locked = d.status === "locked";

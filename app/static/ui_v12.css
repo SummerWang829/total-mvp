@@ -41,8 +41,8 @@ body.v11.rfmode .rf-seg button:hover{color:var(--ink)}
 body.v11.rfmode .rf-seg button.on{background:var(--surface);color:var(--ink);font-weight:600;box-shadow:var(--sh-pill)}
 
 /* 状态胶囊 / 两个动作按钮 */
-body.v11.rfmode .rf-hd .pill{height:24px;border-radius:999px;font-size:11.5px;font-weight:600;padding:0 10px;line-height:24px;background:var(--orange-soft,#FFF4EA);color:#A84300}
-body.v11.rfmode .rf-hd .sm.mut{font-size:11.5px;color:var(--muted)}
+body.v11.rfmode .rf-hd .pill{height:24px;border-radius:999px;font-size:12px;font-weight:600;padding:0 10px;line-height:24px;background:var(--orange-soft,#FFF4EA);color:#A84300}
+body.v11.rfmode .rf-hd .sm.mut{font-size:12px;color:var(--muted)}
 body.v11.rfmode #rfpub,
 body.v11.rfmode #rfnext{height:32px;min-height:0;border-radius:999px;padding:0 16px;font-size:12.5px;font-weight:600;display:inline-flex;align-items:center;gap:5px;border:0;transition:.18s}
 body.v11.rfmode #rfpub{background:var(--orange,#FF6A00);color:#2A1200}
@@ -53,7 +53,7 @@ body.v11.rfmode #rfnext:hover{filter:brightness(1.08);transform:translateY(-1px)
 /* ---------- 右栏正文 ---------- */
 body.v11.rfmode #rfout{padding:18px 22px 26px}
 body.v11.rfmode .rf-col{max-width:760px}
-body.v11.rfmode .rf-h{margin:24px 0 8px;padding:0;border:0;font-family:var(--f);font-size:11.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+body.v11.rfmode .rf-h{margin:24px 0 8px;padding:0;border:0;font-family:var(--f);font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
 body.v11.rfmode .rf-h:first-child{margin-top:0}
 body.v11.rfmode .rq-bl li{font-size:13.5px;line-height:1.7}
 body.v11.rfmode .rf-total{background:var(--tint);border:1px solid var(--hair);border-radius:var(--r-inner);padding:14px 16px}
@@ -64,9 +64,9 @@ body.v11.rfmode #rfws .rf-q:hover{background:var(--tint-hov);border-color:rgba(0
 body.v11.rfmode #rfws .rf-q.rf-hl{background:var(--hl);border-color:var(--hl-bd)}
 body.v11.rfmode #rfws .rq-grip{left:12px;top:17px;color:#B4B4B9}
 body.v11.rfmode #rfws .rq-top{align-items:flex-start;gap:8px 10px;margin-bottom:10px;flex-wrap:wrap}
-body.v11.rfmode #rfws .rq-qn{background:var(--qn);color:var(--brand);border-radius:999px;padding:0 9px;font-size:11.5px;font-weight:700;line-height:22px}
+body.v11.rfmode #rfws .rq-qn{background:var(--qn);color:var(--brand);border-radius:999px;padding:0 9px;font-size:12px;font-weight:700;line-height:22px}
 body.v11.rfmode #rfws .rq-title{flex:1 1 220px;min-width:0;display:block;white-space:normal;overflow-wrap:anywhere;height:auto;min-height:0;overflow:visible;padding:2px 0;font-size:13.5px;font-weight:500;line-height:1.6;color:var(--ink);text-align:left}
-body.v11.rfmode #rfws .rq-type{border:1px solid var(--hair);background:var(--surface);border-radius:999px;padding:0 11px;font-size:11.5px;color:var(--ink2);line-height:22px}
+body.v11.rfmode #rfws .rq-type{border:1px solid var(--hair);background:var(--surface);border-radius:999px;padding:0 11px;font-size:12px;color:var(--ink2);line-height:22px}
 body.v11.rfmode #rfws .rq-type:hover{border-color:#D6D6DB}
 body.v11.rfmode #rfws .rq-ask{width:30px;height:30px;min-height:0;border:1px solid var(--hair);border-radius:10px;background:var(--surface);color:var(--ink2);font-size:13px;line-height:1}
 body.v11.rfmode #rfws .rq-ask:hover{background:var(--fill,var(--seg));color:var(--ink)}

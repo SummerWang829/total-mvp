@@ -55,7 +55,7 @@ def test_the_report_has_every_section_when_every_method_has_data(org):
         {"text": "总体满意吗", "type": "single", "results": [{"option": "满意", "count": 150}, {"option": "不满意", "count": 50}]}]})
     b = blocks_of(org, pid)
     heads = [x[1] for x in b if x[0] == "h1"]
-    assert heads == ["摘要", "研究背景", "研究方法与样本", "核心发现", "舆情摘要", "问卷结果", "证据的局限"]
+    assert heads == ["摘要", "研究背景与目的", "研究方法与样本", "核心发现", "舆情摘要", "问卷结果", "证据的局限"]
     t = texts(b)
     assert "舆情：采集公开内容 6 条" in t and "问卷：1 份，合计 200 份有效回答" in t and "满意" in t and "75%" in t and "负面" in t
 
@@ -67,7 +67,8 @@ def test_findings_confirmed_by_two_kinds_of_source_are_marked_and_come_first(org
         db.commit()
     org.c.post(f"/api/projects/{pid}/pool/notes", headers=org.h(), json={"theme": "价格敏感", "text": "团队假设：折扣放大"})
     b = blocks_of(org, pid)
-    first_h2 = next(x[1] for x in b if x[0] == "h2")
+    core = next(i for i, x in enumerate(b) if x == ("h1", "核心发现"))   # the background section has its own h2s (研究目的 / 访问设定) since 2026-11-07
+    first_h2 = next(x[1] for x in b[core:] if x[0] == "h2")
     assert "价格敏感" in first_h2 and "已印证" in first_h2
     assert "被多种来源印证的发现：价格敏感" in texts(b)
 

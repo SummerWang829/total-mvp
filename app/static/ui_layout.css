@@ -60,3 +60,4 @@ main > .head.dup2:not(:has(button, a, .lead)) { display: none; }
   .app.shfix .hubtabs.pin a, .app.shfix .hubtabs.pin a.on, .app.shfix .subrow .hubtabs.sub a, .app.shfix .subrow .rf-seg button, .app.shfix .subrow .rmtabs .rmt { font-size: 15px; }
   .app.shfix .hubtabs.pin a::after { font-size: 15px; }
 }
+@media (max-width:900px){.pager button.s{min-width:36px;height:36px;min-height:36px}td.acts button{white-space:nowrap;min-width:56px}}   /* phone tap targets >= 36px (qa) */
