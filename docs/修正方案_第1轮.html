@@ -1,0 +1,408 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"></head><body style="margin:0"><title>星桐修正方案 第 1 轮</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;700&display=swap">
+<style>
+/* 布局:深绿顶栏;左侧问题目录,右侧逐条方案(问题 → 方案 → 示意 → 验收) */
+:root{
+  --frame:#0B382C;--frame-ink:#FFFFFF;--frame-ink-2:#B9D3C8;
+  --bg:#FFFFFF;--surface:#F3F7F5;--surface-2:#E6EEE9;--line:#D3DFD8;--line-2:#AFC4B9;
+  --ink:#0B2A21;--ink-2:#41564D;--ink-3:#62766D;
+  --accent:#FF6A00;--accent-ink:#A84300;--accent-soft:#FFF1E6;
+  --btn:#0B382C;--btn-ink:#FFFFFF;
+  --ok:#1D7348;--ok-soft:#E2F2E9;--warn:#8A5300;--warn-soft:#FFF3D9;--bad:#B3261E;--bad-soft:#FCEBE9;
+  --shadow:0 1px 2px rgba(11,56,44,.06),0 6px 20px rgba(11,56,44,.07);
+  --f:"Geist","Noto Sans SC",-apple-system,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  --mono:"Geist Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --frame:#08251D;--frame-ink:#F2F7F4;--frame-ink-2:#9DBDB0;
+  --bg:#0E1A16;--surface:#15271F;--surface-2:#1C3229;--line:#24413A;--line-2:#3A6155;
+  --ink:#E8EFEA;--ink-2:#B6C8BE;--ink-3:#8DA59A;
+  --accent:#FF7A1F;--accent-ink:#FFA066;--accent-soft:#3A2416;
+  --btn:#A6D8C3;--btn-ink:#08251D;
+  --ok:#6AD3A0;--ok-soft:#163A2B;--warn:#F2B455;--warn-soft:#3A2E14;--bad:#FF8F85;--bad-soft:#3D1D1B;
+  --shadow:0 1px 2px rgba(0,0,0,.35),0 6px 20px rgba(0,0,0,.3);color-scheme:dark}}
+:root[data-theme="dark"]{
+  --frame:#08251D;--frame-ink:#F2F7F4;--frame-ink-2:#9DBDB0;
+  --bg:#0E1A16;--surface:#15271F;--surface-2:#1C3229;--line:#24413A;--line-2:#3A6155;
+  --ink:#E8EFEA;--ink-2:#B6C8BE;--ink-3:#8DA59A;
+  --accent:#FF7A1F;--accent-ink:#FFA066;--accent-soft:#3A2416;
+  --btn:#A6D8C3;--btn-ink:#08251D;
+  --ok:#6AD3A0;--ok-soft:#163A2B;--warn:#F2B455;--warn-soft:#3A2E14;--bad:#FF8F85;--bad-soft:#3D1D1B;
+  --shadow:0 1px 2px rgba(0,0,0,.35),0 6px 20px rgba(0,0,0,.3);color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f);font-size:15px;line-height:1.65}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--frame)}
+h1,h2,h3,h4{margin:0;line-height:1.3;text-wrap:balance}
+p{margin:0}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
+.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:9;background:var(--frame);color:var(--frame-ink);padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.top-in{max-width:1240px;margin:0 auto;display:flex;gap:10px 18px;align-items:center;min-height:56px;flex-wrap:wrap;padding-block:6px}
+.top b{letter-spacing:.04em}.top span{color:var(--frame-ink-2);font-size:14px}
+.wrap{max-width:1240px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:24px 64px;display:grid;grid-template-columns:240px minmax(0,1fr);gap:32px}
+.toc{position:sticky;top:76px;align-self:start;display:flex;flex-direction:column;gap:2px;font-size:14px}
+.toc a{color:var(--ink-2);text-decoration:none;padding:6px 10px;border-radius:8px;display:flex;gap:8px}
+.toc a:hover{background:var(--surface);color:var(--ink)}
+.toc .n{font-family:var(--mono);color:var(--accent-ink);font-size:12.5px;min-width:18px}
+.toc .grp{font-size:12px;color:var(--ink-3);padding:12px 10px 4px}
+main{min-width:0;display:flex;flex-direction:column;gap:40px}
+.hero h1{font-size:26px}
+.hero p{color:var(--ink-2);max-width:72ch;margin-top:8px}
+.sum{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:14px}
+.sum div{border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--surface)}
+.sum b{font-family:var(--mono);color:var(--accent-ink)}
+.sum span{display:block;font-size:13.5px;color:var(--ink-2)}
+section.fix{display:flex;flex-direction:column;gap:14px;scroll-margin-top:80px}
+.fh{display:flex;gap:12px;align-items:baseline;flex-wrap:wrap}
+.fh .no{font-family:var(--mono);font-size:13px;color:var(--accent-ink);background:var(--accent-soft);border-radius:6px;padding:1px 8px}
+.fh h2{font-size:20px}
+.pri{font-size:12px;font-weight:700;border-radius:999px;padding:1px 10px}
+.p0{background:var(--bad-soft);color:var(--bad)}.p1{background:var(--warn-soft);color:var(--warn)}.p2{background:var(--surface-2);color:var(--ink-2)}
+.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}
+.box{border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:6px}
+.box h4{font-size:13px;color:var(--ink-3);font-weight:600}
+.box ul{margin:0;padding-left:1.1em;display:flex;flex-direction:column;gap:4px;font-size:14.5px}
+.box.now{background:var(--surface)}
+.box.new{border-color:var(--ok)}
+.mock{border:1px solid var(--line-2);border-radius:14px;background:var(--surface);padding:14px;overflow-x:auto}
+.mock-t{font-size:12px;color:var(--ink-3);margin-bottom:8px}
+.acc{font-size:13.5px;color:var(--ink-2);border-left:3px solid var(--ok);padding-left:10px}
+.acc b{color:var(--ink)}
+/* mock 组件 */
+.sb{width:240px;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:10px;font-size:13.5px;display:flex;flex-direction:column;gap:2px}
+.sb .h{font-weight:700;padding:6px 8px;display:flex;gap:8px;align-items:center}
+.sb .h i{width:22px;height:22px;border-radius:7px;background:var(--accent);display:inline-block}
+.sb .h.off i{background:var(--surface-2)}
+.sb .it{padding:5px 8px 5px 26px;border-radius:8px;color:var(--ink-2);position:relative}
+.sb .it::before{content:"";position:absolute;left:14px;top:0;bottom:0;border-left:1px solid var(--line-2)}
+.sb .it.on{background:var(--surface-2);color:var(--ink);font-weight:600}
+.sb .it.on::after{content:"";position:absolute;left:12px;top:7px;bottom:7px;width:3px;border-radius:2px;background:var(--accent)}
+.sb .it small{color:var(--ink-3);font-size:11.5px;margin-left:4px}
+.sb .bad{text-decoration:line-through;color:var(--bad)}
+.sbs{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start}
+.lab{font-size:12px;font-weight:700;margin-bottom:6px}
+.lab.x{color:var(--bad)}.lab.v{color:var(--ok)}
+.inp{background:var(--bg);border:1px solid var(--line-2);border-radius:14px;padding:10px 12px;display:flex;flex-direction:column;gap:8px;max-width:560px}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.att{display:inline-flex;gap:6px;align-items:center;font-size:12.5px;border:1px solid var(--line);border-radius:8px;padding:3px 8px;background:var(--surface)}
+.att i{width:18px;height:18px;border-radius:4px;background:var(--surface-2);display:inline-block}
+.inp .ph{color:var(--ink-3);font-size:14px;min-height:22px}
+.bar{display:flex;align-items:center;gap:6px}
+.ic{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;color:var(--ink-2);border:1px solid transparent}
+.ic:hover{background:var(--surface)}
+.ic svg{width:18px;height:18px}
+.send{margin-left:auto;width:34px;height:34px;border-radius:50%;background:var(--btn);color:var(--btn-ink);display:grid;place-items:center}
+.lv{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--bad)}
+.lv i{width:8px;height:8px;border-radius:50%;background:var(--bad)}
+.tbl{width:100%;border-collapse:collapse;font-size:13.5px;background:var(--bg);border-radius:10px;overflow:hidden;min-width:520px}
+.tbl th,.tbl td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+.tbl th{font-size:12px;color:var(--ink-3);background:var(--surface)}
+.sel{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line-2);border-radius:8px;padding:3px 10px;background:var(--bg)}
+.sel::after{content:"";width:6px;height:6px;border-right:2px solid var(--ink-3);border-bottom:2px solid var(--ink-3);transform:rotate(45deg) translateY(-2px)}
+.menu{margin-top:6px;border:1px solid var(--line-2);border-radius:10px;background:var(--bg);box-shadow:var(--shadow);padding:4px;width:min(330px,100%);font-size:13.5px}
+.menu div{padding:6px 10px;border-radius:7px}
+.menu .on{background:var(--surface-2)}
+.menu .sep{border-top:1px solid var(--line);margin:4px 0;padding:0}
+.menu .new{color:var(--accent-ink);font-weight:600}
+.tag{font-size:11.5px;padding:0 7px;border-radius:5px;background:var(--surface-2);color:var(--ink-2);line-height:1.8;white-space:nowrap}
+.tag.src{background:var(--ok-soft);color:var(--ok)}
+.tag.ask{background:var(--accent-soft);color:var(--accent-ink)}
+.edit{font-size:12.5px;color:var(--accent-ink);font-weight:600;white-space:nowrap}
+.btn{display:inline-flex;align-items:center;min-height:34px;padding:4px 14px;border-radius:9px;font-weight:600;font-size:13.5px;border:1px solid var(--line-2);background:var(--bg);color:var(--ink)}
+.btn.pri{background:var(--btn);color:var(--btn-ink);border-color:transparent}
+.btn.dan{color:var(--bad);border-color:var(--bad)}
+.dialog{max-width:440px;background:var(--bg);border:1px solid var(--line-2);border-radius:14px;box-shadow:var(--shadow);padding:16px;display:flex;flex-direction:column;gap:10px}
+.opt{border:1px solid var(--line-2);border-radius:10px;padding:8px 10px;font-size:13.5px}
+.opt.on{border-color:var(--btn);box-shadow:inset 0 0 0 1px var(--btn);background:var(--surface-2)}
+.opt small{display:block;color:var(--ink-3)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.stepper{display:flex;gap:6px;flex-wrap:wrap}
+.st{font-size:13px;padding:4px 12px;border-radius:999px;border:1px solid var(--line);background:var(--bg);color:var(--ink-2)}
+.st.done{color:var(--ok);border-color:var(--ok)}
+.st.now{background:var(--btn);color:var(--btn-ink);border-color:transparent;font-weight:600}
+.scr{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:12px;min-width:680px}
+.pane{background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:10px;font-size:13.5px}
+.pane h4{font-size:14px}
+.qcard{border:1px solid var(--line);border-radius:10px;padding:8px 10px;display:flex;flex-direction:column;gap:4px}
+.qcard b{font-family:var(--mono);color:var(--accent-ink);font-size:12px;font-weight:600}
+.qcard .o{color:var(--ink-3);font-size:12.5px}
+.qcard.ghost{border-style:dashed;color:var(--ink-3)}
+.choice{font-size:12.5px;border:1px solid var(--line-2);border-radius:999px;padding:2px 10px;background:var(--bg)}
+.choice.on{border-color:var(--btn);background:var(--surface-2);font-weight:600}
+.flow{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;min-width:760px}
+.flow li{background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--ink-2);position:relative}
+.flow li b{color:var(--ink);font-size:14px}
+.flow li .k{font-family:var(--mono);font-size:12px;color:var(--accent-ink)}
+.flow li.loop{border-color:var(--accent);background:var(--accent-soft)}
+.loopnote{font-size:13px;color:var(--accent-ink);margin-top:8px}
+.room{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:10px;min-width:640px}
+.vid{background:#13241E;border-radius:10px;min-height:150px;position:relative;color:#E8EFEA;font-size:12px;padding:10px}
+.vid .mk{position:absolute;right:10px;bottom:10px;background:#FF6A00;color:#1F0E00;font-weight:700;border-radius:8px;padding:5px 12px;font-size:13px}
+.ml{display:flex;flex-direction:column;gap:6px}
+.ml div{border:1px solid var(--line);border-radius:8px;padding:6px 8px;background:var(--bg);font-size:12.5px}
+.ml .who{font-size:11.5px;color:var(--ink-3)}
+.prompt{position:relative}
+.prompt pre{white-space:pre-wrap;font-family:var(--mono);font-size:13px;line-height:1.6;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;margin:0;max-height:560px;overflow:auto;color:var(--ink)}
+.copy{position:absolute;right:10px;top:10px;min-height:34px;padding:4px 14px;border-radius:9px;border:0;background:var(--btn);color:var(--btn-ink);font:inherit;font-weight:600;cursor:pointer}
+.steps{margin:0;padding-left:1.3em;display:flex;flex-direction:column;gap:6px}
+@media (max-width:900px){
+  .wrap{grid-template-columns:minmax(0,1fr)}
+  .toc{position:static;flex-direction:row;flex-wrap:wrap}
+  .toc .grp{display:none}
+  .two,.sum{grid-template-columns:minmax(0,1fr)}
+}
+</style>
+
+<header class="top"><div class="top-in"><b>星桐 TOTAL</b><span>深访模块 · 修正方案第 1 轮 · 2026-11-19</span></div></header>
+
+<div class="wrap">
+<nav class="toc" aria-label="目录">
+  <span class="grp">导航与结构</span>
+  <a href="#f1"><span class="n">1</span>侧边栏层级</a>
+  <a href="#f8"><span class="n">8</span>访谈直播并入侧边栏</a>
+  <span class="grp">Pilot 与发布</span>
+  <a href="#f9"><span class="n">9</span>真人 Pilot 多轮循环</a>
+  <a href="#f10"><span class="n">10</span>发布页与版本</a>
+  <span class="grp">生成大纲</span>
+  <a href="#f6"><span class="n">6</span>已知信息可编辑</a>
+  <a href="#f7"><span class="n">7</span>上一步与重新开始</a>
+  <a href="#f3"><span class="n">3</span>关注问题对应下拉</a>
+  <a href="#f5"><span class="n">5</span>和立项同步</a>
+  <span class="grp">通用与甄别</span>
+  <a href="#f2"><span class="n">2</span>统一输入框</a>
+  <a href="#f4"><span class="n">4</span>甄别问卷重做</a>
+  <span class="grp">交给 Claude Code</span>
+  <a href="#cc">提示词与顺序</a>
+</nav>
+
+<main>
+<section class="hero">
+  <h1>深访模块修正方案 · 第 1 轮</h1>
+  <p>根据线上截图整理的 10 个问题。每条写清现在的问题、改成什么样、示意图和验收标准。最后是交给 Claude Code 的提示词和开发顺序。</p>
+  <div class="sum">
+    <div><b>P0 · 4 项</b><span>导航结构(1、8)、真人 Pilot 循环(9)、发布页(10)。影响整个流程,先做</span></div>
+    <div><b>P1 · 5 项</b><span>已知信息可编辑(6)、上一步和重来(7)、关注问题下拉(3)、和立项同步(5)、统一输入框(2)</span></div>
+    <div><b>P2 · 1 项</b><span>甄别问卷重做(4)。改动大,先出方案再开发</span></div>
+  </div>
+</section>
+
+<!-- 1 -->
+<section class="fix" id="f1">
+  <div class="fh"><span class="no">1</span><h2>侧边栏层级:去掉“生成访问大纲”这一层</h2><span class="pri p0">P0</span></div>
+  <div class="two">
+    <div class="box now"><h4>现在</h4><ul><li>“生成访问大纲”下面又套了“生成大纲”“预览测试”,多了一层。</li><li>生成大纲的 5 个步骤和每道题(暖场、识别用户在预约…)都塞进侧边栏,侧边栏变得很长。</li></ul></div>
+    <div class="box new"><h4>改成</h4><ul><li>“生成大纲”“预览测试”直接放在“数据库筛选及发送”下面,同一级,按先后排列。</li><li>侧边栏只放页面;步骤和题目放到页面内容区顶部的步骤条和左侧目录里。</li><li>侧边栏底部的版本小卡只保留一行:“v2 · Pilot 第 1 轮 · 未发布”。</li></ul></div>
+  </div>
+  <div class="mock"><div class="sbs">
+    <div><div class="lab x">现在</div><div class="sb">
+      <div class="h"><i></i>创建访谈</div>
+      <div class="it">招募/主持/问卷</div><div class="it">甄别问卷</div><div class="it">数据库筛选及发送</div>
+      <div class="it bad">生成访问大纲</div><div class="it">· 生成大纲</div><div class="it">· ① 目标 ② 人群 ③ 总览 ④ 题目…</div><div class="it">· 预览测试</div>
+      <div class="it">配额及受访者名单</div></div></div>
+    <div><div class="lab v">改成</div><div class="sb">
+      <div class="h"><i></i>创建访谈</div>
+      <div class="it">招募/主持/问卷</div><div class="it">甄别问卷</div><div class="it">数据库筛选及发送</div>
+      <div class="it on">生成大纲</div><div class="it">预览测试<small>Pilot 第 1 轮</small></div>
+      <div class="it">配额及受访者名单</div>
+      <div class="h off"><i></i>访谈直播</div><div class="it">场次列表</div><div class="it">实时看板</div>
+      <div class="h off"><i></i>洞察</div></div></div>
+  </div></div>
+  <p class="acc"><b>验收:</b>侧边栏最多两级;生成大纲页内有步骤条可前后切换;刷新后停在原步骤。</p>
+</section>
+
+<!-- 8 -->
+<section class="fix" id="f8">
+  <div class="fh"><span class="no">8</span><h2>访谈直播不再跳成单独页面</h2><span class="pri p0">P0</span></div>
+  <div class="two">
+    <div class="box now"><h4>现在</h4><ul><li>点“访谈直播”后侧边栏变了样,“创建访谈”收起,像换了一个页面。</li></ul></div>
+    <div class="box new"><h4>改成</h4><ul><li>深访只有一个侧边栏,三组同时可见:创建访谈 / 访谈直播(场次列表、实时看板)/ 洞察。</li><li>当前所在项高亮,其他组可以折叠但不消失;折叠状态记在浏览器里。</li><li>空状态的“去甄别设定”按钮改成直接定位到侧边栏里的对应页面。</li></ul></div>
+  </div>
+  <p class="acc"><b>验收:</b>在深访任意页面之间切换,侧边栏结构不变,只有高亮移动;浏览器后退按钮能回到上一页。</p>
+</section>
+
+<!-- 9 -->
+<section class="fix" id="f9">
+  <div class="fh"><span class="no">9</span><h2>Pilot 由真人做,多轮循环直到确认</h2><span class="pri p0">P0</span></div>
+  <div class="two">
+    <div class="box now"><h4>现在</h4><ul><li>“模拟预演”是 AI 自己跑 3 场,替代了真人 pilot。</li><li>没有真人进直播间试访的流程,也没有邀请项目成员。</li></ul></div>
+    <div class="box new"><h4>改成</h4><ul>
+      <li>Pilot 就是在直播间里真的访一场。主持方式按立项时的选择(真人主持或 AI 主持)。</li>
+      <li>受访者可以是同事或真实受访者;项目成员(研究员、客户、观察员)收到邮件邀请,隐身旁听。</li>
+      <li>访谈中:AI 自动标出问题(超时、受访者问“什么意思”、漏问必问要素、物料加载慢);在场的人点“标记问题”,写一句或语音说明。</li>
+      <li>结束后自动生成修改建议,进入“Pilot 修正”,大家一起确认,接受的改动生成下一版大纲,再做下一轮 pilot。</li>
+      <li>可以做很多轮;研究员确认“可以正式开始”后才能发布。</li>
+      <li>原来的 AI 模拟改名“AI 快速检查”,放在受访者预览页的一个按钮里,只给参考,不算 pilot,也不是发布的前提。</li></ul></div>
+  </div>
+  <div class="mock"><div class="mock-t">一轮 pilot 的流程(⑥ 回到 ② 开始下一轮)</div><ol class="flow">
+    <li><span class="k">①</span><b>大纲 v1</b>生成大纲页完成</li>
+    <li class="loop"><span class="k">②</span><b>发起 Pilot</b>选时间、受访者;按立项选真人或 AI 主持</li>
+    <li class="loop"><span class="k">③</span><b>邮件邀请</b>项目成员收到链接,隐身旁听</li>
+    <li class="loop"><span class="k">④</span><b>直播间标记</b>AI 自动标 + 人工点“标记问题”</li>
+    <li class="loop"><span class="k">⑤</span><b>Pilot 修正</b>一起看建议,接受/拒绝,生成 v2</li>
+    <li><span class="k">⑥</span><b>确认后发布</b>研究员点“可以正式开始”</li>
+  </ol><p class="loopnote">橙色是每轮都要走的部分;每轮的笔录、标记、修改都保留,可以对比 v1、v2、v3。</p></div>
+  <div class="mock"><div class="mock-t">直播间里观察员看到的标记区(受访者看不到)</div><div class="room">
+    <div class="vid">受访者画面 · Pilot 第 1 轮 · 大纲 v1 · Q14<span class="mk">标记问题 (M)</span></div>
+    <div class="ml"><div><span class="who">AI 自动 · 21:15 · Q11</span><br>受访者问“轻乳是什么意思”,物料用词可能看不懂</div><div><span class="who">王研究员 · 23:40 · Q14</span><br>这题太长,受访者一直在等</div><div><span class="who">客户 李 · 24:02 · Q14</span><br>能不能直接问价格?(建议)</div></div>
+  </div></div>
+  <p class="acc"><b>验收:</b>能发起 pilot 并给项目成员发出邀请邮件;直播间里观察员能标记,标记带时间点和题号;结束后“Pilot 修正”里出现这一轮的标记和建议;接受后生成新版本;第二轮 pilot 用新版本;没有任何一轮完成时不能发布。</p>
+</section>
+
+<!-- 10 -->
+<section class="fix" id="f10">
+  <div class="fh"><span class="no">10</span><h2>发布页:删掉“新建版本”,版本状态说清楚</h2><span class="pri p0">P0</span></div>
+  <div class="two">
+    <div class="box now"><h4>现在</h4><ul><li>有“新建版本”按钮,没有用处,反而产生空版本(v2 改动为空)。</li><li>v1、v2 都显示“草稿”,看不出哪版做过 pilot。</li></ul></div>
+    <div class="box new"><h4>改成</h4><ul><li>删除“新建版本”。版本只在 pilot 修正接受改动时自动产生。</li><li>版本状态:草稿 / Pilot 中(第 n 轮)/ 已发布。表格加一列“做过几轮 pilot”。</li><li>发布前检查只保留真正的门槛:至少完成 1 轮 pilot、所有标记已处理(接受、拒绝或暂缓)、质检无红线;其他作为提醒。</li></ul></div>
+  </div>
+  <div class="mock"><table class="tbl"><thead><tr><th>版本</th><th>来源</th><th>状态</th><th>Pilot</th><th>已被使用</th></tr></thead><tbody>
+    <tr><td>v3 · 当前</td><td>Pilot 第 2 轮修正 · 4 处</td><td><span class="tag ask">Pilot 中</span></td><td>第 3 轮未开始</td><td>0 场</td></tr>
+    <tr><td>v2</td><td>Pilot 第 1 轮修正 · 6 处</td><td><span class="tag">已被替代</span></td><td>1 轮</td><td>1 场</td></tr>
+    <tr><td>v1</td><td>生成大纲</td><td><span class="tag">已被替代</span></td><td>1 轮</td><td>1 场</td></tr></tbody></table></div>
+  <p class="acc"><b>验收:</b>页面上没有“新建版本”;不再产生空版本;每个版本都能看到来源和做过几轮 pilot。</p>
+</section>
+
+<!-- 6 -->
+<section class="fix" id="f6">
+  <div class="fh"><span class="no">6</span><h2>“已经知道的”每一项都能改,不显示英文代码</h2><span class="pri p1">P1</span></div>
+  <div class="two">
+    <div class="box now"><h4>现在</h4><ul><li>研究类型显示 usage,物料显示 none,价格显示 skip,是程序内部的值。</li><li>整张表只能看不能改,不满意也没有地方改。</li></ul></div>
+    <div class="box new"><h4>改成</h4><ul><li>所有值显示中文,内部代码不出现在界面上(全站检查一遍)。</li><li>每行右边有“改”:选项类用下拉,文字类用输入框(带语音和附件)。</li><li>“来自项目设置”的行改了以后,提示同步回立项(见第 5 条)。</li><li>改任何一项,后面已经生成的内容标“需要重新生成”,不自动覆盖。</li></ul></div>
+  </div>
+  <div class="mock"><table class="tbl"><thead><tr><th>项目</th><th>当前值</th><th>来源</th><th></th></tr></thead><tbody>
+    <tr><td>研究类型</td><td><span class="sel">使用与态度</span></td><td><span class="tag ask">你的回答</span></td><td class="edit">改</td></tr>
+    <tr><td>访谈时长</td><td>45 分钟</td><td><span class="tag src">来自项目设置</span></td><td class="edit">改</td></tr>
+    <tr><td>物料</td><td><span class="sel">不展示物料</span></td><td><span class="tag ask">你的回答</span></td><td class="edit">改</td></tr>
+    <tr><td>价格怎么谈</td><td><span class="sel">不谈价格</span></td><td><span class="tag">默认</span></td><td class="edit">改</td></tr></tbody></table></div>
+  <p class="acc"><b>验收:</b>全站界面上搜不到 usage、none、skip 这类内部值;每一项都能改,改完相关步骤显示“需要重新生成”。</p>
+</section>
+
+<!-- 7 -->
+<section class="fix" id="f7">
+  <div class="fh"><span class="no">7</span><h2>生成大纲要能“上一步”和“全部清除重新开始”</h2><span class="pri p1">P1</span></div>
+  <div class="two">
+    <div class="box now"><h4>现在</h4><ul><li>只有“继续”,走错了回不去,不满意也没法重来。</li></ul></div>
+    <div class="box new"><h4>改成</h4><ul><li>步骤条每一步都能点回去;底部有“上一步”和“继续”。</li><li>右上角“重新开始”,弹出页面内的确认框,两种选择:只清除我的回答(保留项目设置)/ 全部清除。</li><li>清除前自动存一份,10 分钟内可以“撤销清除”;已经被场次使用的版本不受影响。</li></ul></div>
+  </div>
+  <div class="mock"><div class="row" style="justify-content:space-between;margin-bottom:10px"><div class="stepper"><span class="st done">① 目标</span><span class="st now">② 人群与执行</span><span class="st">③ 大纲总览</span><span class="st">④ 题目</span><span class="st">⑤ 关注问题</span></div><span class="btn dan">重新开始</span></div>
+  <div class="dialog"><b>重新开始生成大纲?</b><div class="opt on">只清除我的回答<small>保留立项里的背景、目标、人群、时长,重新回答三轮问题</small></div><div class="opt">全部清除<small>包括已生成的题目和关注问题的对应</small></div><p style="font-size:12.5px;color:var(--ink-3)">清除前会自动保存,10 分钟内可以撤销。已开始的场次不受影响。</p><div class="row"><span class="btn dan">清除并重新开始</span><span class="btn">取消</span></div></div></div>
+  <p class="acc"><b>验收:</b>任意一步能回到前面任意一步;两种清除都能撤销;清除不影响已被场次使用的版本。</p>
+</section>
+
+<!-- 3 -->
+<section class="fix" id="f3">
+  <div class="fh"><span class="no">3</span><h2>关注问题的“对应到”改成下拉,可选“新增想法”</h2><span class="pri p1">P1</span></div>
+  <div class="two">
+    <div class="box now"><h4>现在</h4><ul><li>“对应到”只显示 Q16,不能改;两个不同的问题都被对到同一题。</li></ul></div>
+    <div class="box new"><h4>改成</h4><ul><li>下拉里列出推荐题(按相关度,标“推荐”)、全部题目、“新增想法:作为新题加入大纲”、“暂不对应”。</li><li>选“新增想法”时,在对应模块插入一道新题(先由 AI 写草稿,人确认),题号自动生成。</li><li>可以多选(一个关注问题对应多道题)。</li></ul></div>
+  </div>
+  <div class="mock"><table class="tbl" style="min-width:560px"><thead><tr><th>谁提的</th><th>问题</th><th>对应到</th></tr></thead><tbody><tr><td>研究员</td><td>用户平时喜欢哪些广告?并告知最新双 11 购买的主要产品</td><td><span class="sel">Q16、新增想法</span>
+  <div class="menu"><div class="on">✓ Q16 收尾:还有什么想补充的 <span class="tag ask">推荐</span></div><div>Q9 你平时从哪里了解汽车服务信息?<span class="tag ask">推荐</span></div><div>全部题目…</div><div class="sep"></div><div class="new on">✓ 新增想法:作为新题加入大纲</div><div>暂不对应</div></div></td></tr></tbody></table></div>
+  <p class="acc"><b>验收:</b>每个关注问题都能改对应的题、能多选、能选“新增想法”生成新题;发布前检查里“每个关注问题都有对应”按新规则判断。</p>
+</section>
+
+<!-- 5 -->
+<section class="fix" id="f5">
+  <div class="fh"><span class="no">5</span><h2>立项和大纲的形式、时长保持一致</h2><span class="pri p1">P1</span></div>
+  <div class="two">
+    <div class="box now"><h4>现在</h4><ul><li>立项子项目锁定了“视频 · 45 分钟”,大纲里改成了 30 分钟,两边不一样。</li></ul></div>
+    <div class="box new"><h4>改成</h4><ul><li>访谈形式、时长、语言以立项子项目为唯一来源,大纲只读取。</li><li>在大纲里改这些项时,弹出提示:“立项里是 45 分钟,要同步改立项吗?”立项未锁定就直接同步;已锁定就提示需要管理员“解锁修改”,并提供一键申请。</li><li>两边不一致时,在大纲页和立项页都显示黄色提示条,不能发布。</li></ul></div>
+  </div>
+  <div class="mock"><div class="dialog"><b>访谈时长要同步改到立项吗?</b><p style="font-size:13.5px">立项子项目 S1(中国)当前是 <b>45 分钟</b>,你在大纲里改成了 <b>30 分钟</b>。立项已锁定,需要管理员解锁后才能同步。</p><div class="row"><span class="btn pri">申请解锁并同步</span><span class="btn">改回 45 分钟</span></div></div></div>
+  <p class="acc"><b>验收:</b>改大纲时长后立项同步变化(或明确提示需解锁);两边不一致时不能发布;项目里多个子项目时,大纲对应到具体子项目。</p>
+</section>
+
+<!-- 2 -->
+<section class="fix" id="f2">
+  <div class="fh"><span class="no">2</span><h2>统一输入框:全站每个输入框都能加附件、贴链接、语音输入</h2><span class="pri p1">P1</span></div>
+  <div class="two">
+    <div class="box now"><h4>现在</h4><ul><li>小星星助手的输入框只有一个空白方块和“发送”文字按钮;有的框有麦克风,有的没有。</li></ul></div>
+    <div class="box new"><h4>改成</h4><ul><li>做一个统一的输入组件,<b>所有页面上只要是输入框都用它</b>:立项向导、甄别问卷、数据库筛选、生成大纲、预览测试、Pilot 修正、访谈直播、实时看板、洞察、小星星助手、关注问题、标记意见、自定义编码、搜索之外的所有文字输入。单行框也一样,只是收起成一行。</li><li>链接:可以贴网址(竞品官网、广告合集、报告、在线文档、视频页面)。系统在服务器端读取页面内容,显示成一张卡片(标题、来源、读取状态),作为这次对话或这个项目的参考资料交给 AI,用来改进大纲、问卷或建议。读不到的(需要登录、被网站拒绝、内容太大)明确写出原因,并提示改为上传文件。</li><li>附件和链接都可以选择“只用于这次”或“存为项目资料”;存为项目资料的,之后在项目任何地方的 AI 都能引用,并在回答里注明引用了哪份资料。</li><li>附件:点回形针或直接拖拽、粘贴截图;支持图片、PDF、Word、Excel、音视频;显示文件卡片可删除。</li><li>语音:点麦克风开始,边说边出字,再点停止;顶部可选识别语言。</li><li>发送:圆形箭头按钮;Enter 发送、Shift+Enter 换行;中文输入法拼写时按 Enter 不发送。</li><li>图标统一用同一套线条图标库(例如 Lucide),不用文字或空方块。</li></ul></div>
+  </div>
+  <div class="mock"><div class="inp">
+    <div class="chips"><span class="att"><i></i>双11广告截图.png ×</span><span class="att"><i></i>品牌广告排期.xlsx ×</span><span class="att"><i></i>链接 · 某品牌双11广告合集 · 已读取 ×</span><span class="att"><i></i>链接 · 需要登录,读取失败 ×</span></div>
+    <div class="ph">跟小星星助手说,贴链接,或拖文件进来……</div>
+    <div class="bar">
+      <span class="ic" title="添加附件"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></span>
+      <span class="ic" title="添加链接"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span>
+      <span class="ic" title="语音输入"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></span>
+      <span class="lv"><i></i>正在听 · 中文</span>
+      <span class="send" title="发送"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg></span>
+    </div></div></div>
+  <p class="acc"><b>验收:</b>全站列出一份输入框清单(按页面),逐个替换成新组件,清单里不留例外;贴一个公开网页链接,AI 的回答能引用里面的内容并注明出处;贴一个需要登录的链接,提示读取失败的原因;存为项目资料的附件和链接,在其他页面的 AI 对话里也能用;三种主题、手机宽度下都正常;附件超限有明确提示。<br><b>安全:</b>读取链接只在服务器端进行,禁止访问内网地址和本机地址,限制大小和超时;读取的内容按项目隔离,跟随项目的数据保留期删除。</p>
+</section>
+
+<!-- 4 -->
+<section class="fix" id="f4">
+  <div class="fh"><span class="no">4</span><h2>甄别问卷重做:先给框架和选项,一步步确认,右侧逐步成卷</h2><span class="pri p2">P2</span></div>
+  <div class="two">
+    <div class="box now"><h4>现在</h4><ul><li>一上来就问“访谈形式”,和甄别没关系;流程不清楚,也没给想法选项。</li><li>右侧重复展示了立项里的背景、目标和招募需求。</li></ul></div>
+    <div class="box new"><h4>改成</h4><ul>
+      <li>左侧按 6 步走,每步先给 AI 建议的框架和可选项,点选或改写后确认:<br>① 读取立项(背景、目标、招募需求,只读,可跳去立项改)<br>② 要筛进谁:从招募需求拆出条件(品牌车主、保养渠道、购车时间、城市层级…)<br>③ 要筛掉谁:常见排除项(汽车、市场调研、媒体行业从业者;近 3 个月参加过调研;不愿开摄像头…)<br>④ 配额:按组别和条件设人数,自动对接“配额及受访者名单”<br>⑤ 质量控制:陷阱题、前后一致性、最短作答时长、重复参加识别<br>⑥ 预览与测试答题:手机预览,自己答一遍看会不会被正确筛出</li>
+      <li>右侧是问卷本身:每确认一步,就生成对应的题(题型、选项、终止或通过逻辑),新生成的题短暂高亮。</li>
+      <li>立项信息折叠成一条“来自立项”的摘要,不再整段重复。</li>
+      <li>访谈形式在立项里定,这里不再问。</li></ul></div>
+  </div>
+  <div class="mock"><div class="scr">
+    <div class="pane"><div class="stepper"><span class="st done">① 立项</span><span class="st now">② 筛进谁</span><span class="st">③ 筛掉谁</span><span class="st">④ 配额</span><span class="st">⑤ 质控</span><span class="st">⑥ 测试</span></div>
+      <h4>② 要筛进谁</h4><p style="color:var(--ink-2)">从招募需求里拆出 4 个条件,勾选要用的,也可以改或补充:</p>
+      <div class="chips"><span class="choice on">本田 4S 店售后车主</span><span class="choice on">近 12 个月在 4S 店保养或维修</span><span class="choice on">蔚来 / 理想车主(2025 年后官方渠道保养)</span><span class="choice">城市层级:一线 / 新一线 / 二线 / 三线以下</span><span class="choice">+ 自己加条件</span></div>
+      <div class="row"><span class="btn">上一步</span><span class="btn pri">确认,生成这部分题目</span></div></div>
+    <div class="pane"><h4>甄别问卷 · 中文 · 预计 3 分钟</h4>
+      <div class="qcard"><b>S1 · 单选 · 终止条件</b>你目前主要开的车是什么品牌?<span class="o">本田(通过)· 蔚来 / 理想(通过)· 其他(终止)</span></div>
+      <div class="qcard"><b>S2 · 单选</b>最近 12 个月,你的车在哪里保养或维修过?<span class="o">品牌 4S 店 / 官方授权服务中心(通过)· 路边店或其他(终止)</span></div>
+      <div class="qcard ghost">③ 筛掉谁 · 确认后在这里生成</div>
+      <div class="qcard ghost">④ 配额 · 确认后在这里生成</div></div>
+  </div></div>
+  <p class="acc"><b>验收:</b>从立项读取信息后能完整走完 6 步并生成问卷;每一步都能回退修改;测试答题能正确通过或终止;配额同步到“配额及受访者名单”。<b>这一项先让 Claude Code 出详细方案给你确认,再写代码。</b></p>
+</section>
+
+<!-- CC -->
+<section class="fix" id="cc">
+  <div class="fh"><span class="no">→</span><h2>交给 Claude Code</h2></div>
+  <ol class="steps">
+    <li>把这个页面存成 <code>docs/修正方案_第1轮.html</code> 推到仓库(我另外给你发了文件)。</li>
+    <li>在 Claude Code 里用 <code>/model</code> 选 Opus,按 Shift+Tab 进计划模式,发下面这段话。它出计划后,把计划发给我看。</li>
+    <li>你确认后切回 Sonnet 按批次开发。每批做完把截图发给我核对。</li>
+  </ol>
+  <div class="prompt"><button class="copy" id="copy">复制</button><pre id="ptext">请先在计划模式下工作,只读不改。
+
+线上版本(c1969bf)用户试用后提了 10 个问题,方案在 docs/修正方案_第1轮.html,请完整读完(每条有:现在、改成、示意、验收)。示意图只表达结构和交互,视觉沿用现有平台组件和三种主题。
+
+【先输出计划】写到 docs/修正方案_第1轮_计划.md:
+- 每条问题落到哪些文件、组件、接口和数据表;哪些可以复用。
+- 第 9 条(真人 Pilot 多轮循环)涉及数据结构变化:版本状态(草稿 / Pilot 中第 n 轮 / 已发布)、pilot 轮次、邮件邀请、直播间观察员标记(带时间点和题号)、每轮的修改如何生成新版本。写清楚改哪些表,旧数据怎么处理。原“模拟预演”改名“AI 快速检查”,只作参考,不再是发布前提。
+- 第 2 条:所有页面上只要是输入框都要改,按页面列出完整清单,逐个对应到新的统一输入组件,不留例外;组件支持附件、贴链接、语音。链接由服务器读取内容,作为 AI 的参考资料(可选“只用于这次”或“存为项目资料”),回答里注明引用;读取要防止访问内网和本机地址,限制大小和超时,读不到要写明原因。图标统一用一套线条图标库(例如 Lucide)。
+- 第 6 条:列出界面上所有直接显示内部值(如 usage、none、skip)的地方。
+- 第 4 条(甄别问卷重做):这一轮只出详细方案(6 个步骤的交互、每步的 AI 建议怎么生成、题目和终止逻辑的数据结构、和配额页的对接),不写代码。
+- 需要我拍板的问题,最多 6 个,每个附推荐答案。
+写完停下,等我确认。
+
+【开发顺序】确认后按批次做,每批结束 qa.sh 全绿、截图、更新 docs/PROGRESS.md、提交推送,再开始下一批:
+- 第 1 批(P0):1 侧边栏层级、8 访谈直播并入侧边栏、10 发布页与版本状态
+- 第 2 批(P0):9 真人 Pilot 多轮循环(发起、邮件邀请、直播间标记、Pilot 修正生成新版本、多轮、发布门槛)
+- 第 3 批(P1):6 已知信息可编辑和去掉内部值、7 上一步和重新开始(含撤销)、3 关注问题对应下拉(含“新增想法”)
+- 第 4 批(P1):5 立项和大纲同步、2 统一输入组件全站替换
+- 第 5 批(P2):4 甄别问卷,按我确认后的方案开发
+
+【规则】
+- 每条都按方案里的“验收”逐项自测,汇报时逐条写结果。
+- 不要为了通过测试删检查或放宽阈值。
+- 部署前按上次的部署要求(确认没有进行中的访谈、SQLite 在线备份、老项目房间能正常使用、回滚条件)。</pre></div>
+</section>
+</main>
+</div>
+
+<script>
+(function(){
+  var b=document.getElementById('copy'),t=document.getElementById('ptext');
+  b.addEventListener('click',function(){
+    var done=function(){b.textContent='已复制';setTimeout(function(){b.textContent='复制';},1600);};
+    try{navigator.clipboard.writeText(t.textContent).then(done,function(){sel();});}catch(e){sel();}
+    function sel(){var r=document.createRange();r.selectNodeContents(t);var s=getSelection();s.removeAllRanges();s.addRange(r);b.textContent='已选中,请按 Ctrl+C';}
+  });
+})();
+</script>
+</body></html>
