@@ -32,9 +32,10 @@
   async function load() {
     try {
       const r = await fetch(url(), { headers: authHdr() });
-      if (r.status === 404 || r.status === 403) { stop(); return; }   // not a pilot (or not for this person): no panel
+      if (r.status === 404 || r.status === 403) { stop(); return; }   // not for this person: no panel
       if (!r.ok) return;
       const d = await r.json();
+      if (d.pilot === false) { stop(); return; }   // not a pilot: no panel
       P.on = true; P.marks = d.marks; P.label = d.label;
       if (!document.getElementById("pmk-in") || !document.getElementById("pmk-in").value) paint();
     } catch { /* the next poll tries again */ }

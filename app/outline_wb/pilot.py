@@ -145,12 +145,13 @@ def _mark_view(m: Mark, labels: dict, names: dict, team: bool) -> dict:
 
 def room_marks(db: Session, itv: Interview, role: str) -> dict:
     """The marks panel in a pilot room: everybody's marks and the automatic findings so far, newest last. The research team sees names; a client or observer sees roles."""
-    _pilot(db, itv)
+    if not itv.is_pilot or not itv.pilot_round_id:
+        return {"pilot": False, "marks": [], "label": ""}   # an ordinary room: no panel (a plain answer, not an error the browser would log)
     persist_auto(db, itv)
     labels, team = _labels(db, itv), role in TEAM_ROLES
     ms = _marks(db, [itv.id])
     names = {u.id: u.name for u in db.scalars(select(User).where(User.id.in_([m.author_id for m in ms] or [""])))}
-    return {"marks": [_mark_view(m, labels, names, team) for m in ms], "label": labels.get(_current_item(db, itv, None) or "", "")}
+    return {"pilot": True, "marks": [_mark_view(m, labels, names, team) for m in ms], "label": labels.get(_current_item(db, itv, None) or "", "")}
 
 
 def add_room_mark(db: Session, itv: Interview, user_id: str, role: str, note: str, tag: str = "other") -> Mark:

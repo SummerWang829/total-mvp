@@ -335,7 +335,7 @@ html body.rfmode .v11app .body2>main{scrollbar-gutter:auto}
 @media(max-width:900px){.rd-dims{grid-template-columns:1fr}}
 .rd-video{position:relative;width:100%;aspect-ratio:16/9;background:linear-gradient(120deg,#3B4148,#20262C 55%,#4A4038);border-radius:10px;overflow:hidden;display:flex;align-items:center;justify-content:center}
 .rd-vph{color:#C9D1D6;font-size:12px}
-.rd-vsub{position:absolute;left:4%;right:4%;bottom:38px;background:rgba(10,14,18,.78);color:#fff;border-radius:4px;padding:6px 9px;font-size:12px;line-height:1.5;text-align:center;max-height:56px;overflow:hidden}
+.rd-vsub{position:absolute;left:4%;right:4%;bottom:38px;background:rgba(10,14,18,.78);color:#fff;border-radius:4px;padding:6px 9px;font-size:14px;line-height:1.5;text-align:center;max-height:56px;overflow:hidden}
 .rd-vctrl{position:absolute;left:0;right:0;bottom:0;height:36px;background:linear-gradient(transparent,rgba(0,0,0,.75));display:flex;align-items:center;gap:8px;padding:0 10px;color:#fff;font-size:12px}
 .rd-vctrl button{border:0;background:none;color:#fff;font-size:13px;padding:0;min-width:36px;min-height:36px}
 .rd-vbar{flex:1;height:4px;background:rgba(255,255,255,.28);border-radius:3px;position:relative;cursor:pointer}

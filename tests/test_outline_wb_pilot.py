@@ -59,7 +59,7 @@ def test_a_mark_in_the_room_takes_the_servers_time_and_the_current_question(org,
     assert m["who"] == "客户"                                                                                  # an observer sees roles only
     assert org.c.get(f"/api/interviews/{iid}/pilot-marks", headers=org.h("admin")).json()["marks"][-1]["who"] == "observer"   # the team sees the name
     plain = org.interview(proj)
-    assert org.c.get(f"/api/interviews/{plain['id']}/pilot-marks", headers=org.h()).status_code == 404   # not a pilot: no panel
+    assert org.c.get(f"/api/interviews/{plain['id']}/pilot-marks", headers=org.h()).json()["pilot"] is False   # not a pilot: no panel
 
 
 def test_every_mark_is_decided_and_the_next_version_leaves_the_rounds_version_as_it_ran(org, proj):

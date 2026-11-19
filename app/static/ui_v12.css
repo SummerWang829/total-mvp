@@ -65,7 +65,7 @@ body.v11.rfmode #rfws .rf-q.rf-hl{background:var(--hl);border-color:var(--hl-bd)
 body.v11.rfmode #rfws .rq-grip{left:12px;top:17px;color:#B4B4B9}
 body.v11.rfmode #rfws .rq-top{align-items:flex-start;gap:8px 10px;margin-bottom:10px;flex-wrap:wrap}
 body.v11.rfmode #rfws .rq-qn{background:var(--qn);color:var(--brand);border-radius:999px;padding:0 9px;font-size:12px;font-weight:700;line-height:22px}
-body.v11.rfmode #rfws .rq-title{flex:1 1 220px;min-width:0;display:block;white-space:normal;overflow-wrap:anywhere;height:auto;min-height:0;overflow:visible;padding:2px 0;font-size:13.5px;font-weight:500;line-height:1.6;color:var(--ink);text-align:left}
+body.v11.rfmode #rfws .rq-title{flex:1 1 220px;min-width:0;display:block;white-space:normal;overflow-wrap:anywhere;height:auto;min-height:0;overflow:visible;padding:2px 0;font-size:14px;font-weight:500;line-height:1.6;color:var(--ink);text-align:left}
 body.v11.rfmode #rfws .rq-type{border:1px solid var(--hair);background:var(--surface);border-radius:999px;padding:0 11px;font-size:12px;color:var(--ink2);line-height:22px}
 body.v11.rfmode #rfws .rq-type:hover{border-color:#D6D6DB}
 body.v11.rfmode #rfws .rq-ask{width:30px;height:30px;min-height:0;border:1px solid var(--hair);border-radius:10px;background:var(--surface);color:var(--ink2);font-size:13px;line-height:1}
