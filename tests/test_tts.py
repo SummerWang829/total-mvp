@@ -54,11 +54,13 @@ def test_a_refusal_is_not_retried_and_says_so(monkeypatch):
     def handler(req):
         calls.append(req)
         assert req.headers["X-TC-Action"] == "TextToVoice" and req.headers["Authorization"].startswith("TC3-HMAC-SHA256 Credential=id/")
-        return httpx.Response(200, json={"Response": {"Error": {"Code": "AuthFailure.SecretIdNotFound", "Message": "x"}}})
-    p = tts.TencentTTS(httpx.Client(transport=httpx.MockTransport(handler)))
-    with pytest.raises(tts.TTSError):
-        p.synth("你好", "zh")
-    assert len(calls) == 1
+        return httpx.Response(200, json={"Response": {"Error": {"Code": code, "Message": "x"}}})
+    for code in ("AuthFailure.SecretIdNotFound", "UnsupportedOperation.PkgExhausted"):   # a refusal or no quota left (seen on the server 2026-11-20): asked once, no waiting
+        calls.clear()
+        p = tts.TencentTTS(httpx.Client(transport=httpx.MockTransport(handler)))
+        with pytest.raises(tts.TTSError):
+            p.synth("你好", "zh")
+        assert len(calls) == 1
 
 
 def test_audio_comes_back_decoded(monkeypatch):

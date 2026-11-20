@@ -115,7 +115,7 @@ class TencentTTS:
                 err = body.get("Error")
                 if err:
                     code = str(err.get("Code", ""))
-                    if code.startswith(("AuthFailure", "UnauthorizedOperation", "ResourceUnavailable", "FailedOperation.ServiceIsolate", "InvalidParameter")):
+                    if code.startswith(("AuthFailure", "UnauthorizedOperation", "UnsupportedOperation", "ResourceUnavailable", "ResourceInsufficient", "FailedOperation.ServiceIsolate", "InvalidParameter")):
                         log.error("tts refused: %s", code)   # the code only, never the words
                         raise TTSError("语音合成服务拒绝了请求")
                     last = code
