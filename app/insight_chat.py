@@ -80,13 +80,13 @@ def _passages(db: Session, ctx: Ctx, project_id: str, question: str, history: li
     return top
 
 
-def _prompt(db: Session, project: Project, question: str, history: list[dict], top: list[search.Source], outline_text: str) -> list[dict]:
+def _prompt(db: Session, project: Project, question: str, history: list[dict], top: list[search.Source], outline_text: str, material: str = "") -> list[dict]:
     numbered = "\n".join(f"[{i}] ({'受访者原话' if s.type == 'segment' else '已确认的洞察' if s.type == 'insight' else '研究库资料'}{'，' + s.who if s.who else ''}) {s.text[:700]}" for i, s in enumerate(top, 1))
     ctx = f"项目：{project.name}\n研究背景：{(project.brief or '（没有写）')[:800]}\n访谈大纲：{(outline_text or '（还没有写）')[:800]}\n\n资料片段：\n{numbered or '（目前没有可用的资料）'}"
     msgs: list[dict] = [{"role": "system", "content": ai_prompts.get("insight.chat", SYSTEM)}, {"role": "user", "content": ctx}, {"role": "assistant", "content": '{"answer": "好的，我已读完这些资料。", "suggestions": [], "followups": []}'}]
     for m in history[-MAX_HISTORY:]:
         msgs.append({"role": "user", "content": m["text"]} if m["role"] == "user" else {"role": "assistant", "content": json.dumps({"answer": m.get("answer", ""), "suggestions": m.get("suggestions", []), "followups": []}, ensure_ascii=False)})
-    msgs.append({"role": "user", "content": f"新问题：{question}"})
+    msgs.append({"role": "user", "content": (material + "\n\n" if material else "") + f"新问题：{question}"})
     return msgs
 
 
@@ -101,7 +101,7 @@ def _mock_reply(question: str, top: list[search.Source]) -> dict:
     return {"answer": f"{MSG_MOCK}和你的问题最相关的资料见 {cites}。", "suggestions": ["接上小星星助手后，这里会给出具体的研究建议。"], "followups": ["这些原话能做成集锦吗？"]}
 
 
-def reply(db: Session, ctx: Ctx, project: Project, thread: ChatThread, question: str, scope: list[str], chat: ModeratorChatProvider | None, outline_text: str) -> dict:
+def reply(db: Session, ctx: Ctx, project: Project, thread: ChatThread, question: str, scope: list[str], chat: ModeratorChatProvider | None, outline_text: str, refs: list | None = None) -> dict:
     """Answer one question in a conversation and return the assistant message to store (quotes are addresses only).
 
     Raises:
@@ -110,8 +110,10 @@ def reply(db: Session, ctx: Ctx, project: Project, thread: ChatThread, question:
     """
     history = load(thread.messages)
     top = _passages(db, ctx, project.id, question, history, scope)
+    from . import refs as refs_mod
+    mat, cat = refs_mod.material(db, ctx.org_id, project.id, refs or [])
     try:
-        raw = _mock_reply(question, top) if chat is None else chat.complete(_prompt(db, project, question, history, top, outline_text), temperature=0.3)
+        raw = _mock_reply(question, top) if chat is None else chat.complete(_prompt(db, project, question, history, top, outline_text, mat), temperature=0.3)
     except ChatFatalError:
         raise
     except ChatError as e:
@@ -128,7 +130,8 @@ def reply(db: Session, ctx: Ctx, project: Project, thread: ChatThread, question:
             if n not in used:
                 used.append(n)
     text = re.sub(r"\[(\d+)\]", lambda m: m.group(0) if 1 <= int(m.group(1)) <= len(top) else "", text)  # an invented number is dropped
-    return {"role": "ai", "answer": text, "suggestions": _clean_list(raw.get("suggestions"), MAX_SUGGESTIONS, 300), "followups": _clean_list(raw.get("followups"), MAX_FOLLOWUPS, 40),
+    text, cites = refs_mod.cite(text, cat)
+    return {"role": "ai", "answer": text, "cites": cites, "suggestions": _clean_list(raw.get("suggestions"), MAX_SUGGESTIONS, 300), "followups": _clean_list(raw.get("followups"), MAX_FOLLOWUPS, 40),
             "refs": [{"n": n, "ref": top[n - 1].ref} for n in used]}
 
 
@@ -167,4 +170,4 @@ def message_out(db: Session, ctx: Ctx, project_id: str, m: dict) -> dict:
     """A stored message as the page shows it: an assistant message gets its quotes looked up."""
     if m["role"] == "user":
         return {"role": "user", "text": m.get("text", "")}
-    return {"role": "ai", "answer": m.get("answer", ""), "suggestions": m.get("suggestions", []), "followups": m.get("followups", []), "quotes": resolve(db, ctx, project_id, m.get("refs", []))}
+    return {"role": "ai", "answer": m.get("answer", ""), "cites": m.get("cites", []), "suggestions": m.get("suggestions", []), "followups": m.get("followups", []), "quotes": resolve(db, ctx, project_id, m.get("refs", []))}

@@ -50,11 +50,15 @@ def test_a_pdf_gives_its_text():
     assert out["kind"] == "pdf" and "Hello brief" in out["text"]
 
 
-def test_images_and_video_are_refused_with_a_clear_message():
-    for name in ("x.png", "y.JPG", "z.mp4"):
+def test_images_need_ocr_and_video_goes_to_transcription_with_a_clear_message():
+    """修正方案第 1 轮第 2 条（用户决定 3）: an image is read by OCR (only its words); without OCR set up it says so. Video is turned into text elsewhere."""
+    for name in ("x.png", "y.JPG"):
         with pytest.raises(attachments.AttachmentError) as e:
             attachments.extract(name, b"\x00\x01")
-        assert e.value.status == 415 and "暂不支持" in str(e.value)
+        assert e.value.status == 503 and "还没配置" in str(e.value)
+    with pytest.raises(attachments.AttachmentError) as e:
+        attachments.extract("z.mp4", b"\x00\x01")
+    assert e.value.status == 415 and "转成文字" in str(e.value)
 
 
 def test_unknown_types_broken_files_and_empty_files_are_refused():
@@ -78,4 +82,4 @@ def test_the_endpoint_is_for_staff_only_and_stores_nothing(org: Org):
     assert r.status_code == 200 and r.json()["text"] == "访谈资料"
     assert org.c.post("/api/attachments/extract", headers=org.h("observer"), files={"file": ("n.txt", b"x", "text/plain")}).status_code == 403
     bad = org.c.post("/api/attachments/extract", headers=org.h("researcher"), files={"file": ("p.png", b"x", "image/png")})
-    assert bad.status_code == 415
+    assert bad.status_code == 503   # an image needs OCR, which is not set up in the tests

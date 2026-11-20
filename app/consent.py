@@ -9,7 +9,7 @@ import hashlib
 from .config import settings
 from .moderator.compliance import moderator_runs_locally
 
-VERSION = "2026-10-draft-8"  # draft-8: the number of days before deletion is the project's own choice (30/60/120/180); draft-7: studies done alone, in text, at any time have their own paragraph; draft-6: how things are said (pace, pauses, volume) and emoji are noted; draft-5: the AI also reads the screening answers; draft-4: AI-moderator disclosure (AI interviews only)
+VERSION = "2026-11-draft-9"  # draft-9: voice input on the participant pages (the voice goes to Tencent Cloud speech recognition to become text, not kept); draft-8: the number of days before deletion is the project's own choice (30/60/120/180); draft-7: studies done alone, in text, at any time have their own paragraph; draft-6: how things are said (pace, pauses, volume) and emoji are noted; draft-5: the AI also reads the screening answers; draft-4: AI-moderator disclosure (AI interviews only)
 
 # A study done alone: replaces the picture of a live video call that the base text gives.
 TEXT_ONLY_TEXTS = {
@@ -33,6 +33,13 @@ SIGNALS_TEXTS = {
           "biasa anda sendiri bercakap) dan sebarang emoji yang anda pilih untuk hantar. Kami tidak menilai perasaan anda daripada ini: hanya nombor ini dan emoji anda sendiri disimpan.",
     "ta": "ஆய்வுக் குழு எங்கு மேலும் கேட்கலாம் என்பதை அறிய உதவ, நீங்கள் பேசும் விதத்தை (உங்கள் வழக்கமான பேச்சுடன் மட்டும் ஒப்பிட்ட வேகம், இடைநிறுத்தம், ஒலி அளவு) "
           "மற்றும் நீங்களாக அனுப்பும் எமோஜிகளை நாங்கள் பதிவு செய்கிறோம். இதிலிருந்து உங்கள் உணர்வுகளை நாங்கள் மதிப்பிடுவதில்லை: இந்த எண்களும் நீங்கள் அனுப்பிய எமோஜிகளும் மட்டுமே சேமிக்கப்படும்.",
+}
+
+VOICE_TEXTS = {   # 修正方案第 1 轮第 2 条（用户 2026-11-20 确认）: the participant pages have a microphone button; ms / ta are first drafts, to be checked by native speakers and legal
+    "en": "If you use voice input, your voice is sent to Tencent Cloud speech recognition only to turn it into text; the recording is not kept.",
+    "zh": "如果你用说话输入，声音只用来转成文字，会发送给腾讯云语音识别，录音不保存。",
+    "ms": "Jika anda menggunakan input suara, suara anda dihantar kepada pengecaman pertuturan Tencent Cloud hanya untuk ditukar menjadi teks; rakaman itu tidak disimpan.",
+    "ta": "நீங்கள் குரல் உள்ளீட்டைப் பயன்படுத்தினால், உங்கள் குரல் உரையாக மாற்றப்படுவதற்காக மட்டுமே Tencent Cloud பேச்சு அறிதலுக்கு அனுப்பப்படும்; பதிவு சேமிக்கப்படாது.",
 }
 
 
@@ -143,7 +150,7 @@ def consent_for(lang: str, org_name: str, ai: bool = False, text_only: bool = Fa
     """
     l = "zh" if (lang or "").startswith("zh") else lang if lang in TEXTS else "en"  # anything else: English
     text = TEXTS[l].format(org=org_name, dpo=settings.dpo_email, days=retention_days)
-    text = text + ("" if l == "zh" else " ") + SIGNALS_TEXTS[l]
+    text = text + ("" if l == "zh" else " ") + SIGNALS_TEXTS[l] + ("" if l == "zh" else " ") + VOICE_TEXTS[l]
     labels = dict(LABELS[l])
     if text_only:
         text = TEXT_ONLY_TEXTS[l] + (" " if l != "zh" else "") + text

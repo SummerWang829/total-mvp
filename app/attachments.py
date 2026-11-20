@@ -16,7 +16,11 @@ MAX_CHARS = 30_000                    # what is handed to the AI: the rest is cu
 MAX_PDF_PAGES = 100
 MAX_DOCX_XML_BYTES = 30 * 1024 * 1024  # the unpacked size of word/document.xml (a zip-bomb guard)
 TEXT_SUFFIXES = (".txt", ".md", ".csv")
-UNREADABLE = (".png", ".jpg", ".jpeg", ".webp", ".gif", ".heic", ".mp4", ".mov", ".webm", ".avi", ".mkv", ".m4a", ".mp3", ".wav")
+IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".webp", ".bmp")   # read by OCR: only the words in the image (app/ocr.py)
+UNREADABLE = (".gif", ".heic", ".mp4", ".mov", ".webm", ".avi", ".mkv", ".m4a", ".mp3", ".wav")   # audio / video go to /api/attachments/transcribe
+XLSX_ROWS = 200          # 修正方案第 1 轮第 2 条: the first 200 rows of each sheet
+XLSX_SHEETS = 10
+MAX_XLSX_XML_BYTES = 40 * 1024 * 1024
 
 
 class AttachmentError(ValueError):
@@ -72,6 +76,59 @@ def _from_pdf(data: bytes) -> str:
         raise AttachmentError("这个 PDF 读不出来") from e
 
 
+def _col(ref: str) -> int:
+    n = 0
+    for ch in re.match(r"[A-Z]*", ref or "").group(0):
+        n = n * 26 + ord(ch) - 64
+    return max(0, n - 1)
+
+
+def _xml_text(fragment: str) -> str:
+    return html.unescape("".join(re.findall(r"<t[^>]*>([^<]*)</t>", fragment)))
+
+
+def _from_xlsx(data: bytes) -> str:
+    """Every sheet's first rows as a plain table (cells joined by " | "), read with the standard library (no spreadsheet package needed)."""
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as z:
+            if sum(i.file_size for i in z.infolist()) > MAX_XLSX_XML_BYTES:
+                raise AttachmentError("Excel 文件太大，读不了")
+            names = set(z.namelist())
+            shared = [_xml_text(si) for si in re.findall(r"<si>(.*?)</si>", z.read("xl/sharedStrings.xml").decode("utf-8", "replace"), re.S)] if "xl/sharedStrings.xml" in names else []
+            book = z.read("xl/workbook.xml").decode("utf-8", "replace")
+            rels = z.read("xl/_rels/workbook.xml.rels").decode("utf-8", "replace") if "xl/_rels/workbook.xml.rels" in names else ""
+            targets = dict(re.findall(r'<Relationship[^>]*Id="([^"]+)"[^>]*Target="([^"]+)"', rels)) | {k: v for v, k in re.findall(r'<Relationship[^>]*Target="([^"]+)"[^>]*Id="([^"]+)"', rels)}
+            out = []
+            for name, rid in re.findall(r'<sheet[^>]*name="([^"]*)"[^>]*r:id="([^"]+)"', book)[:XLSX_SHEETS]:
+                path = targets.get(rid, "").lstrip("/")
+                path = path if path.startswith("xl/") else "xl/" + path
+                if path not in names:
+                    continue
+                xml = z.read(path).decode("utf-8", "replace")
+                lines = []
+                for row in re.findall(r"<row[^>]*>(.*?)</row>", xml, re.S)[:XLSX_ROWS]:
+                    cells: dict[int, str] = {}
+                    for attrs, body in re.findall(r"<c([^>]*?)(?:/>|>(.*?)</c>)", row, re.S):
+                        ref = re.search(r'r="([A-Z]+)', attrs)
+                        typ = re.search(r't="([^"]+)"', attrs)
+                        v = re.search(r"<v>([^<]*)</v>", body or "")
+                        if typ and typ.group(1) == "s" and v and v.group(1).isdigit() and int(v.group(1)) < len(shared):
+                            val = shared[int(v.group(1))]
+                        elif typ and typ.group(1) == "inlineStr":
+                            val = _xml_text(body or "")
+                        else:
+                            val = html.unescape(v.group(1)) if v else ""
+                        if val.strip():
+                            cells[_col(ref.group(1) if ref else "")] = " ".join(val.split())
+                    if cells:
+                        lines.append(" | ".join(cells.get(i, "") for i in range(max(cells) + 1)))
+                if lines:
+                    out.append(f"表：{html.unescape(name)}\n" + "\n".join(lines))
+            return "\n\n".join(out)
+    except (zipfile.BadZipFile, KeyError) as e:
+        raise AttachmentError("这不是一个能读的 Excel（.xlsx）文件") from e
+
+
 def extract(filename: str, data: bytes) -> dict:
     """The plain text of an attached file.
 
@@ -89,15 +146,23 @@ def extract(filename: str, data: bytes) -> dict:
         raise AttachmentError("文件太大，请控制在 10MB 以内", 413)
     suffix = _suffix(filename)
     if suffix in UNREADABLE:
-        raise AttachmentError("图片和视频暂不支持（等后台接入对应的模型后再做），请先上传 PDF、Word 或文字文件", 415)
-    if suffix == ".pdf":
+        raise AttachmentError("这种文件不能在这里读：录音和视频请用 .mp3 / .m4a / .wav / .mp4 等格式，会转成文字", 415)
+    if suffix in IMAGE_SUFFIXES:
+        from . import ocr
+        try:
+            kind, text = "image", ocr.read_image(data)
+        except ocr.OCRError as e:
+            raise AttachmentError(str(e), e.status) from e
+    elif suffix == ".xlsx":
+        kind, text = "excel", _from_xlsx(data)
+    elif suffix == ".pdf":
         kind, text = "pdf", _from_pdf(data)
     elif suffix == ".docx":
         kind, text = "word", _from_docx(data)
     elif suffix in TEXT_SUFFIXES:
         kind, text = "text", _from_text(data)
     else:
-        raise AttachmentError("只能上传 PDF、Word（.docx）或文字文件（.txt、.md、.csv）", 415)
+        raise AttachmentError("只能上传 PDF、Word（.docx）、Excel（.xlsx）、文字文件（.txt、.md、.csv）、图片或录音视频", 415)
     text = re.sub(r"[ \t]+\n", "\n", text).strip()
     if not text:
         raise AttachmentError("没有读到文字（扫描件或图片组成的文件读不了）")

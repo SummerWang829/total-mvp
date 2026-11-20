@@ -5,6 +5,8 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
+from ..refs import RefIn
+from .. import refs as refs_mod
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -724,6 +726,7 @@ class ChatBody(BaseModel):
     goals: list[str] = Field(default_factory=list, max_length=8)
     need: str = Field(default="", max_length=1500)
     use_library: bool = True  # the "参考研究库" tick above the conversation
+    refs: list[RefIn] = Field(default_factory=list, max_length=5)  # 修正方案第 1 轮第 2 条: files / links / project material given with this message
 
 
 class IdeaBody(BaseModel):
@@ -782,6 +785,9 @@ def chat_form(pid: str, body: ChatBody, ctx: Ctx = Depends(require_roles(*RECRUI
         if not body.ask_only:
             db.add(f)
     library = library_context.library_text(db, proj.id)[0] if body.use_library else ""
+    mat, cat = refs_mod.material(db, proj.org_id, proj.id, body.refs)
+    if mat:
+        library = (library + "\n\n" + mat).strip()
     quotas = _quotas_of(db, proj)
     try:
         out = recruit_form.chat_turn(chat, body.message, f.chat or [], current.questions, current.goals, current.need, proj.language, proj.brief or "", library,
@@ -796,7 +802,9 @@ def chat_form(pid: str, body: ChatBody, ctx: Ctx = Depends(require_roles(*RECRUI
     if body.ask_only:  # the answer only: the questionnaire, the conversation and the version stay as they were
         audit(db, ctx.org_id, ctx.actor, "recruit.form_ask", proj.id, library=bool(library))
         db.commit()
-        return {"reply": out.reply, "kind": "answer", "clarify": out.clarify, "followups": out.followups, "changed": False}
+        reply, cites = refs_mod.cite(out.reply, cat)
+        return {"reply": reply, "kind": "answer", "clarify": out.clarify, "followups": out.followups, "changed": False, "cites": cites}
+    out.reply, cites = refs_mod.cite(out.reply, cat)
     questions = out.questions if out.questions is not None else current.questions
     f.source, f.source_confirmed, f.html_url, f.questions = "ai", "ai", "", [q.model_dump() for q in questions]
     if out.brief:
@@ -804,7 +812,7 @@ def chat_form(pid: str, body: ChatBody, ctx: Ctx = Depends(require_roles(*RECRUI
     f.goals = out.goals if out.goals is not None else current.goals
     f.need = out.need if out.need is not None else current.need
     labels = recruit_review.source_labels(out.sources, questions, quotas, bool((proj.brief or "").strip()), bool(library))
-    ai_msg = {"role": "ai", "text": out.reply, "kind": out.kind, "sources": labels, "followups": out.followups}
+    ai_msg = {"role": "ai", "text": out.reply, "kind": out.kind, "sources": labels, "followups": out.followups, "cites": cites}
     if out.clarify:
         ai_msg["clarify"] = out.clarify
     f.chat = [*(f.chat or []), {"role": "user", "text": body.message.strip()}, ai_msg][-MAX_CHAT:]
@@ -812,7 +820,7 @@ def chat_form(pid: str, body: ChatBody, ctx: Ctx = Depends(require_roles(*RECRUI
     audit(db, ctx.org_id, ctx.actor, "recruit.form_chat", proj.id, model=f.generated_by, changed=out.questions is not None, library=bool(library))  # what was said is not written to the log
     db.commit()
     return {**_full(db, proj, f), "reply": out.reply, "kind": out.kind, "clarify": out.clarify,
-            "followups": out.followups, "changed": out.questions is not None, "used": {"brief": bool((proj.brief or "").strip()), "library": len(library_context.project_documents(db, proj.id))}}
+            "followups": out.followups, "changed": out.questions is not None, "cites": cites, "used": {"brief": bool((proj.brief or "").strip()), "library": len(library_context.project_documents(db, proj.id))}}
 
 
 class SigBody(BaseModel):

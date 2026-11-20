@@ -667,6 +667,8 @@ class RepoDocument(Base):
     project_id: Mapped[str | None] = mapped_column(ForeignKey("projects.id"), nullable=True, index=True)
     title: Mapped[str] = mapped_column(String(200))
     source_note: Mapped[str] = mapped_column(String(300), default="")  # where it came from (who wrote it, when), for the reader
+    kind: Mapped[str] = mapped_column(String(8), default="file")  # 修正方案第 1 轮第 2 条: file | link (a web page kept as project material)
+    source_host: Mapped[str] = mapped_column(String(120), default="")  # for a link: the website's name only, never the full address (it may carry a token)
     text: Mapped[str] = mapped_column(Text)
     created_by: Mapped[str] = mapped_column(String(32))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

@@ -14,6 +14,7 @@ from ..config import settings
 from ..db import get_db
 from ..deps import STAFF, Ctx, ensure_project, require_roles, visible_interview
 from ..models import Project
+from ..refs import RefIn
 from ..moderator.compliance import moderator_runs_locally
 from ..moderator.providers import ChatError, ChatFatalError, get_moderator_chat
 from ..outline_wb import board, focus_new, pilot as wbpilot, session as sess, stage3
@@ -44,6 +45,7 @@ class ModuleBody(BaseModel):
 class ChatBody(BaseModel):
     text: str = Field(min_length=1, max_length=2000)
     selected: str = Field(default="", max_length=40)
+    refs: list[RefIn] = Field(default_factory=list, max_length=5)   # 修正方案第 1 轮第 2 条: files / links / project material for this message
 
 
 class DecideBody(BaseModel):
@@ -250,7 +252,7 @@ def chat(pid: str, body: ChatBody, ctx: Ctx = Depends(require_roles(*STAFF)), db
     p = _project(db, ctx, pid)
     if assistant_identity.asks_identity(body.text):   # "你是什么模型": answered here, before any model is asked
         return {"reply": assistant_identity.REPLY, "revisions": []}
-    return _run(db, sess.chat_turn, db, p, _chat(), body.text, body.selected, ctx.user.id)
+    return _run(db, sess.chat_turn, db, p, _chat(), body.text, body.selected, ctx.user.id, body.refs)
 
 
 @router.post("/revisions/{rid}/accept")

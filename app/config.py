@@ -95,6 +95,12 @@ class Settings:
     tencent_asr_secret_id: str = os.getenv("TENCENT_ASR_SECRET_ID", "")
     tencent_asr_secret_key: str = os.getenv("TENCENT_ASR_SECRET_KEY", "")
     asr_live_ws_base: str = os.getenv("ASR_LIVE_WS_BASE", "wss://asr.cloud.tencent.com")
+    # 修正方案第 1 轮第 2 条: the words in an image the team attaches to an AI chat, read by Tencent Cloud general OCR (the image is sent to Tencent Cloud; only the
+    # text is handed to the AI). Off unless OCR_PROVIDER=tencent; the keys default to the speech-recognition ones (one Tencent Cloud account).
+    ocr_provider: str = os.getenv("OCR_PROVIDER", "")
+    tencent_ocr_secret_id: str = os.getenv("TENCENT_OCR_SECRET_ID", "") or os.getenv("TENCENT_ASR_SECRET_ID", "")
+    tencent_ocr_secret_key: str = os.getenv("TENCENT_OCR_SECRET_KEY", "") or os.getenv("TENCENT_ASR_SECRET_KEY", "")
+    tencent_ocr_region: str = os.getenv("TENCENT_OCR_REGION", "ap-guangzhou")
 
     # AI moderator (docs/AI主持人_工程与训练任务说明_v1.md). Any OpenAI-compatible chat API; switching model = changing these lines only.
     # Empty values fall back to the LLM_* settings above. A local server (Ollama on 127.0.0.1) keeps transcripts on this computer;

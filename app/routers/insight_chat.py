@@ -2,6 +2,7 @@
 import json
 
 from fastapi import APIRouter, Depends, HTTPException
+from ..refs import RefIn
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -24,6 +25,7 @@ class AskBody(BaseModel):
     message: str = Field(min_length=1, max_length=insight_chat.MAX_ANSWER)
     scope: list[str] = Field(default_factory=lambda: list(insight_chat.SCOPES), max_length=3)
     ask_only: bool = False  # 只问不改: answer, and keep the question and the answer out of the saved conversation
+    refs: list[RefIn] = Field(default_factory=list, max_length=5)  # 修正方案第 1 轮第 2 条: files / links / project material for this question
 
 
 def _project(db: Session, ctx: Ctx, pid: str) -> Project:
@@ -105,7 +107,7 @@ def ask(cid: str, body: AskBody, ctx: Ctx = Depends(require_roles(*STAFF)), db: 
         ai = {"role": "ai", "answer": assistant_identity.REPLY, "suggestions": [], "followups": [], "refs": []}
     else:
         try:
-            ai = insight_chat.reply(db, ctx, proj, t, body.message.strip(), body.scope, chat, proj.outline_text)
+            ai = insight_chat.reply(db, ctx, proj, t, body.message.strip(), body.scope, chat, proj.outline_text, body.refs)
         except ChatFatalError as e:
             raise HTTPException(502, f"小星星助手暂时不可用：{e.reason}") from e
         except insight_chat.ChatUnavailable as e:

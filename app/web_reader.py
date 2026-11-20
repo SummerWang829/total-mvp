@@ -38,8 +38,9 @@ def urls_in(text: str, limit: int = 2) -> list[str]:
     return seen[:limit]
 
 
-def _public(host: str) -> None:
-    """Raises WebError unless every address the host resolves to is a public one."""
+def _public(host: str) -> str:
+    """The first address of the host; raises WebError unless every address it resolves to is a public one. The connection is then made to exactly this address
+    (修正方案第 1 轮第 2 条: no second lookup between the check and the connection, so a DNS answer cannot be switched to an inside address in between)."""
     try:
         infos = socket.getaddrinfo(host, None, proto=socket.IPPROTO_TCP)
     except socket.gaierror as e:
@@ -50,17 +51,32 @@ def _public(host: str) -> None:
         ip = ipaddress.ip_address(info[4][0])
         if not ip.is_global or ip.is_multicast:
             raise WebError("这个网址指向内部地址，不能读取")
+    return infos[0][4][0]
 
 
 def check_url(url: str) -> str:
     """The address as a clean string, or WebError (scheme, host, public address)."""
+    return _checked(url)[0]
+
+
+def _checked(url: str) -> tuple[str, str]:
+    """(the clean address, the checked public IP to connect to), or WebError."""
     p = urlparse(url.strip())
     if p.scheme not in ("http", "https") or not p.hostname:
         raise WebError("只能读 http / https 开头的网页地址")
     if p.username or p.password:
         raise WebError("网址里不能带账号密码")
-    _public(p.hostname)
-    return p.geturl()
+    ip = _public(p.hostname)   # a number written as the host (127.1, 0x7f.1, [::1] ...) goes through the resolver too, which reads it as the address it means
+    return p.geturl(), ip
+
+
+def _pinned(url: str, ip: str) -> tuple[str, dict, dict]:
+    """The request to make: to the checked IP, with the real host name for the Host header and for TLS (certificate checked against the name)."""
+    p = urlparse(url)
+    host = p.hostname or ""
+    at = f"[{ip}]" if ":" in ip else ip
+    netloc = at + (f":{p.port}" if p.port else "")
+    return p._replace(netloc=netloc).geturl(), {"Host": host + (f":{p.port}" if p.port else "")}, {"sni_hostname": host}
 
 
 class _Text(HTMLParser):
@@ -111,12 +127,13 @@ def read(url: str, client: httpx.Client | None = None) -> dict:
     own = client is None
     client = client or httpx.Client(timeout=TIMEOUT_S, follow_redirects=False, headers={"User-Agent": "Mozilla/5.0 (compatible; TotalResearchBot/1.0)"})
     try:
-        current = check_url(url)
+        current, ip = _checked(url)
         for _ in range(MAX_REDIRECTS + 1):
             try:
-                with client.stream("GET", current) as r:
+                target, hdrs, ext = _pinned(current, ip)
+                with client.stream("GET", target, headers=hdrs, extensions=ext) as r:
                     if r.status_code in (301, 302, 303, 307, 308) and r.headers.get("location"):
-                        current = check_url(urljoin(current, r.headers["location"]))
+                        current, ip = _checked(urljoin(current, r.headers["location"]))
                         continue
                     if r.status_code >= 400:
                         raise WebError(f"这个网页没有打开（对方返回 {r.status_code}）")

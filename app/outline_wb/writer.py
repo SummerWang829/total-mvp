@@ -124,14 +124,16 @@ def write_one(chat: ModeratorChatProvider | None, module: dict, context: dict, f
     return plain
 
 
-def chat_ops(chat: ModeratorChatProvider | None, outline: list[dict], selected: str, text: str) -> tuple[str, list[dict]]:
+def chat_ops(chat: ModeratorChatProvider | None, outline: list[dict], selected: str, text: str, material: str = "") -> tuple[str, list[dict]]:
     """The side dialog: (a short reply, up to three proposed operations). The caller checks them (items must exist, types must fit) and stores them as pending revisions."""
     sel = next((i for i in outline if i["uid"] == selected), None)
     if chat is None:
+        if material:
+            return "（演示模式）我读了你给的资料 [资料 1]，没有改动大纲。", []
         if sel and re.search(r"口语|改|换|中立", text):
             return "我给了一个改法，点“接受”才会写进大纲。", [{"op": "rewrite", "item_uid": sel["uid"], "after": {"lang": "zh", "text": re.sub(r"[？?]$", "", sel["text"]) + "，可以说说吗？"}, "reason": "（演示模式）示例改写"}]
         return "（演示模式）我没有改动。请选中一道题，再告诉我怎么改。", []
-    raw = _ask(chat, CHAT_PROMPT, {"OUTLINE": outline, "SELECTED": selected, "USER": text})
+    raw = _ask(chat, CHAT_PROMPT, {"OUTLINE": outline, "SELECTED": selected, "USER": text, **({"MATERIALS": material} if material else {})})
     ops = [o for o in raw.get("ops", []) if isinstance(o, dict)][:3] if isinstance(raw.get("ops"), list) else []
     return " ".join(str(raw.get("reply", "")).split())[:300] or "好的。", ops
 

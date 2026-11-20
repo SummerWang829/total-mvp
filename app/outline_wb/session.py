@@ -301,12 +301,15 @@ def confirm_module(db: Session, proj: Project, mid: str, user_id: str = "") -> d
     return view(db, proj, user_id)
 
 
-def chat_turn(db: Session, proj: Project, chat, text: str, selected: str, user_id: str = "") -> dict:
+def chat_turn(db: Session, proj: Project, chat, text: str, selected: str, user_id: str = "", refs: list | None = None) -> dict:
     """The side dialog: the model proposes up to three edits; each is checked here and stored as a pending revision (a blocked one is stored too, shown as blocked, and cannot be accepted)."""
     o, v, st = ensure(db, proj, user_id)
     ctx = context_of(db, proj, st)
     items = [{"uid": i.item_uid, "label": i.label, "kind": i.kind, "text": i.texts.get(ctx["language"]) or ""} for i in svc.items_of(db, v.id)][:MAX_CHAT_OUTLINE]
-    reply, ops = writer.chat_ops(chat, items, selected, text)
+    from .. import refs as refs_mod
+    mat, cat = refs_mod.material(db, proj.org_id, proj.id, refs or [])
+    reply, ops = writer.chat_ops(chat, items, selected, text, mat)
+    reply, cites = refs_mod.cite(reply, cat)
     made: list[Revision] = []
     for op in ops:
         after = op.get("after") if isinstance(op.get("after"), dict) else {}
@@ -319,7 +322,7 @@ def chat_turn(db: Session, proj: Project, chat, text: str, selected: str, user_i
             made += svc.propose(db, proj.org_id, o.id, v.id, [{**op, "before": before, "after": after}], proposed_by="ai", source="editor", quality=q)
         except svc.OutlineError:
             continue   # an operation on something that does not exist or does not fit is dropped, never stored
-    return {"reply": reply, "revisions": [{"id": r.id, "op": r.op, "item_uid": r.item_uid, "before": r.before, "after": r.after, "reason": r.reason, "quality": r.quality, "status": r.status} for r in made]}
+    return {"reply": reply, "cites": cites, "revisions": [{"id": r.id, "op": r.op, "item_uid": r.item_uid, "before": r.before, "after": r.after, "reason": r.reason, "quality": r.quality, "status": r.status} for r in made]}
 
 
 def decide(db: Session, proj: Project, rid: str, accept: bool, user_id: str, role: str, train_case_id: str = "") -> dict:
