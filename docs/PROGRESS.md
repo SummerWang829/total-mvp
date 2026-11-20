@@ -31,6 +31,14 @@
 - 测试：qa_site fix4 27、fix3 18、outline_wb 167（新增：长文字框获得焦点时不被截）、rsteps 65，全 0 失败；压测假模型模式冒烟通过。
 - 部署词 `docs/部署词_修正方案第4轮补丁_2026-11-20.md`。
 
+## 2026-11-20 · 部署 6adf078（修正方案第 5 轮，含第 4 轮补丁 766d1ae、快速切换修复 dbe5098）：服务器已更新，5.1 通过，5.6 压测完成，未写 DEPLOYED.txt（5.2–5.5 需要研究员登录，DeepSeek 费用待核对）
+- 前提：线上 app 与 bb35e86 一致（307 个文件）；0 个进行中场次、0 个录制、0 个未结束的 AI 会话。
+- 备份：数据库在线备份 `/opt/total-mvp/backups/total-20261120-2127.db`（integrity_check = ok，3153920 字节，85 张表）；代码 `app-20261120-2127.tgz`（5166288 字节）；`deploy/backup.sh` 异地 COS `total-20261120-132716.db.gz` 上传成功。镜像标签 `total-app:rollback-bb35e86`。
+- 部署：本地生成 `git archive 6adf078 app` 的 tar 文件后上传解包（307 个文件与 6adf078 一致）；`docker compose -p deploy up -d --build --no-deps app`；容器 healthy，重启次数 0。
+- 5.1：启动日志无 error / traceback / cannot add；`/api/health`、`/index.html`、`/rsteps.js`、`/rform.js`、`/outline_wb.js`、`/tinput.js`、`/room.html` 200；公网 `/api/health` 200；表总数 85；doctor 无必须解决的问题；保留期 dry-run `projects_with_active_interviews` 为 `[]`。
+- 5.6 压测（真实模型，30 场 × 3 题 × 2 句，每句间隔 25 秒）：任务 90，失败 0，访谈错误 0，写入编码回答 124；从句子进来到写入数据库：中位数 0.71 秒，p95 1.48 秒，最大 1.82 秒；**真实模型调用 120 次，平均每场 4.0 次**（这次计数器已统计真实调用）。日志里 429 / rate / quota / 余额 / 限额 为 0。报告副本 `/opt/total-mvp/backups/board_load-20261120-2131.md`。**费用待到 DeepSeek 后台核对。**
+- 还没做：5.2 甄别问卷（⑥ 加题放最前、测试答题快答被筛）；5.2.3 按城市出区用真模型截图区名；5.3 导入后待发人数；5.4 生成大纲（增加英文和粤语、暖场建议、发布弹窗）；5.5 电脑 AI 房间发送按钮、旧链接转页、校对保存；5.7 第 4 轮遗留检查。以上需要研究员账号登录。因为这些没有全部通过，**没有写 DEPLOYED.txt**。
+
 ## 2026-11-20 · 部署 bb35e86（修正方案第 4 轮，含第 3 轮补丁 110e8d4）：服务器已更新，5.1 通过，未写 DEPLOYED.txt（5.2–5.7 未完成）
 - 前提：线上 app 与 99ad526 一致（306 个文件，补丁 110e8d4 未部署过）；0 个进行中场次、0 个录制、0 个未结束的 AI 会话。
 - 备份：数据库在线备份 `/opt/total-mvp/backups/total-20261120-1950.db`（integrity_check = ok，3067904 字节，85 张表）；代码 `app-20261120-1950.tgz`（5156524 字节）；`deploy/backup.sh` 异地 COS `total-20261120-115014.db.gz`（394 KB，media 36K）上传成功。镜像标签 `total-app:rollback-99ad526`。
