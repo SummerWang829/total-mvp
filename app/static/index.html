@@ -109,6 +109,10 @@ function pageOff() {
 async function render() {
   pageOff();
   const seq = ++renderSeq;
+  // A redirect below happens after an await: by then the user may have clicked on, and the new address is already in the bar while its
+  // hashchange (which bumps renderSeq) has not run yet, so stale() alone misses it and the redirect would overwrite the page they chose.
+  const at = location.hash, moved = () => stale(seq) || location.hash !== at;
+  const go = (to) => { if (!moved()) location.replace(to); };
   // the layout classes of the page on screen stay until the next page is painted (see shell / loginView): taking them off here made the old page reflow narrow, with a scrollbar and a blank right side, for as long as the next page was waiting for its data
   const r = route();
   if (r.startsWith("/login")) return loginView();
@@ -139,28 +143,28 @@ async function render() {
       if (page === "home" && STAFF()) return await homeView(p);
       if (page === "people" && (STAFF() || RECRUITER())) {   // 修正方案第 1 轮第 1 条：每个部分一个地址（刷新停在原处，浏览器后退能回上一页）
         const sub = seg[4] || "";
-        if (!PEOPLE_SUBS.includes(sub)) { location.replace(`#/p/${p.id}/people/${peopleSubOf()}`); return; }
+        if (!PEOPLE_SUBS.includes(sub)) { go(`#/p/${p.id}/people/${peopleSubOf()}`); return; }
         sessionStorage.setItem("ptab", ["outline", "test", "pilot"].includes(sub) ? "ols" : sub);
         if (["outline", "test", "pilot"].includes(sub)) sessionStorage.setItem("ol_seg", sub);
         // 修正方案第 2 轮 D2: the 创建访谈 pages are drawn together; switching between them only shows the other one (no reload) while the page is fresh
         if (window.PEOPLE_FAST && PEOPLE_FAST.pid === p.id && document.getElementById("ptab-mode") && Date.now() - PEOPLE_FAST.at < 120000) { PEOPLE_FAST.show(sub); return; }
         return await peopleView(p);
       }
-      if (page === "sessions") { location.replace(`#/p/${p.id}/rooms`); return; }  // the sessions-and-invitations page is gone
+      if (page === "sessions") { go(`#/p/${p.id}/rooms`); return; }  // the sessions-and-invitations page is gone
       if (page === "rooms" && !VIEWER() && !RECRUITER()) return await roomsView(p);
       if (page === "insights" && !RECRUITER()) { if (seg[4]) sessionStorage.setItem("itab", seg[4]); return await insightsListView(p); }
-      if (page === "analysis") { location.replace(`#/p/${p.id}/insights`); return; }  // the coding page is gone
-      if (page === "outline") { location.replace(`#/p/${p.id}/people`); return; }  // 2026-11-18：旧「访谈大纲」页整页删除，正在重新设计
+      if (page === "analysis") { go(`#/p/${p.id}/insights`); return; }  // the coding page is gone
+      if (page === "outline") { go(`#/p/${p.id}/people`); return; }  // 2026-11-18：旧「访谈大纲」页整页删除，正在重新设计
       if (page === "members" && STAFF()) return await membersView(p);
       if (page === "listening" && (STAFF() || VIEWER())) return await listeningView(p);
       if (page === "quant" && (STAFF() || VIEWER())) return await quantView(p);
       if (page === "pool" && (STAFF() || VIEWER())) return await poolView(p);
       if (page === "studies" && STAFF()) return seg[4] ? await studyView(p, seg[4]) : await studiesView(p);
-      location.hash = `#/p/${p.id}/${VIEWER() ? "pool" : RECRUITER() ? "people" : "rooms"}`; return;
+      if (!moved()) location.hash = `#/p/${p.id}/${VIEWER() ? "pool" : RECRUITER() ? "people" : "rooms"}`; return;
     }
     if (seg[1] === "i") {   // the old whole page is gone: the same address opens the respondent window over the project's insights page
       const it = await api(`/interviews/${seg[2]}`);
-      if (stale(seq)) return;   // the user already moved on to another page: do not pull them back
+      if (moved()) return;   // the user already moved on to another page: do not pull them back
       window._rspPending = { id: seg[2], tab: seg[3] || "transcript" };
       location.replace(`#/p/${it.project_id}/insights`); return;
     }
@@ -170,7 +174,7 @@ async function render() {
     if (r === "/audit") return await auditView();
     if (r === "/ai") return await aiConsoleView();
     if (r === "/demo") return await demoView();
-    location.hash = "#/projects";
+    if (!moved()) location.hash = "#/projects";
   } catch (e) { if (stale(seq)) return; shell(`<div class="card empty"><b>${esc(e.message)}</b><span>如果刚才网络断开，刷新页面再试一次；问题一直存在，请把这句话发给管理员。</span><a class="btn p" href="#/projects">回到全部项目</a></div>`, { title: "打不开这个页面" }); }
 }
 
