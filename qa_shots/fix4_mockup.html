@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>修正方案第 4 轮 效果图</title>
+<style>
+:root{--g:#0B382C;--o:#FF6A00;--line:#e5e7eb;--m:#6b7280}
+body{margin:0;background:#f4f5f7;font:14px/1.6 "Microsoft YaHei",Inter,sans-serif;color:#333}
+.wrap{max-width:1180px;margin:0 auto;padding:24px 16px 60px}
+h1{font-size:22px;margin:0 0 4px}h2{font-size:17px;margin:30px 0 10px;color:var(--g)}
+.row{display:flex;gap:14px;flex-wrap:wrap}.col{flex:1;min-width:300px}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px;margin:8px 0}
+.no{display:inline-block;background:var(--o);color:#fff;border-radius:6px;padding:0 7px;font-size:12px;margin-right:6px}
+.before{border-left:4px solid #d33}.after{border-left:4px solid #1a8a5a}
+.lbl{font-size:12px;color:var(--m);margin-bottom:6px}
+.btn{display:inline-block;border-radius:8px;padding:5px 12px;font-weight:700;font-size:13px;border:1px solid var(--line);background:#fff}
+.btn.p{background:var(--o);color:#fff;border-color:var(--o)}
+.chip{display:inline-block;background:#f1f2f4;border-radius:12px;padding:1px 9px;margin:2px;font-size:12px}
+.opt{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:8px;padding:6px 10px;margin:4px 0;background:#fff}
+.ok{width:22px;height:22px;border-radius:50%;background:#1a8a5a;color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;cursor:pointer}
+.no2{width:22px;height:22px;border-radius:50%;background:#c62f3a;color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px}
+.glow{animation:g 1.6s ease-in-out infinite;border-color:var(--o)!important;color:#a34400}
+@keyframes g{0%,100%{box-shadow:0 0 0 0 rgba(255,106,0,.5);transform:scale(1)}50%{box-shadow:0 0 0 7px rgba(255,106,0,0);transform:scale(1.08)}}
+.chat{background:#f7f7f8;border-radius:10px;padding:10px;font-size:13px}.me{text-align:right}.me span{background:#fdeee3;border-radius:8px;padding:3px 8px;display:inline-block}.ai span{background:#eceef1;border-radius:8px;padding:3px 8px;display:inline-block;margin:4px 0}
+table{border-collapse:collapse;width:100%;font-size:13px}td,th{border-bottom:1px solid var(--line);padding:6px;text-align:left;vertical-align:top}
+.inp{border:1px solid var(--line);border-radius:6px;padding:5px 8px;color:#999;background:#fff;display:inline-block;min-width:160px}
+.phone{width:300px;border:9px solid #111;border-radius:30px;background:#0B382C;overflow:hidden;margin:0 auto;color:#fff}
+.ph .tile{margin:8px;border-radius:12px;height:120px;display:flex;align-items:center;justify-content:center;font-weight:700}
+.q{border-left:4px solid var(--o);background:#fff;border-radius:8px;padding:10px 14px;margin:8px 0}
+ul{margin:4px 0;padding-left:20px}
+</style></head><body><div class="wrap">
+<h1>修正方案第 4 轮 · 效果图（14 条）</h1>
+<div class="lbl">红边是现在，绿边是改后。确认后再改代码。文末有 3 个要您定的问题。</div>
+
+<h2>甄别问卷</h2>
+<div class="card after"><span class="no">1</span><b>右边问卷鼠标滚轮直接能滚</b>：现在只有拖右侧滚动条才动；改成鼠标在问卷任何位置滚轮都能上下滚。</div>
+<div class="card after"><span class="no">2</span><b>点“下一步”自动回到左边顶部</b>，新一步从头开始看。</div>
+<div class="row">
+<div class="card col before"><span class="no">3</span>现在 ② 以后每一步顶上都有“来自立项 在中国新能源……”一条</div>
+<div class="card col after">改后：这条删掉，直接是“② 要筛进谁”。</div></div>
+<div class="row">
+<div class="card col before"><span class="no">4</span>中文问卷的条件表里冒出英文：“No NEV aftersales ex / Do you currently work in…”</div>
+<div class="card col after">改后：条件、问法、选项、说明一律用问卷语言（中文问卷全中文，英文问卷全英文）；AI 写成别的语言会自动改回，改不回就不加这一条。</div></div>
+<div class="row">
+<div class="card col before"><span class="no">5</span>右边每个选项前的 ✓ / ✗ 点了没反应</div>
+<div class="card col after">改后：点一下就换：<div class="opt"><span class="ok">✓</span>18-24岁 <span class="lbl">选了可以通过</span></div><div class="opt"><span class="no2">✗</span>不愿透露 <span class="lbl">选了就甄别掉</span></div>改完立刻保存，测试答题跟着变。</div></div>
+
+<h2><span class="no">6</span>对话改题：“第 8 题按第 7 题选的城市出区”</h2>
+<div class="row">
+<div class="card col before"><div class="lbl">现在</div><div class="chat"><div class="me"><span>第8题根据第7题出示区域……</span></div><div class="ai"><span>这样排的话逻辑不通（问卷不合格：questions.7.options (List should have at most 12 items…）</span></div><div class="me"><span>你是什么模型</span></div><div class="ai"><span>模型没有改这一题</span></div></div>
+<ul class="lbl"><li>问卷不支持“选项跟着上一题变”，选项最多 12 个，所以怎么说都改不了</li><li>报错是英文程序话</li><li>问“你是什么模型”没回答（应答“我是小星星助手”）</li></ul></div>
+<div class="card col after"><div class="lbl">改后：问卷支持“选项按前面某题的答案出示”</div>
+<div class="chat"><div class="me"><span>第8题根据第7题出示区域……</span></div><div class="ai"><span>已改好第 8 题：按第 7 题选的城市出示该城市的区（北京 16 个区、上海 16 个区……共 86 个，每人只看到自己城市的），区名请您核对一下。</span></div></div>
+<div class="opt"><span class="ok">✓</span>朝阳区 <span class="chip">第 7 题选“北京”才出示</span></div>
+<div class="opt"><span class="ok">✓</span>浦东新区 <span class="chip">第 7 题选“上海”才出示</span></div>
+<ul class="lbl"><li>带出示条件的题，选项上限放宽到 200 个；候选人只看到符合条件的</li><li>改不了时用中文说清楚原因，不出现英文程序话</li><li>问“你是什么模型 / 什么工具”一律答“我是小星星助手”；不是改题的问题（比如问意见）就正常回答，不说“模型没有改这一题”</li></ul></div></div>
+
+<h2><span class="no">7</span>导入名单：只要姓名和邮箱</h2>
+<div class="row">
+<div class="card col before"><div class="lbl">现在</div>一个大框粘贴，第一行必须写表头“姓名”，不写就报错；还要国家、语言、标签等字段</div>
+<div class="card col after"><div class="lbl">改后</div>
+<table><tr><th style="width:40%">姓名</th><th>邮箱</th><th></th></tr>
+<tr><td><span class="inp">bobbie</span></td><td><span class="inp">bobbie@example.com</span></td><td>×</td></tr>
+<tr><td><span class="inp">姓名</span></td><td><span class="inp">邮箱</span></td><td></td></tr></table>
+<span class="btn">＋ 再加一行</span> <span class="btn">上传 Excel / CSV</span>
+<div class="lbl" style="margin-top:6px">粘贴多行“姓名 邮箱”也行，不用写表头；文件里多的列忽略</div></div></div>
+
+<h2>生成大纲</h2>
+<div class="row">
+<div class="card col before"><span class="no">8</span>对话说“访谈时长改为30分钟”，回答“已经知道的没有改动”</div>
+<div class="card col after">改后：对话也能改时长、访谈形式、访谈语言；改完和点“改”一样，和立项不一致时出现黄条（用大纲的改立项 / 改回立项的）。</div></div>
+<div class="row">
+<div class="card col before"><span class="no">9</span>暖场直接问问题，没有开场介绍；收尾没有感谢；模块标题下面有一块空白</div>
+<div class="card col after">改后：<b>暖场</b>第一条固定是口语化的<b>开场白</b>（自我介绍、这次聊什么、大概多久、录音录像只用于研究、没有对错、可以随时停）；<b>收尾</b>最后一条固定是<b>感谢与结束语</b>（谢谢、还有什么想补充、礼金怎么发）。都可以改。去掉标题下的空白。</div></div>
+<div class="row">
+<div class="card col before"><span class="no">10</span>题目写着“看完这段售后服务介绍素材”，但没有素材，也没提醒</div>
+<div class="card col after">改后：题里提到素材/视频/网站，下面的按钮自动放大并呼吸提醒：
+<div style="margin-top:6px">＋ 插入 <span class="btn">题目</span> <span class="btn glow">视频片段</span> <span class="btn">概念卡</span> <span class="btn">网站任务</span></div><div class="lbl">（按题里的说法亮对应的那一个；插好素材后停止闪烁）</div></div></div>
+<div class="card after"><span class="no">11</span>关注问题表格：“研究员”和问题文字顶端对齐。</div>
+
+<h2><span class="no">12</span>从“招募/主持/问卷”点“下一步”进甄别问卷</h2>
+<div class="card after">直接从 ① 读取立项开始，左栏 6 步全部展开（现在会跳到最后一步 ⑥）。</div>
+
+<h2>受访者手机</h2>
+<div class="row">
+<div class="col card"><span class="no">13</span><b>同意书改写成分段要点</b>（意思不变，只改排版和措辞，更短）
+<div style="font-size:13px;margin-top:6px"><b>谁来访谈</b><ul><li>本次由 AI 主持人提问，不是真人；研究团队能看到对话，可随时接手</li><li>语音或视频访谈时，AI 用合成语音说话；按住麦克风说话，松开就发送</li></ul>
+<b>我们会记录什么</b><ul><li>录制视频和声音，转写成文字并翻译成中文，只用于市场研究</li><li>记录说话的语速、停顿、音量和您发的表情</li></ul>
+<b>数据去哪里</b><ul><li>为运行 AI，回答会发送给 AI 服务商 DeepSeek</li><li>存放在新加坡，由中国团队访问</li><li>项目结束 180 天后删除</li></ul>
+<b>您的权利</b><ul><li>不提供姓名联系方式给委托方；随时可撤回、查阅、更正、删除：联系 xxx@xxx.com</li></ul></div></div>
+<div class="col card"><span class="no">14</span><b>AI 访谈手机房间</b>（平分）
+<div class="phone"><div style="padding:8px 10px;font-size:12px">TOTAL 星桐　　🎙 📷 😊 离开</div>
+<div class="ph"><div class="tile" style="background:#1d4a3d">AI 主持人</div><div class="tile" style="background:#556">我</div></div>
+<div style="margin:8px;border:1px solid #2c5a4c;border-radius:12px;height:110px;padding:8px;font-size:12px">和主持人聊天（约 8 厘米高，够看字幕）</div>
+<div style="margin:8px;background:#ff6a00;border-radius:22px;text-align:center;padding:10px;font-weight:700">按住说话</div></div>
+<div class="lbl" style="margin-top:6px">AI 框在上、我的画面在下，一样宽一样高；聊天框约 8 厘米高；“大屏”模式不变。</div></div></div>
+
+<h2>要您定的 3 件事</h2>
+<div class="q"><b>1. 第 6 条</b>：区名由小星星按常识写（可能有错或过时，需要您核对）。可以吗？还是您上传一份城市-区的名单让它照着用？</div>
+<div class="q"><b>2. 第 13 条</b>：同意书只改排版（分段 + 要点）和精简措辞，内容一条不少。改完版本号会升一版，马来语、泰米尔语同样改。需要再给法务看吗？</div>
+<div class="q"><b>3. 第 7 条</b>：导入名单只留姓名和邮箱。国家、语言、标签以后都不从导入填（受访者答问卷时自己选），可以吗？</div>
+<div class="card"><b>您问“这里的模型是哪个”</b>：后台接的是 DeepSeek（服务器上配置的那个）。这次改不了，主要不是模型笨，而是问卷本身不支持“选项跟着上一题变”，选项也有 12 个的上限，模型怎么写都通不过检查。第 6 条把这个能力补上。页面上对研究员仍然只叫“小星星助手”。</div>
+</div></body></html>
