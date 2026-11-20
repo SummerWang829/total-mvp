@@ -4,6 +4,14 @@
 > 每条记录写：日期 · 做了什么 · `scripts/qa.sh` 结果数字 · 还差什么 · 风险。最新的写在最上面。
 > qa.sh 数字的顺序：逻辑测试（pytest）/ 全站浏览器检查 / 真实视频访谈 / 一键启动。
 
+## 2026-11-20 · 部署 99ad526（修正方案第 3 轮）：服务器已更新，未写 DEPLOYED.txt（语音、浏览器检查、压测未完成）
+- 前提：线上 app 与 140d5e8 一致（忽略 CRLF，304 个文件）；0 个进行中场次、0 个录制、0 个未结束的 AI 会话。
+- 备份：数据库在线备份 `/opt/total-mvp/backups/total-20261120-1746.db`（integrity_check = ok，3010560 字节，84 张表）；代码 `app-20261120-1746.tgz`（5138254 字节）；`deploy/backup.sh` 异地 COS `total-20261120-094624.db.gz`（386 KB，media 36K）上传成功。镜像标签 `total-app:rollback-140d5e8`。`.env` 备份 `env-before-tts-20261120-1746.bak`（未打印内容）。
+- 环境：`.env` 新增 `TTS_PROVIDER=tencent`；`OCR_PROVIDER=tencent` 保持；`TENCENT_ASR_APPID/SECRET_ID/SECRET_KEY` 非空（沿用，只核对了长度）。`TTS_VOICE_ZH/EN` 未写，用默认 1001/1051，待控制台确认。
+- 部署：`git archive 99ad526 app` 先经管道解包卡住（已停掉残留进程），改为本地生成 tar 文件后上传解包；`docker compose -p deploy up -d --build --no-deps app`；容器 healthy。
+- 核对：启动后日志 error / traceback / cannot add / board job failed 为 0；`/api/health`、`/index.html`、`/rsteps.js`、`/outline_wb.js`、`/room.html` 200；公网 `/api/health` 200；线上 app 与 99ad526 一致（306 个文件）；表总数 85，`outline_chats` 存在；`app.doctor` 没有必须解决的问题；保留期 dry-run：`{'interviews': 0, 'projects': {}, 'projects_with_active_interviews': []}`。
+- 还没做：腾讯云控制台（开通语音合成、子账号权限、确认 1001/1051 音色）；6.2 立项与甄别问卷、6.3 生成大纲（含 50MB mp4 上传测试）、6.4 AI 语音访谈（手机受访者，中英各一场，看日志 tts refused，统计字符数）；6.5 上两轮遗留检查；6.6 看板真模型压测（**等用户确认法务问题后再跑**）。因为这些没有全部通过，**没有写 DEPLOYED.txt**。
+
 ## 2026-11-20 · 修正方案第 3 轮 · 第 3 部分：大纲对话存服务器、AI 语音访谈
 - 用户定：对话存服务器；AI 语音“按住说话，手一松就发”；同意书写“合成语音”不写服务商；基础音色。
 - 做了：新表 `outline_chats`（每人每项目一行，只自己看，随项目清理）；`app/tts.py`（腾讯云 TextToVoice，TC3 签名，超时 + 指数退避，拒绝不重试，只缓存在内存，不记文字）；`GET /api/public/join/{token}/tts/{seq}` 只读已存的 AI 句子；受访者 AI 房间：AI 新的一句自动朗读（浏览器不让自动出声时显示“点一下，听主持人说话”），“按住说话”按住听、松开立刻发送，按住时 AI 停止播放；同意书 draft-10 加一句合成语音（四种语言，马来语、泰米尔语待母语和法务复核）。
