@@ -1099,3 +1099,67 @@ def quotas_plan(pid: str, body: QuotaPlanBody, ctx: Ctx = Depends(require_roles(
 
 
 
+
+
+# ---------- 甄别问卷的 6 步（修正方案第 1 轮第 4 条，app/recruit_steps.py）----------
+class StepConfirmBody(BaseModel):
+    data: dict = Field(default_factory=dict)
+    questions: list[dict] = Field(default_factory=list, max_length=30)   # the questionnaire as the page has it now (its own edits included)
+
+
+def _steps_out(db: Session, proj: Project, f: RecruitForm) -> dict:
+    from .. import recruit_steps
+    return {"steps": recruit_steps.state(f), "plan": recruit_steps.plan_summary(db, proj, f), "labels": recruit_steps.LABELS, "order": list(recruit_steps.STEPS), "at": f.step or 1}
+
+
+def _form_row(db: Session, proj: Project) -> RecruitForm:
+    f = db.get(RecruitForm, proj.id)
+    if f is None:
+        f = RecruitForm(project_id=proj.id, org_id=proj.org_id, goals=[], questions=[], plan_steps={}, qc={})
+        db.add(f)
+        db.flush()
+    return f
+
+
+@router.get("/projects/{pid}/recruiting/form/steps")
+def get_steps(pid: str, ctx: Ctx = Depends(require_roles(*RECRUITERS)), db: Session = Depends(get_db)):
+    proj = get_project(db, ctx, pid)
+    f = db.get(RecruitForm, proj.id) or RecruitForm(project_id=proj.id, org_id=proj.org_id, goals=[], need="", questions=[], plan_steps={}, qc={}, step=1)   # reading creates nothing
+    return _steps_out(db, proj, f)
+
+
+@router.post("/projects/{pid}/recruiting/form/steps/{step}/suggest")
+def suggest_step(pid: str, step: str, body: StepConfirmBody, ctx: Ctx = Depends(require_roles(*RECRUITERS)), db: Session = Depends(get_db)):
+    """What a step offers before it is confirmed (nothing is saved): ② the conditions, ③ the exclusions, ④ the 立项's quotas, ⑤ the quality-control defaults.
+    ② and ③ send the recruiting need to the AI service when a model is set up (the rules work without one)."""
+    from .. import recruit_steps
+    proj = get_project(db, ctx, pid)
+    f = db.get(RecruitForm, proj.id) or RecruitForm(project_id=proj.id, org_id=proj.org_id, goals=[], need="", questions=[], plan_steps={}, qc={})   # a suggestion saves nothing
+    if step == "include":
+        out = {"conds": recruit_steps.suggest_conditions(db, proj, f, _ai_chat())}
+    elif step == "exclude":
+        out = {"excl": recruit_steps.suggest_exclusions(db, proj, f, _ai_chat())}
+    elif step == "quota":
+        out = {"quotas": recruit_steps.quota_default(db, proj) or [dict(q) for q in ((db.get(RecruitSettings, proj.id) or RecruitSettings()).quotas or [])]}
+    elif step == "qc":
+        out = {"qc": recruit_steps.qc_default(len(body.questions) or len(f.questions or []))}
+    else:
+        raise HTTPException(404, "这一步没有建议")
+    return out
+
+
+@router.put("/projects/{pid}/recruiting/form/steps/{step}")
+def confirm_step(pid: str, step: str, body: StepConfirmBody, ctx: Ctx = Depends(require_roles(*RECRUITERS)), db: Session = Depends(get_db)):
+    """Confirm one step: only that step's questions are made again; the questionnaire is saved; ④ writes the project's quotas (the list page counts with them at once)."""
+    from .. import recruit_steps
+    proj = get_project(db, ctx, pid)
+    f = _form_row(db, proj)
+    try:
+        fresh = recruit_steps.confirm(db, proj, f, step, body.data, body.questions or [q.model_dump() for q in recruit_form.load(f.questions)])
+    except (recruit_steps.StepError, recruit_form.FormError) as e:
+        db.rollback()
+        raise HTTPException(422, str(e)) from e
+    f.source, f.version, f.updated_at = "ai", (f.version or 0) + 1, utcnow()
+    audit(db, ctx.org_id, ctx.actor, "recruit.form_step", proj.id, step=step, made=len(fresh))
+    db.commit()
+    return {**_full(db, proj, f), **_steps_out(db, proj, f), "fresh": fresh}

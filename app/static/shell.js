@@ -225,7 +225,8 @@ function shSubHtml(p, active, menu) {
     const cur = menu.onKey;
     const grp = (g) => { const has = g.items.some((i) => i.key === cur), closed = !has && shGrpClosed(g.key);
       return `<div class="sgrp${closed ? " closed" : ""}" data-grp="${g.key}"><button type="button" class="sgt" aria-expanded="${!closed}" data-tip="${esc(g.title)}"><span class="tx">${esc(g.title)}</span><span class="ar" aria-hidden="true"></span></button>`
-        + g.items.map((i) => `<a class="l1${i.key === cur ? " on" : ""}" href="#${i.href}" ${i.key === cur ? 'aria-current="page"' : ""} data-tip="${esc(i.label)}"><span class="it">${vIc(i.ic)}</span><span class="tx">${esc(i.label)}</span></a>`).join("") + `</div>`; };
+        + g.items.map((i) => `<a class="l1${i.key === cur ? " on" : ""}" href="#${i.href}" ${i.key === cur ? 'aria-current="page"' : ""} data-tip="${esc(i.label)}"><span class="it">${vIc(i.ic)}</span><span class="tx">${esc(i.label)}</span></a>`
+          + (i.key === cur && i.key === "people/form" ? `<div class="l2slot" id="l2slot"></div>` : "")).join("") + `</div>`; };   // 甄别问卷的 6 步是这一项下面的子栏（用户 2026-11-20）
     return `<div class="shead"><span class="stile">${vIc(h.ic)}</span><div><b>${esc(h.title)}</b>${h.meta ? `<small>${esc(h.meta)}</small>` : ""}</div></div>`
       + `<div class="mn">${menu.groups.map(grp).join("")}</div><div class="l2ver" id="owstate"></div><div class="bot"><button type="button" class="fold" aria-label="收起或展开这一栏" aria-expanded="true" data-tip="收起这一栏"></button>${close}</div>`;
   }

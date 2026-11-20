@@ -27,11 +27,13 @@ EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 class StepBody(BaseModel):
     answers: dict = Field(default_factory=dict)
+    started: str = Field(default="", max_length=120)  # the signed start time the server gave with the first question (修正方案第 1 轮第 4 条: 最短作答时长)
     lang: str = Field(default="", max_length=10)  # the language the candidate picked (ignored unless that language is offered)
 
 
 class SubmitBody(BaseModel):
     answers: dict = Field(default_factory=dict)
+    started: str = Field(default="", max_length=120)
     name: str = Field(min_length=1, max_length=100)
     email: str = Field(max_length=200)
     country: str = Field(min_length=2, max_length=2)
@@ -57,6 +59,29 @@ def _offered(f: RecruitForm, proj: Project) -> list[str]:
     """The languages a candidate may pick: the questionnaire's own plus every project language whose translation is complete and confirmed (the project's default first)."""
     return recruit_translate.candidate_languages(recruit_form.load(f.questions), f.translations or {}, project_langs.of(proj), proj.language)
 
+
+
+def sign_start(token: str, now: float | None = None) -> str:
+    """When the first question was shown, signed by the server so the page cannot set it (修正方案第 1 轮第 4 条 · ⑤ 最短作答时长)."""
+    import hashlib
+    import hmac
+    import time
+    ts = str(int(now if now is not None else time.time()))
+    sig = hmac.new(settings.secret_key.encode(), f"screen:{token}:{ts}".encode(), hashlib.sha256).hexdigest()[:32]
+    return f"{ts}.{sig}"
+
+
+def too_fast(f: RecruitForm, token: str, started: str, now: float | None = None) -> bool:
+    """Whether the questionnaire was answered in less than the shortest time set in ⑤ (a missing or forged start counts as too fast)."""
+    import hmac
+    import time
+    secs = int((f.qc or {}).get("min_seconds") or 0)
+    if secs <= 0:
+        return False
+    ts, _, sig = (started or "").partition(".")
+    if not ts.isdigit() or not hmac.compare_digest(sign_start(token, int(ts)), started):
+        return True
+    return (now if now is not None else time.time()) - int(ts) < secs
 
 @router.get("/{token}")
 def screen_info(token: str, db: Session = Depends(get_db)):
@@ -87,9 +112,13 @@ def screen_step(token: str, body: StepBody, request: Request, db: Session = Depe
         step = recruit_form.next_step(questions, body.answers)
     except recruit_form.AnswerError as e:
         raise HTTPException(422, "Please check your answer / 请检查你的回答") from e
-    if not body.answers:  # the first question was opened
+    started = ""
+    if not body.answers:  # the first question was opened: the server's clock starts here (signed, nothing stored)
         f.n_started = (f.n_started or 0) + 1
+        started = sign_start(token)
         db.commit()
+    elif step.result == "qualified" and too_fast(f, token, body.started):   # 用户 2026-11-20: 答得太快直接终止
+        step.result, step.ended_at = "out", "__time__"
     if step.result == "out":
         f.n_out = (f.n_out or 0) + 1
         f.out_by = {**(f.out_by or {}), step.ended_at: (f.out_by or {}).get(step.ended_at, 0) + 1}
@@ -98,7 +127,7 @@ def screen_step(token: str, body: StepBody, request: Request, db: Session = Depe
     question = step.question
     if question and body.lang in _offered(f, proj):  # the same question in the language the candidate picked (answers go by option id, so the logic is the same)
         question = recruit_translate.localize(question, next(q for q in questions if q.id == question["id"]), f.translations or {}, body.lang)
-    return {"question": question, "result": step.result}
+    return {"question": question, "result": step.result, **({"started": started} if started else {})}
 
 
 @router.post("/{token}/submit", status_code=201)
@@ -122,7 +151,7 @@ def screen_submit(token: str, body: SubmitBody, request: Request, db: Session = 
         step = recruit_form.next_step(questions, body.answers)
     except recruit_form.AnswerError as e:
         raise HTTPException(422, "Please check your answers / 请检查你的回答") from e
-    if step.result != "qualified":
+    if step.result != "qualified" or too_fast(f, token, body.started):
         raise HTTPException(409, "Please finish the questions first / 请先完成问卷")
     country = body.country.upper()
     if not settings.region_open(country):

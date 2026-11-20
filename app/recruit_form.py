@@ -144,6 +144,11 @@ class Question(BaseModel):
     required: bool = True
     options: list[Option] = Field(default_factory=list, max_length=MAX_OPTIONS)
     rules: list[Rule] = Field(default_factory=list, max_length=MAX_RULES)
+    # 修正方案第 1 轮第 4 条（甄别问卷 6 步）: which step made the question (going back to a step remakes only its questions), which condition it asks, and its quality-control role
+    step: Literal["", "include", "exclude", "qc"] = ""
+    cond_id: str = Field(default="", max_length=40)
+    qc: Literal["", "trap", "consistency"] = ""
+    pair: str = Field(default="", max_length=20)  # a consistency question: the earlier question it asks again; a different answer ends the questionnaire (用户 2026-11-20: 矛盾直接终止)
 
     @model_validator(mode="before")
     @classmethod
@@ -347,6 +352,14 @@ def _words(q: Question, ans) -> str:
     return f"{ans:g}" if q.type == "number" else str(ans)
 
 
+def _same(a: Question, ans_a, b: Question, ans_b) -> bool:
+    """Whether two answers to the same thing asked twice agree: the chosen options' texts are the same (the second question may list them in another order)."""
+    def texts(q: Question, ans) -> set[str]:
+        ids = {ans} if isinstance(ans, str) else set(ans or [])
+        return {o.text.strip() for o in q.options if o.id in ids}
+    return texts(a, ans_a) == texts(b, ans_b)
+
+
 def next_step(questions: list[Question], answers: dict) -> Step:
     """Walk the questionnaire with the answers given so far and say what comes next. Answers to questions that are not on the path are ignored.
 
@@ -367,6 +380,8 @@ def next_step(questions: list[Question], answers: dict) -> Step:
             step.items.append((q.text, _words(q, ans)))
             step.tags += [o.tag for o in q.options if o.tag and ((ans == o.id) if q.type == "single" else (q.type == "multi" and o.id in ans))]
         act = _action(q, ans, pos)
+        if q.pair and q.pair in step.chosen and ans is not None and not _same(questions[pos[q.pair]], step.chosen[q.pair], q, ans):
+            act = END_OUT   # the same thing asked twice got two different answers
         if act in (END_OUT, END_OK):
             step.result, step.ended_at = ("out" if act == END_OUT else "qualified"), q.id
             step.reason = f"第 {i + 1} 题「{q.text[:40]}」" + ("的回答不符合要求" if act == END_OUT else "的回答直接通过")

@@ -760,6 +760,9 @@ class RecruitForm(Base):
     dismissed: Mapped[list] = mapped_column(JSON, default=list)  # signatures of suggestions the team chose not to be reminded of again
     translations: Mapped[dict] = mapped_column(JSON, default=dict)  # language code -> {question id: {text, options: {option id: text}, fp, state}} (app/recruit_translate.py)
     chat: Mapped[list] = mapped_column(JSON, default=list)  # the conversation with the AI that edits the questionnaire: [{"role": "user" | "ai", "text"}], the latest 40
+    plan_steps: Mapped[dict] = mapped_column(JSON, default=dict)  # 修正方案第 1 轮第 4 条: the 6 steps (app/recruit_steps.py): status, ② conditions, ③ exclusions, ④ quotas, ⑤ settings
+    qc: Mapped[dict] = mapped_column(JSON, default=dict)  # ⑤ {trap, consistency, min_seconds, dedupe}: the server's checks while candidates answer
+    step: Mapped[int] = mapped_column(Integer, default=1)  # which of the 6 steps the page is at (the old `stage` is no longer read)
     stage: Mapped[int] = mapped_column(Integer, default=1)  # 对话推进到第几个阶段（1..11，按招募/主持方式增减；见产品文档第 9 章）
 
 

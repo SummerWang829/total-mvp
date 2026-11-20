@@ -300,8 +300,8 @@ def _matches(q: dict, p: Participant, answers: dict[str, list[tuple[str, str]]])
         return p.country == q["value"]
     if q["field"] == "language":
         return p.language == q["value"]
-    if q["field"] == "tag":
-        return q["value"] in (p.tags or [])
+    if q["field"] == "tag":   # "A+B" (a group of the 立项's quota table over two variables): the person has both tags
+        return all(t in (p.tags or []) for t in q["value"].split("+") if t)
     return any(q["question"].lower() in qu.lower() and q["value"].lower() in an.lower() for qu, an in answers.get(p.id, []))
 
 

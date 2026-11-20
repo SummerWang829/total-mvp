@@ -15,6 +15,7 @@ const RF_IC = {
   dots: '<circle cx="12" cy="5" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/><circle cx="12" cy="19" r="1.3" fill="currentColor"/>',
   grip: '<circle cx="9" cy="6" r="1.2" fill="currentColor"/><circle cx="9" cy="12" r="1.2" fill="currentColor"/><circle cx="9" cy="18" r="1.2" fill="currentColor"/><circle cx="15" cy="6" r="1.2" fill="currentColor"/><circle cx="15" cy="12" r="1.2" fill="currentColor"/><circle cx="15" cy="18" r="1.2" fill="currentColor"/>',
   x: '<path d="M18 6 6 18M6 6l12 12"/>',
+  spark: '<path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0L14.06 8.5A2 2 0 0 0 15.5 9.94l6.14 1.58a.5.5 0 0 1 0 .96L15.5 14.06a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0z"/>',
   send: '<path d="M12 19V5M5 12l7-7 7 7"/>',
   ext: '<path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>',
   img: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="m21 15-5-5L5 21"/>',
@@ -407,9 +408,12 @@ function rfCard(p, form, rec, plannedN) {
   const drawLeft = () => {
     const c = $("#ccroot"); if (!c) return;
     if (mode === "html") { c.innerHTML = `<div class="cc-sc">${importHtml()}</div>`; const g = $("#rfgooutline"); if (g) g.onclick = goOutline; return; }
-    saveFlow();
-    c.innerHTML = flowHtml(flowState());   // 单线六步：不再挂 11 阶段对话；右栏单题改 /form/ask 与建议区保持不动
-    wireFlow();
+    // 修正方案第 1 轮第 4 条：左栏是 6 步（app/static/rsteps.js），没有单独的对话栏；改某一题用右栏题干旁的 AI 图标
+    RSteps.render(c, {
+      p, getQ: () => JSON.parse(JSON.stringify(Q)),
+      apply: (r) => { pushHist(); Q = JSON.parse(JSON.stringify(r.questions || [])); f = { ...f, ...r }; changedIds = new Set(r.fresh || []); drawRight(); },
+      test: () => { seg = "test"; drawRight(); },
+    });
   };
 
   /* ---------- right: the outline / the test ---------- */
@@ -536,9 +540,9 @@ function rfCard(p, form, rec, plannedN) {
     const rules = q.type === "number" ? (q.rules || []).map((r) => `<div class="rq-opt">如果数字${RF_OP[r.op]} ${r.value} ${badge(r.goto)}</div>`).join("") : "";
     return `<div class="rf-q${changedIds.has(q.id) ? " rf-hl" : ""}${askOpen === q.id ? " rf-ask-target" : ""}" data-qid="${q.id}" data-qi="${i}" data-selk="q:${q.id}">
       <span class="rq-grip" data-grip="${i}" tabindex="0" role="button" title="按住拖动排序，或用上下方向键移动" aria-label="拖动第 ${i + 1} 题">${rfIcon(RF_IC.grip)}</span>
-      <div class="rq-top"><span class="rq-qn">Q${i + 1}</span><button class="rq-title" type="button" data-edit="${q.id}">${esc(q.text || "（还没写题目）")}</button>${qBadge(q)}<span class="sp"></span>
+      <div class="rq-top"><span class="rq-qn">Q${i + 1}</span><span class="rq-title" role="button" tabindex="0" data-edit="${q.id}" title="点一下改这一题">${esc(q.text || "（还没写题目）")}</span>${qBadge(q)}<span class="sp"></span>
         <span class="rq-type-wrap"><button class="rq-type rq-type-btn" type="button" data-typetg="${q.id}" aria-haspopup="true" aria-expanded="false" title="点一下切换题型">${lbl(RF_TYPE[q.type], q.type)}${q.required ? " · 必答" : ""}${rfIcon(RF_IC.chev)}</button>${typeMenuOpen === q.id ? `<div class="rq-type-menu" role="menu">${Object.entries(RF_TYPE).map(([k, n]) => `<button type="button" role="menuitem" data-typeset="${q.id}" data-t="${k}" class="${q.type === k ? "on" : ""}">${n}</button>`).join("")}</div>` : ""}</span>
-        <button class="rq-ask" type="button" data-ask="${q.id}" aria-label="对这题问问 AI" title="对这题问问 AI">💬</button>
+        <button class="rq-ask" type="button" data-ask="${q.id}" aria-label="让 AI 改这一题" title="让 AI 改这一题">${rfIcon(RF_IC.spark)}</button>
         <button class="rq-more" type="button" data-menu="${qk}" aria-label="题目菜单" aria-expanded="${menu === qk}">${rfIcon(RF_IC.dots)}</button>${menu === qk ? qMenu(q, i) : ""}</div>
       ${opts}${rules}${exWarn(q)}${askOpen === q.id ? askInline(q, i) : ""}</div>`;
   }
@@ -803,7 +807,7 @@ function rfCard(p, form, rec, plannedN) {
       pushHist(); const type = b.dataset.add, q = { id: nextId(), type, text: "", required: true, options: type === "single" || type === "multi" || type === "scale" ? blank() : [], rules: [] };
       Q.push(q); editing.add(q.id); changed();
     }));
-    document.querySelectorAll("[data-edit]").forEach((b) => (b.onclick = () => { editing.add(b.dataset.edit); drawRight(); }));
+    document.querySelectorAll("[data-edit]").forEach((b) => { b.onclick = () => { editing.add(b.dataset.edit); drawRight(); }; b.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); b.click(); } }; });   // a question's text is the text, not a short button label: it may wrap
     // 题型下拉：常态卡片上点题型标签展开，选一种即切换题型并重绘（选择题/量表自动带选项，切换后即可「＋添加选项」）
     document.querySelectorAll("[data-typetg]").forEach((b) => (b.onclick = (e) => {
       e.stopPropagation(); typeMenuOpen = typeMenuOpen === b.dataset.typetg ? null : b.dataset.typetg; drawRight();

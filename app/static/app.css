@@ -147,7 +147,7 @@ a.back{display:inline-flex;align-items:center;min-height:36px;font-size:13px;col
 /* ---------- overlays ---------- */
 .modal{position:fixed;inset:0;background:rgba(6,35,25,.5);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;z-index:50;padding:16px;animation:fadein .18s ease both}
 .modal>div{background:var(--surface);color:var(--ink);border-radius:var(--r-pop);padding:26px;max-width:560px;width:100%;max-height:90vh;overflow:auto;box-shadow:0 28px 80px rgba(6,35,25,.3);animation:pop .26s var(--ease) both}
-.toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);z-index:99;display:flex;align-items:center;gap:10px;max-width:90vw;background:var(--ink);color:var(--bg);padding:11px 16px 11px 12px;border-radius:12px;font-weight:600;font-size:13.5px;box-shadow:0 12px 36px rgba(6,35,25,.28)}
+.toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);z-index:99;display:flex;align-items:center;gap:10px;max-width:90vw;background:var(--ink);color:var(--bg);padding:11px 16px 11px 12px;border-radius:12px;font-weight:600;font-size:14px;box-shadow:0 12px 36px rgba(6,35,25,.28)}
 .toast::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--orange);flex:none}
 .toast.err{background:var(--risk)}.toast.err::before{background:#fff}
 code.copy{display:block;background:var(--wash);border:1px solid var(--line);padding:10px 12px;border-radius:10px;word-break:break-all;font-size:14px}

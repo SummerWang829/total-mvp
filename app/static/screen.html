@@ -11,6 +11,7 @@
 // The public recruiting questionnaire: one question at a time; the server walks the logic. Someone screened out gets a polite thanks and nothing about them is kept;
 // someone who qualifies leaves a name and an e-mail after agreeing to the notice. English, Chinese, Malay and Tamil: the candidate picks one of the languages the project offers (top right), and can change it at any time without losing answers.
 const t = new URLSearchParams(location.search).get("t") || "";
+let started = "";   // the server's signed start time (修正方案第 1 轮第 4 条: 最短作答时长 is checked by the server)
 const box = $("#box"), enc = encodeURIComponent(t);
 const T = {
   en: { title: "A short questionnaire", intro: "{org} would like to know if this research is a good fit for you. It takes a few minutes.", start: "Start",
@@ -110,7 +111,7 @@ const fill = (s, info) => s.replace("{org}", info.org).replace("{days}", info.re
       $("#cf").onsubmit = async (e) => {
         e.preventDefault(); const f = e.target, err = $("#cerr");
         if (!f.consent.checked || !f.name.value.trim() || !f.email.value.trim()) { err.textContent = x.need; err.hidden = false; return; }
-        try { await post("/submit", { answers, name: f.name.value, email: f.email.value, country: f.country.value, consent: true, slots: picks, langs: prefs.langs, formats: prefs.formats }); redraw = () => { host.innerHTML = `<h2>${x.doneT}</h2><p>${x.done}</p>`; }; redraw(); }
+        try { await post("/submit", { answers, started, name: f.name.value, email: f.email.value, country: f.country.value, consent: true, slots: picks, langs: prefs.langs, formats: prefs.formats }); redraw = () => { host.innerHTML = `<h2>${x.doneT}</h2><p>${x.done}</p>`; }; redraw(); }
         catch (er) { err.textContent = er.status === 403 || er.status === 422 || er.status === 429 ? er.message : x.err; err.hidden = false; }
       };
     };
@@ -132,7 +133,7 @@ const fill = (s, info) => s.replace("{org}", info.org).replace("{days}", info.re
       };
     };
     const runner = scrRunner(host, {
-      lang, step: (answers) => post("/step", { answers, lang }).catch((e) => { throw new Error(e.status === 410 ? x.closed : e.message); }),
+      lang, step: (answers) => post("/step", { answers, lang, started }).then((r) => { if (r && r.started) started = r.started; return r; }).catch((e) => { throw new Error(e.status === 410 ? x.closed : e.message); }),
       onEnd: (result, answers) => {
         if (result === "out") { redraw = () => { host.innerHTML = `<h2>${x.outT}</h2><p>${x.out}</p>`; }; redraw(); return; }
         showPrefs(answers);
