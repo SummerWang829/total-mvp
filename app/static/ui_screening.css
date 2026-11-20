@@ -591,3 +591,4 @@ html[data-theme="dark"] .rs-bub.me{background:#3F2812}
 .rs-note{background:#FFF5DE;border:1px solid #E3B94A;color:#6B4E00;border-radius:10px;padding:8px 12px;font-size:14px;margin:6px 0}
 html[data-theme="dark"] .rs-note{background:#3A2E10;border-color:#8A6A1C;color:#F3D58A}
 .rs-ctbl th:nth-child(4),.rs-ctbl th:nth-child(5),.rs-ctbl td:nth-child(4),.rs-ctbl td:nth-child(5){min-width:5em;width:18%}.rs-ctbl th{white-space:nowrap}
+@media (max-width:900px){body.v11 .sub2 .l2slot .rs-sst{min-height:40px!important}}

@@ -201,6 +201,7 @@ const RSteps = (() => {
   }
 
   return {
+    redraw() { if (root && S.d && document.contains(root)) draw(); },   // 修正方案第 2 轮 D2: the page came back into view without being drawn again
     render(el, c) {
       ctx = c; root = el;
       if (S.pid !== c.p.id) Object.assign(S, { pid: c.p.id, d: null, at: "plan", draft: {}, busy: false, open: "", msgs: {}, expandNote: "", expanded: false });

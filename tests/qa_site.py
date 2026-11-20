@@ -1663,6 +1663,10 @@ def outline_wb_section(br, D):
     ctx, pg, errs = new_page(br, 1440, h=900, token=adm)
     pg.goto(B + f"/#/p/{pid}/people/form"); pg.wait_for_selector(".sub2 .sgrp")
     pg.goto(B + f"/#/p/{pid}/people/outline"); pg.wait_for_selector("#owroot .ow")
+    # 修正方案第 2 轮 D2: switching between the 创建访谈 pages in the side menu shows the other page at once (nothing is loaded again)
+    pg.locator(".sub2 .l1", has_text="数据库筛选及发送").click(); pg.wait_for_selector("#ptab-db:not([hidden])")
+    t0 = pg.evaluate("performance.now()"); pg.locator(".sub2 .l1", has_text="生成大纲").click(); pg.wait_for_selector("#owroot:not([hidden]) .ow"); dt = pg.evaluate("performance.now()") - t0
+    ok(dt < 400 and pg.locator(".sub2 .l1.on .tx").inner_text().strip() == "生成大纲", f"[outline_wb] the side menu switches 数据库筛选及发送 → 生成大纲 in {dt:.0f} ms (under 400) and marks the new page")
     ok(wait_until(lambda: pg.locator("#owroot .ow-steps .ow-st").count() == 5, 6), "[outline_wb] the five steps are a bar at the top of the page")
     ok(pg.locator(".sub2 .l1 .l1, .sub2 .l2slot, .sub2 .ow-l3, .sub2 .ow-l4, .sub2 .ow-st").count() == 0, "[outline_wb] the side menu has at most two levels (no steps or modules in it)")
     ok([x.strip() for x in pg.locator(".sub2 .sgrp[data-grp=create] .l1 .tx").all_inner_texts()] == ["招募/主持/问卷", "甄别问卷", "数据库筛选及发送", "生成大纲", "预览测试", "Pilot", "配额及受访者名单"],

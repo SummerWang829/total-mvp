@@ -142,6 +142,8 @@ async function render() {
         if (!PEOPLE_SUBS.includes(sub)) { location.replace(`#/p/${p.id}/people/${peopleSubOf()}`); return; }
         sessionStorage.setItem("ptab", ["outline", "test", "pilot"].includes(sub) ? "ols" : sub);
         if (["outline", "test", "pilot"].includes(sub)) sessionStorage.setItem("ol_seg", sub);
+        // 修正方案第 2 轮 D2: the 创建访谈 pages are drawn together; switching between them only shows the other one (no reload) while the page is fresh
+        if (window.PEOPLE_FAST && PEOPLE_FAST.pid === p.id && document.getElementById("ptab-mode") && Date.now() - PEOPLE_FAST.at < 120000) { PEOPLE_FAST.show(sub); return; }
         return await peopleView(p);
       }
       if (page === "sessions") { location.replace(`#/p/${p.id}/rooms`); return; }  // the sessions-and-invitations page is gone
@@ -442,7 +444,22 @@ async function peopleView(p) {
       : `<div class="card empty"><b>还没有受访者。</b><span>点“添加受访者”手动添加，“导入名单（外部渠道）”导入别处拿来的名单，或把招募问卷发出去。</span></div>`}
     <div class="lpop" id="lpop" hidden></div></div>`, { active: "people", p });
   window.__ptabGo = (name) => { location.hash = `#/p/${p.id}/people/${{ "ols-gen": "outline", "ols-test": "test" }[name] || name}`; };   // every part has its own address (修正方案第 1 轮第 1 条)
-  if (ptab === "ols" && window.OutlineWb) window.OutlineWb.mount(p.id, olSeg() === "outline" ? "gen" : olSeg());   // 招募问卷页右上角「确认并下一步」跳到数据库筛选及发送
+  if (ptab === "ols" && window.OutlineWb) window.OutlineWb.mount(p.id, olSeg() === "outline" ? "gen" : olSeg());
+  window.PEOPLE_FAST = {   // 修正方案第 2 轮 D2: show another 创建访谈 page at once (the router calls this instead of drawing everything again)
+    pid: p.id, at: Date.now(),
+    show(sub) {
+      const tab = ["outline", "test", "pilot"].includes(sub) ? "ols" : sub;
+      ["mode", "ols", "form", "db", "list"].forEach((k) => { const el = document.getElementById("ptab-" + k); if (el) el.hidden = k !== tab; });
+      const g = $("#owroot"), g3 = $("#owroot3"); if (g) g.hidden = sub !== "outline"; if (g3) g3.hidden = !["test", "pilot"].includes(sub);
+      document.body.classList.toggle("rfmode", tab === "form");
+      const want = `#/p/${p.id}/people/${sub}`;
+      document.querySelectorAll(".sub2 .l1").forEach((a) => { const on = a.getAttribute("href") === want; a.classList.toggle("on", on); if (on) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
+      const old = document.querySelector(".sub2 #l2slot"); if (old) old.remove();
+      if (sub === "form") { const a = document.querySelector(`.sub2 .l1[href="${want}"]`); if (a) { a.insertAdjacentHTML("afterend", `<div class="l2slot" id="l2slot"></div>`); if (window.RSteps) RSteps.redraw(); } }
+      if (tab === "ols" && window.OutlineWb) window.OutlineWb.mount(p.id, sub === "outline" ? "gen" : sub);
+      const mn = document.querySelector(".body2>main"); if (mn) mn.scrollTop = 0;
+    },
+  };   // 招募问卷页右上角「确认并下一步」跳到数据库筛选及发送
   const dbimp = $("#dbimp"); if (dbimp) dbimp.onclick = () => importModal(p, "screen");
   const dbimpsend = $("#dbimpsend"); if (dbimpsend) dbimpsend.onclick = guard(async () => {
     const ids = toScreen.filter((x) => x.email && !x.anonymized).map((x) => x.id);
