@@ -6,7 +6,7 @@
    - field（多行框，所有其他 textarea）：获得焦点时右下角出现附件、链接、麦克风，读到的文字插到光标处。
    - line（单行框）：获得焦点时右侧出现麦克风；点“展开”也能加附件和链接。
    - plain（邮箱、数字、网址、日期、密码、搜索、只读……）：只统一外观，不加附件和语音。
-   语音：说话时每 2–3 秒切一段送服务器识别（做法 A），或用实时识别边说边出字（做法 B）；两种都能试，研究团队在录音条上切换（只存在本浏览器）。
+   语音：用实时识别边说边出字（用户 2026-11-20 选定）；实时识别没配置或出错时，自动改成每 2–3 秒切一段送服务器识别。
    识别出的字插到光标处，不自动发送；录音不保存。受访者页面要先设置 window.TI_PUBLIC = {kind: "join"|"screen", token, lang}；没有附件和链接。 */
 (() => {
   const IC = {
@@ -251,7 +251,7 @@
     "if(this.pos>=this.ratio){this.pos-=this.ratio;this.o.push(this.acc/this.cnt);this.acc=0;this.cnt=0;",
     "if(this.o.length>=3200){const b=new Int16Array(3200);for(let j=0;j<3200;j++){const s=Math.max(-1,Math.min(1,this.o[j]));b[j]=s<0?s*32768:s*32767;}this.o=[];this.port.postMessage(b.buffer,[b.buffer]);}}}return true;}}",
     "registerProcessor('pcm16',P);"].join("\n");
-  const mode = () => { try { return localStorage.getItem("ti_voice") === "b" ? "b" : "a"; } catch { return "a"; } };
+  const mode = () => "b";   // 用户 2026-11-20 试过后定了“实时”（边说边出字）；实时识别没配或出错时自动改用分段识别（做法 A）
   const langNow = () => { if (pub()) return pub().lang || "zh"; try { return localStorage.getItem("ti_lang") || "zh"; } catch { return "zh"; } };
   function wav(chunks) {
     const n = chunks.reduce((a, c) => a + c.length, 0), buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
@@ -325,11 +325,9 @@
       this.ui.innerHTML = `<span class="dot" aria-hidden="true"></span><span>${pub() && (pub().lang || "zh") !== "zh" ? "Listening" : "正在听"} ${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}</span>`
         + (this.partial ? `<span class="ti-ghost">${E(this.partial)}</span>` : "")
         + (staff ? `<span class="ti-langs" role="group" aria-label="识别语言">${LANGS.map(([k, t]) => `<button type="button" class="${langNow() === k ? "on" : ""}${["ms", "ta"].includes(k) ? " off" : ""}" data-til="${k}" ${["ms", "ta"].includes(k) ? 'disabled title="暂不支持"' : ""}>${t}</button>`).join("")}</span>`
-          + `<span class="ti-langs" role="group" aria-label="识别方式"><button type="button" class="${mode() === "a" ? "on" : ""}" data-tim="a" title="每 2–3 秒识别一段">分段</button><button type="button" class="${mode() === "b" ? "on" : ""}" data-tim="b" title="边说边出字">实时</button></span>`
           : `<span class="ti-note">${E(NOTE[pub().lang || "zh"] || NOTE.en)}</span>`)
         + `<button type="button" class="ti-b stop" data-tia="mic" aria-label="停止">${svg("stop")}</button>`;
       this.ui.querySelectorAll("[data-til]").forEach((b) => (b.onclick = (e) => { e.preventDefault(); try { localStorage.setItem("ti_lang", b.dataset.til); } catch {} this.restart(); }));
-      this.ui.querySelectorAll("[data-tim]").forEach((b) => (b.onclick = (e) => { e.preventDefault(); try { localStorage.setItem("ti_voice", b.dataset.tim); } catch {} this.restart(); }));
       this.ui.onmousedown = (e) => e.preventDefault();
       place();
     },
