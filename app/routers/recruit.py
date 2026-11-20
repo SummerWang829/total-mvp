@@ -401,6 +401,9 @@ def get_form(pid: str, ctx: Ctx = Depends(require_roles(*RECRUITERS)), db: Sessi
     out = {**_full(db, proj, db.get(RecruitForm, proj.id)), "library_docs": len(library_context.project_documents(db, proj.id))}
     if not out.get("goals"):
         out["goals"] = _brief_goals(proj.brief)   # 自动同步：立项向导里写好的研究目标
+    if not out.get("need"):   # 修正方案第 3 轮: the 人群 from 立项 step 4
+        from .. import recruit_steps
+        out["need"] = recruit_steps.plan_need(recruit_steps._cfg(db, proj))
     return out
 
 
@@ -684,14 +687,20 @@ class AskQuestionBody(BaseModel):
 def ask_question(pid: str, body: AskQuestionBody, ctx: Ctx = Depends(require_roles(*RECRUITERS)), db: Session = Depends(get_db)):
     """Change ONE screening question from the researcher's instruction; the other questions must come back untouched."""
     import json
-    get_project(db, ctx, pid)
+    proj = get_project(db, ctx, pid)
     if not body.questions or not any(str(q.get("id") or "") == body.qid for q in body.questions):
         return {"changed": False, "reply": "没有找到这一题"}
     chat = _ai_chat()
     if chat is None:
         return {"changed": False, "reply": "离线演示模式：模型未接入，改题不可用"}
+    lang = {"zh": "简体中文", "en": "English", "ms": "Bahasa Melayu", "ta": "தமிழ்"}.get(proj.language or "zh", "简体中文")
     system = ("你是甄别问卷编辑助手。请只修改 id 等于 qid 的那一道题，其它题目原样保留。"
-              "只输出一个 JSON 对象：{\"questions\": [...]}；questions 必须包含全部题目，数量、顺序、id 都不变。"
+              f"题目和选项一律用问卷原来的语言（{lang}）书写，不要换成别的语言。"   # 修正方案第 3 轮: a question added in a Chinese questionnaire came back in English
+              "选项的 goto 含义：\"\" = 下一题，\"end_out\" = 选了就甄别掉（终止），\"end_ok\" = 直接合格；多选题“选中某项就甄别掉”就把那个选项的 goto 设为 \"end_out\"。"
+              "选项的 excl 列出不能同时选的选项 id。"
+              "如果要求调整题目顺序（比如把某几题挪到最前），就按要求排列 questions 的顺序，其它题的内容原样；没要求就保持原来的顺序。"
+              "跳转（goto 指向某题 id）只能指向排在后面的题。"
+              "只输出一个 JSON 对象：{\"questions\": [...]}；questions 必须包含全部题目，数量和 id 都不变。"
               "不要输出解释文字。")
     user = json.dumps({"qid": body.qid, "instruction": body.instruction, "questions": body.questions,
                        "goals": body.goals, "need": body.need}, ensure_ascii=False)[:12000]
@@ -711,10 +720,26 @@ def ask_question(pid: str, body: AskQuestionBody, ctx: Ctx = Depends(require_rol
         qid = str(q.get("id") or "")
         if qid not in before:
             return {"changed": False, "reply": "模型改了题目 id，没有改动"}
-        clean.append(q if qid == body.qid else before[qid])  # 其它题强制原样
+        clean.append(q if qid == body.qid else before[qid])  # 其它题强制原样（顺序可以按要求调整）
+    if len({str(q.get("id") or "") for q in clean}) != len(clean):
+        return {"changed": False, "reply": "模型返回的题目重复了，没有改动"}
     if any(not str(q.get("text") or "").strip() for q in clean):
         return {"changed": False, "reply": "模型给出了空题目，没有改动"}
-    return {"changed": clean != body.questions, "questions": clean, "reply": "" if clean != body.questions else "模型没有改这一题"}
+    import re as _re
+    mine = next(q for q in clean if str(q.get("id") or "") == body.qid)
+    words = str(mine.get("text") or "") + "".join(str(o.get("text") or "") for o in mine.get("options") or [] if isinstance(o, dict))
+    if (proj.language or "zh") == "zh" and not _re.search(r"[一-鿿]", words):
+        return {"changed": False, "reply": "小星星把这一题写成了别的语言，没有改动，请再说一次"}
+    if clean == body.questions:
+        return {"changed": False, "questions": clean, "reply": "模型没有改这一题"}
+    from .. import recruit_steps
+    clean, removed = recruit_steps.arrange(clean)   # the order as asked; a question asked twice goes
+    try:
+        recruit_form.normalize({"source": "ai", "questions": clean, "goals": body.goals, "need": body.need})
+    except recruit_form.FormError as e:
+        return {"changed": False, "reply": f"这样排的话逻辑不通（{e}），没有改动"}
+    reply = ("另外删掉了重复的题：" + "；".join(t[:30] for t in removed)) if removed else ""
+    return {"changed": True, "questions": clean, "reply": reply}
 
 
 # ===== 问卷生成流程（2026-11-12 交付包并入；/recruiting/form/ask 单题改保留） =====
@@ -806,6 +831,10 @@ def chat_form(pid: str, body: ChatBody, ctx: Ctx = Depends(require_roles(*RECRUI
         return {"reply": reply, "kind": "answer", "clarify": out.clarify, "followups": out.followups, "changed": False, "cites": cites}
     out.reply, cites = refs_mod.cite(out.reply, cat)
     questions = out.questions if out.questions is not None else current.questions
+    if out.questions is not None:   # 修正方案第 3 轮: 性别、年龄、区域 first and nothing asked twice, whatever the model wrote
+        from .. import recruit_steps
+        arranged, _ = recruit_steps.arrange([q.model_dump() for q in questions])
+        questions = recruit_form.normalize({"source": "ai", "questions": arranged, "goals": current.goals, "need": current.need}).questions
     f.source, f.source_confirmed, f.html_url, f.questions = "ai", "ai", "", [q.model_dump() for q in questions]
     if out.brief:
         proj.brief = out.brief

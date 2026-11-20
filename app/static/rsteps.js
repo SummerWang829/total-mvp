@@ -42,7 +42,7 @@ const RSteps = (() => {
   const paras = (t) => String(t || "").split(/\n+/).map((x) => x.trim()).filter(Boolean);
   const needItems = (t) => String(t || "").split(/[。；;\n]/).map((x) => x.trim()).filter(Boolean);
   // 修正方案第 2 轮 A4–A6: under ② ③ ④ (and ⑥) a dialog in the one input box; the AI returns the whole new table, nothing is saved until 确认
-  const chatBox = (k, ph) => `<div class="rs-chat">${(S.msgs[k] || []).map((m) => `<div class="rs-bub${m.me ? " me" : ""}">${E(m.text)}</div>`).join("")}
+  const chatBox = (k, ph) => `<div class="rs-chat">${(S.msgs[k] || []).map((m) => `<div class="rs-bub${m.me ? " me" : ""}">${E(m.text)}${m.retry ? ` <button type="button" class="lnk" data-rs-retry="${k}">重新发送</button>` : ""}</div>`).join("")}
     <form class="rs-chatf" data-rs-chat="${k}"><textarea data-ti="chat" data-ti-key="rs-${k}" data-ti-send="#rs-send-${k}" ${k === "quota" ? "" : 'data-ti-attach="no" '}rows="2" maxlength="2000" aria-label="和小星星确认这一步" placeholder="${E(ph)}"></textarea><button type="submit" id="rs-send-${k}">发送</button></form></div>`;
   function optRows(k, i, c) {
     return c.options.map((o, j) => `<div class="rs-opt"><input class="rs-in" value="${E(o.text)}" maxlength="120" aria-label="选项 ${j + 1}" data-rs-otext="${k}|${i}|${j}">
@@ -90,21 +90,20 @@ const RSteps = (() => {
       <h4>语言 · 访谈形式</h4><p>${E((p.languages || []).join("、"))} · ${E((p.formats || []).join("、"))}</p></div>
       <div class="rs-nav"><span class="sm mut">要改的话直接在右边改，会同步到项目总览和立项</span><button type="button" class="p" data-rs="ok">确认，下一步</button></div>`;
     const nav = (label) => `<div class="rs-nav"><button type="button" data-rs="prev">‹ 上一步</button><button type="button" class="p" data-rs="ok"${S.busy ? " disabled" : ""}>${label}</button></div>`;
-    if (k === "include") return `${from()}<h3>② 要筛进谁</h3><p class="sm mut">小星星按研究背景、目标和招募需求生成的条件；在下面对话里改，确认后生成题目。<button type="button" class="lnk" data-rs="resuggest">重新生成</button></p>${condTable("include")}${chatBox("include", "说说要怎么改，比如“城市只要一线和新一线”")}${nav("确认，生成这部分题目")}`;
-    if (k === "exclude") return `${from()}<h3>③ 要筛掉谁</h3><p class="sm mut">常见排除项按访谈形式预先勾好，小星星补了本项目特有的；排除题放在问卷最前面，命中就终止。</p>${condTable("exclude")}${chatBox("exclude", "说说要怎么改，比如“去掉年龄那条”")}${nav("确认，生成排除题")}`;
+    if (k === "include") return `${from()}<h3>② 要筛进谁</h3><p class="sm mut">小星星按研究背景、目标和招募需求生成的条件；在下面对话里改，点“下一步”生成题目。<button type="button" class="lnk" data-rs="resuggest">全部重做</button></p>${condTable("include")}${chatBox("include", "说说要怎么改，比如“城市只要一线和新一线”")}${nav("下一步")}`;
+    if (k === "exclude") return `${from()}<h3>③ 要筛掉谁</h3><p class="sm mut">常见排除项按访谈形式预先勾好，小星星补了本项目特有的；排除题放在问卷最前面，命中就终止。</p>${condTable("exclude")}${chatBox("exclude", "说说要怎么改，比如“去掉年龄那条”")}${nav("下一步")}`;
     if (k === "quota") return `${from()}<h3>④ 配额</h3><p class="sm">${(S.draft.quota || []).length ? `<span class="rs-pill ok">已有配额</span> ` : ""}可以导入配额文件（Word、Excel、PDF、PPT、图片），小星星识别后出配额表让你确认；也可以直接改表格或在对话里说。</p>
-      <button type="button" class="s" data-rs="import">导入配额文件</button>${quotaTable()}${chatBox("quota", "上传配额文件，或说“A 组改成 4 人”")}${nav("确认配额")}`;
+      <button type="button" class="s" data-rs="import">导入配额文件</button>${quotaTable()}${chatBox("quota", "上传配额文件，或说“A 组改成 4 人”")}${nav("下一步")}`;
     if (k === "qc") {
       const q = S.draft.qc || {};
       return `${from()}<h3>⑤ 质量控制</h3>
         <label class="rs-tg"><input type="checkbox" data-rs-qc="trap"${q.trap ? " checked" : ""}><span><b>陷阱题</b><small>“这一题请选经常”，答错就终止（题数 6 题及以上时建议加）</small></span></label>
-        <label class="rs-tg"><input type="checkbox" data-rs-qc="consistency"${q.consistency ? " checked" : ""}><span><b>前后一致性</b><small>把第一个条件换个顺序再问一次，两次回答不一样就终止</small></span></label>
         <label class="rs-tg"><input type="checkbox" data-rs-qc="timed"${q.min_seconds ? " checked" : ""}><span><b>最短作答时长</b><small>不到 <input class="rs-in num" type="number" min="5" max="1800" value="${q.min_seconds || 20}" aria-label="最短秒数" data-rs-qcs> 秒就终止。时间由服务器记，不信浏览器</small></span></label>
-        <div class="rs-tg"><span class="rs-on">✓</span><span><b>重复参加识别</b><small>只查合格的人：同一个项目里姓名和邮箱都相同，就不再加进名单</small></span></div>${nav("确认，生成质控题")}`;
+        <div class="rs-tg"><span class="rs-on">✓</span><span><b>重复参加识别</b><small>只查合格的人：同一个项目里姓名和邮箱都相同，就不再加进名单</small></span></div>${nav("下一步")}`;
     }
     return `${from()}<h3>⑥ 预览与测试</h3>${S.expandNote ? `<div class="rs-note">${E(S.expandNote)}</div>` : ""}<p class="sm mut">右边“测试答题”自己答一遍：和候选人走的是同一套逻辑，最后写通过还是终止、终止在哪一题；不保存、不计数。测到哪一题，就可以在下面对话里改这一题。</p>
       ${chatBox("test", "边测边改当前这一题，比如“加一个官方上门保养的选项”")}
-      <div class="rs-nav"><button type="button" data-rs="prev">‹ 上一步</button><span><button type="button" data-rs="test">测试答题</button> <button type="button" class="p" data-rs="list">去发布（配额及受访者名单）</button></span></div>`;
+      <div class="rs-nav"><button type="button" data-rs="prev">‹ 上一步</button><span><button type="button" class="rs-breathe" data-rs="test">测试答题</button> <button type="button" class="p" data-rs="list">去发布（配额及受访者名单）</button></span></div>`;
   }
   function draw() {
     if (!root || !S.d) return;
@@ -138,6 +137,12 @@ const RSteps = (() => {
     S.busy = false; draw();
   }
   function onClick(e) {
+    const rt = e.target.closest("[data-rs-retry]");
+    if (rt) {   // 修正方案第 3 轮: send the failed message again (the failed pair is taken out first)
+      const k = rt.dataset.rsRetry, list = S.msgs[k] || [], last = list[list.length - 1]; if (!last || !last.retry) return;
+      list.splice(-2, 2); const f = root.querySelector(`[data-rs-chat="${k}"]`), ta = f && f.querySelector("textarea");
+      if (ta) { ta.value = last.retry; f.requestSubmit(); } return;
+    }
     const b = e.target.closest("[data-rs],[data-rs-go],[data-rs-open],[data-rs-add],[data-rs-pass],[data-rs-odel],[data-rs-oadd],[data-rs-type],[data-rs-qdel]"); if (!b || b.disabled) return;
     const d = b.dataset;
     if (d.rsGo) { S.at = d.rsGo; S.open = ""; return draw(); }
@@ -182,7 +187,7 @@ const RSteps = (() => {
         S.draft[k] = clone(r.conds || r.excl || r.quotas || S.draft[k] || []);
         S.msgs[k].push({ text: r.reply });
       }
-    } catch (er) { S.msgs[k].push({ text: er.message || "没有改成，请再说一次" }); }
+    } catch (er) { S.msgs[k].push({ text: er.message || "没有改成，请再说一次", retry: er.status === 0 || er.status >= 500 ? say : "" }); }
     S.busy = false; draw();
   }
   function onInput(e) {

@@ -127,11 +127,13 @@ function wzSuggest() {  // step 2: what the AI suggests from the research backgr
 }
 /** The four kinds of suggestion in one card, one tab at a time: 深访提纲 / 座谈会大纲 / 配额 / 舆情关键词. */
 function wzSuggestTabs(s) {
-  const tab = WZ.sugTab || "depth", tabs = [["depth", "深访提纲"], ["group", "座谈会大纲"], ["quota", "配额"], ["kw", "舆情关键词"]];
+  const got = new Set(); WZ.cfg.subs.forEach((x) => { WZ_DESIGNS[x.design][1].forEach((m) => got.add(m)); if (x.listening) got.add("kw"); });   // 修正方案第 3 轮: only the methods chosen can be opened; 配额 is gone
+  const tabs = [["depth", "深访提纲"], ["group", "座谈会大纲"], ["kw", "舆情关键词"]].map(([k, n]) => [k, n, got.has(k)]);
+  const tab = (tabs.find(([k, , on]) => on && k === WZ.sugTab) || tabs.find(([, , on]) => on) || [""])[0];
   const topics = (a) => a.map((t) => `<div class="sugrow"><b>${esc(t.title)}</b><div class="mut">${t.questions.map((q) => `<div>${esc(q)}</div>`).join("")}</div></div>`).join("");
   const body = tab === "depth" ? topics(s.depth_topics) : tab === "group" ? topics(s.group_topics)
-    : tab === "quota" ? `<p class="sm" style="margin:0">${esc(s.quota_hint)}</p>` : `<div>${s.listening_keywords.map((k) => `<span class="tag">${esc(k)}</span>`).join(" ")}</div>`;
-  return `<div class="sugtabs" role="tablist">${tabs.map(([k, n]) => `<span role="tab" tabindex="0" class="${tab === k ? "on" : ""}" data-sugtab="${k}" aria-selected="${tab === k}">${n}</span>`).join("")}</div><div class="sugbody">${body}</div>`;
+    : tab === "kw" ? `<div>${s.listening_keywords.map((k) => `<span class="tag">${esc(k)}</span>`).join(" ")}</div>` : `<p class="sm mut" style="margin:0">所选研究顺序里没有深访、座谈会或舆情</p>`;
+  return `<div class="sugtabs" role="tablist">${tabs.map(([k, n, on]) => on ? `<span role="tab" tabindex="0" class="${tab === k ? "on" : ""}" data-sugtab="${k}" aria-selected="${tab === k}">${n}</span>` : `<span role="tab" class="off" aria-disabled="true" title="所选研究顺序里没有这一项">${n}</span>`).join("")}</div><div class="sugbody">${body}</div>`;
 }
 
 const WZ_CODE = { 中文: "zh", 英语: "en", 马来语: "ms", 泰米尔语: "ta" }, WZ_FMT = { audio: "纯音频", text: "文字访谈", text_voice: "文字+语音转录", video: "视频", video_screen: "视频+屏幕共享" };

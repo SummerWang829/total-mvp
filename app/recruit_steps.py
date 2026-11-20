@@ -79,7 +79,22 @@ def plan_summary(db: Session, proj: Project, f: RecruitForm) -> dict:
     """① what the 立项 says, read only."""
     langs = [{"zh": "中文", "en": "English", "ms": "马来语", "ta": "泰米尔语"}.get(x, x) for x in (proj.languages or [proj.language])]
     fmts = [formats.FORMATS.get(x, x) for x in formats.of(proj.formats, ["depth"]).get("depth", [])]
-    return {"brief": proj.brief or "", "goals": f.goals or [], "need": f.need or "", "languages": langs, "formats": fmts}
+    goals, need = f.goals or [], f.need or ""
+    if not goals:   # 修正方案第 3 轮: what the page on the right already shows (the goals read from the 研究背景)
+        from .routers.recruit import _brief_goals
+        goals = _brief_goals(proj.brief or "")
+    if not need:    # and the 人群 written in 立项 step 4
+        need = plan_need(_cfg(db, proj))
+    return {"brief": proj.brief or "", "goals": goals, "need": need, "languages": langs, "formats": fmts}
+
+
+def plan_need(cfg: plans.PlanConfig | None) -> str:
+    """The 招募需求 the 立项 already has: step 4's 人群 description (and its tags), for a questionnaire that has none yet."""
+    if not cfg:
+        return ""
+    pop = (cfg.pop or "").strip()
+    tags = [t for t in (cfg.tags or []) if t and t not in pop]
+    return "；".join(x for x in [pop, "、".join(tags)] if x)[:1500]
 
 
 # ---- ② 要筛进谁 -------------------------------------------------------------------------------------------------------------------------------
@@ -121,9 +136,10 @@ def suggest_conditions(db: Session, proj: Project, f: RecruitForm, chat) -> list
     from .moderator.providers import ChatError, ChatFatalError
     conds = _plan_conditions(_cfg(db, proj))
     found: list[dict] = []
-    if chat is not None and (f.need or "").strip():
+    plan = plan_summary(db, proj, f)   # 修正方案第 3 轮: an empty need reads the 立项's 人群 (and the goals the 研究背景's), as ① shows them
+    if chat is not None and plan["need"].strip():
         try:
-            raw = _model_json(chat, COND_SYSTEM, json.dumps({"need": f.need, "goals": f.goals or []}, ensure_ascii=False))
+            raw = _model_json(chat, COND_SYSTEM, json.dumps({"need": plan["need"], "goals": plan["goals"]}, ensure_ascii=False))
             for c in (raw.get("conditions") or [])[:5]:
                 opts = _clean_options(c.get("options")) if isinstance(c, dict) else []
                 q = str(c.get("question", "")).strip()[:300] if isinstance(c, dict) else ""
@@ -135,7 +151,7 @@ def suggest_conditions(db: Session, proj: Project, f: RecruitForm, chat) -> list
         except (ChatError, ValueError) as e:
             log.warning("recruit steps: condition split failed (%s); rules used", type(e).__name__)
     if not found:
-        found = _rule_conditions(f.need or "")
+        found = _rule_conditions(plan["need"])
     taken = {c["name"] for c in conds}
     return (conds + [c for c in found if c["name"] not in taken])[:MAX_CONDS]
 
@@ -148,7 +164,7 @@ def suggest_exclusions(db: Session, proj: Project, f: RecruitForm, chat) -> list
     video = any(x.startswith("video") for x in formats.of(proj.formats, ["depth"]).get("depth", []))
     out = [{"id": e["id"], "name": e["name"], "note": e["note"] if e.get("when") != "video" or video else e["note"], "use": e["on"] and (e.get("when") != "video" or video), "src": "list",
             "type": e["type"], "question": e["text"], "options": [{"text": t, "pass": ok} for t, ok in e["options"]]} for e in EXCLUSIONS]
-    need = f.need or ""
+    need = plan_summary(db, proj, f)["need"]
     if chat is not None and need.strip():
         try:
             raw = _model_json(chat, EXCL_SYSTEM, json.dumps({"need": need}, ensure_ascii=False))
@@ -236,25 +252,91 @@ def build(questions: list[dict], step: str, s: dict) -> tuple[list[dict], list[s
         if qc.get("trap"):
             made.append(_question(_next_id(pool + made), "qc", "trap", "single", "为了确认你在认真作答，这一题请选“经常”。",
                                   [{"text": "从不", "pass": False}, {"text": "偶尔", "pass": False}, {"text": "经常", "pass": True}], tags=False) | {"qc": "trap"})
-        if qc.get("consistency") and inc:
-            first = inc[0]
-            again = _question(_next_id(pool + made), "qc", first.get("cond_id", ""), first["type"], "再确认一下：" + first["text"],
-                              [{"text": o["text"], "pass": o["goto"] != recruit_form.END_OUT} for o in reversed(first["options"])], tags=False)
-            made.append(again | {"qc": "consistency", "pair": first["id"]})
-    order = {"exclude": 0, "include": 1, "qc": 2}
-    all_q = keep + made
-    all_q.sort(key=lambda q: order.get(q.get("step", ""), 3))   # a stable sort: the order inside a group stays
-    trap = next((q for q in all_q if q.get("qc") == "trap"), None)
+    # 用户 2026-11-20 第 3 轮: the order the team set (in the dialog or by dragging) is kept — the remade questions go where this step's questions were;
+    # only a step seen for the first time takes its usual place (排除题 before 筛进题, 质控题 after them)
+    old_pos = next((i for i, q in enumerate(questions) if q.get("step") == step), None)
+    if old_pos is not None:
+        at = sum(1 for q in questions[:old_pos] if q.get("step") != step)
+    elif step == "exclude":
+        at = next((i for i, q in enumerate(keep) if q.get("step") in ("include", "qc", "")), len(keep))
+    elif step == "include":
+        at = next((i for i, q in enumerate(keep) if q.get("step") not in ("exclude",)), len(keep))
+    else:
+        at = max([i + 1 for i, q in enumerate(keep) if q.get("step") in ("exclude", "include")] + [0])
+    trap = next((q for q in made if q.get("qc") == "trap"), None)
+    rest = [q for q in made if q is not trap]
+    all_q = keep[:at] + rest + keep[at:]
     inc_ids = [q["id"] for q in all_q if q.get("step") == "include"]
-    if trap and inc_ids:   # the trap goes right after the first condition, so it is not the obvious last question
-        all_q.remove(trap)
-        all_q.insert([q["id"] for q in all_q].index(inc_ids[0]) + 1, trap)
-    return all_q, [q["id"] for q in made]
+    if trap:   # a new trap goes right after the first condition, so it is not the obvious last question
+        idx = [q["id"] for q in all_q].index(inc_ids[0]) + 1 if inc_ids else len(all_q)
+        all_q.insert(idx, trap)
+    all_q, _ = arrange(all_q)
+    return all_q, [q["id"] for q in made if any(x["id"] == q["id"] for x in all_q)]
+
+
+# ---- 修正方案第 3 轮: no question asked twice (the order is the team's) ---------------------------------------------------------------------------
+
+DEMOGRAPHICS = (("gender", re.compile(r"性别|\bgender\b|\bsex\b", re.I)), ("age", re.compile(r"年龄|多大了|出生年份|\bage\b|how old", re.I)),
+                ("region", re.compile(r"(常住|居住|所在)的?(城市|地区|省份)|城市(层级|级别|类型)?是|哪个城市|哪座城市|\bcity\b|\bregion\b|where do you live", re.I)))
+SAME_TEXT = 0.92   # two questions this alike (after taking punctuation out) ask the same thing
+
+
+def _demo(q: dict) -> str:
+    """Which basic-information question this is (gender / age / region), or ""."""
+    text = str(q.get("text", ""))
+    for key, rx in DEMOGRAPHICS:
+        if rx.search(text):
+            return key
+    if sum(1 for o in q.get("options") or [] if re.search(r"\d+\s*[-–~至到]\s*\d+\s*岁|\d+\s*岁及以[上下]", str(o.get("text", "")))) >= 2:
+        return "age"
+    return ""
+
+
+def _plain(text: str) -> str:
+    return re.sub(r"[\W_]+", "", re.sub(r"^(再确认一下|再问一次|请再确认)[:：]?", "", str(text or ""))).lower()
+
+
+def arrange(questions: list[dict]) -> tuple[list[dict], list[str]]:
+    """The questionnaire as candidates must see it (用户 2026-11-20 第 3 轮): no question asked twice (a repeated basic question, the same text, or the old
+    “再确认一下” check: the one that sets tags, or else the first, stays); the order stays exactly as it was.
+    A jump that would now point backwards becomes “next question”. Returns (questions, texts of the questions taken out)."""
+    import difflib
+    groups: list[tuple[str, list[dict]]] = []
+    for q in questions:
+        if q.get("qc") == "consistency":
+            groups.append(("drop:" + q.get("id", ""), [q]))
+            continue
+        key, plain = _demo(q), _plain(q.get("text", ""))
+        hit = next((g for g in groups if (key and g[0] == key) or (not key and not g[0].startswith(("gender", "age", "region", "drop:")) and plain
+                                                                and difflib.SequenceMatcher(None, plain, g[0]).ratio() >= SAME_TEXT)), None)
+        if hit:
+            hit[1].append(q)
+        else:
+            groups.append((key or plain or q.get("id", ""), [q]))
+    keep_ids, removed = set(), []
+    for key, qs in groups:
+        if key.startswith("drop:"):
+            removed += [str(x.get("text", "")) for x in qs]
+            continue
+        best = next((x for x in qs if any(o.get("tag") for o in x.get("options") or [])), qs[0])
+        keep_ids.add(best.get("id"))
+        removed += [str(x.get("text", "")) for x in qs if x is not best]
+    out = [q for q in questions if q.get("id") in keep_ids]   # 用户 2026-11-20: the order is the team's (what they asked for in the dialog), never re-sorted here
+    pos = {q.get("id"): i for i, q in enumerate(out)}
+    for i, q in enumerate(out):
+        for o in q.get("options") or []:
+            g = o.get("goto", "")
+            if g not in ("", recruit_form.END_OUT, recruit_form.END_OK) and pos.get(g, -1) <= i:
+                o["goto"] = ""
+        q["rules"] = [r for r in q.get("rules") or [] if r.get("goto") in (recruit_form.END_OUT, recruit_form.END_OK, "") or pos.get(r.get("goto"), -1) > i]
+        for o in q.get("options") or []:
+            o["excl"] = [x for x in o.get("excl") or [] if any(y.get("id") == x for y in q.get("options") or [])]
+    return out, removed
 
 
 def qc_default(n_questions: int) -> dict:
     """⑤ the defaults: a trap question from six questions on, the consistency check, the shortest time (4 seconds a question, at least 20) and the duplicate check."""
-    return {"trap": n_questions >= TRAP_FROM, "consistency": True, "min_seconds": max(MIN_SECONDS, n_questions * SECONDS_PER_Q), "dedupe": True}
+    return {"trap": n_questions >= TRAP_FROM, "consistency": False, "min_seconds": max(MIN_SECONDS, n_questions * SECONDS_PER_Q), "dedupe": True}
 
 
 def confirm(db: Session, proj: Project, f: RecruitForm, step: str, data: dict, questions: list[dict]) -> list[str]:
@@ -278,9 +360,6 @@ def confirm(db: Session, proj: Project, f: RecruitForm, step: str, data: dict, q
         if old_tags - new_tags and s["status"]["quota"] == "confirmed":
             s["status"]["quota"] = "stale"   # a quota may count a tag that is gone
         questions, made = build(questions, "include", s)
-        if s["status"]["qc"] == "confirmed" and (s.get("qc") or {}).get("consistency"):
-            questions, more = build(questions, "qc", s)   # the check asks the first condition again: follow it
-            made += more
     elif step == "exclude":
         s["excl"] = [_check_cond(e) for e in (data.get("excl") or []) if str((e or {}).get("question", "")).strip()][:12]
         questions, made = build(questions, "exclude", s)
@@ -301,7 +380,7 @@ def confirm(db: Session, proj: Project, f: RecruitForm, step: str, data: dict, q
             secs = int(q.get("min_seconds") or 0)
         except (TypeError, ValueError) as e:
             raise StepError("最短作答时长要是数字") from e
-        s["qc"] = {"trap": bool(q.get("trap")), "consistency": bool(q.get("consistency")), "min_seconds": max(0, min(secs, 1800)), "dedupe": bool(q.get("dedupe", True))}
+        s["qc"] = {"trap": bool(q.get("trap")), "consistency": False, "min_seconds": max(0, min(secs, 1800)), "dedupe": bool(q.get("dedupe", True))}
         f.qc = dict(s["qc"])
         questions, made = build(questions, "qc", s)
     s["status"][step] = "confirmed"
@@ -440,6 +519,8 @@ def expand(db: Session, proj: Project, f: RecruitForm, chat) -> list[str]:
         qq = _question(_next_id(questions), "", "auto", q["type"], q["text"], q["options"], tags=False)
         questions.append(qq)
         made.append(qq["id"])
+    questions, _ = arrange(questions)   # an added question that asks what is already asked is taken out again
+    made = [m for m in made if any(q["id"] == m for q in questions)]
     form = recruit_form.normalize({"source": "ai", "questions": questions, "goals": f.goals or [], "need": f.need or ""})
     f.questions = [x.model_dump() for x in form.questions]
     s["expanded"] = True

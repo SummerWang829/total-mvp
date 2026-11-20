@@ -418,7 +418,7 @@ function rfCard(p, form, rec, plannedN) {
       askQ: async (text) => {   // 修正方案第 2 轮 A7: change the question being tested, from the dialog under ⑥
         const qid = window.RF_TEST_QID || (Q[0] || {}).id; if (!qid) return "还没有题可以改";
         const r = await api(`/projects/${p.id}/recruiting/form/ask`, { method: "POST", body: { qid, instruction: text, questions: Q, goals, need } });
-        if (r.changed && Array.isArray(r.questions)) { pushHist(); changedIds = diffIds(Q, r.questions); Q = JSON.parse(JSON.stringify(r.questions)); save(); seg = "test"; drawRight(); return `已改好第 ${Q.findIndex((x) => x.id === qid) + 1} 题，测试从头开始。`; }
+        if (r.changed && Array.isArray(r.questions)) { pushHist(); changedIds = diffIds(Q, r.questions); Q = JSON.parse(JSON.stringify(r.questions)); save(); seg = "test"; drawRight(); return `已改好第 ${Q.findIndex((x) => x.id === qid) + 1} 题，测试从头开始。${r.reply ? r.reply + "。" : ""}`; }
         return r.reply || "这一题没有改动，换个说法试试";
       },
     });

@@ -225,3 +225,34 @@ html[data-theme="dark"] .ow-stale{background:#3A2E10;border-color:#8A6A1C;color:
 .ow-mis{flex-direction:column;align-items:stretch}.ow-misrow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:4px 0;border-top:1px dashed #E3B94A}.ow-misrow:first-of-type{border-top:0}
 .ow-misrow .sp{flex:1}.ow-misrow button{min-height:32px}
 .ow-row a.btn{min-height:32px;display:inline-flex;align-items:center;padding:0 14px;border-radius:8px;text-decoration:none;font-weight:700;white-space:nowrap}
+
+/* 修正方案第 3 轮: the focus box searches the outline */
+.ow-fsearch{position:relative}
+.ow-fdrop{position:absolute;left:0;right:0;top:100%;margin-top:4px;background:var(--card,#fff);border:1px solid var(--line,#e5e7eb);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.08);z-index:20;max-height:320px;overflow:auto}
+.ow-fdrop button{display:block;width:100%;text-align:left;border:0;border-bottom:1px solid var(--line,#eee);background:none;padding:8px 12px;font-size:14px;color:var(--ink,#333);cursor:pointer}
+.ow-fdrop button:hover,.ow-fdrop button:focus{background:var(--soft,#f4f5f7)}
+.ow-fdrop small{margin-left:8px;color:var(--muted,#777);font-size:12px}
+.ow-fdrop mark{background:#ffe7d3;color:inherit}
+
+/* 修正方案第 3 轮: material of a 概念卡 / 视频片段 */
+.ow-media{margin-top:8px;border:1px dashed var(--line,#d0d4da);border-radius:10px;padding:10px;background:var(--soft,#fafafa)}
+.ow-media .hd{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.ow-media .ow-upl{margin-left:auto;cursor:pointer}
+.ow-thumbs{display:flex;gap:10px;flex-wrap:wrap}
+.ow-thumb{position:relative;display:flex;flex-direction:column;width:140px;border:1px solid var(--line,#e5e7eb);border-radius:8px;background:var(--card,#fff);overflow:hidden}
+.ow-thumb img,.ow-thumb video,.ow-thumb .pdf{width:140px;height:90px;object-fit:cover;background:#e9edf0;display:flex;align-items:center;justify-content:center;font-weight:700;color:#555}
+.ow-thumb>b{position:absolute;left:6px;top:6px;background:var(--green,#0B382C);color:#fff;border-radius:4px;padding:1px 6px;font-size:12px}
+.ow-thumb .nm{font-size:12px;padding:4px 6px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink,#333)}
+.ow-thumb .ctl{display:flex;gap:4px;padding:4px 6px 6px}
+.ow-thumb .ctl button{min-width:28px;padding:2px 6px}
+.ow-upask{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--card,#fff);border:1px solid var(--orange,#FF6A00);border-radius:8px;padding:8px 10px;margin-bottom:8px}
+.ow-upl2{display:block;margin:6px 0;font-size:14px}
+.ow-lightbox{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:90;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px}
+.ow-lightbox img,.ow-lightbox video{max-width:90vw;max-height:82vh;border-radius:8px;background:#000}
+/* Q11-概念卡 crushed into a column: the label keeps one line */
+.ow-item .h .lab{white-space:nowrap;flex:none}
+.ow-item .h .kind{white-space:nowrap;flex:none}
+.ow-pvmedia{display:flex;flex-direction:column;gap:8px}
+.ow-wm.m{position:relative;padding:0;overflow:hidden}
+.ow-wm.m img,.ow-wm.m video{display:block;width:100%;max-height:260px;object-fit:contain;background:#111}
+.ow-wm.m .no{position:absolute;left:6px;top:6px;background:var(--green,#0B382C);color:#fff;border-radius:4px;padding:1px 6px;font-size:12px;z-index:1}

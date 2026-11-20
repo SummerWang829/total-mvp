@@ -16,15 +16,19 @@ async function api(path, { method = "GET", body, auth = true, signal } = {}) {
   try {
     try { r = await send(); }
     catch (e) { if (!get || ctl.signal.aborted) throw e; await new Promise((ok) => setTimeout(ok, 800)); r = await send(); }
+    // 修正方案第 3 轮: 521/522/523/525/526 come from the gateway in front of the server when it could not reach the server at all (the request never
+    // arrived), so sending it once more is safe for any request; the same goes for a dropped connection before any answer
+    if ([521, 522, 523, 525, 526].includes(r.status)) { await new Promise((ok) => setTimeout(ok, 1200)); r = await send(); }
     try { data = await r.json(); } catch {}
   } catch (e) {
     if (get && ctl.signal.aborted) { const er = new Error("网络太慢，没有等到服务器回复，请稍后再试。"); er.status = 0; throw er; }
+    if (e && e.name === "TypeError") { const er = new Error("网络不稳定，没有送到服务器，请再试一次。"); er.status = 0; throw er; }
     throw e;
   } finally { if (timer) clearTimeout(timer); }
   if (!r.ok) {
     if (r.status === 401 && auth) { store.del("tt_token"); if (!location.hash.startsWith("#/login") && location.pathname === "/") location.hash = "#/login"; }
     const d = data && data.detail;
-    const msg = typeof d === "string" ? d : d && d.message ? d.message + (d.errors ? "：" + d.errors.join("；") : "") : Array.isArray(d) ? "填写有误：" + d.map((x) => (x.loc || []).slice(-1) + " " + x.msg).join("；") : "请求失败 (" + r.status + ")";
+    const msg = typeof d === "string" ? d : d && d.message ? d.message + (d.errors ? "：" + d.errors.join("；") : "") : Array.isArray(d) ? "填写有误：" + d.map((x) => (x.loc || []).slice(-1) + " " + x.msg).join("；") : [502, 503, 504, 520, 521, 522, 523, 524, 525, 526].includes(r.status) ? "网络不稳定，服务器这次没有回复，请再试一次。" : "请求失败 (" + r.status + ")";
     const e = new Error(msg); e.status = r.status; throw e;
   }
   return data;

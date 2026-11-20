@@ -1,0 +1,56 @@
+"""修正方案第 3 轮（生成大纲）: material files uploaded into a 概念卡 / 视频片段 (checked by their bytes, kept in order, rotated or in order, opened only through a
+signed address, removed with the project's data), 已经知道的 is never said to change when it did not, and the preview offers only the interview's languages."""
+import os
+
+from test_outline_wb_api import _api, proj  # noqa: F401
+
+from app.config import settings
+
+PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
+MP4 = b"\x00\x00\x00\x18ftypmp42" + b"\x00" * 64
+
+
+def _concept(org, proj):
+    v = _api(org, proj, "post", "/overview").json()
+    _api(org, proj, "post", "/overview/confirm")
+    m = v["overview"]["modules"][0]["id"]
+    v = _api(org, proj, "post", f"/modules/{m}/generate").json()
+    uid = v["overview"]["modules"][0]["items"][0]["uid"]
+    v = _api(org, proj, "post", "/items", json={"kind": "concept", "text": "请看这张概念卡。", "after_uid": uid}).json()
+    return next(i for i in v["items"] if i["kind"] == "concept")["uid"]
+
+
+def _up(org, proj, uid, data, name="a.png", mode="add"):
+    return org.c.post(f"/api/projects/{proj}/outline-wb/items/{uid}/media", headers=org.h(), files={"file": (name, data)}, data={"mode": mode})
+
+
+def test_material_is_uploaded_ordered_and_served_only_by_a_signed_address(org, proj):
+    uid = _concept(org, proj)
+    assert _up(org, proj, uid, MP4, "x.mp4").status_code == 415          # a 概念卡 takes pictures and PDF, not video
+    assert _up(org, proj, uid, b"<svg></svg>", "x.png").status_code == 415  # the bytes decide, not the name
+    r = _up(org, proj, uid, PNG, "一.png")
+    assert r.status_code == 200, r.text
+    v = _up(org, proj, uid, PNG, "二.png").json()
+    it = next(i for i in v["items"] if i["uid"] == uid)
+    assert [m["name"] for m in it["media"]] == ["一.png", "二.png"]
+    url = it["media"][0]["url"]
+    got = org.c.get(url)
+    assert got.status_code == 200 and got.content == PNG
+    assert org.c.get(url.replace("s=", "s=0")).status_code == 404       # a changed signature opens nothing
+    ids = [m["id"] for m in it["media"]]
+    v = _api(org, proj, "put", f"/items/{uid}/media", json={"ids": ids[::-1], "order": "random"}).json()
+    it = next(i for i in v["items"] if i["uid"] == uid)
+    assert [m["name"] for m in it["media"]] == ["二.png", "一.png"] and it["config"]["order"] == "random"
+    v = _up(org, proj, uid, PNG, "三.png", mode="replace").json()
+    it = next(i for i in v["items"] if i["uid"] == uid)
+    assert [m["name"] for m in it["media"]] == ["三.png"]
+    folder = os.path.join(settings.media_dir, "outline", proj)
+    assert len(os.listdir(folder)) == 1                                 # the replaced files are gone from the disk too
+    pv = _api(org, proj, "get", "/preview").json()
+    assert next(i for i in pv["items"] if i["uid"] == uid)["media"][0]["name"] == "三.png"
+    assert pv["languages"][0] == pv["language"] and "ms" not in pv["languages"] and "ta" not in pv["languages"]   # only the interview's own languages
+
+
+def test_the_dialog_does_not_claim_a_change_it_did_not_make(org, proj):
+    r = _api(org, proj, "post", "/chat", json={"text": "你好", "step": "people"}).json()
+    assert r["changed"] == [] and "没有改动" in r["reply"]

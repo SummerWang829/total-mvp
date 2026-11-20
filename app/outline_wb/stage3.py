@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from .. import guide_text, outline_versions
 from ..models import CaptionLine, Interview, Project, TranscriptSegment
+from . import media as wbmedia
 from . import flow, quality, service as svc, session as sess, writer
 from .models import FocusQuestion, HostDecision, Mark, Outline, OutlineVersion, RehearsalRun, Revision
 
@@ -42,7 +43,8 @@ def preview(db: Session, proj: Project, lang: str | None = None) -> dict:
         if not text:
             missing += 1
         out.append({"uid": it.item_uid, "label": it.label, "kind": it.kind, "text": text, "missing": not text, "watermark": it.kind == "concept", "view_only": it.kind in ("concept", "video"),
-                    "new_tab": it.kind == "website", "share_screen": it.kind == "website", "config": {k: it.config.get(k) for k in ("title", "url", "time_limit_s", "scale") if it.config.get(k)}})
+                    "new_tab": it.kind == "website", "share_screen": it.kind == "website", "config": {k: it.config.get(k) for k in ("title", "url", "time_limit_s", "scale", "order") if it.config.get(k)},
+                    "media": wbmedia.with_urls(it.config or {}, proj.id)})   # 修正方案第 3 轮: the uploaded material, as the participant sees it
     kinds = {i["kind"] for i in out}
     if "concept" in kinds:
         checks.append({"level": "ok", "text": "概念卡：水印显示受访者编号，禁止下载"})
@@ -56,7 +58,10 @@ def preview(db: Session, proj: Project, lang: str | None = None) -> dict:
         checks.append({"level": "warn", "text": "文字访谈里有让人出声说的题"})
     if not checks:
         checks.append({"level": "ok", "text": "没有发现问题"})
-    return {"language": lang, "languages": [x for x in ("zh", "en") if any(it.texts.get(x) for it in items)] or [lang], "items": out, "checks": checks}
+    if any(i["media"] and i["config"].get("order") == "random" and len(i["media"]) > 1 for i in out):
+        checks.append({"level": "ok", "text": "随机轮换：每位受访者看到的素材顺序不同（预览按上传顺序显示）"})
+    own = list(dict.fromkeys([ctx["language"], *(ctx.get("languages") or [])]))   # 用户 2026-11-20 第 3 轮: only the outline's and this interview's languages
+    return {"language": lang, "languages": own, "items": out, "checks": checks}
 
 
 # ---- rehearsal ---------------------------------------------------------------------------------------------------------------------

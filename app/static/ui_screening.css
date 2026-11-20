@@ -592,3 +592,8 @@ html[data-theme="dark"] .rs-bub.me{background:#3F2812}
 html[data-theme="dark"] .rs-note{background:#3A2E10;border-color:#8A6A1C;color:#F3D58A}
 .rs-ctbl th:nth-child(4),.rs-ctbl th:nth-child(5),.rs-ctbl td:nth-child(4),.rs-ctbl td:nth-child(5){min-width:5em;width:18%}.rs-ctbl th{white-space:nowrap}
 @media (max-width:900px){body.v11 .sub2 .l2slot .rs-sst{min-height:40px!important}}
+
+/* 修正方案第 3 轮: “测试答题” breathes in the theme colour to invite a test run */
+.rs .rs-breathe{border:2px solid var(--orange,#FF6A00);color:var(--orange,#FF6A00);animation:rsBreathe 1.8s ease-in-out infinite}
+@keyframes rsBreathe{0%,100%{box-shadow:0 0 0 0 rgba(255,106,0,.45)}50%{box-shadow:0 0 0 8px rgba(255,106,0,0)}}
+@media (prefers-reduced-motion: reduce){.rs .rs-breathe{animation:none}}

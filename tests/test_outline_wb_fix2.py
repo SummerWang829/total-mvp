@@ -16,12 +16,12 @@ def test_known_values_are_not_asked_again_and_price_only_when_it_matters(org, pr
     v = _api(org, proj, "get", "").json()
     asked = {q["slot"] for r in v["round_questions"].values() for q in r}
     assert "materials" not in asked and "research_type" not in asked   # 已经知道的 shows them (with 改), so they are not asked below
-    assert "price" not in v["slots"] or v["slots"]["research_type"]["value"] in ("concept", "pricing")
+    assert "price" not in v["slots"] or v["slots"]["research_type"]["value"] == "pricing"
     _api(org, proj, "post", "/answer", json={"slot": "research_type", "value": "usability"})
-    v = _api(org, proj, "post", "/answer", json={"slot": "materials", "value": ["none"]}).json()
-    assert "price" not in v["slots"]
     v = _api(org, proj, "post", "/answer", json={"slot": "materials", "value": ["concept"]}).json()
-    assert "price" in v["slots"]
+    assert "price" not in v["slots"]   # 用户 2026-11-20 第 3 轮: something to show is no reason to bring price up by itself
+    v = _api(org, proj, "post", "/answer", json={"slot": "price", "value": "after_concept"}).json()
+    assert "price" in v["slots"]   # once the team says something about price, it shows
 
 
 def test_modules_have_whole_names_in_the_order_of_the_questions(org, proj):

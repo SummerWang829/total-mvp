@@ -62,9 +62,8 @@ def clean_goals(goals) -> list[str]:
 
 
 def price_matters(slots: dict[str, dict]) -> bool:
-    """修正方案第 2 轮 C5: 价格怎么谈 only for a concept or pricing study, or when there is something to show."""
-    mats = [m for m in (slots.get("materials", {}).get("value") or []) if m and m != "none"]
-    return slots.get("research_type", {}).get("value") in ("concept", "pricing") or bool(mats)
+    """价格怎么谈 does not show up by itself (用户 2026-11-20 第 3 轮): only for a pricing study, or once the team has said something about price."""
+    return slots.get("research_type", {}).get("value") == "pricing" or slots.get("price", {}).get("source") == "answer"
 
 
 def slot_text(name: str, value) -> str:

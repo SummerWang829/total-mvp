@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from ..config import settings
 from ..creation import stages
 from ..models import Project, RecruitForm
+from . import media as wbmedia
 from . import flow, quality, service as svc, writer
 from .models import FocusQuestion, Outline, OutlineItem, OutlineVersion, Revision, StudySetting
 
@@ -82,9 +83,10 @@ def _items_by_module(db: Session, version_id: str) -> dict[str, list[OutlineItem
     return out
 
 
-def _item_view(it: OutlineItem, lang: str) -> dict:
+def _item_view(it: OutlineItem, lang: str, pid: str = "") -> dict:
     return {"uid": it.item_uid, "label": it.label, "kind": it.kind, "text": it.texts.get(lang) or next(iter(it.texts.values()), ""), "followups": it.followups, "must_cover": it.must_cover, "minutes": it.minutes,
-            "backup": it.is_backup, "depth": (it.config or {}).get("depth", "shallow"), "config": it.config}
+            "backup": it.is_backup, "depth": (it.config or {}).get("depth", "shallow"), "config": it.config,
+            "media": wbmedia.with_urls(it.config or {}, pid) if pid else []}   # 修正方案第 3 轮: uploaded material, with short-lived addresses
 
 
 def view(db: Session, proj: Project, user_id: str = "") -> dict:
@@ -98,7 +100,7 @@ def view(db: Session, proj: Project, user_id: str = "") -> dict:
     asked = len([k for k in (st.answers or {}) if k in {d.name for d in flow.SLOT_DEFS}])
     rounds = {r: flow.next_questions(slots, r, asked) for r in ROUNDS}
     for m in mods:
-        m["items"] = [_item_view(i, ctx["language"]) for i in by_mod.get(m["id"], [])]
+        m["items"] = [_item_view(i, ctx["language"], proj.id) for i in by_mod.get(m["id"], [])]
     gates = st.gates or {}
     step = "focus" if gates.get("questions") else "questions" if gates.get("overview") else "overview" if mods else "people" if gates.get("goal") else "goal"
     pending = [{"id": r.id, "op": r.op, "item_uid": r.item_uid, "before": r.before, "after": r.after, "reason": r.reason, "quality": r.quality, "destination": r.destination, "status": r.status}
@@ -114,7 +116,7 @@ def view(db: Session, proj: Project, user_id: str = "") -> dict:
             "stale": bool(mods) and bool(ov.get("fp")) and ov.get("fp") != flow.fingerprint(slots, ctx["background"]), "reset": _reset_state(db, st, v),
             "steps": [{"key": k, "label": lab} for k, lab in STEPS], "overview": {"modules": mods, "totals": flow.totals(mods) if mods else {}, "findings": flow.findings(mods, ctx, slots) if mods else [],
             "depth_labels": flow.DEPTH_LABELS}, "suggestions": sugg, "revisions": pending, "focus": _focus_views(db, proj, v.id),
-            "items": [_item_view(i, ctx["language"]) | {"module": i.module} for i in svc.items_of(db, v.id)][:MAX_CHAT_OUTLINE * 3]}
+            "items": [_item_view(i, ctx["language"], proj.id) | {"module": i.module} for i in svc.items_of(db, v.id)][:MAX_CHAT_OUTLINE * 3]}
 
 
 def _focus_views(db: Session, proj: Project, version_id: str) -> list[dict]:
@@ -658,4 +660,8 @@ def _slot_turn(db: Session, proj: Project, st: StudySetting, ctx: dict, chat, te
             done.append(name)
         except (svc.OutlineError, ValueError, TypeError):
             continue
-    return {"reply": reply if done or not changes else "这个改动没有生效，请用“改”按钮直接改。", "cites": [], "revisions": [], "changed": done}
+    if not done:   # 修正方案第 3 轮: never say something was changed when 已经知道的 did not change (“物料改为看素材” said so and nothing moved)
+        mats = "、".join(o["text"] for o in flow.slot_options("materials") or [] if isinstance(o, dict) and o.get("text"))
+        reply = ("这个改动没有生效，请用“改”按钮直接改。" if changes else
+                 f"已经知道的没有改动。这一页的对话只改研究类型、要回答的问题、访谈对象、物料{('（可选：' + mats + '）') if mats else ''}，请说得具体一点。")
+    return {"reply": reply, "cites": [], "revisions": [], "changed": done}

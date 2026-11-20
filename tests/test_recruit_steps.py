@@ -55,34 +55,20 @@ def test_exclusions_go_first_and_going_back_remakes_only_one_step(org):
     assert sum(1 for q in again["questions"] if q["step"] == "include") == 2
 
 
-def test_the_trap_and_the_consistency_check_end_it(org):
+def test_the_trap_ends_it_and_nothing_is_asked_twice(org):
+    """用户 2026-11-20 第 3 轮: 重复的题目都不留 — the old “再确认一下” consistency question is no longer made; the trap still ends it."""
     pid = org.project()
     _need(org, pid)
     conds = org.c.post(url(pid, "/steps/include/suggest"), headers=org.h(), json={}).json()["conds"]
     _confirm(org, pid, "include", {"conds": conds})
     qc = org.c.post(url(pid, "/steps/qc/suggest"), headers=org.h(), json={}).json()["qc"]
-    assert qc["consistency"] and qc["min_seconds"] == 20
-    out = _confirm(org, pid, "qc", {"qc": {**qc, "trap": True}})
+    assert not qc["consistency"] and qc["min_seconds"] == 20
+    out = _confirm(org, pid, "qc", {"qc": {**qc, "trap": True, "consistency": True}})
     qs = [Question.model_validate(q) for q in out["questions"]]
+    assert not any(q.qc == "consistency" for q in qs) and not any(q.text.startswith("再确认") for q in qs)
     trap = next(q for q in qs if q.qc == "trap")
-    again = next(q for q in qs if q.qc == "consistency")
-    first = next(q for q in qs if q.id == again.pair)
-    assert qs.index(trap) == qs.index(first) + 1   # the trap sits right after the first condition
-    ok = next(o for o in first.options if o.goto != "end_out")
-    answers = {}
-    for q in qs:
-        if q is first:
-            answers[q.id] = ok.id
-        elif q is trap:
-            answers[q.id] = next(o.id for o in q.options if o.text == "经常")
-        elif q is again:
-            answers[q.id] = next(o.id for o in q.options if o.text == ok.text)
-        else:
-            answers[q.id] = next(o.id for o in q.options if o.goto != "end_out")
+    answers = {q.id: (next(o.id for o in q.options if o.text == "经常") if q is trap else next(o.id for o in q.options if o.goto != "end_out")) for q in qs}
     assert next_step(qs, answers).result == "qualified"
-    other = next(o for o in again.options if o.text != ok.text)
-    bad = next_step(qs, {**answers, again.id: other.id})
-    assert bad.result == "out" and bad.ended_at == again.id   # the same thing asked twice, two answers: screened out
     wrong = next(o.id for o in trap.options if o.text != "经常")
     assert next_step(qs, {**answers, trap.id: wrong}).result == "out"
 

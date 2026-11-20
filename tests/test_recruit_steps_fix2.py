@@ -68,3 +68,34 @@ def test_someone_imported_to_be_screened_joins_the_list_only_when_they_qualify(c
     assert client.post(f"/api/public/screen/{tok}/submit", json={"answers": answers, "started": first.get("started", ""), "name": "林小雨", "email": "lin@example.com", "country": "SG", "consent": True}).status_code == 201
     ppl = {x["name"]: x for x in org.c.get(f"/api/projects/{pid}/participants", headers=org.h()).json()}
     assert ppl["林小雨"]["screen_result"] == "qualified" and "线上买家" in ppl["林小雨"]["tags"] and ppl["王大明"]["screen_result"] == ""
+
+
+def test_a_repeat_is_taken_out_and_the_order_stays():
+    """修正方案第 3 轮: the same question twice (or a second age question) keeps only one, the one with tags; the team's order is never re-sorted."""
+    from app.recruit_steps import arrange
+
+    def q(qid, text, tag="", goto=""):
+        a, b = ("18-24岁", "25-34岁") if "年龄" in text else ("是", "否")
+        return {"id": qid, "type": "single", "text": text, "options": [{"id": "o1", "text": a, "goto": goto, "tag": tag, "excl": []}, {"id": "o2", "text": b, "goto": "", "tag": "", "excl": []}], "rules": []}
+    qs = [q("q1", "你或你的家人是否在下列行业工作？", goto="q5"), q("q2", "您目前主要使用的车辆品牌？"), q("q3", "请问您的年龄是？"),
+          q("q4", "您常住的城市属于以下哪一类？"), q("q5", "请问您的性别是？"), q("q6", "再确认一下：请问您的年龄是？", tag="18-24岁"),
+          q("q7", "您目前主要使用的车辆品牌是？")]
+    out, removed = arrange(qs)
+    assert [x["id"] for x in out] == ["q1", "q2", "q4", "q5", "q6"]   # q3 (age, no tags) and q7 (repeats q2) go; nothing moves
+    assert len(removed) == 2
+    assert out[0]["options"][0]["goto"] == "q5"
+
+
+def test_remaking_a_step_keeps_the_order_the_team_set(org):
+    """用户 2026-11-20 第 3 轮: once the team has put questions in an order (e.g. in the dialog), confirming a step again does not re-sort them."""
+    pid = org.project()
+    _need(org, pid)
+    conds = org.c.post(url(pid, "/steps/include/suggest"), headers=org.h(), json={}).json()["conds"]
+    _confirm(org, pid, "include", {"conds": conds})
+    excl = org.c.post(url(pid, "/steps/exclude/suggest"), headers=org.h(), json={}).json()["excl"]
+    out = _confirm(org, pid, "exclude", {"excl": excl})
+    qs = out["questions"]
+    assert qs[0]["step"] == "exclude"   # first time: exclusions take their usual place in front
+    mine = [q for q in qs if q["step"] == "include"] + [q for q in qs if q["step"] != "include"]   # the team moves the conditions to the top
+    again = org.c.put(url(pid, "/steps/exclude"), headers=org.h(), json={"data": {"excl": excl}, "questions": mine}).json()
+    assert [q["step"] for q in again["questions"]][: len(conds)] == ["include"] * len(conds)

@@ -4,7 +4,7 @@ Researchers (admin, researcher, support) work on the outline; a client (viewer) 
 """
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -661,3 +661,53 @@ def room_add_pilot_mark(iid: str, body: RoomMarkBody, ctx: Ctx = Depends(require
     itv = visible_interview(db, ctx, iid)
     _run(db, wbpilot.add_room_mark, db, itv, ctx.user.id, ctx.user.role, body.note, body.tag)
     return _run(db, wbpilot.room_marks, db, itv, ctx.user.role)
+
+
+# ---- 修正方案第 3 轮: material files uploaded into a 概念卡 / 视频片段 -----------------------------------------------------------------------
+
+class MediaOrderBody(BaseModel):
+    ids: list[str] = Field(default_factory=list, max_length=12)
+    order: str = Field(default="seq", max_length=8)
+
+
+@router.post("/items/{uid}/media")
+async def upload_media(pid: str, uid: str, file: UploadFile = File(...), mode: str = Form("add"), ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    """Upload a picture / PDF (概念卡) or a video (视频片段) into the item; `mode` = add (after the others) or replace (the others are removed)."""
+    from ..outline_wb import media as wbmedia
+    p = _project(db, ctx, pid)
+    data = await file.read(wbmedia.MAX_BYTES["video"] + 1)
+    out = _run(db, lambda: (wbmedia.add(db, p, uid, file.filename or "", data, "replace" if mode == "replace" else "add"), sess.view(db, p, ctx.user.id))[1])
+    audit(db, ctx.org_id, ctx.actor, "outline_wb.media.add", pid, item=uid, mode=mode, size=len(data))   # never the file name
+    db.commit()
+    return out
+
+
+@router.put("/items/{uid}/media")
+def order_media(pid: str, uid: str, body: MediaOrderBody, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    """The showing order of the item's files (按顺序 / 随机轮换); a file left out of `ids` is removed."""
+    from ..outline_wb import media as wbmedia
+    p = _project(db, ctx, pid)
+    return _run(db, lambda: (wbmedia.arrange(db, p, uid, body.ids, body.order), sess.view(db, p, ctx.user.id))[1])
+
+
+media_router = APIRouter(tags=["outline-wb"])
+
+
+@media_router.get("/api/outline-media/{pid}/{mid}")
+def get_media(pid: str, mid: str, e: int = 0, s: str = "", db: Session = Depends(get_db)):
+    """One material file, through the signed address the page was given (an hour); range requests work, so a video can be scrubbed."""
+    from fastapi.responses import FileResponse
+    from ..outline_wb import media as wbmedia
+    if not wbmedia.check(pid, mid, e, s):
+        raise HTTPException(404, "地址已过期，请刷新页面")
+    proj = db.get(Project, pid)
+    if proj is None:
+        raise HTTPException(404, "没有这个文件")
+    try:
+        path = wbmedia.path_of(proj, mid)
+    except OutlineError as er:
+        raise HTTPException(404, str(er)) from er
+    import os
+    if not os.path.isfile(path):
+        raise HTTPException(404, "没有这个文件")
+    return FileResponse(path, media_type=wbmedia.MIME.get(mid.rsplit(".", 1)[-1], "application/octet-stream"), headers={"Cache-Control": "private, max-age=3600", "X-Content-Type-Options": "nosniff"})

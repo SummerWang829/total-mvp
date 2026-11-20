@@ -27,9 +27,12 @@
   }
 
   const mods = () => (S.d?.overview?.modules || []);
+  // 用户 2026-11-20 第 3 轮: 目标 and 人群与执行 are one step (the server still keeps them apart; the page shows them together)
+  const steps = () => (S.d?.steps || []).filter((x) => x.key !== "people").map((x) => (x.key === "goal" ? { ...x, label: "目标与人群" } : x));
+  const one = (k) => (k === "people" ? "goal" : k);
   const gates = () => S.d?.gates || {};
   const stepOk = (k) => ({ goal: true, people: true, overview: mods().length > 0, questions: !!gates().overview, focus: !!gates().questions }[k]);   // 修正方案第 2 轮 C10: a step opens only after the one before is confirmed
-  const stepDone = (k) => ({ goal: !!gates().goal, people: mods().length > 0, overview: !!gates().overview, questions: !!gates().questions, focus: false }[k]);
+  const stepDone = (k) => ({ goal: mods().length > 0, people: mods().length > 0, overview: !!gates().overview, questions: !!gates().questions, focus: false }[k]);
 
   /** The version card at the foot of the side menu: one line (修正方案第 1 轮第 1 条); a click opens the Pilot page. */
   function menuState() {
@@ -41,7 +44,7 @@
   /** The step bar at the top of 生成大纲 (every reachable step can be clicked) and, on 预览测试 / Pilot, the page's own tabs. */
   function stepBar() {
     if (S.area !== "gen") return `<div class="ow-tabs" role="tablist">${TABS[S.area].map(([k, l]) => `<a href="#" role="tab" class="${S.tab === k ? "on" : ""}" aria-selected="${S.tab === k}" data-ow-tab="${k}">${l}</a>`).join("")}</div>`;
-    return `<div class="ow-steps" role="tablist" aria-label="生成大纲的步骤">${S.d.steps.map((x, i) => {
+    return `<div class="ow-steps" role="tablist" aria-label="生成大纲的步骤">${steps().map((x, i) => {
       const on = S.step === x.key, ok = stepOk(x.key), done = stepDone(x.key);
       return `${i ? `<span class="sep" aria-hidden="true"></span>` : ""}<a href="#" role="tab" class="ow-st${on ? " on" : ""}${done ? " done" : ""}${ok ? "" : " lock"}" aria-selected="${on}"${ok ? "" : ' aria-disabled="true" title="先完成前面的步骤"'} data-ow-step="${x.key}"><i>${done ? "✓" : ok ? i + 1 : "🔒"}</i>${E(x.label)}</a>`;
     }).join("")}<span class="ow-rs"><button type="button" data-ow="rs-open">重新开始</button></span></div>`;
@@ -51,7 +54,7 @@
   const mmss = (t) => `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`;
   function resetUi() {
     const r = S.d.reset || {};
-    const undo = undoLeft() > 0 && ["goal", "people"].includes(S.step) ? `<div class="ow-undo" role="status">${r.mode === "all" ? "已全部清除" : "已清除你的回答"}，之前的内容已保存。<button type="button" data-ow="rs-undo">撤销清除</button><span class="sm"><span id="ow-undo-left">${mmss(undoLeft())}</span> 后不能撤销</span></div>` : "";
+    const undo = undoLeft() > 0 && S.step === "goal" ? `<div class="ow-undo" role="status">${r.mode === "all" ? "已全部清除" : "已清除你的回答"}，之前的内容已保存。<button type="button" data-ow="rs-undo">撤销清除</button><span class="sm"><span id="ow-undo-left">${mmss(undoLeft())}</span> 后不能撤销</span></div>` : "";
     if (!S.resetAsk) return undo;
     const m = S.resetMode || "answers";
     return undo + `<div class="card ow-card ow-ask" role="dialog" aria-label="重新开始生成大纲"><h3>重新开始生成大纲？</h3>
@@ -64,9 +67,10 @@
     return `<nav class="ow-toc" aria-label="模块"><div class="t">模块</div>${mods().map((m) => `<a href="#" class="${S.mod === m.id ? "on" : ""}" data-ow-mod="${E(m.id)}">${E(m.name)}<span class="${m.status === "confirmed" ? "ok" : m.status === "draft" ? "cur" : ""}">${m.status === "confirmed" ? "✓" : m.status === "draft" ? "●" : ""}</span></a>`).join("")}</nav>`;
   }
   function stepNav() {   // 上一步 / 继续 at the foot of each step
-    const keys = S.d.steps.map((x) => x.key), i = keys.indexOf(S.step), prev = keys[i - 1], next = keys[i + 1];
+    const keys = steps().map((x) => x.key), i = keys.indexOf(S.step), prev = keys[i - 1], next = keys[i + 1];
     // 修正方案第 2 轮 C2/C10: one way forward only — each page's own confirm button; 题目 gets 继续 once every module is confirmed
-    const go = S.step === "questions" && next && stepOk(next) ? `<button type="button" class="p" data-ow-step="${next}">继续 ›</button>` : "";
+    const go = S.step === "questions" && next && stepOk(next) ? `<button type="button" class="p" data-ow-step="${next}">继续 ›</button>`
+      : S.step === "focus" ? `<a class="btn p" href="#/p/${S.pid}/people/test">下一步：预览测试 ›</a>` : "";
     return `<div class="ow-nav">${prev ? `<button type="button" data-ow-step="${prev}">‹ 上一步</button>` : "<span></span>"}${go}</div>`;
   }
   /** Keep the step in the address so a reload stays on it (replace, not push: the steps are one page). */
@@ -148,8 +152,8 @@
     }).join("") + `</div>`;
   }
   function goalView() {
-    return `<div class="card ow-card"><h3>已经知道的 ${subPick()}</h3>${slotRows()}</div>${roundCard(1)}
-      <div class="ow-actions"><button type="button" class="p" data-ow="goal-next">${gates().goal ? "继续" : "确认目标，继续"}</button></div>`;
+    return `<div class="card ow-card"><h3>已经知道的 ${subPick()}</h3>${slotRows()}</div>${roundCard(1)}${roundCard(2)}${roundCard(3)}
+      <div class="ow-actions"><button type="button" class="p" data-ow="build">${mods().length ? "按这些回答重新生成大纲总览" : "确认，生成大纲总览"}</button></div>`;
   }
   function peopleView() {
     const c = roundCard(2) + roundCard(3);
@@ -180,7 +184,40 @@
       <div class="h"><span class="lab">${E(it.label)}</span><span class="kind">${KIND_LABEL[it.kind] || ""}</span>
       <textarea class="ow-in t" rows="1" aria-label="题目文字" data-ow-i="${it.uid}" data-f="text">${E(it.text)}</textarea>
       <span class="ow-min">${it.minutes} 分</span><button type="button" class="ow-x" data-ow-del="${it.uid}" aria-label="删除这一条">×</button></div>
-      ${it.kind === "question" || it.kind === "rating" ? `<div class="fu">${it.followups.length ? "追问：" + E(it.followups.join(" · ")) : ""}<span class="ow-ctl">${depthSel(it.depth, `data-ow-i="${it.uid}" data-f="depth"`)}</span></div>` : this_cfg(it)}</div>`;
+      ${it.kind === "question" || it.kind === "rating" ? `<div class="fu">${it.followups.length ? "追问：" + E(it.followups.join(" · ")) : ""}<span class="ow-ctl">${depthSel(it.depth, `data-ow-i="${it.uid}" data-f="depth"`)}</span></div>` : this_cfg(it) + mediaBlock(it)}</div>`;
+  /** 修正方案第 3 轮: the material of a 概念卡 / 视频片段 — upload, preview, showing order (按顺序 / 随机轮换); another upload asks 替换 or 再加. */
+  function mediaBlock(it) {
+    if (it.kind !== "concept" && it.kind !== "video") return "";
+    const ms = it.media || [], order = (it.config || {}).order || "seq", ask = S.upAsk && S.upAsk.uid === it.uid;
+    const thumb = (m, i) => `<span class="ow-thumb"><b>${i + 1}</b>${m.type === "image" ? `<img src="${E(m.url)}" alt="${E(m.name)}" loading="lazy">` : m.type === "video" ? `<video src="${E(m.url)}" preload="metadata" muted></video>` : `<span class="pdf">PDF</span>`}
+      <span class="nm" title="${E(m.name)}">${E(m.name)}</span><span class="ctl"><button type="button" class="s" data-ow="md-view" data-uid="${it.uid}" data-i="${i}" aria-label="看大图或播放">看</button>${i ? `<button type="button" class="s" data-ow="md-up" data-uid="${it.uid}" data-i="${i}" aria-label="往前挪">‹</button>` : ""}${i < ms.length - 1 ? `<button type="button" class="s" data-ow="md-down" data-uid="${it.uid}" data-i="${i}" aria-label="往后挪">›</button>` : ""}<button type="button" class="s" data-ow="md-del" data-uid="${it.uid}" data-i="${i}" aria-label="删除这个素材">×</button></span></span>`;
+    const accept = it.kind === "concept" ? "image/png,image/jpeg,image/webp,application/pdf" : "video/mp4,video/webm,video/quicktime";
+    return `<div class="ow-media"><div class="hd"><b>${KIND_LABEL[it.kind]}</b>${ms.length ? `<span class="mut sm">（${ms.length} 个）</span>` : ""}${ms.length > 1 ? `<span class="mut sm">出示方式</span><span class="ow-seg"><button type="button" class="${order === "seq" ? "on" : ""}" data-ow="md-order" data-uid="${it.uid}" data-v="seq">按顺序</button><button type="button" class="${order === "random" ? "on" : ""}" data-ow="md-order" data-uid="${it.uid}" data-v="random">随机轮换</button></span>` : ""}
+      <label class="btn s ow-upl">${ms.length ? "再上传" : it.kind === "concept" ? "上传图片 / PDF" : "上传视频（MP4）"}<input type="file" accept="${accept}" data-ow-up="${it.uid}" hidden${it.kind === "concept" ? " multiple" : ""}></label></div>
+      ${ask ? `<div class="ow-upask" role="dialog" aria-label="这里已经有素材"><b>这里已经有 ${ms.length} 个${KIND_LABEL[it.kind]}</b><span class="mut sm">新上传的要</span><button type="button" class="s" data-ow="up-replace">替换掉原来的</button><button type="button" class="p s" data-ow="up-add">再加一个</button><button type="button" class="s" data-ow="up-cancel">取消</button></div>` : ""}
+      ${ms.length ? `<div class="ow-thumbs">${ms.map(thumb).join("")}</div>` : `<div class="mut sm">还没有素材${it.kind === "video" ? "（也可以在上面写公开播放链接）" : ""}</div>`}</div>`;
+  }
+  async function uploadMedia(uid, files, mode) {
+    S.busy = true; paint();
+    try {
+      let first = true;
+      for (const f of files) {
+        const fd = new FormData(); fd.append("file", f); fd.append("mode", first && mode === "replace" ? "replace" : "add"); first = false;
+        const r = await fetch(`/api/projects/${S.pid}/outline-wb/items/${uid}/media`, { method: "POST", headers: { Authorization: "Bearer " + (store.get("tt_token") || "") }, body: fd });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) { toast((data && data.detail) || "上传没有成功", true); break; }
+        S.d = data;
+      }
+    } catch { toast("网络不稳定，上传没有成功", true); }
+    S.busy = false; paint();
+  }
+  function mediaView(m) {   // a big picture, a PDF in a new tab or the video playing, in a light box
+    if (m.type === "pdf") { window.open(m.url, "_blank", "noopener"); return; }
+    const box = document.createElement("div"); box.className = "ow-lightbox"; box.setAttribute("role", "dialog"); box.setAttribute("aria-label", m.name);
+    box.innerHTML = (m.type === "image" ? `<img src="${E(m.url)}" alt="${E(m.name)}">` : `<video src="${E(m.url)}" controls autoplay></video>`) + `<button type="button" class="s" aria-label="关闭">关闭</button>`;
+    box.addEventListener("click", (e) => { if (e.target === box || e.target.tagName === "BUTTON") box.remove(); });
+    document.body.appendChild(box); box.querySelector("button").focus();
+  }
   function this_cfg(it) {
     const c = it.config || {}, p = c.precheck;
     const parts = [c.url ? `网址 ${E(c.url)}` : "", c.time_limit_s ? `时间上限 ${Math.round(c.time_limit_s / 60)} 分钟` : "", c.scale ? `量表 1–${c.scale}` : "", c.title ? E(c.title) : ""].filter(Boolean).join(" · ");
@@ -190,9 +227,10 @@
   function insertForm(after) {
     const f = S.form;
     if (!f || f.after !== after) return `<div class="ow-ins" data-after="${after}">＋ 插入 ${["question", "concept", "video", "website", "rating"].map((k) => `<button type="button" class="ow-chipb" data-ow-ins="${k}" data-after="${after}">${KIND_LABEL[k]}</button>`).join("")}</div>`;
-    const web = f.kind === "website" || f.kind === "video";
+    const web = f.kind === "website" || f.kind === "video", up = f.kind === "concept" || f.kind === "video";
     return `<div class="ow-ins open"><b>插入${KIND_LABEL[f.kind]}</b><textarea class="ow-ta" id="ow-f-text" aria-label="要对受访者说的话" rows="2" placeholder="要对受访者说的话"></textarea>
-      ${web ? `<input class="ow-in" id="ow-f-url" aria-label="物料地址" placeholder="公开的 https 地址">` : ""}${f.kind === "website" ? `<input class="ow-in num" id="ow-f-limit" type="number" aria-label="时间上限（分钟）" placeholder="时间上限（分钟）" value="4">` : ""}${f.kind === "rating" ? `<input class="ow-in num" id="ow-f-scale" type="number" aria-label="量表长度" value="10" min="3" max="11"> <span class="mut sm">量表 1–N</span>` : ""}
+      ${up ? `<label class="ow-upl2">上传${f.kind === "concept" ? "图片 / PDF" : "视频（MP4）"}：<input type="file" id="ow-f-file" aria-label="上传素材" accept="${f.kind === "concept" ? "image/png,image/jpeg,image/webp,application/pdf" : "video/mp4,video/webm,video/quicktime"}"${f.kind === "concept" ? " multiple" : ""}></label>` : ""}
+      ${web ? `<input class="ow-in" id="ow-f-url" aria-label="物料地址" placeholder="${f.kind === "video" ? "或者写公开播放链接（https）" : "公开的 https 地址"}">` : ""}${f.kind === "website" ? `<input class="ow-in num" id="ow-f-limit" type="number" aria-label="时间上限（分钟）" placeholder="时间上限（分钟）" value="4">` : ""}${f.kind === "rating" ? `<input class="ow-in num" id="ow-f-scale" type="number" aria-label="量表长度" value="10" min="3" max="11"> <span class="mut sm">量表 1–N</span>` : ""}
       <div class="ow-actions"><button type="button" class="p s" data-ow="ins-ok" data-after="${after}">插入</button><button type="button" class="s" data-ow="ins-cancel">取消</button></div></div>`;
   }
   function questionsView() {
@@ -209,12 +247,9 @@
   /** 关注问题 (修正方案第 1 轮第 3 条): "对应到" is a drop-down with several choices: the recommended questions, all questions, 新增想法 (a new question the AI drafts, pending until
       accepted) and 暂不对应 (alone). Nothing is saved until 确定. */
   function focusView() {
-    const items = S.d.items.filter((i) => i.kind === "question" || i.kind === "rating");
-    const cell = (f) => {
-      const txt = f.state === "none" ? "暂不对应" : [...f.labels.map((l, n) => `${E(l)} ${E((items.find((i) => i.uid === f.item_uids[n]) || {}).text || "").slice(0, 10)}`), f.state === "new_idea" ? "新增想法 · 待你接受" : ""].filter(Boolean).join("、") || "还没有对应";
-      return `<div class="ow-fdd"><button type="button" class="ow-fdd-b${f.state ? "" : " miss"}" data-ow-fdd="${f.id}" aria-haspopup="true" aria-expanded="${S.fdd === f.id}">${txt}<span aria-hidden="true"> ▾</span></button>${S.fdd === f.id ? fddPanel(f, items) : ""}</div>`;
-    };
-    const rows = S.d.focus.map((f) => `<tr><td>${f.role === "client" ? "客户" : "研究员"}</td><td>${E(f.text)}</td><td>${cell(f)}</td></tr>`).join("");
+    // 用户 2026-11-20 第 3 轮: no “对应到” column; a focus question may simply be a question of the outline — the box searches the outline by keyword
+    const linked = (f) => f.labels.length ? f.labels.map((l) => `<span class="ow-pill">${E(l)}</span>`).join("") : "";
+    const rows = S.d.focus.map((f) => `<tr><td>${f.role === "client" ? "客户" : "研究员"}</td><td>${E(f.text)} ${linked(f)}</td></tr>`).join("");
     const ideas = S.d.focus.filter((f) => f.idea).map((f) => {
       const i = f.idea, mine = S.ideaEdit === f.id;
       return `<div class="card ow-card ow-idea"><h3>新增想法 → 新题（待定）</h3><div class="sm mut">关注问题“${E(f.text)}” · ${i.module ? `放在“${E(i.module)}”模块` : "放进最相关的模块"}</div>
@@ -223,11 +258,20 @@
         <div class="ow-actions">${mine ? `<button type="button" class="p s" data-ow="idea-save" data-f="${f.id}">保存</button><button type="button" class="s" data-ow="idea-cancel">取消</button>`
           : `${i.blocked ? "" : `<button type="button" class="p s" data-ow-rev="accept" data-id="${i.id}">接受，加入大纲</button>`}<button type="button" class="s" data-ow="idea-edit" data-f="${f.id}">改一下</button><button type="button" class="s" data-ow-rev="reject" data-id="${i.id}">不要</button>`}</div></div>`;
     }).join("");
-    const miss = S.d.focus.filter((f) => !f.state || f.state === "new_idea").length, none = S.d.focus.filter((f) => f.state === "none").length;
     return `<div class="card ow-card"><h3>关注问题</h3>
-      <table class="ow-tbl ow-ftbl"><thead><tr><th style="width:70px">谁提的</th><th>问题</th><th style="width:300px">对应到</th></tr></thead><tbody>${rows || `<tr><td colspan="3" class="mut">还没有关注问题。</td></tr>`}</tbody></table>
-      <div class="ow-add"><input class="ow-in" id="ow-focus-in" aria-label="新增关注问题" placeholder="新增关注问题"><button type="button" class="s" data-ow="focus-add">＋ 新增</button></div></div>${ideas}
-      <div class="card ow-card"><h3>发布前检查</h3><div class="ow-find">${miss ? `<span class="ow-pill warn">注意</span><span class="fx">${miss} 个关注问题还没处理（不挡发布）</span>` : `<span class="ow-pill ok">通过</span><span class="fx">关注问题都已处理</span>`}${none ? `<span class="ow-pill">提醒</span><span class="fx">${none} 个暂不对应</span>` : ""}</div></div>`;
+      <table class="ow-tbl ow-ftbl"><thead><tr><th style="width:70px">谁提的</th><th>问题</th></tr></thead><tbody>${rows || `<tr><td colspan="2" class="mut">还没有关注问题。</td></tr>`}</tbody></table>
+      <div class="ow-add ow-fsearch"><input class="ow-in" id="ow-focus-in" autocomplete="off" aria-label="新增关注问题：输入关键词搜大纲里的题，或直接写新问题" placeholder="输入关键词搜大纲里的题，或直接写新的关注问题" aria-controls="ow-fdrop"><button type="button" class="s" data-ow="focus-add">＋ 新增</button>
+        <div class="ow-fdrop" id="ow-fdrop" role="listbox" hidden></div></div></div>${ideas}`;
+  }
+  /** The list under the focus box: outline questions whose words contain the keyword, and “新增为关注问题”. Drawn without repainting the page. */
+  function focusDrop() {
+    const box = q("#ow-fdrop"), inp = q("#ow-focus-in"); if (!box || !inp) return;
+    const k = inp.value.trim(); if (!k) { box.hidden = true; box.innerHTML = ""; return; }
+    const items = S.d.items.filter((i) => (i.kind === "question" || i.kind === "rating") && (i.text.includes(k) || i.label.includes(k))).slice(0, 8);
+    const mark = (t) => E(t).split(E(k)).join(`<mark>${E(k)}</mark>`);
+    box.innerHTML = items.map((i) => `<button type="button" role="option" data-ow="focus-pick" data-uid="${E(i.uid)}"><b>${E(i.label)}</b> ${mark(i.text)}<small>选这道大纲题</small></button>`).join("")
+      + `<button type="button" role="option" data-ow="focus-add">＋ 新增为关注问题：“${E(k)}”</button>`;
+    box.hidden = false;
   }
   function fddPanel(f, items) {
     const x = S.fsel, rec = f.rec.filter((u) => items.some((i) => i.uid === u)).slice(0, 3);
@@ -255,7 +299,7 @@
     const sel = S.sel ? S.d.items.find((i) => i.uid === S.sel) : null;
     return `<div class="h"><b>小星星助手</b>${sel ? `<span class="ow-pill">已选 ${E(sel.label)} · ${KIND_LABEL[sel.kind]}<a href="#" data-ow="unsel" aria-label="取消选择"> ×</a></span>` : ""}</div>
       <div class="m" id="ow-msgs"><div class="bub">${S.area !== "gen" ? ({ preview: "这是受访者真实会看到的样子。切换语言看每种语言的版本；概念卡带受访者编号水印。", rehearsal: "AI 快速检查只看方向、只作参考：我用三种不同的受访者把大纲走一遍，告诉你哪里时间不够、哪里可能听不懂。", round: "先选：做 Pilot（推荐），或者客户不做时跳过 Pilot 直接上线。发起一轮后，被邀请的人在直播间里可以按 M 标记问题。", pilot: "每条标记都要处理：接受、拒绝或暂缓；也可以在笔录里选一句话点“圈出”，写下问题；也可以直接点“生成修改建议”，我会把标记和自动发现合并成修改，每条写明去向。客户只能圈和写意见。", publish: "发布前先看检查。发布之后新场次会用这一版；仍然可以继续改。" }[S.tab]) : S.step === "overview" ? "总览按你的设定排好了。追问深度我按每个模块的目的给了默认值，你可以直接改；下面有建议，可以多选后一起采纳。" : S.step === "questions" ? "选中一道题，再告诉我怎么改；我给出的修改只是“待定”，点“接受”才会写进大纲。" : "我先把项目里已有的信息读了一遍，还缺的在左边问你。"}</div>
-      ${S.msgs.map((m) => `<div class="bub ${m.me ? "me" : ""}">${E(m.text)}${window.TInput ? TInput.cites(m.cites) : ""}</div>${(m.revs || []).map((r) => revCard(S.d.revisions.find((x) => x.id === r.id) || r)).join("")}`).join("")}${pend.map(revCard).join("")}</div>
+      ${S.msgs.map((m) => `<div class="bub ${m.me ? "me" : ""}">${E(m.text)}${window.TInput ? TInput.cites(m.cites) : ""}</div>${(m.revs || []).map((r) => S.d.revisions.find((x) => x.id === r.id) || (r.op ? r : null)).filter(Boolean).map(revCard).join("")}`).join("")}${pend.map(revCard).join("")}</div>
       ${sg.length ? `<div class="ow-sug"><div class="t"><b>建议</b>（最多 3 条，可多选）<span class="ow-pill">已选 ${S.adopt.size}</span></div>${sg.map((s) => `<label><input type="checkbox" aria-label="${E(s.title)}" data-ow-sg="${s.id}"${S.adopt.has(s.id) ? " checked" : ""}><span><b>${E(s.title)}</b><small>${E(s.reason)}${s.basis ? `（依据：“${E(s.basis)}”）` : ""}</small><i class="x" data-ow-dis="${s.id}">不再提醒</i></span></label>`).join("")}<button type="button" class="p s" data-ow="adopt"${S.adopt.size ? "" : " disabled"}>采纳所选，重排结构</button></div>` : ""}
       <form class="f" id="ow-form"><textarea class="ow-ta" id="ow-in" data-ti="chat" data-ti-send="#ow-send" aria-label="对小星星助手说" rows="2" placeholder="跟 AI 说……"></textarea><button type="submit" class="p s" id="ow-send">发送</button></form>`;
   }
@@ -266,12 +310,15 @@
   function previewView() {
     const pv = S.pv; if (!pv) return `<div class="card ow-card mut">正在读取……</div>`;
     const items = pv.items, it = items[Math.min(S.pvIdx, items.length - 1)];
-    const langs = ["zh", "en"].map((l) => `<button type="button" class="${pv.language === l ? "on" : ""}" data-ow="pv-lang" data-l="${l}">${l === "zh" ? "中文" : "English"}</button>`).join("");
+    // 用户 2026-11-20 第 3 轮: only the languages this interview runs in; one language = no switch at all
+    const own = pv.languages && pv.languages.length ? pv.languages : [S.d.context.language || "zh"];
+    const langs = own.length > 1 ? own.map((l) => `<button type="button" class="${pv.language === l ? "on" : ""}" data-ow="pv-lang" data-l="${l}">${E(LANGS[l] || l)}</button>`).join("") : "";
     const body = !it ? `<div class="mut">还没有题。</div>` : `<div class="sm mut">第 ${S.pvIdx + 1} 项 / 共 ${items.length} 项 · ${E(it.label)}</div>
-      ${it.kind === "concept" || it.kind === "video" ? `<div class="ow-wm">${E(it.config.title || KIND_LABEL[it.kind])}<i>${it.watermark ? "P-0007" : ""}</i></div><div class="sm">只能观看，不能下载</div>` : ""}
+      ${it.kind === "concept" || it.kind === "video" ? (it.media && it.media.length ? `<div class="ow-pvmedia">${it.media.map((m, n) => `<div class="ow-wm m"><span class="no">${n + 1}</span>${m.type === "image" ? `<img src="${E(m.url)}" alt="${E(m.name)}">` : m.type === "video" ? `<video src="${E(m.url)}" controls controlslist="nodownload" disablepictureinpicture></video>` : `<span>PDF：${E(m.name)}</span>`}<i>${it.watermark ? "P-0007" : ""}</i></div>`).join("")}${it.media.length > 1 ? `<div class="sm mut">${(it.config.order || "seq") === "random" ? "随机轮换：每位受访者顺序不同" : "按顺序出示"}</div>` : ""}</div>`
+        : `<div class="ow-wm">${E(it.config.title || KIND_LABEL[it.kind])}<i>${it.watermark ? "P-0007" : ""}</i></div><div class="sm warn">还没有上传素材</div>`) + `<div class="sm">只能观看，不能下载</div>` : ""}
       ${it.kind === "website" ? `<div class="ow-wm">网站任务</div><div class="sm">在新标签打开 · 开始共享屏幕</div>` : ""}
       <div class="ow-bub">${it.missing ? `<span class="mut">这个语言还没有文字</span>` : E(it.text)}</div><div class="ow-fake">在这里回答……</div>`;
-    return `<div class="ow-row"><b>受访者预览</b><span class="ow-seg">${langs}</span><span class="sp"></span><button type="button" class="s" data-ow="pv-prev">上一项</button><button type="button" class="s" data-ow="pv-next">下一项</button><a class="btn p" href="#/p/${S.pid}/people/pilot">下一步：进入 Pilot ›</a></div>
+    return `<div class="ow-row"><b>受访者预览</b>${langs ? `<span class="ow-seg">${langs}</span>` : ""}<span class="sp"></span><button type="button" class="s" data-ow="pv-prev">上一项</button><button type="button" class="s" data-ow="pv-next">下一项</button><a class="btn p" href="#/p/${S.pid}/people/pilot">下一步：进入 Pilot ›</a></div>
       <div class="card ow-card ow-pvgrid"><div class="ow-phone"><div class="tt"><b>访谈</b><span class="sp"></span><span class="ow-pill">受访者编号 P-0007</span></div><div class="pb">${body}</div></div>
       <div>${pv.checks.map(chk).join("")}</div></div>`;
   }
@@ -362,11 +409,7 @@
 
         <span class="k">时间</span><span><input class="ow-in" id="ow-r-time" type="datetime-local" aria-label="Pilot 时间"></span>
 
-        <span class="k">受访者</span><span><span class="ow-seg"><button type="button" class="${S.rpk !== "col" ? "on" : ""}" data-ow="rd-pk" data-v="list">从名单选</button><button type="button" class="${S.rpk === "col" ? "on" : ""}" data-ow="rd-pk" data-v="col">同事</button></span>
-
-          ${S.rpk === "col" ? `<input class="ow-in" id="ow-r-name" aria-label="同事姓名" placeholder="姓名"> <input class="ow-in" id="ow-r-email" type="email" aria-label="同事邮箱" placeholder="邮箱">`
-
-            : parts.length ? `<select class="ow-sel" id="ow-r-part" aria-label="选一位受访者">${parts.map((x) => `<option value="${x.id}">${E(x.code || "")} · ${E(x.name)}</option>`).join("")}</select>` : `<span class="mut sm">名单里还没有人，选“同事”</span>`}</span>
+        <span class="k">受访者</span><span><input class="ow-in" id="ow-r-email" type="email" autocomplete="off" aria-label="受访者邮箱" placeholder="受访者邮箱，例如 name@example.com"> <span class="sm mut">发起后给这个邮箱发访谈链接</span></span>
 
         <span class="k">邮件邀请旁听</span><span class="ow-mem">${rd.people.map((u) => `<label><input type="checkbox" data-ow-w="${u.id}" checked> ${E(u.name)}<span class="mut sm">（${E(u.role_name)}）</span></label>`).join("")}</span>
 
@@ -441,14 +484,19 @@
   }
 
   // ---- 绘制与事件 ---------------------------------------------------------------------------------
+  const MSG_KEY = () => `ow_msgs_${S.pid}`;
+  function saveMsgs() { try { localStorage.setItem(MSG_KEY(), JSON.stringify(S.msgs.slice(-80).map((m) => ({ me: !!m.me, text: m.text, revs: (m.revs || []).map((r) => ({ id: r.id })), cites: m.cites || [] })))); } catch { /* private window */ } }
+  function loadMsgs() { try { const v = JSON.parse(localStorage.getItem(MSG_KEY()) || "[]"); return Array.isArray(v) ? v : []; } catch { return []; } }
   function paint() {
     const root = q(S.area === "gen" ? "#owroot" : "#owroot3"); if (!root) return;
+    if (S.pid && S.msgs.length !== S.savedN) { S.savedN = S.msgs.length; saveMsgs(); }
     if (!S.d) { root.innerHTML = `<div class="card ow-card mut">正在读取……</div>`; return; }
     if (S.d !== S.undoFor) { S.undoFor = S.d; S.undoUntil = Date.now() + 1000 * ((S.d.reset || {}).undo_left_s || 0); }
     clearInterval(S.undoTick);
     if (undoLeft() > 0) S.undoTick = setInterval(() => { const t = undoLeft(), el = q("#ow-undo-left"); if (!el || !t) { clearInterval(S.undoTick); if (!t && q(".ow-undo")) paint(); return; } el.textContent = mmss(t); }, 1000);
     const keep = { y: q("#owmain")?.scrollTop || 0, chat: q("#ow-msgs")?.scrollTop || 0, focusId: document.activeElement?.id || "" };
-    const view = S.area !== "gen" ? { preview: previewView, rehearsal: rehearsalView, round: roundView, pilot: pilotView, publish: publishView }[S.tab] : ({ goal: goalView, people: peopleView, overview: overviewView, questions: questionsView, focus: focusView }[S.step] || goalView);
+    S.step = one(S.step);
+    const view = S.area !== "gen" ? { preview: previewView, rehearsal: rehearsalView, round: roundView, pilot: pilotView, publish: publishView }[S.tab] : ({ goal: goalView, people: goalView, overview: overviewView, questions: questionsView, focus: focusView }[S.step] || goalView);
     const body = S.area === "gen" && S.step === "questions" ? `<div class="ow-qwrap">${tocHtml()}<div>${view()}</div></div>` : view();
     root.innerHTML = `<div class="ow${S.busy ? " busy" : ""}"><div class="ow-main" id="owmain">${stepBar()}${S.area === "gen" ? resetUi() + syncBar() + syncAsk() : ""}${body}${S.area === "gen" ? stepNav() : ""}</div><aside class="ow-chat" id="owchat">${chatHtml()}</aside></div>`;
     q("#owmain").scrollTop = keep.y; const m = q("#ow-msgs"); if (m) m.scrollTop = keep.chat || m.scrollHeight;
@@ -500,22 +548,18 @@
       case "pil-suggest": { S.busy = true; paint(); try { const r = await call(`/pilots/${S.pilId}/suggest`, "POST"); S.pil = r.view; S.d = await call(""); S.msgs.push({ text: r.revisions.length ? `我把标记和自动发现合并成 ${r.revisions.length} 条修改建议，每条写明去向。去向是“主持引擎”的不改大纲，接受后记入训练用例。` : "没有需要修改的地方。", revs: r.revisions }); } catch { /* toast */ } S.busy = false; return paint(); }
       case "rd-open": S.startOpen = true; return paint();
       case "rd-close": S.startOpen = false; return paint();
-      case "rd-pk": S.rpk = d.v; return paint();
       case "rd-skip": S.skipAsk = true; paint(); try { S.pub = await call("/publish/check"); } catch { /* toast */ } return paint();
       case "rd-skip-cancel": S.skipAsk = false; return paint();
       case "rd-skip-ok": { S.busy = true; paint(); try { await call("/publish/skip-pilot", "POST"); S.skipAsk = false; S.d = await call(""); toast("已上线：这一版已发布，正式场次可以开始"); } catch { /* toast */ } S.busy = false; return loadTab(); }
       case "rd-start": {
         if (S.busy) return;
         const t = val("#ow-r-time"), watchers = qa("[data-ow-w]").filter((x) => x.checked).map((x) => x.dataset.owW);
-        const picked = val("#ow-r-part"), name = val("#ow-r-name").trim(), email = val("#ow-r-email").trim();   // read before the page is redrawn
+        const email = val("#ow-r-email").trim();   // 用户 2026-11-20 第 3 轮: one box, the participant's email (read before the page is redrawn)
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return toast("写下受访者的邮箱", true);
         S.busy = true; paint();
         try {
-          let pid = picked;
-          if (S.rpk === "col") {
-            if (!name) { toast("写下同事的姓名", true); throw new Error("name"); }
-            pid = (await api(`/projects/${S.pid}/participants`, { method: "POST", body: { name, email, country: "SG", language: S.d.context.language } })).id;
-          }
-          if (!pid) { toast("先选一位受访者", true); throw new Error("who"); }
+          const same = (S.parts || []).find((x) => (x.email || "").toLowerCase() === email.toLowerCase() && !x.anonymized);
+          const pid = same ? same.id : (await api(`/projects/${S.pid}/participants`, { method: "POST", body: { name: email.split("@")[0].slice(0, 60), email, country: "SG", language: S.d.context.language } })).id;
           const r = await call("/pilot-rounds", "POST", { participant_id: pid, scheduled_at: t ? new Date(t).toISOString().slice(0, 19) : null, watcher_ids: watchers, send_email: true });
           S.started = r.watchers; S.startOpen = false; toast(`已发起第 ${r.round} 轮 Pilot`);
         } catch { /* toast */ }
@@ -561,8 +605,8 @@
       case "stale-keep": return act("/overview/keep", "POST");
       case "stale-rebuild": S.step = "overview"; return act("/overview", "POST");
       case "goal-next": S.step = "people"; await call("/goal/confirm", "POST").then((v) => { S.d = v; }).catch(() => {}); return paint();
-      case "build": S.step = "overview"; return act("/overview", "POST");
-      case "back-people": S.step = "people"; return paint();
+      case "build": S.step = "overview"; if (!gates().goal) await call("/goal/confirm", "POST").catch(() => {}); return act("/overview", "POST");
+      case "back-people": S.step = "goal"; return paint();
       case "confirm-ov": { await act("/overview/confirm", "POST"); if (gates().overview) { S.step = "questions"; S.mod = (mods().find((m) => m.status === "todo") || mods()[0])?.id || ""; paint(); } return; }
       case "gen": S.mod = d.m; return act(`/modules/${d.m}/generate`, "POST");
       case "conf-mod": { const i = mods().findIndex((m) => m.id === d.m); await act(`/modules/${d.m}/confirm`, "POST"); const nx = mods()[i + 1]; if (nx) { S.mod = nx.id; paint(); } else if (gates().questions) { S.step = "focus"; paint(); } return; }
@@ -574,13 +618,40 @@
         if (q("#ow-f-url")) cfg.url = val("#ow-f-url");
         if (q("#ow-f-limit")) cfg.time_limit_s = Math.round(num("#ow-f-limit") * 60);
         if (q("#ow-f-scale")) cfg.scale = num("#ow-f-scale");
-        S.form = null; return act("/items", "POST", { kind: f.kind, text: val("#ow-f-text"), after_uid: d.after, config: cfg });
+        const files = [...(q("#ow-f-file")?.files || [])], before = new Set(S.d.items.map((x) => x.uid));
+        S.form = null; await act("/items", "POST", { kind: f.kind, text: val("#ow-f-text"), after_uid: d.after, config: cfg });
+        const made = S.d.items.find((x) => !before.has(x.uid) && x.kind === f.kind);
+        if (made && files.length) await uploadMedia(made.uid, files, "add");
+        return;
       }
+      case "md-view": { const it = S.d.items.find((x) => x.uid === d.uid); if (it) mediaView(it.media[+d.i]); return; }
+      case "md-order": case "md-up": case "md-down": case "md-del": {
+        const it = S.d.items.find((x) => x.uid === d.uid); if (!it) return;
+        const ids = it.media.map((m) => m.id), i = +d.i, order = d.ow === "md-order" ? d.v : (it.config || {}).order || "seq";
+        if (d.ow === "md-up") [ids[i - 1], ids[i]] = [ids[i], ids[i - 1]];
+        if (d.ow === "md-down") [ids[i + 1], ids[i]] = [ids[i], ids[i + 1]];
+        if (d.ow === "md-del") ids.splice(i, 1);
+        return act(`/items/${d.uid}/media`, "PUT", { ids, order });
+      }
+      case "up-cancel": S.upAsk = null; return paint();
+      case "up-replace": case "up-add": { const a = S.upAsk; S.upAsk = null; return uploadMedia(a.uid, a.files, d.ow === "up-replace" ? "replace" : "add"); }
       case "focus-add": { const v = val("#ow-focus-in").trim(); return v ? act("/focus", "POST", { text: v }) : toast("先写下问题", true); }
+      case "focus-pick": {   // an outline question becomes a focus question, already pointing at that question
+        const it = S.d.items.find((x) => x.uid === d.uid); if (!it || S.busy) return;
+        await act("/focus", "POST", { text: it.text });
+        const f = [...S.d.focus].reverse().find((x) => x.text === it.text);
+        if (f) await act(`/focus/${f.id}/link`, "PUT", { item_uids: [it.uid], state: "linked" });
+        return;
+      }
     }
   }
   async function onChange(e) {
     const t = e.target, d = t.dataset;
+    if (d.owUp) {
+      const files = [...(t.files || [])], it = S.d.items.find((x) => x.uid === d.owUp); t.value = ""; if (!files.length || !it) return;
+      if ((it.media || []).length) { S.upAsk = { uid: it.uid, files }; return paint(); }   // already has material: replace it or add?
+      return uploadMedia(it.uid, files, "add");
+    }
     if (d.owSg) { S.adopt.has(d.owSg) ? S.adopt.delete(d.owSg) : S.adopt.add(d.owSg); return paint(); }
     if (d.owM !== undefined && d.f) return act(`/overview/modules/${d.owM}`, "PUT", { [d.f]: d.f === "minutes" ? parseInt(t.value, 10) : t.value });
     if (d.owI !== undefined && d.f) return act(`/items/${d.owI}`, "PUT", { [d.f]: d.f === "backup" ? t.checked : t.value });
@@ -598,8 +669,8 @@
     const refs = window.TInput ? TInput.takeRefs("ow-in") : [];
     S.msgs.push({ me: true, text: text + (refs.length ? `（附 ${refs.length} 份资料）` : "") }); S.busy = true; paint();
     try {
-      const r = await call("/chat", "POST", { text, selected: S.sel, refs, step: S.step, module: S.step === "questions" ? S.mod : "" });
-      S.d = await call(""); S.adopt = null;
+      const r = await call("/chat", "POST", { text, selected: S.sel, refs, step: S.step === "goal" ? "people" : S.step, module: S.step === "questions" ? S.mod : "" });
+      S.d = await call(""); S.adopt = null;   // the left side is drawn again from what the server now has (用户 2026-11-20 第 3 轮)
       S.msgs.push({ text: r.reply, revs: r.revisions, cites: r.cites });
     } catch { /* toast shown */ }
     S.busy = false; paint();
@@ -615,24 +686,26 @@
   function wire() {
     if (wired) return; wired = true;
     document.addEventListener("click", (e) => {
-      if (S.fdd && !e.target.closest(".ow-fdd")) { S.fdd = ""; paint(); }   // a click anywhere else closes the "对应到" drop-down
+      if (S.fdd && !e.target.closest(".ow-fdd")) { S.fdd = ""; paint(); }
+      if (!e.target.closest(".ow-fsearch")) { const dr = q("#ow-fdrop"); if (dr) dr.hidden = true; }   // a click anywhere else closes the "对应到" drop-down
       if (["#owroot", "#owroot3"].some((k) => q(k)?.contains(e.target))) onClick(e);
     });
     document.addEventListener("change", (e) => { if (q("#owroot")?.contains(e.target) || q("#owroot3")?.contains(e.target)) onChange(e); });
     document.addEventListener("submit", onSubmit);
+    document.addEventListener("input", (e) => { if (e.target.id === "ow-focus-in") focusDrop(); });
     document.addEventListener("focusin", onFocusIn);
   }
 
   window.OutlineWb = {
     async mount(pid, area) {
       wire();
-      if (S.pid !== pid) Object.assign(S, { pid, d: null, step: "", mod: "", sel: "", msgs: [], adopt: null, form: null, pv: null, rh: null, pl: null, pil: null, pub: null, edit: "", fdd: "", ideaEdit: "", resetAsk: false, syncAsk: null });
+      if (S.pid !== pid) Object.assign(S, { pid, d: null, step: "", mod: "", sel: "", msgs: (S.pid = pid, loadMsgs()), savedN: -1, adopt: null, form: null, pv: null, rh: null, pl: null, pil: null, pub: null, edit: "", fdd: "", ideaEdit: "", resetAsk: false, syncAsk: null });
       S.area = ["test", "pilot"].includes(area) ? area : "gen";
       if (S.area !== "gen" && !TABS[S.area].some(([k]) => k === S.tab)) S.tab = TABS[S.area][0][0];
       const fromUrl = (location.hash.split("/")[5] || "").split("?")[0];   // #/p/<id>/people/outline/<step>: a reload stays on that step
       paint();
       call("/pilot-rounds").then((r) => { S.rd = r; menuState(); }).catch(() => {});   // the version card says which pilot round we are at
-      try { S.d = await call(""); S.step = (fromUrl && S.d.steps.some((x) => x.key === fromUrl) && stepOk(fromUrl) ? fromUrl : "") || S.step || S.d.step; S.adopt = null; } catch { return; }
+      try { S.d = await call(""); S.step = one((fromUrl && S.d.steps.some((x) => x.key === fromUrl) && stepOk(fromUrl) ? fromUrl : "") || S.step || S.d.step); S.adopt = null; } catch { return; }
       paint();
       if (S.area !== "gen") loadTab();
     },

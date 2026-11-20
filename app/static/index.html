@@ -584,16 +584,24 @@ async function peopleView(p) {
     load();
   })();
   document.querySelectorAll("#rmode [data-rm]").forEach((b) => (b.onclick = guard(async () => {
-    const nrm = b.dataset.rm; const nhm = nrm === "onelink" ? "ai" : hm;   // 一站式 = AI 问卷 + AI 访谈，主持强制 AI
+    const nrm = b.dataset.rm; const nhm = nrm === "onelink" ? "ai" : (rec.host_mode || hm); if (nrm === rm) return;
+    document.querySelectorAll("#rmode [data-rm]").forEach((x) => x.classList.toggle("on", x === b));   // shows at once; the page redraws after saving (the steps under it change)
+    if (nrm === "onelink") document.querySelectorAll("#rmode [data-hm]").forEach((x) => x.classList.toggle("on", x.dataset.hm === "ai"));   // 一站式 = AI 问卷 + AI 访谈，主持强制 AI
     rec.recruit_mode = nrm; rec.host_mode = nhm; p.recruit_mode = nrm; p.host_mode = nhm;   // the side menu reads these from the project
     await api(`/projects/${p.id}/recruiting/mode`, { method: "PUT", body: { recruit_mode: nrm, host_mode: nhm } });
     if (nrm === "onelink") await api(`/projects/${p.id}/recruiting/form/source`, { method: "POST", body: { source: "ai" } }).catch(() => {});   // 一站式来源锁定为 AI，无需切换
     toast(nrm === "onelink" ? "一站式链接：AI 设计问卷 + AI 访谈，来源已锁定为 AI" : "已更新招募方式"); render();
   })));
-  document.querySelectorAll("#rmode [data-hm]").forEach((b) => (b.onclick = guard(async () => {
-    const nhm = b.dataset.hm; if (rm === "onelink" && nhm !== "ai") { toast("一站式链接只能由 AI 主持", true); return; }
-    rec.host_mode = nhm; p.host_mode = nhm; await api(`/projects/${p.id}/recruiting/mode`, { method: "PUT", body: { recruit_mode: rm, host_mode: nhm } }); toast("已更新主持方式"); render();
-  })));
+  // 修正方案第 3 轮: the button changes at once and the choice is saved in the background (no whole-page redraw); a failed save puts it back
+  document.querySelectorAll("#rmode [data-hm]").forEach((b) => (b.onclick = async () => {
+    const nhm = b.dataset.hm, was = rec.host_mode || "human"; if (rm === "onelink" && nhm !== "ai") { toast("一站式链接只能由 AI 主持", true); return; }
+    if (nhm === was) return;
+    const paint = (v) => { document.querySelectorAll("#rmode [data-hm]").forEach((x) => x.classList.toggle("on", x.dataset.hm === v)); rec.host_mode = v; p.host_mode = v;
+      const n = $("#rmnote"); if (n) n.textContent = v === "ai" ? "先甄别后邀请，可由 AI 主持访谈。" : "先甄别后邀请，由真人主持访谈。"; };
+    paint(nhm);
+    try { await api(`/projects/${p.id}/recruiting/mode`, { method: "PUT", body: { recruit_mode: rm, host_mode: nhm } }); toast("已更新主持方式"); }
+    catch (e) { paint(was); toast(e.message || "没保存成功", true); }
+  }));
   // 问卷来源：AI 生成 / 导入 Confirmit 链接（只「先甄别后邀请」可选），导入后跳到问卷页由右侧直接展示该链接
   document.querySelectorAll("#rmode [data-src]").forEach((b) => (b.onclick = guard(async () => {
     const toHtml = b.dataset.src === "html";
