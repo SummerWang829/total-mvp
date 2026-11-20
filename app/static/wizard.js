@@ -129,9 +129,9 @@ const WZ_CODE = { 中文: "zh", 英语: "en", 马来语: "ms", 泰米尔语: "ta
 function wzLangFmt() {
   const L = WZ.live, name = Object.fromEntries(Object.entries(WZ_CODE).map(([n, c]) => [c, n]));
   const chip = (txt, attr) => `<span class="tag">${esc(txt)}<button class="s" type="button" ${attr} aria-label="去掉${esc(txt)}">×</button></span>`;
-  const fmtRows = Object.keys(L.formats).map((m) => `<div class="wzchips"><span class="mut">${WZ_MNAME[m]}形式：</span>${L.formats[m].map((k) => chip(WZ_FMT[k] || k, `data-livefmtx="${m}|${k}"`)).join("")}</div>`).join("");
+  const fmtRows = Object.keys(L.formats).map((m) => `<div class="wzchips"><span class="mut">${WZ_MNAME[m]}形式：</span>${L.formats[m].map((k) => chip(lbl(WZ_FMT[k], k), `data-livefmtx="${m}|${k}"`)).join("")}</div>`).join("");
   return `<div class="row"><button class="s" type="button" data-livepick="lang">语言选择 · 已选 ${L.languages.length}</button>${Object.keys(L.formats).map((m) => `<button class="s" type="button" data-livepick="fmt|${m}">${WZ_MNAME[m]}访谈形式选择 · 已选 ${L.formats[m].length}</button>`).join("")}</div>
-    <div class="wzchips" style="margin-top:8px"><span class="mut">语言：</span>${L.languages.map((c) => chip(name[c] || c, `data-livelangx="${c}"`)).join("")}</div>${fmtRows}`;
+    <div class="wzchips" style="margin-top:8px"><span class="mut">语言：</span>${L.languages.map((c) => chip(lbl(name[c], c), `data-livelangx="${c}"`)).join("")}</div>${fmtRows}`;
 }
 /** The languages a sub-project runs in: ticks from the project's languages; the first one ticked is the main one. */
 function wzSubLangs(s) {  // 执行语言: the languages as chips (× removes one) and 选择语言 to change them in a popup
@@ -249,7 +249,7 @@ function wzRoles() {
   const team = Object.fromEntries(WZ.cfg.team.map((m) => [m.user_id, m])), byId = Object.fromEntries(WZ.users.map((u) => [u.id, u]));
   const admins = WZ.users.filter((u) => u.role === "admin"), mine = WZ.cfg.team.filter((m) => byId[m.user_id]).map((m) => byId[m.user_id]);
   const addable = WZ.users.filter((u) => u.role !== "admin" && !team[u.id]);
-  const roleName = (u) => (u.role === "researcher" ? WZ_KIND[u.research_kind || "all"] : WZ_ROLE[u.role] || u.role);
+  const roleName = (u) => (u.role === "researcher" ? WZ_KIND[u.research_kind || "all"] : lbl(WZ_ROLE[u.role], u.role));
   const row = (u, m, fixed) => `<tr><td>${esc(u.name)}</td><td>${roleName(u)}</td>${keys.map((k, j) => `<td><label class="chk wzbig"><input type="checkbox" aria-label="${esc(u.name)} ${names[j]}" ${fixed ? "checked disabled" : `data-member="${u.id}|${k}" ${m[k] ? "checked" : ""} ${en[j] ? "" : "disabled"}`}></label></td>`).join("")}
     <td>${(WZ_PERMS[u.role] || []).map((t) => `<span class="tag">${t}</span>`).join("")}</td><td>${fixed ? "" : `<button class="s" data-memdel="${u.id}" type="button">移出</button>`}</td></tr>`;
   return `

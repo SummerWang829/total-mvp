@@ -126,6 +126,19 @@ class LinkBody(BaseModel):
     item_uid: str | None = Field(default=None, max_length=40)
 
 
+class LinkManyBody(BaseModel):
+    item_uids: list[str] = Field(default_factory=list, max_length=40)
+    state: str = Field(default="linked", max_length=10)
+
+
+class TextBody(BaseModel):
+    text: str = Field(min_length=1, max_length=4000)
+
+
+class ResetBody(BaseModel):
+    mode: str = Field(max_length=10)
+
+
 def _project(db: Session, ctx: Ctx, pid: str) -> Project:
     p = db.get(Project, pid)
     if not p or p.org_id != ctx.org_id:
@@ -263,6 +276,47 @@ def add_focus(pid: str, body: FocusBody, ctx: Ctx = Depends(require_roles(*STAFF
 @router.put("/focus/{fid}")
 def link_focus(pid: str, fid: str, body: LinkBody, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
     return _run(db, sess.link_focus, db, _project(db, ctx, pid), fid, body.item_uid)
+
+
+@router.put("/focus/{fid}/link")
+def link_focus_many(pid: str, fid: str, body: LinkManyBody, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    """修正方案第 1 轮第 3 条: several questions, 新增想法 (a pending new question) or 暂不对应."""
+    chat = _chat() if body.state == "new_idea" else None
+    return _run(db, sess.set_focus_link, db, _project(db, ctx, pid), fid, body.item_uids, body.state, chat, ctx.user.id, ctx.user.role)
+
+
+@router.put("/focus/{fid}/idea")
+def revise_idea(pid: str, fid: str, body: TextBody, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    return _run(db, sess.revise_idea, db, _project(db, ctx, pid), fid, body.text, ctx.user.id, ctx.user.role)
+
+
+@router.put("/background")
+def edit_background(pid: str, body: TextBody, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    return _run(db, sess.edit_background, db, _project(db, ctx, pid), body.text, ctx.user.id)
+
+
+@router.post("/overview/keep")
+def keep_overview(pid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    return _run(db, sess.keep_overview, db, _project(db, ctx, pid), ctx.user.id)
+
+
+@router.post("/reset")
+def reset(pid: str, body: ResetBody, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    """修正方案第 1 轮第 7 条 重新开始 (only the researcher's answers, or everything on a version nobody has used); undone within 10 minutes."""
+    p = _project(db, ctx, pid)
+    out = _run(db, sess.reset, db, p, body.mode, ctx.user.id)
+    audit(db, ctx.org_id, ctx.actor, "outline_wb.reset", pid, ip=ctx.ip, mode=body.mode)
+    db.commit()
+    return out
+
+
+@router.post("/reset/undo")
+def undo_reset(pid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    p = _project(db, ctx, pid)
+    out = _run(db, sess.undo_reset, db, p, ctx.user.id)
+    audit(db, ctx.org_id, ctx.actor, "outline_wb.reset_undo", pid, ip=ctx.ip)
+    db.commit()
+    return out
 
 
 @router.get("/preview")

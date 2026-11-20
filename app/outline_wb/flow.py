@@ -42,6 +42,40 @@ QUESTION_TEXT = {"research_type": "这次研究主要想弄清什么？", "key_q
                  "minutes": "每场访谈多长？", "materials": "要不要给受访者看素材？", "price": "价格要不要谈？"}
 
 
+SLOT_KIND = {"research_type": "choice", "materials": "multi", "price": "choice", "minutes": "number", "key_questions": "lines", "audience": "text"}   # how the "改" editor looks (修正方案第 1 轮第 6 条)
+OTHER = "其他"   # a code missing from the dictionary is shown as this, never as the code itself
+
+
+def slot_text(name: str, value) -> str:
+    """The Chinese a person reads for a slot's value: never an internal code such as usage / none / skip / after_concept."""
+    if name == "research_type":
+        return RESEARCH_TYPES.get(str(value), OTHER) if value else "—"
+    if name in ("materials", "price"):
+        names = {v: t for t, v in OPTIONS[name]}
+        vals = [x for x in (value if isinstance(value, list) else [value]) if x and x != "none"]
+        if name == "materials" and not vals:
+            return "不看素材"
+        return "、".join(names.get(str(x), OTHER) for x in vals) or "—"
+    if name == "minutes":
+        return f"{value} 分钟" if value else "—"
+    if name == "key_questions":
+        return "　".join(f"{'①②③④'[i]} {x}" for i, x in enumerate((value or [])[:4]))
+    return str(value or "—")
+
+
+def slot_options(name: str) -> list[dict]:
+    """The choices of a choice slot for its editor: [{value, text}] (empty for a text slot)."""
+    return [{"value": v, "text": t} for t, v in OPTIONS.get(name, []) if name != "minutes"]
+
+
+def fingerprint(slots: dict[str, dict], background: str) -> str:
+    """What the overview and the questions were made from. When it changes, what was made earlier is shown as "需要重新生成" (never overwritten by itself)."""
+    import hashlib
+    import json
+    raw = json.dumps({"bg": " ".join((background or "").split()), **{k: slots[k]["value"] for k in sorted(slots)}}, ensure_ascii=False, sort_keys=True, default=str)
+    return hashlib.sha1(raw.encode()).hexdigest()[:16]
+
+
 def guess_type(background: str, goals: list[str]) -> tuple[str, float]:
     """The research type the background points to, and how sure that is (0 when nothing in the text points anywhere)."""
     text = (background or "") + " ".join(goals or [])

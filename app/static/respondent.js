@@ -35,7 +35,7 @@ async function openRespondent(iid, tab = "transcript") {
   const idx = RSP.list.indexOf(iid), hasNav = RSP.list.length > 1 && idx >= 0;
   const planned = it.duration_min || 45;
   root.innerHTML = `<button type="button" class="rsp-tab" id="rsp-col" aria-label="收起">›</button><div class="rsp-md" tabindex="-1"><div class="rsp-hd"><b>${esc(it.kind === "group" ? "座谈会" : (it.participant.code || "受访者"))}</b>${staff && it.kind !== "group" ? `<span class="mut">${esc(it.participant.name)}</span>` : ""}<span class="tag ${c}">${t}</span>
-      ${obs ? "" : `<span class="tag">${esc(it.participant.country || "—")} · ${esc(LANGS[it.language] || it.language)}</span><span class="tag">预计 ${planned} 分${it.actual_min != null ? ` / 访谈 ${it.actual_min} 分` : ""}</span>`}<span class="sp"></span>
+      ${obs ? "" : `<span class="tag">${esc(it.participant.country || "—")} · ${esc(lbl(LANGS[it.language], it.language))}</span><span class="tag">预计 ${planned} 分${it.actual_min != null ? ` / 访谈 ${it.actual_min} 分` : ""}</span>`}<span class="sp"></span>
       ${canRoom ? (obs ? room("observer", "隐身观察", "") : staff ? room("moderator", "进入房间", "p") + room("observer", "隐身观察", "") : room("moderator", "进入房间", "p")) : ""}
       ${hasNav ? `<button type="button" class="s" id="rsp-prev" ${idx > 0 ? "" : "disabled"}>上一位</button><button type="button" class="s" id="rsp-next" ${idx < RSP.list.length - 1 ? "" : "disabled"}>下一位</button>` : ""}
       <button type="button" class="s" id="rsp-x" aria-label="关闭">✕</button></div>

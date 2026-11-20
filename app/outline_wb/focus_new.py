@@ -100,6 +100,7 @@ def link_after_accept(db: Session, r: Revision) -> None:
         uid = r.after["new_uid"]
         f.item_uid = f.item_uid or uid
         f.item_uids = list(dict.fromkeys([*(f.item_uids or []), uid]))
+        f.link_state = "linked"
 
 
 def backfill_candidates(db: Session, proj: Project, fid: str) -> dict:

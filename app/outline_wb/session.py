@@ -18,6 +18,11 @@ from .models import FocusQuestion, Outline, OutlineItem, OutlineVersion, Revisio
 STEPS = [("goal", "目标"), ("people", "人群与执行"), ("overview", "大纲总览"), ("questions", "题目"), ("focus", "关注问题")]
 ROUNDS = (1, 2, 3)
 MAX_CHAT_OUTLINE = 60
+RESET_UNDO_S = 600   # 撤销清除 is open for 10 minutes
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 def ensure(db: Session, proj: Project, user_id: str = "") -> tuple[Outline, OutlineVersion, StudySetting]:
@@ -98,14 +103,43 @@ def view(db: Session, proj: Project, user_id: str = "") -> dict:
     from ..models import Interview
     done = db.scalar(select(func.count()).select_from(Interview).where(Interview.project_id == proj.id, Interview.is_pilot.is_(True), Interview.status == "ended")) or 0
     return {"pilot_done": done, "versions": stage3.versions(db, proj), "outline_id": o.id, "version": {"id": v.id, "number": v.number, "rev": v.rev, "status": v.status, "used_by": svc.usage_count(db, v.id)}, "context": ctx,
-            "slots": {k: {"value": s["value"], "source": s["source"], "confidence": s["confidence"]} for k, s in slots.items()}, "round_questions": rounds, "step": step, "gates": gates,
+            "slots": {k: {"value": s["value"], "source": s["source"], "confidence": s["confidence"], "text": flow.slot_text(k, s["value"]), "edit": flow.SLOT_KIND.get(k, "text"),
+                          "options": flow.slot_options(k)} for k, s in slots.items()}, "round_questions": rounds, "step": step, "gates": gates,
+            "stale": bool(mods) and bool(ov.get("fp")) and ov.get("fp") != flow.fingerprint(slots, ctx["background"]), "reset": _reset_state(db, st, v),
             "steps": [{"key": k, "label": lab} for k, lab in STEPS], "overview": {"modules": mods, "totals": flow.totals(mods) if mods else {}, "findings": flow.findings(mods, ctx, slots) if mods else [],
-            "depth_labels": flow.DEPTH_LABELS}, "suggestions": sugg, "revisions": pending, "focus": [_focus_view(f, v.id, db) for f in db.scalars(select(FocusQuestion).where(FocusQuestion.project_id == proj.id))],
+            "depth_labels": flow.DEPTH_LABELS}, "suggestions": sugg, "revisions": pending, "focus": _focus_views(db, proj, v.id),
             "items": [_item_view(i, ctx["language"]) | {"module": i.module} for i in svc.items_of(db, v.id)][:MAX_CHAT_OUTLINE * 3]}
 
 
-def _focus_view(f: FocusQuestion, version_id: str, db: Session) -> dict:
-    return {"id": f.id, "text": f.text, "role": f.asked_role, "timing": f.timing, "item_uid": f.item_uid, "label": svc.label_of(db, version_id, f.item_uid) if f.item_uid else "", "coding": f.coding}
+def _focus_views(db: Session, proj: Project, version_id: str) -> list[dict]:
+    """Each focus question with what it points at (several questions), its state (linked / new_idea / none / ""), the questions recommended for it (same scoring as the board's
+    中途新增关注问题) and, while a 新增想法 waits, that drafted question (修正方案第 1 轮第 3 条)."""
+    from . import focus_new
+    labels = svc.labels_map(db, version_id)
+    pend = {r.source_ref: r for r in db.scalars(select(Revision).where(Revision.source == "board", Revision.op == "insert", Revision.status == "pending", Revision.org_id == proj.org_id))}
+    out = []
+    for f in db.scalars(select(FocusQuestion).where(FocusQuestion.project_id == proj.id).order_by(FocusQuestion.created_at)):
+        uids = [u for u in dict.fromkeys([*(f.item_uids or []), *([f.item_uid] if f.item_uid else [])]) if u in labels]
+        rec = [c["uid"] for c in focus_new.suggest_items(db, proj, f.text)["candidates"] if c["score"] > 0]
+        r = pend.get(f.id)
+        idea = {"id": r.id, "text": next(iter((r.after or {}).get("texts", {}).values()), ""), "module": (r.after or {}).get("module_name", ""), "blocked": bool((r.quality or {}).get("blocked")),
+                "issues": [i["text"] for i in (r.quality or {}).get("issues", [])]} if r else None
+        state = "new_idea" if idea else (f.link_state if f.link_state in ("linked", "none") else ("linked" if uids else ""))
+        out.append({"id": f.id, "text": f.text, "role": f.asked_role, "timing": f.timing, "item_uid": uids[0] if uids else None, "item_uids": uids, "labels": [labels[u] for u in uids],
+                    "label": labels[uids[0]] if uids else "", "coding": f.coding, "state": state, "rec": rec, "idea": idea})
+    return out
+
+
+def _reset_state(db: Session, st: StudySetting, v: OutlineVersion) -> dict:
+    """What 重新开始 may do here, and whether 撤销清除 is still open (10 minutes, by the server's clock)."""
+    from .models import PilotRound
+    used = svc.usage_count(db, v.id)
+    in_pilot = db.scalar(select(func.count()).select_from(PilotRound).where(PilotRound.version_id == v.id)) or 0
+    why = f"这一版已被 {used} 场使用，只能清除你的回答" if used else "这一版在 Pilot 中，只能清除你的回答" if in_pilot else "这一版已发布，只能清除你的回答" if v.status == "published" else ""
+    left = 0
+    if st.reset_backup and st.reset_at:
+        left = max(0, RESET_UNDO_S - int((_now() - st.reset_at).total_seconds()))
+    return {"all_ok": not why, "why": why, "undo_left_s": left, "mode": (st.reset_backup or {}).get("mode", "") if left else ""}
 
 
 def confirm_goal(db: Session, proj: Project, user_id: str = "") -> None:
@@ -133,7 +167,7 @@ def build_overview(db: Session, proj: Project, user_id: str = "") -> dict:
     ctx = context_of(db, proj, st)
     slots = _slots(ctx, st)
     mods = flow.build_modules(slots, ctx)
-    _save_ov(st, {"modules": mods, "dismissed": _ov(st).get("dismissed", []), "context": {"rotate": ctx["rotate"]}, "minutes": int(slots["minutes"]["value"] or 45)})
+    _save_ov(st, {"modules": mods, "dismissed": _ov(st).get("dismissed", []), "context": {"rotate": ctx["rotate"]}, "minutes": int(slots["minutes"]["value"] or 45), "fp": flow.fingerprint(slots, ctx["background"])})
     st.gates = {**(st.gates or {}), "goal": True, "people": True}
     _drop_orphans(db, v, mods)
     return view(db, proj, user_id)
@@ -382,4 +416,179 @@ def insert_item(db: Session, proj: Project, fields: dict, user_id: str = "") -> 
 def delete_item(db: Session, proj: Project, uid: str, user_id: str = "") -> dict:
     _, v, _ = ensure(db, proj, user_id)
     svc.delete_item(db, v, uid)
+    return view(db, proj, user_id)
+
+
+# ---- 修正方案第 1 轮第 6 条：已经知道的每一项都能改 --------------------------------------------------------------------------------
+
+def edit_background(db: Session, proj: Project, text: str, user_id: str = "") -> dict:
+    """研究背景 is the project's own (the same one the settings page shows): changing it here changes it there."""
+    text = " ".join(str(text or "").split())
+    if not text:
+        raise svc.OutlineError("研究背景不能为空")
+    proj.brief = text[:4000]
+    return view(db, proj, user_id)
+
+
+def keep_overview(db: Session, proj: Project, user_id: str = "") -> dict:
+    """"不用重新生成": what was made stays, and the yellow bar goes away (the overview now counts as made from the current settings)."""
+    _, _, st = ensure(db, proj, user_id)
+    ov = _ov(st)
+    if ov.get("modules"):
+        ov["fp"] = flow.fingerprint(_slots(context_of(db, proj, st), st), context_of(db, proj, st)["background"])
+        _save_ov(st, ov)
+    return view(db, proj, user_id)
+
+
+# ---- 修正方案第 1 轮第 7 条：重新开始（10 分钟内可撤销）------------------------------------------------------------------------------
+
+ITEM_COLS = ("item_uid", "label", "module", "position", "kind", "texts", "followups", "must_cover", "key_question", "hypothesis", "minutes", "is_backup", "config")
+
+
+def reset(db: Session, proj: Project, mode: str, user_id: str = "") -> dict:
+    """重新开始. `answers`: clear the researcher's answers, rounds and gates (what the project says and the questions already written stay). `all`: also the overview, the current
+    version's questions and the focus questions' links, and only when that version has not been used by an interview, is not in a pilot round and is not published (no new version is
+    ever made here: versions only come from Pilot 修正). What was there is kept for 10 minutes so 撤销清除 can put it back.
+
+    Raises:
+        OutlineError: an unknown mode, or `all` on a version that may not be cleared.
+    """
+    if mode not in ("answers", "all"):
+        raise svc.OutlineError("清除方式不对")
+    o, v, st = ensure(db, proj, user_id)
+    rs = _reset_state(db, st, v)
+    if mode == "all" and not rs["all_ok"]:
+        raise svc.OutlineError(rs["why"], 409)
+    fq = list(db.scalars(select(FocusQuestion).where(FocusQuestion.project_id == proj.id)))
+    backup = {"mode": mode, "answers": st.answers or {}, "rounds": st.rounds or {}, "gates": st.gates or {}}
+    if mode == "all":
+        backup |= {"overview": st.overview or {}, "version_id": v.id, "rev": v.rev, "items": [{c: getattr(i, c) for c in ITEM_COLS} for i in svc.items_of(db, v.id)],
+                   "focus": {f.id: {"item_uid": f.item_uid, "item_uids": f.item_uids or [], "link_state": f.link_state or ""} for f in fq}}
+    st.reset_backup, st.reset_at = backup, _now()
+    st.answers, st.rounds, st.gates = {}, {}, {}
+    if mode == "all":
+        _save_ov(st, {"modules": [], "dismissed": _ov(st).get("dismissed", []), "context": {}})
+        for it in svc.items_of(db, v.id):
+            db.delete(it)
+        for f in fq:
+            f.item_uid, f.item_uids, f.link_state = None, [], ""
+        svc.bump(db, v)
+    db.flush()
+    return view(db, proj, user_id)
+
+
+def undo_reset(db: Session, proj: Project, user_id: str = "") -> dict:
+    """撤销清除: put back what 重新开始 cleared, within 10 minutes.
+
+    Raises:
+        OutlineError: nothing to undo, or the 10 minutes are over, or the version changed in between.
+    """
+    o, v, st = ensure(db, proj, user_id)
+    b = st.reset_backup
+    if not b or not st.reset_at:
+        raise svc.OutlineError("没有可以撤销的清除", 409)
+    if (_now() - st.reset_at).total_seconds() > RESET_UNDO_S:
+        st.reset_backup, st.reset_at = None, None
+        raise svc.OutlineError("已超过 10 分钟，不能撤销了", 409)
+    if b["mode"] == "all" and b.get("version_id") != v.id:
+        raise svc.OutlineError("大纲的版本已经变了，不能撤销", 409)
+    st.answers, st.rounds, st.gates = b.get("answers", {}), b.get("rounds", {}), b.get("gates", {})
+    if b["mode"] == "all":
+        _save_ov(st, b.get("overview", {}))
+        for it in svc.items_of(db, v.id):
+            db.delete(it)
+        db.flush()
+        for row in b.get("items", []):
+            db.add(OutlineItem(org_id=proj.org_id, version_id=v.id, **{c: row[c] for c in ITEM_COLS if c in row}))
+        for f in db.scalars(select(FocusQuestion).where(FocusQuestion.project_id == proj.id)):
+            old = b.get("focus", {}).get(f.id)
+            if old:
+                f.item_uid, f.item_uids, f.link_state = old["item_uid"], old["item_uids"], old["link_state"]
+        svc.bump(db, v)
+    st.reset_backup, st.reset_at = None, None
+    db.flush()
+    return view(db, proj, user_id)
+
+
+# ---- 修正方案第 1 轮第 3 条：关注问题“对应到”多选 -------------------------------------------------------------------------------
+
+def _focus_of(db: Session, proj: Project, fid: str) -> FocusQuestion:
+    f = db.get(FocusQuestion, fid)
+    if f is None or f.org_id != proj.org_id or f.project_id != proj.id:
+        raise svc.OutlineError("关注问题不存在", 404)
+    return f
+
+
+def _pending_idea(db: Session, fid: str) -> Revision | None:
+    return db.scalar(select(Revision).where(Revision.source == "board", Revision.source_ref == fid, Revision.op == "insert", Revision.status == "pending"))
+
+
+def set_focus_link(db: Session, proj: Project, fid: str, item_uids: list[str], state: str, chat, user_id: str, role: str) -> dict:
+    """The "对应到" drop-down: any number of the outline's questions, and/or 新增想法 (a drafted new question, pending until a person accepts it), or 暂不对应 (alone).
+    Choosing 新增想法 again while one waits does not draft a second one.
+
+    Raises:
+        OutlineError: no such focus question, a question that is not in the outline, an unknown state.
+    """
+    f = _focus_of(db, proj, fid)
+    if state not in ("linked", "new_idea", "none"):
+        raise svc.OutlineError("对应方式不对")
+    _, v, _ = ensure(db, proj, user_id)
+    labels = svc.labels_map(db, v.id)
+    uids = list(dict.fromkeys(u for u in item_uids if u))
+    if any(u not in labels for u in uids):
+        raise svc.OutlineError("所选的题不在当前大纲里", 404)
+    old = _pending_idea(db, f.id)
+    if state == "none":
+        uids = []
+    if old is not None and state != "new_idea":
+        svc.reject(db, proj.org_id, old.id, user_id, role)
+    f.item_uids, f.item_uid = uids, (uids[0] if uids else None)
+    f.link_state = "none" if state == "none" else ("linked" if uids else "")
+    if state == "new_idea" and old is None:
+        draft_idea(db, proj, f, chat, "", user_id)
+    return view(db, proj, user_id)
+
+
+def _best_module(ov: dict, text: str) -> dict | None:
+    from .focus_new import _share
+    mods = [m for m in ov.get("modules", []) if m["kind"] not in ("warm", "close")] or ov.get("modules", [])
+    if not mods:
+        return None
+    return max(mods, key=lambda m: _share(text, " ".join([m["name"], m.get("purpose", ""), m.get("content", "")])))
+
+
+def draft_idea(db: Session, proj: Project, f: FocusQuestion, chat, text: str, user_id: str = "") -> Revision:
+    """新增想法: one new question for the focus question, put into the module it fits best, as a pending insert (a person accepts it; a blocked wording cannot be accepted).
+    `text` is the person's own wording (改一下); empty means the AI drafts it.
+
+    Raises:
+        OutlineError: the outline has no module or no question yet.
+    """
+    o, v, st = ensure(db, proj, user_id)
+    ctx = context_of(db, proj, st)
+    ov = _ov(st)
+    m = _best_module(ov, f.text)
+    if m is None:
+        raise svc.OutlineError("还没有大纲总览，先生成总览再加新题")
+    items = svc.items_of(db, v.id)
+    after = ([i for i in items if i.module == m["id"]] or [i for i in items if i.kind in ("question", "rating")])[-1:]
+    if not after:
+        raise svc.OutlineError("大纲里还没有题，先写好题目再加新题")
+    q = " ".join(str(text).split())[:300] or writer.write_one(chat, m, ctx, f.text, ctx["language"], ctx["format"])
+    res = quality.check_question(q, ctx["language"], ctx["format"])
+    return svc.propose(db, proj.org_id, o.id, v.id, [{"op": "insert", "item_uid": after[0].item_uid, "after": {"kind": "question", "module": m["id"], "module_name": m["name"], "texts": {ctx["language"]: q},
+                       "minutes": 2.0, "config": {"depth": m.get("depth", "shallow")}}, "reason": f"关注问题“{f.text[:20]}”的新增想法"}], proposed_by="human" if text else "ai", source="board", source_ref=f.id, quality=res)[0]
+
+
+def revise_idea(db: Session, proj: Project, fid: str, text: str, user_id: str, role: str) -> dict:
+    """改一下: the waiting new question is replaced by the person's own wording (checked again)."""
+    f = _focus_of(db, proj, fid)
+    old = _pending_idea(db, f.id)
+    if old is None:
+        raise svc.OutlineError("没有等待接受的新题", 409)
+    if not " ".join(str(text).split()):
+        raise svc.OutlineError("先写下新题")
+    svc.reject(db, proj.org_id, old.id, user_id, role)
+    draft_idea(db, proj, f, None, text, user_id)
     return view(db, proj, user_id)

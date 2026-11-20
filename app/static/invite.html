@@ -2,7 +2,7 @@
 <html lang="zh-CN"><head><meta charset="utf-8"><script src="/theme.js"></script><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>加入团队 · 星桐</title><link rel="stylesheet" href="/app.css"><link rel="stylesheet" href="/editorial.css"><link rel="stylesheet" href="/fonts.css"><link rel="stylesheet" href="/ui_v7.css"><link rel="stylesheet" href="/ui_v8.css"><link rel="stylesheet" href="/ui_font.css"></head>
 <body class="participant"><div class="pbar" id="logobar"></div><div class="pwrap" id="box"><p class="mut">…</p></div>
-<script src="/app.js"></script>
+<script src="/labels.js"></script><script src="/app.js"></script>
 <script src="/logo.js"></script>
 <script>$("#logobar").innerHTML = LOGO_SVG; brandPlay();</script>
 <script>
@@ -20,7 +20,7 @@ function bad() { box.innerHTML = `<h1>链接无效</h1><p>这个链接不存在�
   let info; try { info = await call("", {}); } catch { return bad(); }
   const join = info.kind === "join";
   box.innerHTML = `<h1>${join ? "加入" : "重设密码 ·"} ${esc(info.org_name)}</h1>
-    <p>${join ? `你将以 <b>${esc(ROLE_ZH[info.role] || info.role)}</b> 的身份加入。` : "为这个账号设一个新密码。"} 账号邮箱：<b>${esc(info.email)}</b></p>
+    <p>${join ? `你将以 <b>${esc(lbl(ROLE_ZH[info.role], info.role))}</b> 的身份加入。` : "为这个账号设一个新密码。"} 账号邮箱：<b>${esc(info.email)}</b></p>
     <form id="f">${join ? `<label class="f"><span>你的姓名</span><input name="name" required maxlength="100" autocomplete="name"></label>` : ""}
       <label class="f"><span>设置密码（至少 8 位）</span><input name="password" type="password" minlength="8" required autocomplete="new-password"></label>
       <p class="sm mut" id="err" role="alert" hidden></p>

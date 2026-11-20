@@ -150,6 +150,24 @@ def settle(pg):
     pg.evaluate(SETTLE_JS)
 
 
+# 修正方案第 1 轮第 6 条：研究员端的界面控件（标签、药丸、表头、下拉选项、按钮、状态）上不能出现程序里的代码。只扫控件，不扫内容区：转写、引用原话、AI 回复、受访者回答
+# 都在 [data-usertext] 里（英文访谈本来就会说 none、deep），也不按页面整页放行。
+CODE_WORDS = ["usage", "journey", "none", "skip", "after_concept", "shallow", "deep", "draft", "superseded", "host_engine", "video_screen", "text_voice", "scheduled", "ended", "human",
+              "researcher", "viewer", "pending", "accepted", "rejected", "deferred", "todo", "confirmed", "new_idea"]
+CODES_JS = """(words) => {
+  const sel = '.ow-tag,.ow-pill,th,option,button,[role=tab],.tag,.pill,.chip,.ow-dest,.ow-fdd-b,.ow-slot .k,.ow-slot .v,td.c,.st,.status';
+  const re = new RegExp('(^|[^A-Za-z_])(' + words.join('|') + ')(?![A-Za-z_])');
+  const out = [];
+  for (const el of document.querySelectorAll(sel)) {
+    if (el.closest('[data-usertext],#ow-msgs,.bub,.ow-bub,textarea')) continue;
+    const r = el.getBoundingClientRect(); if (!r.width || !r.height) continue;
+    const t = (el.innerText || el.textContent || '').trim(); const m = t.match(re);
+    if (m) out.push(m[2] + ' @ ' + t.slice(0, 30));
+  }
+  return [...new Set(out)];
+}"""
+
+
 def audit_page(pg, label, errs, strict_contrast=True):
     pg.mouse.move(1, 1)  # a hovered button shows its orange sweep (a pseudo-element the audit cannot see), so park the pointer
     pg.wait_for_timeout(350)
@@ -163,6 +181,9 @@ def audit_page(pg, label, errs, strict_contrast=True):
     ok(not a["names"], f"[{label}] controls without a name: {a['names'][:4]}")
     ok(not a["wrap"], f"[{label}] text wraps inside buttons/tabs/tags: {a['wrap'][:4]}")
     ok(a["topH"] <= 66, f"[{label}] top bar too tall ({a['topH']}px)")
+    if "/#/" in pg.url and "?t=" not in pg.url:   # the researcher side only (participant pages carry their own words)
+        codes = pg.evaluate(CODES_JS, CODE_WORDS)
+        ok(not codes, f"[{label}] internal codes shown on the page: {codes[:4]}")
     bad = [e for e in errs if e not in EXPECTED]
     ok(not bad, f"[{label}] console/page errors: {bad[:3]}")
     errs.clear()
@@ -1713,6 +1734,35 @@ def outline_wb_section(br, D):
     pg.click("#ow-msgs [data-ow-rev=accept]"); ok(wait_until(lambda: pg.locator("#owroot .ow-item textarea >> nth=0").input_value() != old, 6), "[outline_wb] accepting writes it into the outline")
     pg.click('[data-ow="conf-mod"]'); ok(wait_until(lambda: pg.locator("#owroot .ow-toc [data-ow-mod] .ok").count() == 1, 6), "[outline_wb] a confirmed module is ticked in the module list on the page")
     ok(pg.locator("#owstate .ow-vline").count() == 1 and len(pg.inner_text("#owstate").strip().splitlines()) == 1, "[outline_wb] the version card at the foot of the side menu is one line")
+    # 修正方案第 1 轮第 3 批: 已经知道的 in Chinese and editable, 需要重新生成, 重新开始 with 撤销清除, the focus questions' multi-choice "对应到"
+    pg.click("#owroot .ow-steps [data-ow-step=goal]"); pg.wait_for_selector("#owroot [data-ow-edit=research_type]")
+    ok(pg.locator("#owroot .ow-slot [data-ow-edit]").count() >= 6, "[outline_wb] every known value has its own “改”")
+    pg.click("#owroot [data-ow-edit=research_type]"); pg.select_option("#ow-ed", "usability"); pg.click('[data-ow="ed-save"]')
+    ok(wait_until(lambda: "可用性" in pg.inner_text("#owroot .ow-card"), 6), "[outline_wb] the changed research type reads in Chinese")
+    pg.click("#owroot [data-ow-edit=materials]"); pg.check('[data-ow-ms="concept"]'); pg.click('[data-ow="ed-save"]')
+    ok(wait_until(lambda: "概念卡" in pg.inner_text("#owroot .ow-card"), 6), "[outline_wb] materials can be changed with check boxes")
+    audit_page(pg, "outline_wb goal edit/desktop", errs)
+    pg.click("#owroot .ow-steps [data-ow-step=questions]")
+    ok(wait_until(lambda: pg.locator("#owroot .ow-stale").count() == 1, 6), "[outline_wb] what was made from the old settings is flagged 需要重新生成, not overwritten")
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "fix1_b3_stale.png"))
+    pg.click('[data-ow="stale-keep"]'); ok(wait_until(lambda: pg.locator("#owroot .ow-stale").count() == 0, 6), "[outline_wb] 不用重新生成 takes the bar away")
+    pg.click("#owroot .ow-steps [data-ow-step=focus]"); pg.fill("#ow-focus-in", "用户平时喜欢哪些广告？"); pg.click('[data-ow="focus-add"]')
+    pg.wait_for_selector("#owroot [data-ow-fdd]"); pg.click("#owroot [data-ow-fdd]")
+    ok(pg.locator("#owroot .ow-fdd-p [data-ow-fopt^='uid:']").count() >= 2 and pg.locator("#owroot .ow-fdd-p [data-ow-fopt=idea]").count() == 1 and pg.locator("#owroot .ow-fdd-p [data-ow-fopt=none]").count() == 1,
+       "[outline_wb] 对应到 lists the questions, 新增想法 and 暂不对应")
+    pg.click("#owroot .ow-fdd-p [data-ow-fopt^='uid:'] >> nth=0"); pg.click("#owroot .ow-fdd-p [data-ow-fopt^='uid:'] >> nth=1")
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "fix1_b3_focus_dd.png"))
+    pg.click('[data-ow="fdd-ok"]'); ok(wait_until(lambda: "、" in pg.inner_text("#owroot [data-ow-fdd]"), 6), "[outline_wb] a focus question can point at two questions")
+    pg.click("#owroot [data-ow-fdd]"); pg.click("#owroot .ow-fdd-p [data-ow-fopt=idea]"); pg.click('[data-ow="fdd-ok"]')
+    ok(wait_until(lambda: pg.locator("#owroot .ow-idea [data-ow-rev=accept]").count() == 1, 8), "[outline_wb] 新增想法 drafts a new question that waits to be accepted")
+    audit_page(pg, "outline_wb focus/desktop", errs)
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "fix1_b3_focus.png"))
+    pg.click("#owroot .ow-idea [data-ow-rev=accept]"); ok(wait_until(lambda: pg.locator("#owroot .ow-idea").count() == 0 and "新增想法" not in pg.inner_text("#owroot [data-ow-fdd]"), 8), "[outline_wb] accepting puts the new question in and links it")
+    pg.click('[data-ow="rs-open"]'); ok(pg.locator("#owroot .ow-ask input[value=all]").count() == 1, "[outline_wb] 重新开始 asks: only my answers, or everything")
+    pg.click('[data-ow="rs-go"]'); ok(wait_until(lambda: pg.locator("#owroot .ow-undo").count() == 1, 6), "[outline_wb] after clearing, 撤销清除 is offered")
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "fix1_b3_undo.png"))
+    audit_page(pg, "outline_wb reset/desktop", errs)
+    pg.click('[data-ow="rs-undo"]'); ok(wait_until(lambda: pg.locator("#owroot .ow-undo").count() == 0 and pg.locator("#owroot .ow-steps .ow-st.done").count() >= 2, 6), "[outline_wb] 撤销清除 puts it all back")
     pg.locator(".sub2 .l1", has_text="甄别问卷").click(); pg.wait_for_url("**/people/form"); pg.go_back()
     ok(wait_until(lambda: "/people/outline" in pg.url and pg.locator("#owroot .ow-steps").count() == 1, 8), "[outline_wb] the browser's Back button returns to 生成大纲")
     for th in ("orange", "dark"):   # the three themes are all checked (contrast, sizes, names)

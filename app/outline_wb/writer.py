@@ -103,6 +103,27 @@ def write_module(chat: ModeratorChatProvider | None, module: dict, context: dict
     return ok[: module["questions"] + 1]
 
 
+def write_one(chat: ModeratorChatProvider | None, module: dict, context: dict, focus: str, lang: str = "zh", fmt: str = "") -> str:
+    """One new question for a focus question (关注问题的“新增想法”), worded for `module`. Without a model, or when its wording is unusable or blocked, a plain neutral template is used."""
+    from . import quality
+    plain = f"你怎么看“{focus.strip().rstrip('？?。')[:24]}”这件事？"
+    if chat is None:
+        return plain
+    try:
+        raw = _ask(chat, MODULE_PROMPT, {"MODULE": {**{k: module[k] for k in ("name", "purpose", "content", "minutes", "depth")}, "questions": 1}, "FOCUS": focus[:200],
+                                         "CONTEXT": {"background": context.get("background", ""), "goals": context.get("goals", []), "audience": context.get("audience", "")}, "LANGUAGE": lang, "FORMAT": fmt})
+    except ChatError as e:
+        if isinstance(e, ChatFatalError):
+            raise
+        log.warning("outline_wb: one-question draft failed (%s); template used", type(e).__name__)
+        return plain
+    for q in raw.get("questions", []) if isinstance(raw.get("questions"), list) else []:
+        t = " ".join(str(q.get("text", "")).split())[:200] if isinstance(q, dict) else ""
+        if t and not quality.check_question(t, lang, fmt)["blocked"]:
+            return t
+    return plain
+
+
 def chat_ops(chat: ModeratorChatProvider | None, outline: list[dict], selected: str, text: str) -> tuple[str, list[dict]]:
     """The side dialog: (a short reply, up to three proposed operations). The caller checks them (items must exist, types must fit) and stores them as pending revisions."""
     sel = next((i for i in outline if i["uid"] == selected), None)

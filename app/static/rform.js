@@ -127,7 +127,7 @@ function rfCard(p, form, rec, plannedN) {
   ];
   const esc2 = (x) => esc(String(x == null ? "" : x));
   const FORMATS = { video: "视频访谈", video_screen: "视频+屏幕共享", audio: "纯音频", text: "文字访谈", text_voice: "文字+语音转录" };
-  const fmtLabel = (c) => FORMATS[c] || c;
+  const fmtLabel = (c) => lbl(FORMATS[c], c);
   const quotaLabel = (q) => q.name || `${q.field}=${q.value}`;
   const fmtToggle = (c) => { fmtPicked = fmtPicked.includes(c) ? fmtPicked.filter((x) => x !== c) : [...fmtPicked, c]; saveFlow(); };
   const fmtBtn = (c) => `<button class="s${fmtPicked.includes(c) ? " on" : ""}" type="button" data-fmt="${c}">${fmtLabel(c)}</button>`;
@@ -536,7 +536,7 @@ function rfCard(p, form, rec, plannedN) {
     return `<div class="rf-q${changedIds.has(q.id) ? " rf-hl" : ""}${askOpen === q.id ? " rf-ask-target" : ""}" data-qid="${q.id}" data-qi="${i}" data-selk="q:${q.id}">
       <span class="rq-grip" data-grip="${i}" tabindex="0" role="button" title="按住拖动排序，或用上下方向键移动" aria-label="拖动第 ${i + 1} 题">${rfIcon(RF_IC.grip)}</span>
       <div class="rq-top"><span class="rq-qn">Q${i + 1}</span><button class="rq-title" type="button" data-edit="${q.id}">${esc(q.text || "（还没写题目）")}</button>${qBadge(q)}<span class="sp"></span>
-        <span class="rq-type-wrap"><button class="rq-type rq-type-btn" type="button" data-typetg="${q.id}" aria-haspopup="true" aria-expanded="false" title="点一下切换题型">${RF_TYPE[q.type] || q.type}${q.required ? " · 必答" : ""}${rfIcon(RF_IC.chev)}</button>${typeMenuOpen === q.id ? `<div class="rq-type-menu" role="menu">${Object.entries(RF_TYPE).map(([k, n]) => `<button type="button" role="menuitem" data-typeset="${q.id}" data-t="${k}" class="${q.type === k ? "on" : ""}">${n}</button>`).join("")}</div>` : ""}</span>
+        <span class="rq-type-wrap"><button class="rq-type rq-type-btn" type="button" data-typetg="${q.id}" aria-haspopup="true" aria-expanded="false" title="点一下切换题型">${lbl(RF_TYPE[q.type], q.type)}${q.required ? " · 必答" : ""}${rfIcon(RF_IC.chev)}</button>${typeMenuOpen === q.id ? `<div class="rq-type-menu" role="menu">${Object.entries(RF_TYPE).map(([k, n]) => `<button type="button" role="menuitem" data-typeset="${q.id}" data-t="${k}" class="${q.type === k ? "on" : ""}">${n}</button>`).join("")}</div>` : ""}</span>
         <button class="rq-ask" type="button" data-ask="${q.id}" aria-label="对这题问问 AI" title="对这题问问 AI">💬</button>
         <button class="rq-more" type="button" data-menu="${qk}" aria-label="题目菜单" aria-expanded="${menu === qk}">${rfIcon(RF_IC.dots)}</button>${menu === qk ? qMenu(q, i) : ""}</div>
       ${opts}${rules}${exWarn(q)}${askOpen === q.id ? askInline(q, i) : ""}</div>`;
@@ -548,7 +548,7 @@ function rfCard(p, form, rec, plannedN) {
   function askInline(q, i) {
     const qn = i + 1;
     return `<div class="rq-askin" role="region" aria-label="对第 ${qn} 题问问 AI">
-      <div class="rq-askin-hd"><b>改这题 · Q${qn}</b><span class="sm mut">${RF_TYPE[q.type] || q.type}${q.required ? " · 必答" : ""}</span><span class="sp"></span><button type="button" class="s" data-askclose="1">关闭</button></div>
+      <div class="rq-askin-hd"><b>改这题 · Q${qn}</b><span class="sm mut">${lbl(RF_TYPE[q.type], q.type)}${q.required ? " · 必答" : ""}</span><span class="sp"></span><button type="button" class="s" data-askclose="1">关闭</button></div>
       <div class="rq-askin-bd">
         <div class="sm mut rq-askin-q">${esc(q.text || "（还没写题目）")}</div>
         <textarea data-asktext="1" placeholder="说说要怎么改这一题，例如：把选项改成……／加一道追问……">${esc(askDraft[q.id] || "")}</textarea>

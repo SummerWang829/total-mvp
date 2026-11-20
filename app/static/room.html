@@ -42,7 +42,7 @@
 window.__pcs = [];
 if (window.RTCPeerConnection) { const Native = window.RTCPeerConnection; window.RTCPeerConnection = function (...a) { const pc = new Native(...a); window.__pcs.push(pc); return pc; }; window.RTCPeerConnection.prototype = Native.prototype; Object.setPrototypeOf(window.RTCPeerConnection, Native); }
 </script>
-<script src="/app.js"></script>
+<script src="/labels.js"></script><script src="/app.js"></script>
 <script src="/fairness.js"></script>
 <script src="/logo.js"></script>
 <script>document.getElementById("logo").innerHTML = LOGO_SVG;</script>
@@ -255,7 +255,7 @@ async function poll() {
   last = st;
   renderStimulus(st.stimulus);
   if (typeof st.elapsed_ms === "number") { PLAN.elapsed = st.elapsed_ms; PLAN.at = performance.now(); } else PLAN.elapsed = null;
-  $id("state").textContent = role === "moderator" || role === "observer" ? ({ scheduled: "待开始", live: "进行中", ended: "已结束" }[st.status] || st.status) : "";
+  $id("state").textContent = role === "moderator" || role === "observer" ? (lbl({ scheduled: "待开始", live: "进行中", ended: "已结束" }[st.status], st.status)) : "";
   $id("state").hidden = !$id("state").textContent;
   $id("state").className = "tag " + (st.status === "live" ? "live" : st.status === "ended" ? "ok" : "");
   if (st.recording) {
@@ -269,7 +269,7 @@ async function poll() {
   if (C.on && role !== "moderator") pollChat();
   if (role !== "participant") {
     const kv = (k, v) => `<div class="kv"><span>${k}</span><b>${v}</b></div>`;
-    $id("kv").innerHTML = kv("你的身份", role === "moderator" ? "主持人" : "观察员（隐身）") + kv("访谈", { scheduled: "待开始", live: "进行中", ended: "已结束" }[st.status] || st.status) +
+    $id("kv").innerHTML = kv("你的身份", role === "moderator" ? "主持人" : "观察员（隐身）") + kv("访谈", lbl({ scheduled: "待开始", live: "进行中", ended: "已结束" }[st.status], st.status)) +
       (role === "moderator" ? kv("受访者同意录制", st.consented ? "已同意" : "还没有") : "") + kv("录制", st.recording ? "录制中" : "未录制");
   }
   if (role === "moderator") {
@@ -780,7 +780,7 @@ const BR = { after: 0, timer: null };
 function brAdd(m) {
   const log = $id("brlog"); if (!log || log.querySelector(`[data-seq="${m.seq}"]`)) return;
   const d = document.createElement("div"); d.className = "m" + (m.mine ? " me" : ""); d.dataset.seq = m.seq;
-  const w = document.createElement("span"); w.className = "who"; w.textContent = `${m.mine ? "我" : m.sender}（${{ observer: "观察员", moderator: "主持人", researcher: "研究员", admin: "管理员" }[m.role] || m.role}）`;
+  const w = document.createElement("span"); w.className = "who"; w.textContent = `${m.mine ? "我" : m.sender}（${lbl({ observer: "观察员", moderator: "主持人", researcher: "研究员", admin: "管理员" }[m.role], m.role)}）`;
   d.append(w, document.createTextNode(m.text));
   const stick = log.scrollTop + log.clientHeight >= log.scrollHeight - 40; log.appendChild(d); if (stick) log.scrollTop = log.scrollHeight;
 }
@@ -924,7 +924,7 @@ async function pollReactions() {
     RXF.after = Math.max(RXF.after, r.seq);
     const row = document.createElement("div"); row.className = "rx"; row.setAttribute("role", "listitem");
     const g = document.createElement("span"); g.className = "g"; g.textContent = r.glyph; g.setAttribute("aria-hidden", "true");
-    const t = document.createElement("span"); t.textContent = `${r.who}：${r.label} · ${mmss(r.at_ms)}${r.stimulus ? " · 当时在看：" + (SHORT[r.stimulus] || r.stimulus) : ""}`;
+    const t = document.createElement("span"); t.textContent = `${r.who}：${r.label} · ${mmss(r.at_ms)}${r.stimulus ? " · 当时在看：" + (lbl(SHORT[r.stimulus], r.stimulus)) : ""}`;
     row.append(g, t); box.appendChild(row); box.scrollTop = box.scrollHeight;
   });
 }
@@ -961,7 +961,7 @@ function renderCues(cards) {
     const el = document.createElement("div"); el.className = `cue k-${c.kind}${c.status === "pending" ? "" : " done"}`;
     const h = document.createElement("div"); h.className = "ch";
     const t = document.createElement("b"); t.textContent = CUE.label[c.kind] || "提示"; h.appendChild(t);
-    if (c.status !== "pending") { const s = document.createElement("span"); s.textContent = CUE.done[c.status] || c.status; h.appendChild(s); }
+    if (c.status !== "pending") { const s = document.createElement("span"); s.textContent = lbl(CUE.done[c.status], c.status); h.appendChild(s); }
     el.appendChild(h);
     const p = document.createElement("p"); p.textContent = c.text; el.appendChild(p);
     if (c.evidence.length) {

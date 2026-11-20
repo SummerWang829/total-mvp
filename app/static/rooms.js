@@ -160,7 +160,7 @@ async function roomsView(p) {
       const c = document.createElement("div"); c.id = "rmcard"; c.className = "rmcard";
       const ans = (i.key_answers || []).map((a, n) => `<div class="rmq"><small><em>${n + 1}.</em>${esc(a.q)}</small><span>${esc(a.a)}</span></div>`).join("");
       const tags = (i.participant.tags || []).map((t) => `<span class="tag">${esc(t)}</span>`).join("");
-      c.innerHTML = `<h5><b>${esc(i.participant.name)}</b><span class="tag">${roomState(i)[0]}</span>${tags}<span class="sp"></span><span class="mut sm">${esc(i.participant.country || "")} · ${esc(LANGS[i.language] || i.language)}</span><button type="button" class="s rmx" aria-label="关闭">×</button></h5>${ans || `<div class="mut sm">没有问卷答案（手动添加或外部名单的人没有）。</div>`}
+      c.innerHTML = `<h5><b>${esc(i.participant.name)}</b><span class="tag">${roomState(i)[0]}</span>${tags}<span class="sp"></span><span class="mut sm">${esc(i.participant.country || "")} · ${esc(lbl(LANGS[i.language], i.language))}</span><button type="button" class="s rmx" aria-label="关闭">×</button></h5>${ans || `<div class="mut sm">没有问卷答案（手动添加或外部名单的人没有）。</div>`}
         <div class="rmft"><span>预计 ${i.duration_min || 45} 分</span>${i.actual_min != null ? `<span>访谈 ${i.actual_min} 分</span>` : ""}${i.moderator_name ? `<span>主持 ${esc(i.moderator_name)}</span>` : ""}</div>`;
       document.body.appendChild(c); c.querySelector(".rmx").onclick = hide;
       const m = (app.querySelector("main") || document.body).getBoundingClientRect(), w = c.offsetWidth, h = c.offsetHeight;

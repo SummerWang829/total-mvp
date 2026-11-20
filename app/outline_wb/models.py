@@ -106,7 +106,9 @@ class StudySetting(Base):
     rounds: Mapped[dict] = mapped_column(JSON, default=dict)  # round name -> {status: todo|doing|done, answers: {...}}
     gates: Mapped[dict] = mapped_column(JSON, default=dict)  # goal | structure | final -> confirmed?
     answers: Mapped[dict] = mapped_column(JSON, default=dict)  # what the researcher answered in the rounds: slot name -> value
-    overview: Mapped[dict] = mapped_column(JSON, default=dict)  # the outline overview table: {"modules": [...], "minutes": n, "context": {...flags}, "dismissed": [...ids], "undo": {...}}
+    overview: Mapped[dict] = mapped_column(JSON, default=dict)  # the outline overview table: {"modules": [...], "minutes": n, "context": {...flags}, "dismissed": [...ids], "undo": {...}, "fp": what it was made from}
+    reset_backup: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # 重新开始 (修正方案第 1 轮第 7 条): what was there before the clear, kept 10 minutes for 撤销清除
+    reset_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
@@ -176,6 +178,7 @@ class FocusQuestion(Base):
     coding: Mapped[str] = mapped_column(String(10), default="preset")  # preset | template | collect | custom
     codes: Mapped[list] = mapped_column(JSON, default=list)  # the code list
     from_interview_seq: Mapped[int] = mapped_column(Integer, default=0)  # asked from this interview on (0 = all)
+    link_state: Mapped[str] = mapped_column(String(10), default="")  # 修正方案第 1 轮第 3 条: linked 已对应 | new_idea 新增想法（等你接受）| none 暂不对应 | "" 还没处理
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 

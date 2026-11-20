@@ -6,7 +6,7 @@
 <link rel="stylesheet" href="/chat.css"><link rel="stylesheet" href="/chatsel.css"><link rel="stylesheet" href="/ui_list.css"><link rel="stylesheet" href="/ui_screening.css"><link rel="stylesheet" href="/ui_outline.css"><link rel="stylesheet" href="/ui_wizard.css"><link rel="stylesheet" href="/ui_overview.css"><link rel="stylesheet" href="/ui_ai.css"><link rel="stylesheet" href="/ui_creation.css"><link rel="stylesheet" href="/ui_v6.css"><link rel="stylesheet" href="/ui_global.css"><link rel="stylesheet" href="/ui_v9.css"><link rel="stylesheet" href="/ui_v10.css"><link rel="stylesheet" href="/ui_responsive.css"><link rel="stylesheet" href="/ui_icons.css"><link rel="stylesheet" href="/ui_layout.css"><link rel="stylesheet" href="/ui_font.css"><link rel="stylesheet" href="/ui_v11.css"><link rel="stylesheet" href="/ui_v12.css"><link rel="stylesheet" href="/outline_wb.css"><link rel="stylesheet" href="/voice_fast.css?v=2"></head>
 <body>
 <div id="app"></div>
-<script src="/app.js"></script>
+<script src="/labels.js"></script><script src="/app.js"></script>
 <script src="/fairness.js"></script>
 <script src="/wizard.js"></script>
 <script src="/shell.js"></script>
@@ -35,7 +35,7 @@ const STAFF = () => ["admin", "researcher", "support"].includes(ME.role);
 const VIEWER = () => ME.role === "viewer", RECRUITER = () => ME.role === "recruiter";   // a client who only reads, and someone who only recruits
 const FMT_NAME = { audio: "纯音频", text: "文字访谈", text_voice: "文字+语音转录", video: "视频", video_screen: "视频+屏幕共享" };   // the five interview formats
 /** The languages a project allows, as words ("中文、English"); the default one first. */
-const langNames = (p) => ((p.languages && p.languages.length ? p.languages : [p.language]).map((l) => LANGS[l] || l)).join("、");
+const langNames = (p) => ((p.languages && p.languages.length ? p.languages : [p.language]).map((l) => lbl(LANGS[l], l))).join("、");
 const when = (iso) => (iso ? new Date(iso + "Z").toLocaleString([], { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "—");
 
 // ---------------- shell: dark-green nav + sticky project bar + white canvas ----------------
@@ -350,7 +350,7 @@ async function peopleView(p) {
   const tagCount = Object.fromEntries(lib.tags.map((x) => [x.tag, x.n]));
   const rerender = async () => { const y = window.scrollY; await render(); window.scrollTo(0, y); };
   const FILTERS = [["tier", "资格", [["formal", "正式"], ["backup", "备份"]]], ["tag", "标签", lib.tags.map((x) => [x.tag, x.tag])], ["country", "国家", countries.map((c) => [c, c])],
-    ["language", "语言", langs.map((l) => [l, LANGS[l] || l])], ["source", "来源", [...new Set(parts.map(srcName))].map((s) => [s, s])], ["kind", "访谈形式", [["human", "真人访谈"], ["ai", "AI 访谈"], ["none", "未邀请"]]],
+    ["language", "语言", langs.map((l) => [l, lbl(LANGS[l], l)])], ["source", "来源", [...new Set(parts.map(srcName))].map((s) => [s, s])], ["kind", "访谈形式", [["human", "真人访谈"], ["ai", "AI 访谈"], ["none", "未邀请"]]],
     ["screen", "问卷答案", [["yes", "有答案"], ["no", "无答案"]]], ["inv", "操作", [["none", "未邀请"], ["invited", "已邀请"], ["mailfail", "邮件没发出去"]]]];
   const nameSel = `<div class="msel" data-key="name"><button type="button" class="msb cap${F.name ? " on" : ""}" data-k="姓名" aria-haspopup="true" aria-expanded="false" aria-label="${esc(F.name ? "姓名：" + F.name : "姓名")}"><span class="ms-label">姓名</span><span class="ms-value">${esc(F.name)}</span></button>
     <div class="msm" hidden><div class="msec"><input type="search" id="pname" value="${esc(F.name)}" placeholder="输入姓名或邮箱" aria-label="按姓名或邮箱筛选"></div><div class="mclr"><button type="button" class="lnk" data-clr>清除这一项</button></div></div></div>`;
@@ -369,7 +369,7 @@ async function peopleView(p) {
           : `<button type="button" class="lch ${x.tier === "backup" ? "st-b" : "st-f"}" data-tier="${x.id}" aria-haspopup="menu" title="${x.screen_reason ? esc(x.screen_reason) : ""}">${x.tier === "backup" ? "备份" : "正式"} ▾</button><div class="sm mut">${x.tier_manual ? "手动" : "自动"} · ${x.screen_result ? SCREEN[x.screen_result][0] : "可邀请"}</div>`;
         const bad = new Set(clash(x.tags).flat()), tags = x.tags.map((tg) => `<span class="lch ${lcolor(tg)}${bad.has(tg) ? " bad" : ""}">${esc(tg)}${TAG_DEL.has(x.id) ? ` <span class="lx" data-tx="${x.id}" data-tag="${esc(tg)}" role="button" aria-label="去掉标签 ${esc(tg)}">×</span>` : ""}</span>`).join("");
         return `<tr><td><input type="checkbox" class="pick" value="${x.id}" aria-label="选择 ${esc(x.name)}"${x.anonymized ? " disabled" : ""}></td><td><div class="code">${esc(x.code)}</div></td><td><span class="ity ${k[1]}">${k[0]}</span></td>
-        <td><b>${esc(x.name)}</b>${x.email ? `<div class="sm mut ell" title="${esc(x.email)}">${esc(x.email)}</div>` : ""}</td><td>${esc(x.country || "—")}</td><td><div>${esc(LANGS[x.language] || x.language || "—")}</div>${(x.pref_formats || []).length ? `<div class="sm mut ell" title="受访者选的访谈形式">${esc(x.pref_formats.map((k) => FMT_NAME[k] || k).join("、"))}</div>` : ""}</td>
+        <td><b>${esc(x.name)}</b>${x.email ? `<div class="sm mut ell" title="${esc(x.email)}">${esc(x.email)}</div>` : ""}</td><td>${esc(x.country || "—")}</td><td><div>${esc(lbl(LANGS[x.language], x.language) || "—")}</div>${(x.pref_formats || []).length ? `<div class="sm mut ell" title="受访者选的访谈形式">${esc(x.pref_formats.map((k) => lbl(FMT_NAME[k], k)).join("、"))}</div>` : ""}</td>
         <td>${tier}</td>
         <td>${x.anonymized ? "" : `<div class="lbox">${tags || `<span class="sm mut">—</span>`}<span class="lbtns"><button class="sqb" type="button" data-tadd="${x.id}" aria-label="给 ${esc(x.name)} 添加标签">＋</button><button class="sqb${TAG_DEL.has(x.id) ? " on" : ""}" type="button" data-tdel="${x.id}" aria-label="去掉 ${esc(x.name)} 的标签">－</button></span></div>`}${bad.size ? `<div class="tgwarn" role="alert">“${esc(clash(x.tags)[0][0])}”和“${esc(clash(x.tags)[0][1])}”互斥，请去掉其中一个。</div>` : ""}</td>
         <td data-l="问卷答案">${x.anonymized ? "" : x.screener ? `<button class="s" data-scr="${x.id}">查看详情</button>` : `<span class="stn">无答案</span>`}</td>
@@ -942,7 +942,7 @@ async function studiesView(p) {
   const my = renderSeq;
   const list = await api(`/projects/${p.id}/studies`);
   if (stale(my)) return;
-  const row = (s) => `<tr><td><a href="#/p/${p.id}/studies/${s.id}"><b>${esc(s.title)}</b></a></td><td>${esc(LANGS[s.language] || s.language)}</td><td>${s.duration_min} 分钟</td>
+  const row = (s) => `<tr><td><a href="#/p/${p.id}/studies/${s.id}"><b>${esc(s.title)}</b></a></td><td>${esc(lbl(LANGS[s.language], s.language))}</td><td>${s.duration_min} 分钟</td>
       <td><span class="tag ${STUDY_STATUS[s.status][1]}">${STUDY_STATUS[s.status][0]}${s.version ? ` · 第 ${s.version} 版` : ""}</span></td>
       <td>${s.counts.invited} 人 · 进行中 ${s.counts.in_progress} · 已完成 ${s.counts.finished}</td></tr>`;
   shell(`${head("异步研究", "受访者在方便的时候，自己和 AI 访谈员完成一场文字访谈。你只需要写研究目标、审核提纲、发链接。")}
@@ -1110,7 +1110,7 @@ async function listeningView(p) {
   const when = (t) => (t ? new Date(t + "Z").toLocaleString() : "还没运行");
   const bars = S.per_day.length ? `<div class="sbars" role="img" aria-label="每天的声量和情感：${S.per_day.map((d) => `${d.day} 共 ${d.neg + d.neu + d.pos + d.none} 条`).join("，")}">${S.per_day.map((d) => { const t = d.neg + d.neu + d.pos + d.none; return `<div class="sday" title="${d.day}：负面 ${d.neg}，中性 ${d.neu}，正面 ${d.pos}"><div class="sstack" style="height:${Math.round((t / maxDay) * 100)}%"><i class="sneg" style="flex:${d.neg}"></i><i class="sneu" style="flex:${d.neu + d.none}"></i><i class="spos" style="flex:${d.pos}"></i></div><span>${d.day.slice(5)}</span></div>`; }).join("")}</div>
     <p class="sm mut" style="margin:6px 0 0"><i class="dot sneg"></i> 负面 <i class="dot sneu"></i> 中性 <i class="dot spos"></i> 正面</p>` : `<p class="mut" style="margin:0">最近 ${S.days} 天还没有内容。添加来源并点“立即运行”。</p>`;
-  const row = (s) => `<tr><td><b>${esc(s.name)}</b><div class="sm mut">${esc(L_KIND[s.kind] || s.kind)}</div></td>
+  const row = (s) => `<tr><td><b>${esc(s.name)}</b><div class="sm mut">${esc(lbl(L_KIND[s.kind], s.kind))}</div></td>
       <td>${s.last_status === "ok" ? `<span class="tag ok">正常</span>` : s.last_status === "error" ? `<span class="tag bad" title="${esc(s.last_error)}">出错</span>` : `<span class="tag">未运行</span>`}${s.enabled ? "" : ` <span class="tag">已暂停</span>`}
         ${s.last_status === "error" ? `<div class="sm" style="color:#A8203E">${esc(s.last_error)}</div>` : ""}</td>
       <td class="mut">${esc(when(s.last_run_at))}<div class="sm">上次新增 ${s.last_count} 条 · 每 ${s.interval_min} 分钟</div></td><td>${s.mentions}</td>
@@ -1125,14 +1125,14 @@ async function listeningView(p) {
     <h2>内容</h2><form class="card row" id="mf" style="align-items:flex-end;flex-wrap:wrap">
       <label class="f" style="margin:0"><span>情感</span><select name="sentiment"><option value="">全部</option><option value="neg">负面</option><option value="neu">中性</option><option value="pos">正面</option></select></label>
       <label class="f" style="margin:0"><span>话题</span><select name="topic"><option value="">全部</option>${S.topics.map((t) => `<option>${esc(t.topic)}</option>`).join("")}</select></label>
-      <label class="f" style="margin:0"><span>语言</span><select name="lang"><option value="">全部</option>${Object.keys(S.languages).map((l) => `<option value="${l}">${esc(LANGS[l] || l)}</option>`).join("")}</select></label>
+      <label class="f" style="margin:0"><span>语言</span><select name="lang"><option value="">全部</option>${Object.keys(S.languages).map((l) => `<option value="${l}">${esc(lbl(LANGS[l], l))}</option>`).join("")}</select></label>
       <label class="f" style="margin:0;flex:1 1 220px;min-width:160px"><span>包含的文字</span><input name="q" maxlength="200"></label><button class="p">筛选</button></form>
     <div id="mlist" aria-live="polite"></div>`, { active: "listening", p });
   const list = $("#mlist"), mf = $("#mf");
   const load = guard(async () => {
     const v = Object.fromEntries(new FormData(mf)); const qs = new URLSearchParams({ ...v, limit: 30 });
     const r = await api(`/projects/${p.id}/listening/mentions?${qs}`);
-    list.innerHTML = r.mentions.length ? `<p class="sm mut">共 ${r.total} 条，显示前 ${r.mentions.length} 条</p>` + r.mentions.map((m) => `<div class="card hitm"><div class="sm mut">${m.sentiment ? `<span class="tag ${L_SENT[m.sentiment][1]}">${L_SENT[m.sentiment][0]}</span>` : `<span class="tag">待分析</span>`} ${m.topics.map((t) => `<span class="tag">${esc(t)}</span>`).join(" ")} · ${esc(LANGS[m.lang] || m.lang)}${m.posted_at ? ` · ${esc(new Date(m.posted_at + "Z").toLocaleDateString())}` : ""}${m.metrics && m.metrics.rating ? ` · ${"★".repeat(m.metrics.rating)}` : ""}</div>
+    list.innerHTML = r.mentions.length ? `<p class="sm mut">共 ${r.total} 条，显示前 ${r.mentions.length} 条</p>` + r.mentions.map((m) => `<div class="card hitm"><div class="sm mut">${m.sentiment ? `<span class="tag ${L_SENT[m.sentiment][1]}">${L_SENT[m.sentiment][0]}</span>` : `<span class="tag">待分析</span>`} ${m.topics.map((t) => `<span class="tag">${esc(t)}</span>`).join(" ")} · ${esc(lbl(LANGS[m.lang], m.lang))}${m.posted_at ? ` · ${esc(new Date(m.posted_at + "Z").toLocaleDateString())}` : ""}${m.metrics && m.metrics.rating ? ` · ${"★".repeat(m.metrics.rating)}` : ""}</div>
       <p style="margin:6px 0">${m.title && !m.text.startsWith(m.title) ? `<b>${esc(m.title)}</b> ` : ""}${esc(m.text)}</p><div class="row"><a class="sm" href="${esc(m.url)}" target="_blank" rel="noopener noreferrer">查看原帖 ↗</a><span class="sp"></span>
       ${RO ? "" : `${m.author ? `<button class="s" data-au="${m.author}">下架此作者的全部内容</button>` : ""}<button class="s warn" data-dm="${m.id}">下架这条</button>`}</div></div>`).join("")
       : `<div class="card empty"><b>没有符合条件的内容。</b></div>`;
@@ -1501,7 +1501,7 @@ async function signalsTab(iid, my) {  // how things were said (pace, pauses, vol
   const d = await api(`/interviews/${iid}/signals`);
   if (stale(my) || !$("#tab")) return;
   const tagName = { hesitation: "回答前停顿长", slow: "语速偏慢", fast: "语速偏快", quiet: "声音偏轻", loud: "声音偏大", negative: "偏负面", positive: "偏正面" };
-  const tags = (o) => Object.entries(o).map(([k, n]) => `${esc(tagName[k] || k)} ${n}`).join("、") || "—";
+  const tags = (o) => Object.entries(o).map(([k, n]) => `${esc(lbl(tagName[k], k))} ${n}`).join("、") || "—";
   const reacts = (o) => Object.entries(o).map(([k, n]) => `<span class="emo">${esc(k)}</span> ${n}`).join("　") || "—";   // the keys are the emoji themselves
   const mat = Object.entries(d.stimuli);
   $("#tab").innerHTML = `<div class="card"><h3>情绪信号</h3><p class="sm mut">${esc(d.note)}</p>
@@ -1509,7 +1509,7 @@ async function signalsTab(iid, my) {  // how things were said (pace, pauses, vol
       ${d.speakers.map((s) => `<tr><td><b>${esc(s.who)}</b></td><td>${s.sentences}</td><td>${s.tone > 0.15 ? "偏正面" : s.tone < -0.15 ? "偏负面" : "中性"}（${s.tone.toFixed(2)}）</td><td>${tags(s.tags)}</td><td>${reacts(s.reactions)}</td></tr>`).join("")}</tbody></table></div>`
       : `<p class="mut">这场访谈还没有实时字幕或表情反应。</p>`}</div>
     <div class="card"><h3>值得回看的时刻（${d.moments.length}）</h3>${d.moments.length ? d.moments.map((m) => `<div class="sig-moment"><div class="sm mut">${fmt(m.at_ms)} · ${esc(m.who)}</div><div>${esc(m.text)}</div><div class="sm hint">${esc(m.hints.join(" · "))}</div></div>`).join("") : `<p class="mut">暂时没有。</p>`}</div>
-    ${mat.length ? `<div class="card"><h3>各素材的表情反应</h3>${mat.map(([k, o]) => `<p><b>${esc(MATERIAL[k] || k)}</b>：${reacts(o)}</p>`).join("")}</div>` : ""}`;
+    ${mat.length ? `<div class="card"><h3>各素材的表情反应</h3>${mat.map(([k, o]) => `<p><b>${esc(lbl(MATERIAL[k], k))}</b>：${reacts(o)}</p>`).join("")}</div>` : ""}`;
 }
 
 async function fairnessTab(iid, my) {  // a focus group: who talked how much, who stayed quiet, who talked over whom (from the live captions)
@@ -1523,7 +1523,7 @@ async function highlightsTab(iid, my) {  // quotes and follow-ups marked in the 
   const [hs, caps] = await Promise.all([api(`/interviews/${iid}/highlights`), api(`/interviews/${iid}/captions?after=0`)]);
   if (stale(my) || !$("#tab")) return;
   const row = (h) => `<div class="quote"><div>${h.speaker ? `${esc(speakerName(h.speaker))}：` : ""}“${esc(h.text)}”</div>
-    <div class="sm mut">${fmt(h.at_ms)}${h.stimulus_key ? ` · 当时在看：${esc(MATERIAL[h.stimulus_key] || h.stimulus_key)}` : ""}${h.kind === "probe" ? ` · ${h.status === "done" ? "已追问" : "待追问"}` : ""}</div></div>`;
+    <div class="sm mut">${fmt(h.at_ms)}${h.stimulus_key ? ` · 当时在看：${esc(lbl(MATERIAL[h.stimulus_key], h.stimulus_key))}` : ""}${h.kind === "probe" ? ` · ${h.status === "done" ? "已追问" : "待追问"}` : ""}</div></div>`;
   const quotes = hs.filter((h) => h.kind === "quote"), probes = hs.filter((h) => h.kind === "probe");
   $("#tab").innerHTML = `<div class="card"><h3>引用（${quotes.length}）</h3>${quotes.length ? quotes.map(row).join("") : `<p class="mut">访谈中在字幕旁点“引用”，会出现在这里，原话由系统从字幕里原样复制。</p>`}</div>
     <div class="card"><h3>追问（${probes.length}）</h3>${probes.length ? probes.map(row).join("") : `<p class="mut">还没有追问记录。</p>`}</div>

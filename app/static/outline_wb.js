@@ -44,14 +44,28 @@
     return `<div class="ow-steps" role="tablist" aria-label="生成大纲的步骤">${S.d.steps.map((x, i) => {
       const on = S.step === x.key, ok = stepOk(x.key), done = stepDone(x.key);
       return `${i ? `<span class="sep" aria-hidden="true"></span>` : ""}<a href="#" role="tab" class="ow-st${on ? " on" : ""}${done ? " done" : ""}${ok ? "" : " lock"}" aria-selected="${on}"${ok ? "" : ' aria-disabled="true" title="先完成前面的步骤"'} data-ow-step="${x.key}"><i>${done ? "✓" : ok ? i + 1 : "🔒"}</i>${E(x.label)}</a>`;
-    }).join("")}</div>`;
+    }).join("")}<span class="ow-rs"><button type="button" data-ow="rs-open">重新开始</button></span></div>`;
+  }
+  /** 重新开始 (修正方案第 1 轮第 7 条): the in-page choice, and for 10 minutes after a clear the 撤销清除 bar (the server keeps the time). */
+  const undoLeft = () => Math.max(0, Math.round((S.undoUntil - Date.now()) / 1000));
+  const mmss = (t) => `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`;
+  function resetUi() {
+    const r = S.d.reset || {};
+    const undo = undoLeft() > 0 ? `<div class="ow-undo" role="status">${r.mode === "all" ? "已全部清除" : "已清除你的回答"}，之前的内容已保存。<button type="button" data-ow="rs-undo">撤销清除</button><span class="sm"><span id="ow-undo-left">${mmss(undoLeft())}</span> 后不能撤销</span></div>` : "";
+    if (!S.resetAsk) return undo;
+    const m = S.resetMode || "answers";
+    return undo + `<div class="card ow-card ow-ask" role="dialog" aria-label="重新开始生成大纲"><h3>重新开始生成大纲？</h3>
+      <label class="ow-opt2${m === "answers" ? " on" : ""}"><input type="radio" name="ow-rs" value="answers"${m === "answers" ? " checked" : ""}> <b>只清除我的回答</b><small>保留立项里的背景、目标、人群、时长和已生成的题，重新回答三轮问题</small></label>
+      <label class="ow-opt2${m === "all" ? " on" : ""}${r.all_ok ? "" : " off"}"><input type="radio" name="ow-rs" value="all"${m === "all" ? " checked" : ""}${r.all_ok ? "" : " disabled"}> <b>全部清除</b><small>${r.all_ok ? "连已生成的总览、题目和关注问题的对应一起清掉" : E(r.why)}</small></label>
+      <p class="sm mut">清除前会自动保存，10 分钟内可以撤销。已经开始的场次不受影响。</p>
+      <div class="ow-actions"><button type="button" class="p" data-ow="rs-go">清除并重新开始</button><button type="button" data-ow="rs-cancel">取消</button></div></div>`;
   }
   function tocHtml() {   // the modules of ④ 题目, on the left of the page (not in the side menu)
     return `<nav class="ow-toc" aria-label="模块"><div class="t">模块</div>${mods().map((m) => `<a href="#" class="${S.mod === m.id ? "on" : ""}" data-ow-mod="${E(m.id)}">${E(m.name)}<span class="${m.status === "confirmed" ? "ok" : m.status === "draft" ? "cur" : ""}">${m.status === "confirmed" ? "✓" : m.status === "draft" ? "●" : ""}</span></a>`).join("")}</nav>`;
   }
   function stepNav() {   // 上一步 / 继续 at the foot of each step
     const keys = S.d.steps.map((x) => x.key), i = keys.indexOf(S.step), prev = keys[i - 1], next = keys[i + 1];
-    return `<div class="ow-nav">${prev ? `<button type="button" data-ow-step="${prev}">‹ 上一步</button>` : "<span></span>"}${next && stepOk(next) ? `<button type="button" data-ow-step="${next}">下一步 ›</button>` : ""}</div>`;
+    return `<div class="ow-nav">${prev ? `<button type="button" data-ow-step="${prev}">‹ 上一步</button>` : "<span></span>"}${next && stepOk(next) ? `<button type="button" class="p" data-ow-step="${next}">继续 ›</button>` : ""}</div>`;
   }
   /** Keep the step in the address so a reload stays on it (replace, not push: the steps are one page). */
   function keepStep() {
@@ -61,12 +75,31 @@
   }
 
   // ---- 内容区 -------------------------------------------------------------------------------------
+  /** 已经知道的 (修正方案第 1 轮第 6 条): every row in Chinese (the server sends `text`), each with “改”: a drop-down for a choice, check boxes for 物料, a box for words. */
   function slotRows() {
-    const L = { research_type: "研究类型", key_questions: "要回答的问题", audience: "访谈对象", minutes: "时长", materials: "物料", price: "价格怎么谈" };
-    const v = (k, s) => (k === "key_questions" ? (s.value || []).map((x, i) => `${i + 1}. ${E(x)}`).join("<br>") : k === "minutes" ? `${E(s.value)} 分钟` : Array.isArray(s.value) ? E(s.value.join("、") || "不看素材") : E(s.value || "—"));
-    const c = S.d.context;
-    const base = `<div class="ow-slot"><span class="k">研究背景</span><span class="v">${E(c.background) || "—"}</span><span class="ow-tag">来自项目设置</span></div>`;
-    return base + Object.entries(S.d.slots).map(([k, s]) => `<div class="ow-slot"><span class="k">${L[k] || k}</span><span class="v">${v(k, s)}</span><span class="ow-tag ${s.source === "inferred" || s.source === "default" ? "w" : ""}">${SRC[s.source]}${s.source === "inferred" ? ` · 把握 ${s.confidence.toFixed(1)}` : ""}</span></div>`).join("");
+    const L = { research_type: "研究类型", key_questions: "要回答的问题", audience: "访谈对象", minutes: "访谈时长", materials: "物料", price: "价格怎么谈" };
+    const c = S.d.context, ed = S.edit;
+    const shown = (k, s) => (k === "key_questions" ? (s.value || []).map((x, i) => `${i + 1}. ${E(x)}`).join("<br>") || "—" : E(s.text || "—"));
+    const tag = (s) => `<span class="ow-tag ${s.source === "inferred" || s.source === "default" ? "w" : ""}">${lbl(SRC[s.source], s.source)}${s.source === "inferred" ? ` · 把握 ${s.confidence.toFixed(1)}` : ""}</span>`;
+    const btn = (k, label) => (ed === k ? "" : `<button type="button" class="ow-edit" data-ow-edit="${k}" aria-label="改${label}">改</button>`);
+    const base = `<div class="ow-slot${ed === "background" ? " editing" : ""}"><span class="k">研究背景</span><span class="v">${ed === "background" ? editor("background") : E(c.background) || "—"}</span><span class="ow-tag">来自项目设置</span>${btn("background", "研究背景")}</div>`;
+    return base + Object.entries(S.d.slots).map(([k, s]) => `<div class="ow-slot${ed === k ? " editing" : ""}"><span class="k">${lbl(L[k], k)}</span><span class="v">${ed === k ? editor(k) : shown(k, s)}</span>${tag(s)}${btn(k, lbl(L[k], k))}</div>`).join("");
+  }
+  const NL = String.fromCharCode(10);
+  function editor(k) {
+    const ok = `<span class="ow-edbtn"><button type="button" class="p s" data-ow="ed-save" data-k="${k}">保存</button><button type="button" class="s" data-ow="ed-cancel">取消</button></span>`;
+    if (k === "background") return `<textarea class="ow-ta" id="ow-ed" rows="3" aria-label="研究背景">${E(S.d.context.background)}</textarea>${ok}`;
+    const s = S.d.slots[k];
+    if (s.edit === "choice") return `<select class="ow-sel" id="ow-ed" aria-label="选择">${s.options.map((o) => `<option value="${E(o.value)}"${o.value === s.value ? " selected" : ""}>${E(o.text)}</option>`).join("")}</select>${ok}`;
+    if (s.edit === "multi") { const cur = Array.isArray(s.value) && s.value.length ? s.value : ["none"]; return `<span class="ow-multi">${s.options.map((o) => `<label><input type="checkbox" data-ow-ms="${E(o.value)}"${cur.includes(o.value) ? " checked" : ""}> ${E(o.text)}</label>`).join("")}</span>${ok}`; }
+    if (s.edit === "number") return `<input class="ow-in num" id="ow-ed" type="number" min="10" max="180" aria-label="访谈时长（分钟）" value="${E(s.value)}"> 分钟${ok}`;
+    if (s.edit === "lines") return `<textarea class="ow-ta" id="ow-ed" rows="4" aria-label="要回答的问题" placeholder="每行一个问题，最多 4 个">${E((s.value || []).join(NL))}</textarea>${ok}`;
+    return `<input class="ow-in" id="ow-ed" aria-label="访谈对象" value="${E(s.value || "")}">${ok}`;
+  }
+  /** The yellow bar: something 已经知道的 says changed after the overview was made; nothing is overwritten by itself. */
+  function staleBar() {
+    if (!S.d.stale) return "";
+    return `<div class="ow-stale" role="status"><b>需要重新生成</b>：前面“已经知道的”改过，这里还是按旧的设定生成的，不会自动覆盖。<span class="sp"></span><button type="button" class="s" data-ow="stale-rebuild">按新设定重新生成总览</button><button type="button" class="s" data-ow="stale-keep">不用重新生成</button></div>`;
   }
   function roundCard(r) {
     const qs = S.d.round_questions[r] || [];
@@ -92,15 +125,15 @@
     const o = S.d.overview, c = S.d.context;
     if (!o.modules.length) return `<div class="card ow-card mut">正在生成大纲总览……</div>`;
     const rows = o.modules.map((m) => `<tr class="${m.tight ? "tight" : ""}"><td><input class="ow-in nm" aria-label="模块名称" data-ow-m="${E(m.id)}" data-f="name" value="${E(m.name)}"></td>
-      <td><input class="ow-in" aria-label="模块目的" data-ow-m="${E(m.id)}" data-f="purpose" value="${E(m.purpose)}"><input class="ow-in sm mut" aria-label="要了解的内容" data-ow-m="${E(m.id)}" data-f="content" value="${E(m.content)}">${m.materials.length ? m.materials.map((x) => `<span class="ow-tag">${E({ concept: "概念卡", image: "图片", video: "视频片段", website: "网站任务" }[x] || x)}</span>`).join("") : ""}</td>
+      <td><input class="ow-in" aria-label="模块目的" data-ow-m="${E(m.id)}" data-f="purpose" value="${E(m.purpose)}"><input class="ow-in sm mut" aria-label="要了解的内容" data-ow-m="${E(m.id)}" data-f="content" value="${E(m.content)}">${m.materials.length ? m.materials.map((x) => `<span class="ow-tag">${E(lbl({ concept: "概念卡", image: "图片", video: "视频片段", website: "网站任务" }[x], x))}</span>`).join("") : ""}</td>
       <td class="c">${m.serves.length ? m.serves.map((i) => "①②③④"[i - 1]).join("") : "—"}</td><td><input class="ow-in num" type="number" aria-label="时长（分钟）" min="1" max="120" data-ow-m="${E(m.id)}" data-f="minutes" value="${m.minutes}"></td><td class="c">${m.questions}</td>
       <td>${depthSel(m.depth, `data-ow-m="${E(m.id)}" data-f="depth"`)}</td></tr>`).join("");
     const fnd = o.findings.map((f) => `<span class="ow-pill ${f.level}">${f.level === "ok" ? "通过" : "注意"}</span><span class="fx">${E(f.text)}</span>`).join("");
-    return `<div class="card ow-card"><h3>这份大纲是什么</h3>
+    return `${staleBar()}<div class="card ow-card"><h3>这份大纲是什么</h3>
       <div class="ow-slot"><span class="k">研究背景</span><span class="v">${E(c.background) || "—"}</span><span class="ow-tag">来自项目设置</span></div>
       <div class="ow-slot"><span class="k">要回答的问题</span><span class="v">${(c.goals.length ? c.goals : S.d.slots.key_questions.value || []).map((x, i) => `${"①②③④"[i]} ${E(x)}`).join("　")}</span></div>
       <div class="ow-slot"><span class="k">访谈对象</span><span class="v">${E(c.audience) || "—"}</span><span class="ow-tag">来自甄别问卷</span></div>
-      <div class="ow-slot"><span class="k">形式与语言</span><span class="v">${E({ ai: "AI 主持", human: "真人主持" }[c.host] || c.host)} · ${E(FORMAT[c.format] || c.format)} · ${E(c.language === "zh" ? "中文" : "English")}</span><span class="ow-tag">来自项目设置</span></div></div>
+      <div class="ow-slot"><span class="k">形式与语言</span><span class="v">${E(lbl({ ai: "AI 主持", human: "真人主持" }[c.host], c.host))} · ${E(lbl(FORMAT[c.format], c.format))} · ${E(c.language === "zh" ? "中文" : "English")}</span><span class="ow-tag">来自项目设置</span></div></div>
       <div class="card ow-card"><h3>大纲由这几部分组成</h3>
       <table class="ow-tbl"><thead><tr><th style="width:90px">模块</th><th>目的与要了解的内容</th><th class="c" style="width:44px">问题</th><th class="c" style="width:78px">时长（分）</th><th class="c" style="width:46px">题数</th><th style="width:96px">追问</th></tr></thead><tbody>${rows}
       <tr class="tot"><td>合计</td><td></td><td></td><td>${o.totals.minutes} 分</td><td class="c">${o.totals.questions}</td><td></td></tr></tbody></table></div>
@@ -134,23 +167,46 @@
     const head = `<div class="card ow-card ow-mh"><b>${E(m.name)}</b><span class="ow-pill">${m.minutes} 分钟</span><span class="mut sm">追问</span>${depthSel(m.depth, `data-ow-m="${E(m.id)}" data-f="depth"`)}<span class="ow-pill ${m.status === "confirmed" ? "ok" : ""}">${{ todo: "还没写", draft: "待确认", confirmed: "已确认" }[m.status]}</span>
       <span class="sp"></span><button type="button" data-ow="gen" data-m="${E(m.id)}">${m.items.length ? "重新生成本模块" : "生成本模块题目"}</button>${m.items.length ? `<button type="button" class="p" data-ow="conf-mod" data-m="${E(m.id)}">${next ? "确认本模块，写下一个" : "确认本模块"}</button>` : ""}</div>`;
     const body = m.items.length ? m.items.map((it) => itemRow(it) + insertForm(it.uid)).join("") : `<div class="card ow-card mut">这个模块的目的：${E(m.purpose)}。点上面的“生成本模块题目”。</div>`;
-    return head + body;
+    return staleBar() + head + body;
   }
+  /** 关注问题 (修正方案第 1 轮第 3 条): "对应到" is a drop-down with several choices: the recommended questions, all questions, 新增想法 (a new question the AI drafts, pending until
+      accepted) and 暂不对应 (alone). Nothing is saved until 确定. */
   function focusView() {
     const items = S.d.items.filter((i) => i.kind === "question" || i.kind === "rating");
-    const rows = S.d.focus.map((f) => `<tr><td>${f.role === "client" ? "客户" : "研究员"}</td><td>${E(f.text)}</td><td><select class="ow-sel" aria-label="对应的题" data-ow-link="${f.id}"><option value="">没有对应的题</option>${items.map((i) => `<option value="${i.uid}"${i.uid === f.item_uid ? " selected" : ""}>${E(i.label)} ${E(i.text.slice(0, 18))}</option>`).join("")}</select></td></tr>`).join("");
-    const miss = S.d.focus.filter((f) => !f.item_uid).length;
-    return `<div class="card ow-card"><h3>关注问题 <span class="mut sm">发布前，每个关注问题都要对应到一道题</span></h3>
-      <table class="ow-tbl"><thead><tr><th style="width:70px">谁提的</th><th>问题</th><th style="width:240px">对应到</th></tr></thead><tbody>${rows || `<tr><td colspan="3" class="mut">还没有关注问题。</td></tr>`}</tbody></table>
-      <div class="ow-add"><input class="ow-in" id="ow-focus-in" aria-label="新增关注问题" placeholder="新增关注问题"><button type="button" class="s" data-ow="focus-add">＋ 新增</button></div></div>
-      <div class="card ow-card"><h3>发布前检查</h3><div class="ow-find">${miss ? `<span class="ow-pill warn">注意</span><span class="fx">${miss} 个关注问题没有对应的题</span>` : `<span class="ow-pill ok">通过</span><span class="fx">关注问题都有对应的题</span>`}</div></div>`;
+    const cell = (f) => {
+      const txt = f.state === "none" ? "暂不对应" : [...f.labels.map((l, n) => `${E(l)} ${E((items.find((i) => i.uid === f.item_uids[n]) || {}).text || "").slice(0, 10)}`), f.state === "new_idea" ? "新增想法 · 待你接受" : ""].filter(Boolean).join("、") || "还没有对应";
+      return `<div class="ow-fdd"><button type="button" class="ow-fdd-b${f.state ? "" : " miss"}" data-ow-fdd="${f.id}" aria-haspopup="true" aria-expanded="${S.fdd === f.id}">${txt}<span aria-hidden="true"> ▾</span></button>${S.fdd === f.id ? fddPanel(f, items) : ""}</div>`;
+    };
+    const rows = S.d.focus.map((f) => `<tr><td>${f.role === "client" ? "客户" : "研究员"}</td><td>${E(f.text)}</td><td>${cell(f)}</td></tr>`).join("");
+    const ideas = S.d.focus.filter((f) => f.idea).map((f) => {
+      const i = f.idea, mine = S.ideaEdit === f.id;
+      return `<div class="card ow-card ow-idea"><h3>新增想法 → 新题（待定）</h3><div class="sm mut">关注问题“${E(f.text)}” · ${i.module ? `放在“${E(i.module)}”模块` : "放进最相关的模块"}</div>
+        ${mine ? `<textarea class="ow-ta" id="ow-idea-in" rows="2" aria-label="新题">${E(i.text)}</textarea>` : `<div class="ow-bub">“${E(i.text)}”</div>`}
+        ${i.issues.map((x) => `<span class="ow-pill ${i.blocked ? "bad" : "warn"}">${i.blocked ? "碰红线：" : ""}${E(x)}</span>`).join("")}
+        <div class="ow-actions">${mine ? `<button type="button" class="p s" data-ow="idea-save" data-f="${f.id}">保存</button><button type="button" class="s" data-ow="idea-cancel">取消</button>`
+          : `${i.blocked ? "" : `<button type="button" class="p s" data-ow-rev="accept" data-id="${i.id}">接受，加入大纲</button>`}<button type="button" class="s" data-ow="idea-edit" data-f="${f.id}">改一下</button><button type="button" class="s" data-ow-rev="reject" data-id="${i.id}">不要</button>`}</div></div>`;
+    }).join("");
+    const miss = S.d.focus.filter((f) => !f.state || f.state === "new_idea").length, none = S.d.focus.filter((f) => f.state === "none").length;
+    return `<div class="card ow-card"><h3>关注问题</h3>
+      <table class="ow-tbl ow-ftbl"><thead><tr><th style="width:70px">谁提的</th><th>问题</th><th style="width:300px">对应到</th></tr></thead><tbody>${rows || `<tr><td colspan="3" class="mut">还没有关注问题。</td></tr>`}</tbody></table>
+      <div class="ow-add"><input class="ow-in" id="ow-focus-in" aria-label="新增关注问题" placeholder="新增关注问题"><button type="button" class="s" data-ow="focus-add">＋ 新增</button></div></div>${ideas}
+      <div class="card ow-card"><h3>发布前检查</h3><div class="ow-find">${miss ? `<span class="ow-pill warn">注意</span><span class="fx">${miss} 个关注问题还没处理（不挡发布）</span>` : `<span class="ow-pill ok">通过</span><span class="fx">关注问题都已处理</span>`}${none ? `<span class="ow-pill">提醒</span><span class="fx">${none} 个暂不对应</span>` : ""}</div></div>`;
+  }
+  function fddPanel(f, items) {
+    const x = S.fsel, rec = f.rec.filter((u) => items.some((i) => i.uid === u)).slice(0, 3);
+    const opt = (key, on, label, tag) => `<button type="button" role="menuitemcheckbox" aria-checked="${on}" class="${on ? "on" : ""}" data-ow-fopt="${key}"><span class="ck" aria-hidden="true">${on ? "✓" : ""}</span><span class="tx">${label}</span>${tag ? `<small>${tag}</small>` : ""}</button>`;
+    const q1 = (i) => opt("uid:" + i.uid, x.uids.has(i.uid), `${E(i.label)} ${E(i.text.slice(0, 22))}`, rec.includes(i.uid) ? "推荐" : "");
+    return `<div class="ow-fdd-p" role="menu" aria-label="对应到">${rec.map((u) => q1(items.find((i) => i.uid === u))).join("")}${rec.length ? "<hr>" : ""}<div class="t">全部题目</div>
+      ${items.filter((i) => !rec.includes(i.uid)).map(q1).join("") || `<div class="mut sm">大纲里还没有题</div>`}<hr>
+      ${opt("idea", x.idea, "新增想法：作为新题加入大纲")}${opt("none", x.none, "暂不对应")}
+      <div class="ow-fdd-a"><button type="button" class="p s" data-ow="fdd-ok" data-f="${f.id}">确定</button><button type="button" class="s" data-ow="fdd-cancel">取消</button></div></div>`;
   }
 
   // ---- 右侧对话 -----------------------------------------------------------------------------------
   function revCard(r) {
     const done = r.status !== "pending", blocked = r.quality?.blocked;
-    const t = r.after?.text ?? r.after?.label ?? r.after?.minutes ?? "";
-    return `<div class="ow-rev ${done ? "done" : ""}"><div class="sm mut">${E({ rewrite: "改写", add_followup: "加追问", insert: "插入", rename: "改题号", minutes: "改时长", config: "改配置" }[r.op] || r.op)} · 去向：${E({ outline: "大纲", material: "物料", host_engine: "主持引擎" }[r.destination] || "大纲")}</div>
+    const t = r.after?.text ?? Object.values(r.after?.texts || {})[0] ?? r.after?.label ?? r.after?.minutes ?? "";   // an inserted question carries its words per language
+    return `<div class="ow-rev ${done ? "done" : ""}"><div class="sm mut">${E(lbl({ rewrite: "改写", add_followup: "加追问", insert: "插入", rename: "改题号", minutes: "改时长", config: "改配置" }[r.op], r.op))} · 去向：${E({ outline: "大纲", material: "物料", host_engine: "主持引擎" }[r.destination] || "大纲")}</div>
       ${r.before?.text ? `<div class="bf">${E(r.before.text)}</div>` : ""}<div class="af">${E(t)}</div>${r.reason ? `<div class="sm mut">理由：${E(r.reason)}</div>` : ""}
       ${(r.quality?.issues || []).map((i) => `<span class="ow-pill ${i.level === "block" ? "bad" : "warn"}">${i.level === "block" ? "碰红线：" : ""}${E(i.text)}</span>`).join("")}
       <div class="ow-revbtn">${done ? `<span class="ow-pill ${r.status === "accepted" ? "ok" : ""}">${r.status === "accepted" ? "已接受" : "已拒绝"}</span>` : blocked ? "" : `<button type="button" class="p s" data-ow-rev="accept" data-id="${r.id}">接受</button>`}${done ? "" : `<button type="button" class="s" data-ow-rev="reject" data-id="${r.id}">拒绝</button>`}</div></div>`;
@@ -210,7 +266,7 @@
   }
   function pilotView() {
     if (!S.pl) return `<div class="card ow-card mut">正在读取……</div>`;
-    const pick = (S.cand || []).length ? `<div class="ow-add"><select class="ow-sel" id="ow-cand" aria-label="选一场访谈">${S.cand.map((x) => `<option value="${x.id}">${E(x.title)}（${{ scheduled: "待开始", live: "进行中", ended: "已结束" }[x.status] || x.status}）</option>`).join("")}</select><button type="button" class="s" data-ow="pil-set">设为 pilot</button></div>` : `<div class="mut">这个项目还没有访谈可以设为 pilot。</div>`;
+    const pick = (S.cand || []).length ? `<div class="ow-add"><select class="ow-sel" id="ow-cand" aria-label="选一场访谈">${S.cand.map((x) => `<option value="${x.id}">${E(x.title)}（${lbl({ scheduled: "待开始", live: "进行中", ended: "已结束" }[x.status], x.status)}）</option>`).join("")}</select><button type="button" class="s" data-ow="pil-set">设为 pilot</button></div>` : `<div class="mut">这个项目还没有访谈可以设为 pilot。</div>`;
     if (!S.pl.length) return reviewCard();
     const pv = S.pil; if (!pv) return `<div class="card ow-card mut">正在读取……</div>`;
     const sel = S.pl.length > 1 ? `<select class="ow-sel" aria-label="选择 pilot" data-ow-pil>${S.pl.map((x) => `<option value="${x.id}"${x.id === S.pilId ? " selected" : ""}>${E(x.title)}</option>`).join("")}</select>` : "";
@@ -229,54 +285,102 @@
       ${finds ? `<div class="card ow-card"><h3>其他自动发现</h3><table class="ow-tbl"><tbody>${finds}</tbody></table></div>` : ""}
       <div class="card ow-card"><h3>标记</h3><table class="ow-tbl"><thead><tr><th style="width:90px">谁圈的</th><th>引用</th><th style="width:110px">标签</th><th>意见</th><th style="width:80px">状态</th></tr></thead><tbody>${marks || `<tr><td colspan="5" class="mut">还没有标记。</td></tr>`}</tbody></table></div>`;
   }
-  // ---- 真人 Pilot 多轮（修正方案第 1 轮第 9 条，效果图 qa_shots/fix1_batch2_mockup.html）------------------------------------------------
-  const HOST = { ai: "AI 主持", human: "真人主持" };
-  const DEC = [["accepted", "接受"], ["rejected", "拒绝"], ["deferred", "暂缓"]];
-  const clock = (ms) => (ms == null ? "—" : `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, "0")}`);
-  function roundView() {
-    const rd = S.rd; if (!rd) return `<div class="card ow-card mut">正在读取……</div>`;
-    const choose = rd.can_skip && !S.startOpen ? `<div class="card ow-card"><h3>这一版大纲怎么上线？</h3><div class="ow-two">
-        <div class="ow-choice"><b>做 Pilot（推荐）</b><p class="sm mut">先在直播间真的访一场，标记问题、修正出新版本，再上线。</p><button type="button" data-ow="rd-open">发起第 1 轮 Pilot</button></div>
-        <div class="ow-choice on"><b>跳过 Pilot，直接上线</b><p class="sm mut">客户看完大纲就要开始时用。直接发布当前这一版 v${rd.version.number}，正式场次马上可以用。</p><button type="button" class="p" data-ow="rd-skip">跳过 Pilot，直接上线</button></div></div></div>` : "";
-    const ask = S.skipAsk ? `<div class="card ow-card ow-ask"><h3>跳过 Pilot，直接上线 v${rd.version.number}？</h3>${S.pub ? S.pub.checks.filter((c) => ["quality", "empty", "modules"].includes(c.id)).map((c) => chk(c.id === "modules" && c.level !== "ok" ? { ...c, level: "warn", text: c.text + "（不挡上线）" } : c)).join("") : `<div class="mut">正在检查……</div>`}
-        <p class="sm mut">上线后仍然可以改大纲；改了以后新开始的场次用新内容，已开始的不受影响。</p><div class="ow-actions"><button type="button" class="p" data-ow="rd-skip-ok">确认上线</button><button type="button" data-ow="rd-skip-cancel">取消</button></div></div>` : "";
-    const rows = rd.rounds.map((r) => `<tr><td><b>第 ${r.number} 轮</b></td><td>v${r.version}</td><td>${r.interviews.map((i) => `${E(i.who || "受访者")} · ${E(i.scheduled_at ? i.scheduled_at.replace("T", " ").slice(0, 16) : "时间待定")} · ${HOST[i.moderation] || "真人主持"} · ${{ scheduled: "待开始", live: "进行中", ended: "已结束" }[i.status] || "待开始"}`).join("<br>") || "还没有场次"}</td>
-        <td><span class="ow-pill ${r.status === "reviewed" ? "" : "warn"}">${r.status === "reviewed" ? "已修正" : r.ended ? "待修正" : "进行中"}</span></td><td>${r.marks ? `接受 ${r.accepted} · 拒绝 ${r.rejected} · 暂缓 ${r.deferred}${r.open ? ` · 待处理 ${r.open}` : ""}` : "—"}${r.next_version ? ` → 生成 v${r.next_version}` : ""}</td></tr>`).join("");
-    const table = rd.rounds.length ? `<div class="card ow-card"><h3>各轮 Pilot</h3><table class="ow-tbl"><thead><tr><th style="width:80px">轮次</th><th style="width:70px">用的大纲</th><th>场次</th><th style="width:90px">状态</th><th>结果</th></tr></thead><tbody>${rows}</tbody></table></div>` : "";
-    const n = rd.rounds.length && rd.rounds[rd.rounds.length - 1].status !== "reviewed" ? rd.rounds[rd.rounds.length - 1].number : rd.next_number;
-    const parts = (S.parts || []).filter((x) => !x.anonymized);
-    const form = (!rd.can_skip || S.startOpen) ? `<div class="card ow-card"><h3>发起第 ${n} 轮 Pilot</h3><div class="ow-form">
-        <span class="k">大纲</span><span>v${rd.version.number}</span>
-        <span class="k">主持方式</span><span>${HOST[rd.host] || "真人主持"} <span class="sm mut">（按立项的选择）</span></span>
-        <span class="k">时间</span><span><input class="ow-in" id="ow-r-time" type="datetime-local" aria-label="Pilot 时间"></span>
-        <span class="k">受访者</span><span><span class="ow-seg"><button type="button" class="${S.rpk !== "col" ? "on" : ""}" data-ow="rd-pk" data-v="list">从名单选</button><button type="button" class="${S.rpk === "col" ? "on" : ""}" data-ow="rd-pk" data-v="col">同事</button></span>
-          ${S.rpk === "col" ? `<input class="ow-in" id="ow-r-name" aria-label="同事姓名" placeholder="姓名"> <input class="ow-in" id="ow-r-email" type="email" aria-label="同事邮箱" placeholder="邮箱">`
-            : parts.length ? `<select class="ow-sel" id="ow-r-part" aria-label="选一位受访者">${parts.map((x) => `<option value="${x.id}">${E(x.code || "")} · ${E(x.name)}</option>`).join("")}</select>` : `<span class="mut sm">名单里还没有人，选“同事”</span>`}</span>
-        <span class="k">邮件邀请旁听</span><span class="ow-mem">${rd.people.map((u) => `<label><input type="checkbox" data-ow-w="${u.id}" checked> ${E(u.name)}<span class="mut sm">（${E(u.role_name)}）</span></label>`).join("")}</span>
-        <span></span><span class="sm mut">他们收到一封邮件，里面是直播间链接；用自己的账号登录后隐身旁听，可以标记问题。${rd.mail ? "" : "没配邮件服务：发起后在这里显示链接让你复制。"}</span>
-        <span></span><span><button type="button" class="p" data-ow="rd-start">发起第 ${n} 轮，发送邀请</button>${rd.can_skip ? ` <button type="button" data-ow="rd-close">返回</button>` : ""}</span></div>
-        ${(S.started || []).length ? `<div class="ow-links">${S.started.map((w) => `<div><b>${E(w.name)}</b> ${w.status === "queued" ? `<span class="ow-pill ok">邮件已发出</span>` : `<span class="ow-pill">复制链接</span> <code>${E(w.link)}</code>`}</div>`).join("")}</div>` : ""}</div>` : "";
-    return ask + choose + table + form;
-  }
-  function reviewCard() {
-    const rd = S.rd, rv = S.rv;
-    if (!rd) return "";
-    if (!rd.rounds.length) return `<div class="card ow-card mut">还没有发起 Pilot。到“本轮 Pilot”发起一轮${rd.can_skip ? "，或者选“跳过 Pilot，直接上线”" : ""}。</div>`;
-    if (!rv) return `<div class="card ow-card mut">正在读取……</div>`;
-    const sel = rd.rounds.length > 1 ? `<select class="ow-sel" aria-label="选择一轮" data-ow-rid>${rd.rounds.map((r) => `<option value="${r.id}"${r.id === S.rid ? " selected" : ""}>第 ${r.number} 轮 · v${r.version}</option>`).join("")}</select>` : "";
-    const done = rv.status === "reviewed", c = rv.counts;
-    const canNext = !done && rv.ended > 0 && !c.open;
-    const rows = rv.marks.map((m) => `<tr><td class="sm">${E(m.who)} · ${clock(m.at_ms)}${m.label ? ` · ${E(m.label)}` : ""}</td><td>${E(m.note)}</td>
-        <td class="sm">${m.suggestions.length ? m.suggestions.map((x) => `${E(DEST[x.destination] || "大纲")}：${E(x.after?.text || x.after?.config?.note || "")}${x.blocked ? ` <span class="ow-pill bad">碰红线</span>` : ""}`).join("<br>") : `<span class="mut">（没有修改建议）</span>`}</td>
-        <td><span class="ow-dec">${DEC.map(([k, l]) => `<button type="button" class="${m.decision === k ? "on" : ""}" data-ow-dec="${k}" data-id="${m.id}"${done ? " disabled" : ""}>${l}</button>`).join("")}</span></td></tr>`).join("");
-    return `<div class="card ow-card ow-row2"><b>第 ${rv.number} 轮 · 大纲 v${rv.version}</b>${sel}<span class="ow-pill ${rv.ended ? "ok" : "warn"}">${rv.ended ? `${rv.ended}/${rv.interviews} 场已结束` : "还没有结束的场次"}</span>${done ? `<span class="ow-pill">已生成 v${rv.next_version}</span>` : ""}<span class="sp"></span>
-        ${done ? "" : `<button type="button" data-ow="rv-suggest">生成修改建议</button><button type="button" class="p" data-ow="rv-next"${canNext ? "" : " disabled"} title="${canNext ? "" : rv.ended ? "每条标记都要先处理" : "这一轮还没有做完一场"}">用接受的修改生成 v${rd.version.number + 1}</button>`}
-        <button type="button" data-ow="rv-ready" class="${rd.version.ready ? "on" : ""}">${rd.version.ready ? "✓ 已确认可以正式开始" : "可以正式开始"}</button></div>
-      <div class="card ow-card"><h3>这一轮的标记 <span class="mut sm">（${c.marks} 条，都要处理：接受 / 拒绝 / 暂缓）</span></h3>
-        <table class="ow-tbl"><thead><tr><th style="width:170px">谁 · 时间 · 题号</th><th>标记</th><th>修改建议</th><th style="width:190px">处理</th></tr></thead><tbody>${rows || `<tr><td colspan="4" class="mut">还没有标记。</td></tr>`}</tbody></table>
-        <div class="sm mut" style="margin-top:8px">接受的修改不会改动 v${rv.version} 本身：生成下一版时，复制 v${rv.version} 再写入这些修改，v${rv.version} 原样保留。</div></div>`;
-  }
-
+  // ---- 真人 Pilot 多轮（修正方案第 1 轮第 9 条，效果图 qa_shots/fix1_batch2_mockup.html）------------------------------------------------
+
+  const HOST = { ai: "AI 主持", human: "真人主持" };
+
+  const DEC = [["accepted", "接受"], ["rejected", "拒绝"], ["deferred", "暂缓"]];
+
+  const clock = (ms) => (ms == null ? "—" : `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, "0")}`);
+
+  function roundView() {
+
+    const rd = S.rd; if (!rd) return `<div class="card ow-card mut">正在读取……</div>`;
+
+    const choose = rd.can_skip && !S.startOpen ? `<div class="card ow-card"><h3>这一版大纲怎么上线？</h3><div class="ow-two">
+
+        <div class="ow-choice"><b>做 Pilot（推荐）</b><p class="sm mut">先在直播间真的访一场，标记问题、修正出新版本，再上线。</p><button type="button" data-ow="rd-open">发起第 1 轮 Pilot</button></div>
+
+        <div class="ow-choice on"><b>跳过 Pilot，直接上线</b><p class="sm mut">客户看完大纲就要开始时用。直接发布当前这一版 v${rd.version.number}，正式场次马上可以用。</p><button type="button" class="p" data-ow="rd-skip">跳过 Pilot，直接上线</button></div></div></div>` : "";
+
+    const ask = S.skipAsk ? `<div class="card ow-card ow-ask"><h3>跳过 Pilot，直接上线 v${rd.version.number}？</h3>${S.pub ? S.pub.checks.filter((c) => ["quality", "empty", "modules"].includes(c.id)).map((c) => chk(c.id === "modules" && c.level !== "ok" ? { ...c, level: "warn", text: c.text + "（不挡上线）" } : c)).join("") : `<div class="mut">正在检查……</div>`}
+
+        <p class="sm mut">上线后仍然可以改大纲；改了以后新开始的场次用新内容，已开始的不受影响。</p><div class="ow-actions"><button type="button" class="p" data-ow="rd-skip-ok">确认上线</button><button type="button" data-ow="rd-skip-cancel">取消</button></div></div>` : "";
+
+    const rows = rd.rounds.map((r) => `<tr><td><b>第 ${r.number} 轮</b></td><td>v${r.version}</td><td>${r.interviews.map((i) => `${E(i.who || "受访者")} · ${E(i.scheduled_at ? i.scheduled_at.replace("T", " ").slice(0, 16) : "时间待定")} · ${HOST[i.moderation] || "真人主持"} · ${{ scheduled: "待开始", live: "进行中", ended: "已结束" }[i.status] || "待开始"}`).join("<br>") || "还没有场次"}</td>
+
+        <td><span class="ow-pill ${r.status === "reviewed" ? "" : "warn"}">${r.status === "reviewed" ? "已修正" : r.ended ? "待修正" : "进行中"}</span></td><td>${r.marks ? `接受 ${r.accepted} · 拒绝 ${r.rejected} · 暂缓 ${r.deferred}${r.open ? ` · 待处理 ${r.open}` : ""}` : "—"}${r.next_version ? ` → 生成 v${r.next_version}` : ""}</td></tr>`).join("");
+
+    const table = rd.rounds.length ? `<div class="card ow-card"><h3>各轮 Pilot</h3><table class="ow-tbl"><thead><tr><th style="width:80px">轮次</th><th style="width:70px">用的大纲</th><th>场次</th><th style="width:90px">状态</th><th>结果</th></tr></thead><tbody>${rows}</tbody></table></div>` : "";
+
+    const n = rd.rounds.length && rd.rounds[rd.rounds.length - 1].status !== "reviewed" ? rd.rounds[rd.rounds.length - 1].number : rd.next_number;
+
+    const parts = (S.parts || []).filter((x) => !x.anonymized);
+
+    const form = (!rd.can_skip || S.startOpen) ? `<div class="card ow-card"><h3>发起第 ${n} 轮 Pilot</h3><div class="ow-form">
+
+        <span class="k">大纲</span><span>v${rd.version.number}</span>
+
+        <span class="k">主持方式</span><span>${HOST[rd.host] || "真人主持"} <span class="sm mut">（按立项的选择）</span></span>
+
+        <span class="k">时间</span><span><input class="ow-in" id="ow-r-time" type="datetime-local" aria-label="Pilot 时间"></span>
+
+        <span class="k">受访者</span><span><span class="ow-seg"><button type="button" class="${S.rpk !== "col" ? "on" : ""}" data-ow="rd-pk" data-v="list">从名单选</button><button type="button" class="${S.rpk === "col" ? "on" : ""}" data-ow="rd-pk" data-v="col">同事</button></span>
+
+          ${S.rpk === "col" ? `<input class="ow-in" id="ow-r-name" aria-label="同事姓名" placeholder="姓名"> <input class="ow-in" id="ow-r-email" type="email" aria-label="同事邮箱" placeholder="邮箱">`
+
+            : parts.length ? `<select class="ow-sel" id="ow-r-part" aria-label="选一位受访者">${parts.map((x) => `<option value="${x.id}">${E(x.code || "")} · ${E(x.name)}</option>`).join("")}</select>` : `<span class="mut sm">名单里还没有人，选“同事”</span>`}</span>
+
+        <span class="k">邮件邀请旁听</span><span class="ow-mem">${rd.people.map((u) => `<label><input type="checkbox" data-ow-w="${u.id}" checked> ${E(u.name)}<span class="mut sm">（${E(u.role_name)}）</span></label>`).join("")}</span>
+
+        <span></span><span class="sm mut">他们收到一封邮件，里面是直播间链接；用自己的账号登录后隐身旁听，可以标记问题。${rd.mail ? "" : "没配邮件服务：发起后在这里显示链接让你复制。"}</span>
+
+        <span></span><span><button type="button" class="p" data-ow="rd-start">发起第 ${n} 轮，发送邀请</button>${rd.can_skip ? ` <button type="button" data-ow="rd-close">返回</button>` : ""}</span></div>
+
+        ${(S.started || []).length ? `<div class="ow-links">${S.started.map((w) => `<div><b>${E(w.name)}</b> ${w.status === "queued" ? `<span class="ow-pill ok">邮件已发出</span>` : `<span class="ow-pill">复制链接</span> <code>${E(w.link)}</code>`}</div>`).join("")}</div>` : ""}</div>` : "";
+
+    return ask + choose + table + form;
+
+  }
+
+  function reviewCard() {
+
+    const rd = S.rd, rv = S.rv;
+
+    if (!rd) return "";
+
+    if (!rd.rounds.length) return `<div class="card ow-card mut">还没有发起 Pilot。到“本轮 Pilot”发起一轮${rd.can_skip ? "，或者选“跳过 Pilot，直接上线”" : ""}。</div>`;
+
+    if (!rv) return `<div class="card ow-card mut">正在读取……</div>`;
+
+    const sel = rd.rounds.length > 1 ? `<select class="ow-sel" aria-label="选择一轮" data-ow-rid>${rd.rounds.map((r) => `<option value="${r.id}"${r.id === S.rid ? " selected" : ""}>第 ${r.number} 轮 · v${r.version}</option>`).join("")}</select>` : "";
+
+    const done = rv.status === "reviewed", c = rv.counts;
+
+    const canNext = !done && rv.ended > 0 && !c.open;
+
+    const rows = rv.marks.map((m) => `<tr><td class="sm">${E(m.who)} · ${clock(m.at_ms)}${m.label ? ` · ${E(m.label)}` : ""}</td><td>${E(m.note)}</td>
+
+        <td class="sm">${m.suggestions.length ? m.suggestions.map((x) => `${E(DEST[x.destination] || "大纲")}：${E(x.after?.text || x.after?.config?.note || "")}${x.blocked ? ` <span class="ow-pill bad">碰红线</span>` : ""}`).join("<br>") : `<span class="mut">（没有修改建议）</span>`}</td>
+
+        <td><span class="ow-dec">${DEC.map(([k, l]) => `<button type="button" class="${m.decision === k ? "on" : ""}" data-ow-dec="${k}" data-id="${m.id}"${done ? " disabled" : ""}>${l}</button>`).join("")}</span></td></tr>`).join("");
+
+    return `<div class="card ow-card ow-row2"><b>第 ${rv.number} 轮 · 大纲 v${rv.version}</b>${sel}<span class="ow-pill ${rv.ended ? "ok" : "warn"}">${rv.ended ? `${rv.ended}/${rv.interviews} 场已结束` : "还没有结束的场次"}</span>${done ? `<span class="ow-pill">已生成 v${rv.next_version}</span>` : ""}<span class="sp"></span>
+
+        ${done ? "" : `<button type="button" data-ow="rv-suggest">生成修改建议</button><button type="button" class="p" data-ow="rv-next"${canNext ? "" : " disabled"} title="${canNext ? "" : rv.ended ? "每条标记都要先处理" : "这一轮还没有做完一场"}">用接受的修改生成 v${rd.version.number + 1}</button>`}
+
+        <button type="button" data-ow="rv-ready" class="${rd.version.ready ? "on" : ""}">${rd.version.ready ? "✓ 已确认可以正式开始" : "可以正式开始"}</button></div>
+
+      <div class="card ow-card"><h3>这一轮的标记 <span class="mut sm">（${c.marks} 条，都要处理：接受 / 拒绝 / 暂缓）</span></h3>
+
+        <table class="ow-tbl"><thead><tr><th style="width:170px">谁 · 时间 · 题号</th><th>标记</th><th>修改建议</th><th style="width:190px">处理</th></tr></thead><tbody>${rows || `<tr><td colspan="4" class="mut">还没有标记。</td></tr>`}</tbody></table>
+
+        <div class="sm mut" style="margin-top:8px">接受的修改不会改动 v${rv.version} 本身：生成下一版时，复制 v${rv.version} 再写入这些修改，v${rv.version} 原样保留。</div></div>`;
+
+  }
+
+
+
   const fmtT = (ms) => { const t = Math.floor((ms || 0) / 1000); return [Math.floor(t / 3600), Math.floor(t / 60) % 60, t % 60].map((x) => String(x).padStart(2, "0")).join(":"); };
   function publishView() {
     const p = S.pub; if (!p) return `<div class="card ow-card mut">正在读取……</div>`;
@@ -303,10 +407,13 @@
   function paint() {
     const root = q(S.area === "gen" ? "#owroot" : "#owroot3"); if (!root) return;
     if (!S.d) { root.innerHTML = `<div class="card ow-card mut">正在读取……</div>`; return; }
+    if (S.d !== S.undoFor) { S.undoFor = S.d; S.undoUntil = Date.now() + 1000 * ((S.d.reset || {}).undo_left_s || 0); }
+    clearInterval(S.undoTick);
+    if (undoLeft() > 0) S.undoTick = setInterval(() => { const t = undoLeft(), el = q("#ow-undo-left"); if (!el || !t) { clearInterval(S.undoTick); if (!t && q(".ow-undo")) paint(); return; } el.textContent = mmss(t); }, 1000);
     const keep = { y: q("#owmain")?.scrollTop || 0, chat: q("#ow-msgs")?.scrollTop || 0, focusId: document.activeElement?.id || "" };
     const view = S.area !== "gen" ? { preview: previewView, rehearsal: rehearsalView, round: roundView, pilot: pilotView, publish: publishView }[S.tab] : ({ goal: goalView, people: peopleView, overview: overviewView, questions: questionsView, focus: focusView }[S.step] || goalView);
     const body = S.area === "gen" && S.step === "questions" ? `<div class="ow-qwrap">${tocHtml()}<div>${view()}</div></div>` : view();
-    root.innerHTML = `<div class="ow${S.busy ? " busy" : ""}"><div class="ow-main" id="owmain">${stepBar()}${body}${S.area === "gen" ? stepNav() : ""}</div><aside class="ow-chat" id="owchat">${chatHtml()}</aside></div>`;
+    root.innerHTML = `<div class="ow${S.busy ? " busy" : ""}"><div class="ow-main" id="owmain">${stepBar()}${S.area === "gen" ? resetUi() : ""}${body}${S.area === "gen" ? stepNav() : ""}</div><aside class="ow-chat" id="owchat">${chatHtml()}</aside></div>`;
     q("#owmain").scrollTop = keep.y; const m = q("#ow-msgs"); if (m) m.scrollTop = keep.chat || m.scrollHeight;
     menuState(); keepStep();
   }
@@ -314,10 +421,18 @@
   const num = (s) => parseFloat(val(s)) || 0;
 
   async function onClick(e) {
-    const t = e.target.closest("[data-ow-tab],[data-ow-dec],[data-ow],[data-ow-ans],[data-ow-freeok],[data-ow-sel],[data-ow-del],[data-ow-ins],[data-ow-rev],[data-ow-dis],[data-ow-step],[data-ow-mod]"); if (!t) return;
+    const t = e.target.closest("[data-ow-tab],[data-ow-dec],[data-ow-edit],[data-ow-fdd],[data-ow-fopt],[data-ow],[data-ow-ans],[data-ow-freeok],[data-ow-sel],[data-ow-del],[data-ow-ins],[data-ow-rev],[data-ow-dis],[data-ow-step],[data-ow-mod]"); if (!t) return;
     const d = t.dataset;
     if (d.owTab !== undefined) { e.preventDefault(); S.tab = d.owTab; paint(); return loadTab(); }
     if (d.owDec !== undefined) { e.preventDefault(); try { S.rv = await call(`/marks/${d.id}/decision`, "PUT", { decision: d.owDec }); S.rd = await call("/pilot-rounds"); } catch { /* toast */ } return paint(); }
+    if (d.owFdd !== undefined) { e.preventDefault(); if (S.fdd === d.owFdd) { S.fdd = ""; return paint(); } const f = S.d.focus.find((x) => x.id === d.owFdd); S.fdd = d.owFdd; S.fsel = { uids: new Set(f.item_uids), idea: f.state === "new_idea", none: f.state === "none" }; return paint(); }
+    if (d.owFopt !== undefined) {
+      e.preventDefault(); const x = S.fsel, k = d.owFopt;
+      if (k === "none") { x.none = !x.none; if (x.none) { x.uids.clear(); x.idea = false; } }
+      else { x.none = false; if (k === "idea") x.idea = !x.idea; else { const u = k.slice(4); x.uids.has(u) ? x.uids.delete(u) : x.uids.add(u); } }
+      return paint();
+    }
+    if (d.owEdit !== undefined) { S.edit = d.owEdit; paint(); const f = q("#ow-ed"); if (f) f.focus(); return; }
     if (d.owStep !== undefined) { e.preventDefault(); if (stepOk(d.owStep)) { S.step = d.owStep; paint(); } return; }
     if (d.owMod !== undefined) { e.preventDefault(); S.step = "questions"; S.mod = d.owMod; S.sel = ""; paint(); return; }
     if (d.owAns) return act("/answer", "POST", { slot: d.owAns, value: JSON.parse(d.v) });
@@ -373,6 +488,26 @@
       case "rv-next": { S.busy = true; paint(); try { const r = await call(`/pilot-rounds/${S.rid}/next-version`, "POST"); S.d = await call(""); toast(`已生成 v${r.version}（${r.changes} 处修改）`); } catch { /* toast */ } S.busy = false; return loadTab(); }
       case "rv-ready": { try { await call("/ready", "PUT", { value: !S.rd.version.ready }); } catch { /* toast */ } return loadTab(); }
       case "pub-go": { S.busy = true; paint(); try { await call("/publish", "POST"); S.d = await call(""); S.pub = await call("/publish/check"); toast("已发布"); } catch { /* toast */ } S.busy = false; return paint(); }
+      case "fdd-cancel": S.fdd = ""; return paint();
+      case "fdd-ok": { const x = S.fsel; S.fdd = ""; return act(`/focus/${d.f}/link`, "PUT", { item_uids: [...x.uids], state: x.none ? "none" : x.idea ? "new_idea" : "linked" }); }
+      case "idea-edit": S.ideaEdit = d.f; return paint();
+      case "idea-cancel": S.ideaEdit = ""; return paint();
+      case "idea-save": { const v = val("#ow-idea-in").trim(); if (!v) return toast("先写下新题", true); S.ideaEdit = ""; return act(`/focus/${d.f}/idea`, "PUT", { text: v }); }
+      case "rs-open": S.resetAsk = true; S.resetMode = "answers"; return paint();
+      case "rs-cancel": S.resetAsk = false; return paint();
+      case "rs-go": { const mode = (qa('input[name="ow-rs"]').find((x) => x.checked) || {}).value || "answers"; S.resetAsk = false; await act("/reset", "POST", { mode }); S.step = "goal"; S.mod = ""; S.sel = ""; return paint(); }
+      case "rs-undo": { await act("/reset/undo", "POST"); S.step = S.d.step; return paint(); }
+      case "ed-cancel": S.edit = ""; return paint();
+      case "ed-save": {
+        const k = d.k, s = k === "background" ? null : S.d.slots[k];
+        let v = s && s.edit === "multi" ? qa("[data-ow-ms]").filter((x) => x.checked).map((x) => x.dataset.owMs) : val("#ow-ed");
+        if (s && s.edit === "multi") v = v.includes("none") && v.length > 1 ? v.filter((x) => x !== "none") : v;
+        if (typeof v === "string" && !v.trim()) return toast("不能为空", true);
+        S.edit = "";
+        return k === "background" ? act("/background", "PUT", { text: v }) : act("/answer", "POST", { slot: k, value: s.edit === "number" ? parseInt(v, 10) : v });
+      }
+      case "stale-keep": return act("/overview/keep", "POST");
+      case "stale-rebuild": S.step = "overview"; return act("/overview", "POST");
       case "goal-next": S.step = "people"; await call("/goal/confirm", "POST").then((v) => { S.d = v; }).catch(() => {}); return paint();
       case "build": S.step = "overview"; return act("/overview", "POST");
       case "back-people": S.step = "people"; return paint();
@@ -400,7 +535,8 @@
     if (d.owLine !== undefined) { if (!t.value) return paint(); try { await call(`/interviews/${S.pilId}/lines/${d.owLine}/item`, "PUT", { item_uid: t.value }); toast("题号已改，AI 之前对这句编的码作废并重新编"); S.pil = await call(`/pilots/${S.pilId}`); } catch { /* toast */ } return paint(); }
     if (d.owRid !== undefined) { S.rid = t.value; S.rv = null; paint(); return loadTab(); }
     if (d.owPil !== undefined) { S.pilId = t.value; S.pil = null; paint(); return loadTab(); }
-    if (d.owLink !== undefined) return act(`/focus/${d.owLink}`, "PUT", { item_uid: t.value || null });
+    if (d.owMs !== undefined) { const all = qa("[data-ow-ms]"); if (t.checked) all.forEach((x) => { if ((d.owMs === "none") !== (x.dataset.owMs === "none")) x.checked = false; }); return; }
+    if (t.name === "ow-rs") { S.resetMode = t.value; return paint(); }
   }
   async function onSubmit(e) {
     if (e.target.id !== "ow-form") return;
@@ -424,7 +560,10 @@
   let wired = false;
   function wire() {
     if (wired) return; wired = true;
-    document.addEventListener("click", (e) => { if (["#owroot", "#owroot3"].some((k) => q(k)?.contains(e.target))) onClick(e); });
+    document.addEventListener("click", (e) => {
+      if (S.fdd && !e.target.closest(".ow-fdd")) { S.fdd = ""; paint(); }   // a click anywhere else closes the "对应到" drop-down
+      if (["#owroot", "#owroot3"].some((k) => q(k)?.contains(e.target))) onClick(e);
+    });
     document.addEventListener("change", (e) => { if (q("#owroot")?.contains(e.target) || q("#owroot3")?.contains(e.target)) onChange(e); });
     document.addEventListener("submit", onSubmit);
     document.addEventListener("focusin", onFocusIn);
@@ -433,7 +572,7 @@
   window.OutlineWb = {
     async mount(pid, area) {
       wire();
-      if (S.pid !== pid) Object.assign(S, { pid, d: null, step: "", mod: "", sel: "", msgs: [], adopt: null, form: null, pv: null, rh: null, pl: null, pil: null, pub: null });
+      if (S.pid !== pid) Object.assign(S, { pid, d: null, step: "", mod: "", sel: "", msgs: [], adopt: null, form: null, pv: null, rh: null, pl: null, pil: null, pub: null, edit: "", fdd: "", ideaEdit: "", resetAsk: false });
       S.area = ["test", "pilot"].includes(area) ? area : "gen";
       if (S.area !== "gen" && !TABS[S.area].some(([k]) => k === S.tab)) S.tab = TABS[S.area][0][0];
       const fromUrl = (location.hash.split("/")[5] || "").split("?")[0];   // #/p/<id>/people/outline/<step>: a reload stays on that step
