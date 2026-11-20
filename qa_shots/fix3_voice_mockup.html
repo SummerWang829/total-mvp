@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI 语音访谈 效果图</title>
+<style>
+:root{--g:#0B382C;--o:#FF6A00;--line:#e5e7eb;--m:#6b7280}
+body{margin:0;background:#f4f5f7;font:14px/1.6 "Microsoft YaHei",Inter,sans-serif;color:#333}
+.wrap{max-width:1100px;margin:0 auto;padding:24px 16px 60px}
+h1{font-size:22px;margin:0 0 4px}h2{font-size:17px;margin:28px 0 10px;color:var(--g)}
+.row{display:flex;gap:18px;flex-wrap:wrap}.col{flex:1;min-width:300px}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px}
+.phone{width:320px;border:10px solid #111;border-radius:34px;background:#fff;overflow:hidden;margin:0 auto}
+.top{background:var(--g);color:#fff;padding:10px 14px;font-weight:700;display:flex;justify-content:space-between}
+.ai{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line)}
+.av{width:46px;height:46px;border-radius:50%;background:#fdeee3;display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--o)}
+.wave span{display:inline-block;width:3px;margin:0 1px;background:var(--o);border-radius:2px;animation:w 1s ease-in-out infinite}
+.wave span:nth-child(2){animation-delay:.15s}.wave span:nth-child(3){animation-delay:.3s}.wave span:nth-child(4){animation-delay:.45s}
+@keyframes w{0%,100%{height:6px}50%{height:18px}}
+.msgs{padding:10px 14px;height:250px;font-size:13px}
+.b{background:#eceef1;border-radius:10px;padding:6px 10px;margin:6px 0;max-width:85%}
+.me{background:#fdeee3;margin-left:auto}
+.bar{border-top:1px solid var(--line);padding:10px 14px;display:flex;align-items:center;gap:8px}
+.mic{width:54px;height:54px;border-radius:50%;background:var(--o);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;box-shadow:0 0 0 6px rgba(255,106,0,.18)}
+.done{border:1px solid var(--o);color:var(--o);border-radius:18px;padding:5px 12px;font-weight:700}
+.sm{font-size:12px;color:var(--m)}
+ol li,ul li{margin:4px 0}
+.q{border-left:4px solid var(--o);background:#fff;border-radius:8px;padding:10px 14px;margin:8px 0}
+</style></head><body><div class="wrap">
+<h1>AI 主持 · 语音访谈（效果图）</h1>
+<div class="sm">只用于 AI 主持、形式是“纯音频 / 视频”的一对一访谈。文字访谈保持现在的样子。确认后才改代码。</div>
+
+<h2>受访者手机上看到的</h2>
+<div class="row">
+<div class="col"><div class="phone">
+<div class="top"><span>访谈</span><span>🎙 📷 离开</span></div>
+<div class="ai"><div class="av">AI</div><div><b>AI 主持人</b><div class="sm">正在说话 <span class="wave"><span></span><span></span><span></span><span></span></span></div></div></div>
+<div class="msgs">
+<div class="b">您好，感谢参加。先请您说说最近一次去 4S 店保养的经历？</div>
+<div class="b me">上个月去的，等了快两个小时……<div class="sm">（语音转成的文字）</div></div>
+<div class="b">等了两个小时，当时您是怎么打发时间的？</div>
+</div>
+<div class="bar"><div class="mic">说</div><div><div class="sm">正在听您说… 停顿 3 秒自动发送</div><span class="done">我说完了</span></div></div>
+</div></div>
+<div class="col card">
+<b>一轮对话怎么走</b>
+<ol>
+<li>AI 的话一出现，就<b>用语音读出来</b>（同时显示文字），头像旁边出声波。</li>
+<li>AI 说话时<b>麦克风自动暂停</b>，免得把 AI 的声音当成受访者的话。</li>
+<li>AI 说完，麦克风自动打开，受访者直接说话，屏幕上实时出现文字。</li>
+<li>受访者<b>停顿 3 秒自动发送</b>，或点“我说完了”马上发送；发送前可以改字。</li>
+<li>受访者也可以随时改成打字回答。</li>
+</ol>
+<b>不变的</b>
+<ul><li>AI 说的话仍只来自聊天文字，转写和洞察不变。</li><li>录音不保存（录制照旧按同意书走）。</li><li>研究员、观察员那边是同样的文字，可以听到 AI 的声音（可关）。</li></ul>
+</div>
+</div>
+
+<h2>要您定的 3 件事</h2>
+<div class="q"><b>1. 自动发送</b>：之前定过“语音不自动发送”。语音访谈里改成“停顿 3 秒自动发送 + ‘我说完了’按钮”，可以吗？（停顿秒数也可以改成 2 或 4 秒）</div>
+<div class="q"><b>2. 同意书</b>：AI 的声音由腾讯云语音合成生成，发给腾讯云的只有 AI 要说的文字（不含受访者的话）。AI 主持场次的同意书里“数据发给谁”要加上“腾讯云语音合成”。这样加可以吗？（马来语、泰米尔语仍是首稿，待母语者和法务复核）</div>
+<div class="q"><b>3. 费用</b>：按 AI 说的字数计费。一场 45 分钟的访谈，AI 大约说 3,000–5,000 个汉字。单价以腾讯云控制台“语音合成 · 计费”为准（精品音色比基础音色贵）。先用哪一档声音？AI 主持只支持中文和英文，各选一个女声。</div>
+</div></body></html>
