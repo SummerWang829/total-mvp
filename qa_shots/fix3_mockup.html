@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>修正方案第 3 轮 效果图</title>
+<style>
+:root{--g:#0B382C;--o:#FF6A00;--bg:#f4f5f7;--line:#e5e7eb;--t:#333;--m:#777}
+body{margin:0;background:var(--bg);font:14px/1.6 "Microsoft YaHei",Inter,sans-serif;color:var(--t)}
+.wrap{max-width:1180px;margin:0 auto;padding:24px 16px 60px}
+h1{font-size:22px;margin:0 0 4px}h2{font-size:17px;margin:34px 0 10px;color:var(--g)}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px;margin:10px 0}
+.row{display:flex;gap:14px;flex-wrap:wrap}.col{flex:1;min-width:300px}
+.no{display:inline-block;background:var(--o);color:#fff;border-radius:6px;padding:0 7px;font-size:12px;margin-right:6px}
+.before{border-left:4px solid #d33}.after{border-left:4px solid #1a8a5a}
+.lbl{font-size:12px;color:var(--m);margin-bottom:6px}
+.tabs span{margin-right:18px;padding-bottom:4px}.tabs .on{font-weight:700;border-bottom:2px solid var(--o)}.tabs .off{color:#c3c3c3}
+.btn{display:inline-block;border-radius:8px;padding:6px 14px;font-weight:700;font-size:13px;border:1px solid var(--line);background:#fff}
+.btn.p{background:var(--o);color:#fff;border-color:var(--o)}
+.breathe{border:2px solid var(--o);color:var(--o);animation:br 1.8s ease-in-out infinite}
+@keyframes br{0%,100%{box-shadow:0 0 0 0 rgba(255,106,0,.45)}50%{box-shadow:0 0 0 8px rgba(255,106,0,0)}}
+.side{width:200px;background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px;font-size:13px}
+.side div{padding:4px 6px}.side .sub{padding-left:26px;color:#555}.side .cur{background:#f1f2f4;border-radius:6px;font-weight:700}
+table{border-collapse:collapse;width:100%;font-size:13px}td,th{border-bottom:1px solid var(--line);padding:6px;text-align:left;vertical-align:top}
+.k{color:var(--m);width:90px}.chip{display:inline-block;background:#f1f2f4;border-radius:12px;padding:1px 9px;margin:2px;font-size:12px}
+.chat{background:#f7f7f8;border-radius:10px;padding:10px;font-size:13px}.me{text-align:right}.me span{background:#fdeee3;border-radius:8px;padding:3px 8px;display:inline-block}
+.ai span{background:#eceef1;border-radius:8px;padding:3px 8px;display:inline-block}
+.mat{border:1px dashed #bbb;border-radius:10px;padding:10px;background:#fafafa}
+.thumb{display:inline-block;width:110px;height:70px;border-radius:8px;background:#e9edf0;margin-right:8px;text-align:center;line-height:70px;color:#666;font-size:12px;position:relative}
+.thumb b{position:absolute;left:6px;top:4px;line-height:1;background:var(--g);color:#fff;border-radius:4px;padding:2px 5px;font-size:11px}
+.modal{border:1px solid var(--line);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.12);background:#fff;padding:14px;max-width:360px}
+.inp{border:1px solid var(--line);border-radius:8px;padding:7px 10px;color:#999;background:#fff}
+.drop{border:1px solid var(--line);border-radius:8px;margin-top:4px;background:#fff}.drop div{padding:5px 10px;border-bottom:1px solid #f0f0f0}
+.drop mark{background:#ffe7d3}
+.q{background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin:4px 0;font-size:13px}
+ul{margin:4px 0;padding-left:20px}
+.note{font-size:12px;color:#a35a00;background:#fff6ec;border-radius:8px;padding:6px 10px;margin-top:8px}
+</style></head><body><div class="wrap">
+<h1>修正方案第 3 轮 · 效果图（20 条）</h1>
+<div class="lbl">红边是现在，绿边是改后。确认后再改代码。</div>
+
+<h2><span class="no">1</span>立项 · 研究设计：建议页签只亮选中的方法，去掉“配额”</h2>
+<div class="row">
+<div class="card col before"><div class="lbl">现在（仅深访也显示 4 个）</div><div class="tabs"><span class="on">深访提纲</span><span>座谈会大纲</span><span>配额</span><span>舆情关键词</span></div></div>
+<div class="card col after"><div class="lbl">改后：仅深访 → 只有深访提纲能点，其他变灰；“配额”页签删除</div><div class="tabs"><span class="on">深访提纲</span><span class="off">座谈会大纲</span><span class="off">舆情关键词</span></div></div>
+</div>
+
+<h2><span class="no">2</span>速度：点“AI 主持 / 真人主持 / 招募方式”立刻变</h2>
+<div class="card after">现在点了要等保存完再把整页重画（3 秒以上）。改后：点下去按钮马上变色，保存在后台进行，不再整页重画；保存失败才弹提示并改回。同样的做法用到这一页其他按钮，以及创建访谈里所有“点了要等”的地方（我会逐个量时间，目标 0.3 秒内有反应）。</div>
+
+<h2><span class="no">3–7</span>甄别问卷</h2>
+<div class="row">
+<div class="side"><div class="lbl">③ 一进甄别问卷，左栏 6 步就展开</div>
+<div>招募/主持/问卷</div><div class="cur">甄别问卷</div><div class="sub">✓ 读取立项</div><div class="sub cur">2 要筛进谁</div><div class="sub">3 要筛掉谁</div><div class="sub">4 配额</div><div class="sub">5 质量控制</div><div class="sub">6 预览与测试</div><div>数据库筛选及发送</div></div>
+<div class="col">
+<div class="card after"><div class="lbl"><span class="no">4</span>① 读取立项：研究目标、招募需求不再是“—”，读右边已有内容；右边“招募需求”自动带入立项第 4 步的人群</div>
+<table><tr><td class="k">研究目标</td><td>这是本田单品牌满意度研究：同时观察……</td></tr><tr><td class="k">招募需求</td><td>本田本品和竞品新能源售后维修的人 · 5 人</td></tr></table></div>
+<div class="card after"><div class="lbl"><span class="no">5</span>② ③ 一进来就自动出条件表（不用点“重新生成”）；“重新生成”改名“全部重做”；按钮改名</div>
+<div style="text-align:right"><span class="btn">‹ 上一步</span> <span class="btn p">下一步</span></div>
+<div class="lbl" style="margin-top:6px">② ③ 的“确认，生成这部分题目”、④ 的“确认配额”都改成“下一步”（点了照样会保存并生成题目）</div></div>
+<div class="card after"><div class="lbl"><span class="no">6</span>对话报错不再显示“请求失败 (525)”</div>
+<div class="chat"><div class="ai"><span>网络不稳定，这句话没有送到。<u>重新发送</u></span></div></div>
+<div class="note">525 是线上网关和服务器之间的连接一时没握手成功（不是代码报错）。页面改成自动重试 1 次 + 上面这句提示；部署词里让 SW 查网关日志。</div></div>
+<div class="card after"><div class="lbl"><span class="no">7</span>⑥ “测试答题”按钮橙色呼吸闪烁，提醒去测</div>
+<span class="btn">‹ 上一步</span> <span class="btn breathe">测试答题</span> <span class="btn p">去发布（配额及受访者名单）</span></div>
+</div></div>
+
+<h2><span class="no">8–11</span>测试答题 = 候选人真实看到的问卷</h2>
+<div class="row">
+<div class="card col before"><div class="lbl">现在</div><ul><li>中文版里冒出英文题（对话里新加的汽车行业题）</li><li>性别在第 8 题，年龄问了 2 遍（第 13 题“再确认一下”）</li><li>第 13 题选项倒序</li></ul></div>
+<div class="card col after"><div class="lbl">改后</div>
+<div class="q"><b>Q1</b> 您的性别是？　<b>Q2</b> 您的年龄是？　<b>Q3</b> 您常住在哪个城市？ <span class="chip">基本信息固定在最前</span></div>
+<div class="q"><b>Q4</b> 你或你的家人是否在下列行业工作？（多选）<span class="chip">汽车行业 = 甄别掉</span></div>
+<div class="q">……其余题目</div>
+<ul style="font-size:13px"><li><b>⑧ 语言</b>：中文版只出中文；对话里加的题按问卷语言写，写成别的语言会自动译回</li><li><b>⑨ 顺序</b>：性别、年龄、区域永远排最前（对话里说过的调整，测试答题里完全一样）</li><li><b>⑩ 去重</b>：同一件事问两遍的题，生成时自动删掉，对话里告诉你删了哪道</li><li><b>⑪ 选项</b>：一律正序（从小到大）</li></ul></div>
+</div>
+<div class="note">要您定：第 13 题“再确认一下年龄”是 ⑤ 质量控制里“前后矛盾就终止”的复查题（第五批您选的）。见文末问题 1。</div>
+
+<h2><span class="no">12–14</span>生成大纲 · 目标</h2>
+<div class="row">
+<div class="card col after"><div class="lbl"><span class="no">12</span>“目标”和“人群与执行”合成一步：</div>
+<div class="tabs"><span class="on">1 目标与人群</span><span>2 大纲总览</span><span>3 题目</span><span>4 关注问题</span></div>
+<div class="lbl" style="margin-top:10px"><span class="no">13</span>不再自动出现“价格怎么说”这一行（需要时在对话里说“要谈价格”才加）</div>
+<table><tr><td class="k">物料</td><td>看素材 <span class="chip">刚改</span></td></tr></table></div>
+<div class="card col after"><div class="lbl"><span class="no">14</span>右边对话：这一页说过的话全部保留（切走再回来、刷新都在）；AI 一改，左边立刻刷新成最新内容（现在说“已改为看素材”但左边没变，是 bug）</div>
+<div class="chat"><div class="me"><span>物料改为看素材</span></div><div class="ai"><span>已把物料改为“看素材”。</span></div></div></div>
+</div>
+
+<h2><span class="no">15–16</span>题目里插入概念卡 / 视频片段</h2>
+<div class="row">
+<div class="card col after"><div class="lbl"><span class="no">15</span>点“概念卡”“视频片段”插入时直接有上传口；这一处已经有素材再上传时弹窗问</div>
+<div class="mat"><b>概念卡</b>　<span class="btn">上传图片 / PDF</span>　<span class="lbl">视频片段：上传 mp4 或粘贴公开播放链接</span></div>
+<div class="modal" style="margin-top:10px"><b>这里已经有 1 张概念卡</b><div class="lbl">新上传的要</div><span class="btn">替换掉原来的</span> <span class="btn p">再加一张</span></div></div>
+<div class="card col after"><div class="lbl"><span class="no">16</span>有素材的地方直接预览，并标出示顺序；多个时选“按顺序”或“随机轮换”</div>
+<div class="mat"><div style="margin-bottom:6px"><b>概念卡</b>（3 张）　出示方式：<span class="chip" style="background:#0B382C;color:#fff">按顺序</span><span class="chip">随机轮换</span></div>
+<span class="thumb"><b>1</b>概念 A</span><span class="thumb"><b>2</b>概念 B</span><span class="thumb"><b>3</b>概念 C</span><div class="lbl" style="margin-top:6px">可拖动换顺序；点缩略图看大图 / 播放视频</div></div>
+<div class="lbl">同时修掉“Q11-概念卡”编号挤成竖排的问题</div></div>
+</div>
+<div class="note">视频片段：CLAUDE.md 规定广告片只嵌入公开播放器、不在我们服务器存文件。所以这里的“上传 mp4”需要您定，见问题 2。</div>
+
+<h2><span class="no">17</span>关注问题</h2>
+<div class="row">
+<div class="card col before"><div class="lbl">现在</div>有“对应到：还没有对应 ▾”一列；新增框只能手写；没有“下一步”</div>
+<div class="card col after"><div class="lbl">改后：删掉“对应到”；新增框可以搜大纲里的题（打关键词就筛），也能直接写新的</div>
+<div class="inp">广告</div>
+<div class="drop"><div>Q7 您平时在哪里看到过汽车<mark>广告</mark>？ <span class="chip">选这道大纲题</span></div><div>+ 新增为关注问题：“<mark>广告</mark>”</div></div>
+<div style="text-align:right;margin-top:10px"><span class="btn">‹ 上一步</span> <span class="btn p">下一步：预览测试</span></div></div>
+</div>
+
+<h2><span class="no">18</span>Pilot 受访者</h2>
+<div class="row">
+<div class="card col before"><div class="lbl">现在</div><span class="btn" style="background:#333;color:#fff">从名单选</span><span class="btn">同事</span> 名单里还没有人，选“同事”</div>
+<div class="card col after"><div class="lbl">改后：删掉“从名单选 / 同事”，就一个框填受访者邮箱</div><div class="inp">受访者邮箱，例如 name@example.com</div><div class="lbl">发起后给这个邮箱发访谈链接</div></div>
+</div>
+
+<h2><span class="no">19</span>受访者预览 / Pilot 受访者页的语言按钮</h2>
+<div class="row">
+<div class="card col before"><div class="lbl">现在：中文访谈也有 English</div><span class="chip">中文</span><span class="chip">English</span></div>
+<div class="card col after"><div class="lbl">改后：只列这场访谈的语言；只有一种语言时不显示切换</div><span class="lbl">中文访谈 → 不显示语言按钮</span><br><span class="lbl">中文 + 英文访谈 →</span> <span class="chip">中文</span><span class="chip">English</span></div>
+</div>
+
+<h2><span class="no">20</span>AI 主持人的语音（回答您的问题）</h2>
+<div class="card">对，<b>还没接</b>。现在 AI 主持人（Pilot 和正式访谈一样）只能<b>打字聊天</b>：受访者可以按麦克风说话，转成文字发给 AI；但 AI 不会出声说话，也不能直接听语音对话。要做“语音访谈”需要接一个语音合成服务（把 AI 的话读出来）+ 实时语音识别轮流对话，这是单独一块工作，见问题 3。</div>
+
+<h2>要您定的 3 个问题</h2>
+<div class="card"><ol>
+<li><b>复查题</b>：“前后矛盾就终止”需要把年龄再问一遍才能比对。① 去掉复查题（不查矛盾，只靠“答太快”终止）；② 保留一道复查题，放在问卷末尾、选项正序，名字不叫“再确认一下”。</li>
+<li><b>视频片段上传</b>：① 只能粘贴公开播放链接（YouTube 等，按现在的规定）；② 允许上传 mp4 存在我们服务器（要改规定，并写进同意书/保留期）。</li>
+<li><b>AI 语音</b>：这一轮先不做，单独排一轮（我先出方案和费用）？还是这一轮就做？</li>
+</ol></div>
+</div></body></html>
