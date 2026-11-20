@@ -103,7 +103,7 @@
     const intro = { overview: "现在的情况我替你看着：哪个问题接近饱和、哪个有很多场没问到、哪些编码在等你确认。", focus: "可以问我，比如“哪些人提到价格偏贵”，我只显示编号。", alerts: "需要人处理的告警在最上面；AI 已经停下的场次等你接管。", add: "三步：对应的题、怎么编码、回头补进已有的回答。对应的题只是我按词语推荐的，由你确认。" }[B.tab];
     return `<div class="h"><b>小星星助手</b></div><div class="m" id="ob-msgs"><div class="bub">${intro}</div>${B.msgs.map((m) => `<div class="bub ${m.me ? "me" : ""}">${E(m.text)}</div>`).join("")}</div>
       ${sg.length ? `<div class="ow-sug"><div class="t"><b>建议</b>（最多 3 条，可多选）</div>${sg.map((s) => `<label><input type="checkbox" aria-label="${E(s.title)}" data-ob-sg="${s.id}"${B.sel.has(s.id) ? " checked" : ""}${s.can_adopt ? "" : " disabled"}><span><b>${E(s.title)}</b><small>${E(s.reason)}</small><i class="x" data-ob-dis="${s.id}">不再提醒</i></span></label>`).join("")}<button type="button" class="p s" data-ob="adopt"${B.sel.size ? "" : " disabled"}>采纳所选</button></div>` : ""}
-      <form class="f" id="ob-form"><textarea class="ow-ta" id="ob-in" aria-label="问小星星助手" rows="2" placeholder="问一句，比如：哪些人提到价格偏贵？"></textarea><button type="submit" class="p s">发送</button></form>`;
+      <form class="f" id="ob-form"><textarea class="ow-ta" id="ob-in" data-ti="chat" data-ti-attach="no" data-ti-send="#ob-send" aria-label="问小星星助手" rows="2" placeholder="问一句，比如：哪些人提到价格偏贵？"></textarea><button type="submit" class="p s" id="ob-send">发送</button></form>`;
   }
   function paint() {
     const root = q("#owbroot"); if (!root || !B.on) return;

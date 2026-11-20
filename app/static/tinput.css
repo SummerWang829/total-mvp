@@ -1,0 +1,54 @@
+/* 统一输入组件 TInput（修正方案第 1 轮第 2 条，效果图 qa_shots/fix1_batch4_mockup.html）。颜色只用主题变量，浅色 / 橙色 / 深色和受访者页面都能用。 */
+:root{--ti-line:var(--line,#E3E6E4);--ti-bg:var(--surface,#fff);--ti-wash:var(--wash,#F7F8FA);--ti-ink:var(--ink,#2F3437);--ti-mut:var(--muted,#626A6E);--ti-chip:var(--chip,#EDEFF2);--ti-ring:rgba(11,56,44,.14);--ti-bad:#A12A2A}
+html[data-theme="dark"]{--ti-ring:rgba(127,209,168,.22);--ti-bad:#FF8A7A}
+
+/* every text input: the same rounded corners and focus ring; nothing else changes, so a page's own layout stays */
+.ti-core{border-radius:10px}
+.ti-core:focus-visible{outline:none;box-shadow:0 0 0 3px var(--ti-ring)}
+
+/* chat box */
+.ti-box{border:1px solid var(--ti-line);border-radius:14px;background:var(--ti-bg);padding:8px 10px;display:flex;flex-direction:column;gap:4px;transition:border-color .15s,box-shadow .15s;min-width:0}
+.ti-box:focus-within{border-color:#7FA898;box-shadow:0 0 0 3px var(--ti-ring)}
+.ti-box textarea.ti-chat,.ti-box input.ti-chat{border:0!important;outline:0;box-shadow:none!important;background:transparent!important;resize:none;width:100%;min-height:44px;padding:4px 2px!important;font:inherit;color:var(--ti-ink)}
+.ti-bar{display:flex;align-items:center;gap:2px;flex-wrap:nowrap;min-width:0}.ti-bar.rec{flex-wrap:wrap}
+.ti-sp{flex:1 1 0;min-width:0}
+.ti-hint{font-size:12px;color:var(--ti-mut);margin-right:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:0 1 auto}
+.ti-b{width:34px;height:34px;min-height:34px;border-radius:8px;border:0;background:transparent;color:var(--ti-mut);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;padding:0;flex:0 0 auto}
+.ti-b:hover{background:var(--ti-chip);color:var(--ti-ink)}
+.ti-b.stop{color:#D9363E}
+.ti-i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto}
+.ti-send{width:36px;height:36px;min-height:36px;border-radius:50%;border:0;background:linear-gradient(135deg,#FF8A2B,#FF6A00);color:#fff;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;padding:0;flex:0 0 auto}
+.ti-send.off{background:#C9CED1;cursor:default}
+html[data-theme="dark"] .ti-send.off{background:#4A5357}
+.ti-orig{display:none!important}
+.ti-chips{display:flex;flex-wrap:wrap;gap:8px}.ti-chips:empty{display:none}
+.ti-att{display:inline-flex;gap:8px;align-items:center;border:1px solid var(--ti-line);border-radius:10px;padding:5px 6px 5px 8px;background:var(--ti-wash);font-size:13px;max-width:300px;min-width:0}
+.ti-att .ic{width:30px;height:30px;border-radius:8px;background:var(--ti-bg);display:flex;align-items:center;justify-content:center;color:var(--link,#0B6B4A);flex:0 0 auto}
+.ti-att .t{min-width:0;display:flex;flex-direction:column;line-height:1.35}.ti-att .t b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600;color:var(--ti-ink)}
+.ti-att .t small{color:var(--ti-mut);font-size:12px}
+.ti-att.sm{padding:3px 8px}.ti-att.sm .ic{width:24px;height:24px}
+.ti-link{border:1px solid var(--ti-line);border-radius:10px;padding:6px 8px;background:var(--ti-wash);font-size:13px;width:100%}
+.ti-link .row1{display:flex;gap:6px;align-items:center;min-width:0}.ti-link .row1 b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ti-ink)}.ti-link .row1 small{color:var(--ti-mut);white-space:nowrap;font-size:12px}
+.ti-link .row2{display:flex;gap:16px;margin-top:4px;flex-wrap:wrap}.ti-link label{display:inline-flex;gap:6px;align-items:center;min-height:32px;color:var(--ti-ink)}
+.ti-linkin{display:flex;gap:6px;width:100%;align-items:center}.ti-linkin input{flex:1;min-width:0;border:1px solid var(--ti-line);padding:6px 10px;min-height:36px;background:var(--ti-bg);color:var(--ti-ink)}
+.ti-mini{min-height:36px;padding:0 12px;border:1px solid var(--ti-line);border-radius:8px;background:var(--ti-bg);color:var(--ti-ink);cursor:pointer;font:inherit;font-size:13px;white-space:nowrap}
+.ti-err{color:var(--ti-bad);font-size:13px;margin:2px 4px 0;min-height:0}.ti-err:empty{display:none}
+.ti-cites{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+
+/* the floating tools of a field / line box (shown while it has focus) */
+.ti-float{position:fixed;z-index:200;display:flex;align-items:center;gap:2px;background:var(--ti-bg);border:1px solid var(--ti-line);border-radius:10px;padding:2px;box-shadow:0 4px 14px rgba(0,0,0,.12);max-width:calc(100vw - 8px);flex-wrap:wrap}
+
+/* recording */
+.ti-rec{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;color:var(--ti-ink);padding:0 4px}
+.ti-rec[hidden]{display:none}
+.ti-rec .dot{width:10px;height:10px;border-radius:50%;background:#E5484D;animation:tiPulse 1s infinite}
+@keyframes tiPulse{50%{opacity:.3}}
+@media (prefers-reduced-motion:reduce){.ti-rec .dot{animation:none}}
+.ti-ghost{color:var(--ti-mut);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ti-note{color:var(--ti-mut);font-size:12px}
+.ti-langs{display:inline-flex;border:1px solid var(--ti-line);border-radius:999px;overflow:hidden}
+.ti-langs button{border:0;background:transparent;color:var(--ti-ink);font:inherit;font-size:12px;padding:0 10px;min-height:28px;cursor:pointer;white-space:nowrap}
+.ti-langs button.on{background:var(--brand,#0B382C);color:#fff}
+.ti-langs button.off{color:var(--ti-mut);cursor:not-allowed}
+.ti-bar.rec .ti-hint{display:none}
+@media (max-width:700px){.ti-hint{display:none}.ti-b{width:40px;height:40px;min-height:40px}.ti-send{width:40px;height:40px}.ti-langs button{min-height:36px}.ti-mini{min-height:40px}}

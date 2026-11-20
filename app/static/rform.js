@@ -226,8 +226,8 @@ function rfCard(p, form, rec, plannedN) {
       (showChecks ? `<div class="cc-cklist">${sugN ? (f.suggestions || []).map((x) => `<div class="cc-ci warn"><span>${esc2(x.text || x.label)}</span></div>`).join("") : `<div class="mut">现在没有需要处理的提示</div>`}</div>` : "") +
       `<div class="cc-sc" id="ccscroll">${anchorBarHtml()}${body}</div>` +
       sugBarHtml() +
-      `<div class="cc-box"><textarea id="ccmsg" rows="2" maxlength="1000" placeholder="说一句话，或点上面的按钮……" aria-label="对话输入"></textarea>` +
-      `<button class="cc-att" type="button" aria-label="附件">📎</button><button class="p cc-send" type="button" id="ccsend" aria-label="发送">↑</button></div>`;
+      `<div class="cc-box"><textarea id="ccmsg" data-ti="chat" data-ti-send="#ccsend" rows="2" maxlength="1000" placeholder="说一句话，或点上面的按钮……" aria-label="对话输入"></textarea>` +
+      `<button class="p cc-send" type="button" id="ccsend" aria-label="发送">↑</button></div>`;
   };
 
   /**
@@ -262,11 +262,12 @@ function rfCard(p, form, rec, plannedN) {
     if (box) box.onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); if (send) send.click(); } };
     const chatTurn = async (text) => {
       const before = JSON.parse(JSON.stringify(Q));
-      const r = await api(`/projects/${p.id}/recruiting/form/chat`, { method: "POST", body: { message: text, questions: Q, goals, need, use_library: true, ask_only: false } });
+      const refs = window.TInput ? TInput.takeRefs("ccmsg") : [];   // 修正方案第 1 轮第 2 条: files / links for this message
+      const r = await api(`/projects/${p.id}/recruiting/form/chat`, { method: "POST", body: { message: text, questions: Q, goals, need, use_library: true, ask_only: false, refs } });
       if (Array.isArray(r.questions)) { pushHist(); Q = JSON.parse(JSON.stringify(r.questions)); changedIds = diffIds(before, Q); }
       if (Array.isArray(r.goals)) goals = r.goals.slice();
       if (typeof r.need === "string") need = r.need;
-      f = { ...f, ...r }; save(); drawLeft(); drawRight(); toast(r.reply || "已更新");
+      f = { ...f, ...r }; save(); drawLeft(); drawRight(); toast((r.reply || "已更新") + ((r.cites || []).length ? `（用到：${r.cites.map((c) => `资料 ${c.n} ${c.title}`).join("、")}）` : ""));
       const first = [...changedIds][0]; if (first) requestAnimationFrame(() => alignAnchor(first));
     };
     if (send) send.onclick = guard(async () => {

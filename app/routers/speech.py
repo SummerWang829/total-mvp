@@ -72,3 +72,29 @@ async def transcribe_public(file: UploadFile = File(...), token: str = Form(...,
     audit(db, org_id, "participant", "speech.read_participant", ref, bytes=len(data), language=language)
     db.commit()
     return {"text": text}
+
+
+# Voice option B (修正方案第 1 轮第 2 条: both are built and tried before choosing): the live recogniser the interview captions use. The server only hands out a
+# short-lived signed address; the secret key never leaves the server; nothing is stored.
+@router.get("/live")
+def live_token(language: str = "zh", ctx: Ctx = Depends(require_roles(*ROLES))):
+    from ..asr_live import token_out
+    if not _allowed(ctx.user.id):
+        raise HTTPException(429, "说得太频繁了，请稍等一下再试")
+    return token_out(language)
+
+
+@public_router.post("/live")
+def live_token_public(token: str = Form(..., max_length=200), kind: str = Form("join", pattern="^(join|screen)$"), language: str = Form("zh"), db: Session = Depends(get_db)):
+    from sqlalchemy import select
+    from ..asr_live import token_out
+    from ..models import RecruitForm
+    from .public import resolve_join
+    if kind == "join":
+        itv = resolve_join(db, token).itv
+        language = itv.language if itv.language in speech.LANGUAGES else language
+    elif db.scalar(select(RecruitForm).where(RecruitForm.token == token)) is None:
+        raise HTTPException(404, "Invalid link / 链接无效")
+    if not _allowed("p:" + token[:40]):
+        raise HTTPException(429, "Too many tries / 太频繁")
+    return token_out(language)

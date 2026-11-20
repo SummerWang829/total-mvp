@@ -7,10 +7,10 @@
 .awrap h1{font-size:22px;margin:0 0 6px}
 .awrap .sub{margin:0 0 14px;color:#51675D;font-size:15px}
 .awrap .chat form textarea{min-height:56px}
-</style><link rel="stylesheet" href="/editorial.css"><link rel="stylesheet" href="/fonts.css"><link rel="stylesheet" href="/ui_v7.css"><link rel="stylesheet" href="/ui_v8.css"><link rel="stylesheet" href="/ui_font.css"></head>
+</style><link rel="stylesheet" href="/editorial.css"><link rel="stylesheet" href="/fonts.css"><link rel="stylesheet" href="/ui_v7.css"><link rel="stylesheet" href="/ui_v8.css"><link rel="stylesheet" href="/ui_font.css"><link rel="stylesheet" href="/tinput.css"></head>
 <body class="participant"><div class="pbar" id="logobar"></div>
 <div class="awrap stage t-light" id="box"><p class="mut">…</p></div>
-<script src="/app.js"></script>
+<script src="/tinput.js"></script><script src="/app.js"></script>
 <script src="/logo.js"></script>
 <script>$("#logobar").innerHTML = LOGO_SVG;</script>
 <script>
@@ -79,6 +79,7 @@ function build() {
   let info;
   try { const r = await api2(""); if (!r.ok) throw new Error(); info = await r.json(); } catch { bad(`${L.en.bad} · ${L.zh.bad}`); return; }
   x = L[info.consent.lang] || L.en;
+  window.TI_PUBLIC = { kind: "join", token: t, lang: info.consent.lang };   // voice input in the written conversation
   document.documentElement.lang = info.consent.lang === "zh" ? "zh-CN" : info.consent.lang;
   if (!info.async) return bad(x.bad);
   if (info.status === "ended") return bad(x.closed);

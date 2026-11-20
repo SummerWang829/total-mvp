@@ -1,9 +1,9 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><script src="/theme.js"></script><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Questionnaire · 星桐</title><link rel="stylesheet" href="/app.css">
-<style>.swrap{max-width:640px;margin:0 auto;padding:18px 16px 40px;display:flex;flex-direction:column;gap:14px}.swrap h1{font-size:22px;margin:0}</style><link rel="stylesheet" href="/editorial.css"><link rel="stylesheet" href="/fonts.css"><link rel="stylesheet" href="/ui_v7.css"><link rel="stylesheet" href="/ui_v8.css"><link rel="stylesheet" href="/ui_font.css"></head>
+<style>.swrap{max-width:640px;margin:0 auto;padding:18px 16px 40px;display:flex;flex-direction:column;gap:14px}.swrap h1{font-size:22px;margin:0}</style><link rel="stylesheet" href="/editorial.css"><link rel="stylesheet" href="/fonts.css"><link rel="stylesheet" href="/ui_v7.css"><link rel="stylesheet" href="/ui_v8.css"><link rel="stylesheet" href="/ui_font.css"><link rel="stylesheet" href="/tinput.css"></head>
 <body class="participant"><div class="pbar" id="logobar"></div><div class="swrap" id="box"><p class="mut">…</p></div>
-<script src="/app.js"></script>
+<script src="/tinput.js"></script><script src="/app.js"></script>
 <script src="/logo.js"></script>
 <script src="/screen_run.js"></script>
 <script>$("#logobar").innerHTML = LOGO_SVG;</script>
@@ -64,12 +64,13 @@ const fill = (s, info) => s.replace("{org}", info.org).replace("{days}", info.re
   try { info = await (await fetch(`/api/public/screen/${enc}`)).json(); if (!info.org) throw 0; } catch { box.innerHTML = `<h1>${T.en.bad} / ${T.zh.bad}</h1>`; return; }
   const offered = (info.languages && info.languages.length ? info.languages.map((l) => l.code) : [info.language || "en"]).filter((c) => T[c]);
   let lang = pickLang(offered, info.language); x = T[lang]; document.documentElement.lang = HL[lang];
+  window.TI_PUBLIC = { kind: "screen", token: t, lang };   // 修正方案第 1 轮第 2 条: voice input on the questionnaire (the recording bar says it is not kept)
   let redraw = () => {};   // draws the screen the candidate is on again, after they change the language
   if (offered.length > 1) {
     const bar = document.createElement("div"); bar.className = "lgbar";
     bar.innerHTML = `<label><span class="vh">Language</span><select id="lgsel" aria-label="Language">${offered.map((c) => `<option value="${c}"${c === lang ? " selected" : ""}>${NATIVE[c]}</option>`).join("")}</select></label>`;
     box.parentElement.insertBefore(bar, box);
-    $("#lgsel").onchange = (e) => { lang = e.target.value; x = T[lang]; document.documentElement.lang = HL[lang]; runnerLang(); const it = $("#introtxt"); if (it) it.innerHTML = introHtml(); redraw(); };
+    $("#lgsel").onchange = (e) => { lang = e.target.value; window.TI_PUBLIC.lang = lang; x = T[lang]; document.documentElement.lang = HL[lang]; runnerLang(); const it = $("#introtxt"); if (it) it.innerHTML = introHtml(); redraw(); };
   }
   let runnerLang = () => {};
   if (!info.open) { box.innerHTML = `<h1>${x.closed}</h1>`; return; }

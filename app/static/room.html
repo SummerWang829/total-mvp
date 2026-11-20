@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><script src="/theme.js"></script><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Interview room</title><link rel="stylesheet" href="/app.css"><link rel="stylesheet" href="/editorial.css"><link rel="stylesheet" href="/fonts.css"><link rel="stylesheet" href="/ui_v7.css"><link rel="stylesheet" href="/ui_v8.css"><link rel="stylesheet" href="/room-role.css"><link rel="stylesheet" href="/ui_room.css"><link rel="stylesheet" href="/emoji.css"><link rel="stylesheet" href="/room_bar.css"><script src="/emoji.js"></script><link rel="stylesheet" href="/ui_font.css"></head>
+<title>Interview room</title><link rel="stylesheet" href="/app.css"><link rel="stylesheet" href="/editorial.css"><link rel="stylesheet" href="/fonts.css"><link rel="stylesheet" href="/ui_v7.css"><link rel="stylesheet" href="/ui_v8.css"><link rel="stylesheet" href="/room-role.css"><link rel="stylesheet" href="/ui_room.css"><link rel="stylesheet" href="/emoji.css"><link rel="stylesheet" href="/room_bar.css"><script src="/emoji.js"></script><link rel="stylesheet" href="/ui_font.css"><link rel="stylesheet" href="/tinput.css"></head>
 <body class="stage t-light">
 <script>try { const staff = !new URLSearchParams(location.search).has("t"); if ((staff ? localStorage.getItem("tt_theme") : localStorage.getItem("tt_room_theme")) === "dark") document.body.className = "stage t-dark"; } catch (e) {}</script>
 <header class="rhead">
@@ -42,7 +42,7 @@
 window.__pcs = [];
 if (window.RTCPeerConnection) { const Native = window.RTCPeerConnection; window.RTCPeerConnection = function (...a) { const pc = new Native(...a); window.__pcs.push(pc); return pc; }; window.RTCPeerConnection.prototype = Native.prototype; Object.setPrototypeOf(window.RTCPeerConnection, Native); }
 </script>
-<script src="/labels.js"></script><script src="/app.js"></script>
+<script src="/labels.js"></script><script src="/tinput.js"></script><script src="/app.js"></script>
 <script src="/fairness.js"></script>
 <script src="/logo.js"></script>
 <script>document.getElementById("logo").innerHTML = LOGO_SVG;</script>
@@ -342,7 +342,7 @@ function buildPhoneRoom(ai) {   // ai: the AI-moderated interview, whose convers
   vm.innerHTML = `<button type="button" data-m="split">${esc(t.split)}</button><button type="button" data-m="big">${esc(t.big)}</button>`;
   const caps = document.createElement("div"); caps.id = "pm-caps"; caps.innerHTML = `<h4>${esc(t.caps)}</h4><div id="pm-log" role="log" aria-live="polite" tabindex="0"></div>`;
   const form = document.createElement("form"); form.id = "pm-in"; form.className = "empty";
-  form.innerHTML = `<textarea id="pm-ta" rows="1" maxlength="500" enterkeyhint="send" placeholder="${esc(T.chatPh)}" aria-label="${esc(T.chatPh)}"></textarea><button type="button" class="emo" id="pm-emo" aria-haspopup="true" aria-label="${esc(T.rxInsert)}">😊</button><button type="submit" id="pm-send" aria-label="${esc(T.send)}">↑</button>`;
+  form.innerHTML = `<textarea id="pm-ta" data-ti-voice="no" rows="1" maxlength="500" enterkeyhint="send" placeholder="${esc(T.chatPh)}" aria-label="${esc(T.chatPh)}"></textarea><button type="button" class="emo" id="pm-emo" aria-haspopup="true" aria-label="${esc(T.rxInsert)}">😊</button><button type="button" class="emo ti-micbtn" data-ti-mic="#pm-ta" aria-label="语音输入" title="语音输入"><svg class="ti-i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v3"/></svg></button><button type="submit" id="pm-send" aria-label="${esc(T.send)}">↑</button>`;
   const top = document.createElement("div"); top.id = "pm-top"; top.appendChild(vm);   // one row: the colour switch on the left, the picture switch on the right
   body.before(top); if (!ai) body.after(caps, form);
   const apply = () => {
@@ -485,7 +485,7 @@ function aiRender(st) {
 function buildParticipantChat() {
   const box = document.createElement("div"); box.className = "rpan chat"; box.id = "chatbox"; box.setAttribute("aria-label", T.chatTitle);
   box.innerHTML = `<div class="aihead">${aiFace(T.aiName)}</div><h3></h3><div class="log" id="clog" role="log" aria-live="polite"></div><p class="closed" id="cnote" role="status"></p>
-    <form id="cform" class="composer"><textarea id="cin" rows="6" maxlength="2000" disabled></textarea><div class="ctools"><button type="button" id="cemoji" class="emo" aria-haspopup="true" aria-expanded="false" disabled>😊</button><span class="ccount" id="ccount" aria-hidden="true"></span><span class="sp"></span><button class="p" id="csend" type="submit" disabled></button></div></form>`;
+    <form id="cform" class="composer"><textarea id="cin" data-ti-voice="no" rows="6" maxlength="2000" disabled></textarea><div class="ctools"><button type="button" id="cemoji" class="emo" aria-haspopup="true" aria-expanded="false" disabled>😊</button><button type="button" class="emo ti-micbtn" data-ti-mic="#cin" aria-label="语音输入" title="语音输入"><svg class="ti-i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v3"/></svg></button><span class="ccount" id="ccount" aria-hidden="true"></span><span class="sp"></span><button class="p" id="csend" type="submit" disabled></button></div></form>`;
   $("h3", box).textContent = T.chatTitle; $("#cin", box).placeholder = T.chatPh; $("#cin", box).setAttribute("aria-label", T.chatPh); $("#csend", box).textContent = T.send; $("#cemoji", box).setAttribute("aria-label", T.rxInsert); $("#cemoji", box).title = T.rxInsert;
   grid.parentNode.appendChild(box);
   const send = async () => {
@@ -514,8 +514,8 @@ function buildAiPanel() {  // the team's side: status, alert, controls, the whis
       <textarea id="gtext" rows="6" maxlength="20000" aria-label="访谈提纲"></textarea>
       <div class="row"><button id="gcheck" type="button">检查提纲</button></div><p class="sm" id="gnote" role="status"></p></details>
       <div class="row"><button class="p" id="a-start" type="button">启动 AI 主持</button>${take ? `<button id="a-take" type="button">接管</button><button id="a-back" type="button">交还 AI</button>` : ""}</div>` : ""}
-    ${take ? `<form id="hform" class="composer" hidden><label for="hin">你接管了：以主持人身份回复受访者</label><textarea id="hin" rows="5" maxlength="2000"></textarea>
-      <div class="ctools"><button type="button" id="hemoji" class="emo" aria-haspopup="true" aria-expanded="false" aria-label="表情" title="表情">😊</button><span class="sp"></span><button class="p" id="hsend" type="submit">发送给受访者</button></div></form>` : ""}`;
+    ${take ? `<form id="hform" class="composer" hidden><label for="hin">你接管了：以主持人身份回复受访者</label><textarea id="hin" data-ti-voice="no" rows="5" maxlength="2000"></textarea>
+      <div class="ctools"><button type="button" id="hemoji" class="emo" aria-haspopup="true" aria-expanded="false" aria-label="表情" title="表情">😊</button><button type="button" class="emo ti-micbtn" data-ti-mic="#hin" aria-label="语音输入" title="语音输入"><svg class="ti-i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v3"/></svg></button><span class="sp"></span><button class="p" id="hsend" type="submit">发送给受访者</button></div></form>` : ""}`;
   if (q4) {
     const box = document.createElement("div"); box.id = "aibox"; box.className = "aibox"; box.innerHTML = controls; $id("c3").prepend(box);
     aiQ4Layout();
@@ -1205,7 +1205,7 @@ async function start() {
   document.body.dataset.roomRole = role;
   document.body.classList.toggle("role-one-to-one", S.kind !== "group" && S.moderation !== "ai");
   if (role === "participant") { $id("q4").remove(); $id("brpop").remove(); }   // the team's four columns are not even in the participant's page
-  if (role === "participant") { T = I18N[S.language] || I18N.en; document.documentElement.lang = S.language || "en"; document.body.classList.add("solo"); themeLabel(); }
+  if (role === "participant") { window.TI_PUBLIC = { kind: "join", token: inviteT, lang: S.language || "en" }; if (window.TInput) TInput.scan(document); T = I18N[S.language] || I18N.en; document.documentElement.lang = S.language || "en"; document.body.classList.add("solo"); themeLabel(); }
   else if (S.kind !== "group") buildQ4();   // the four-column room
   else { $id("lpan").hidden = false; $id("rpan").hidden = false; }
   if (role === "participant" && S.moderation !== "ai" && S.one_to_one) buildPhoneRoom();   // on a phone only: CSS keeps these parts hidden on a computer

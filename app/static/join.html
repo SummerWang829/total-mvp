@@ -1,8 +1,8 @@
 <!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><script src="/theme.js"></script><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>参加访谈 · 星桐</title><link rel="stylesheet" href="/app.css"><link rel="stylesheet" href="/editorial.css"><link rel="stylesheet" href="/fonts.css"><link rel="stylesheet" href="/ui_v7.css"><link rel="stylesheet" href="/ui_v8.css"><link rel="stylesheet" href="/join-role.css"><link rel="stylesheet" href="/ui_v6.css"><link rel="stylesheet" href="/ui_font.css"></head>
+<title>参加访谈 · 星桐</title><link rel="stylesheet" href="/app.css"><link rel="stylesheet" href="/editorial.css"><link rel="stylesheet" href="/fonts.css"><link rel="stylesheet" href="/ui_v7.css"><link rel="stylesheet" href="/ui_v8.css"><link rel="stylesheet" href="/join-role.css"><link rel="stylesheet" href="/ui_v6.css"><link rel="stylesheet" href="/ui_font.css"><link rel="stylesheet" href="/tinput.css"></head>
 <body class="participant"><div class="pbar" id="logobar"></div><div class="pwrap" id="box"><p class="mut">…</p></div>
-<script src="/app.js"></script>
+<script src="/tinput.js"></script><script src="/app.js"></script>
 <script src="/logo.js"></script>
 <script>$("#logobar").innerHTML = LOGO_SVG; brandPlay();</script>
 <script>
@@ -299,6 +299,7 @@ function waitStep() {
   try { info = await pub(""); }
   catch { box.innerHTML = `<h1>${L.en.bad} · ${L.zh.bad}</h1><p class="mut">${L.en.badp}</p><p class="mut">${L.zh.badp}</p>`; return; }
   x = L[info.consent.lang] || L.en;
+  window.TI_PUBLIC = { kind: "join", token: t, lang: info.consent.lang };   // 修正方案第 1 轮第 2 条: voice input on the questions before the interview
   buildFlow();
   document.documentElement.lang = info.consent.lang === "zh" ? "zh-CN" : info.consent.lang;
   document.title = x.invite + " · 星桐";

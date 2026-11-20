@@ -413,7 +413,7 @@ async function insightsHub(p, my) {
     let scope = SCOPES.map((s) => s[0]); try { const saved = JSON.parse(sessionStorage.getItem("ichat_scope") || "null"); if (Array.isArray(saved) && saved.length) scope = saved; } catch { /* the default */ }
     const key = `ichat_${p.id}`, status = st.mock ? ["演示模式", "w"] : st.ready ? ["已连接", ""] : ["未连接", "w"];
     const answerHtml = (m) => esc(m.answer).replace(/\[(\d+)\]/g, (_, n) => `<sup class="ins-ref">[${n}]</sup>`).replace(/\n/g, "<br>");
-    const aiHtml = (m, i) => `<div class="ins-msg ai"><h5>回答</h5><div data-selk="m:${i}">${answerHtml(m)}</div>
+    const aiHtml = (m, i) => `<div class="ins-msg ai"><h5>回答</h5><div data-selk="m:${i}">${answerHtml(m)}</div>${window.TInput ? TInput.cites(m.cites) : ""}
       ${m.quotes.length ? `<h5>引用原话（从转写里原样复制）</h5>${m.quotes.map((q) => `<div class="ins-q"><b>[${q.n}]</b> “${esc(q.text)}”<small> ${esc(q.who || "")} ${q.at_ms ? insClock(q.at_ms) : ""}${q.interview_id ? ` · <a href="#/i/${q.interview_id}">看原文</a>` : ""}</small></div>`).join("")}` : ""}
       ${m.suggestions.length ? `<h5>建议（小星星助手的判断，不是受访者原话）</h5><div class="ins-sg"><ul data-selk="g:${i}">${m.suggestions.map((s) => `<li>${esc(s)}</li>`).join("")}</ul></div>` : ""}
       <div class="ins-fu">${m.followups.map((f) => `<button type="button" class="s" data-fu="${esc(f)}">${esc(f)}</button>`).join("")}${m.followups.length || m.suggestions.length ? `<button type="button" class="s" data-addq="${i}">把追问加进访谈大纲</button>` : ""}</div>
@@ -444,7 +444,8 @@ async function insightsHub(p, my) {
       drawAbort = new AbortController();
       try {
         if (!cur) { cur = await api(`/projects/${p.id}/chats`, { method: "POST" }); sessionStorage.setItem(key, cur.id); }
-        const r = await api(`/chats/${cur.id}/ask`, { method: "POST", body: { message: text, scope }, signal: drawAbort.signal });
+        const refs = window.TInput ? TInput.takeRefs("cmsg") : [];   // 修正方案第 1 轮第 2 条
+        const r = await api(`/chats/${cur.id}/ask`, { method: "POST", body: { message: text, scope, refs }, signal: drawAbort.signal });
         cur.messages.push({ role: "user", text }, r.message); cur.title = r.title;
         threads = [{ id: cur.id, title: r.title || "新对话", updated_at: new Date().toISOString().replace("Z", "") }, ...threads.filter((t) => t.id !== cur.id)];
         ok = true;
@@ -466,7 +467,7 @@ async function insightsHub(p, my) {
       ${st.ready ? "" : `<div class="card empty"><b>小星星助手暂不可用</b><span>${esc(st.message)}</span></div>`}
       <div id="cthread" class="ins-thread"></div>
       <div id="cbar" hidden></div>
-      <div class="ins-inp"><div class="rf-box"><textarea id="cmsg" rows="2" maxlength="1000" placeholder="${st.ready ? "问问研究助手，比如“受访者为什么觉得价格太贵？”" : "连接模型后才能提问"}" aria-label="提问" ${st.ready ? "" : "disabled"}></textarea><button class="p rf-send" type="button" id="csend" aria-label="发送" ${st.ready ? "" : "disabled"}>↑</button></div>
+      <div class="ins-inp"><div class="rf-box"><textarea id="cmsg" data-ti="chat" data-ti-send="#csend" rows="2" maxlength="1000" placeholder="${st.ready ? "问问研究助手，比如“受访者为什么觉得价格太贵？”" : "连接模型后才能提问"}" aria-label="提问" ${st.ready ? "" : "disabled"}></textarea><button class="p rf-send" type="button" id="csend" aria-label="发送" ${st.ready ? "" : "disabled"}>↑</button></div>
         </div></div>`;
     $("#csend").onclick = () => (busy ? (drawAbort && drawAbort.abort()) : send($("#cmsg").value));
     $("#cmsg").onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send($("#cmsg").value); } };

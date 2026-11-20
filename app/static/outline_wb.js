@@ -248,9 +248,9 @@
     const sel = S.sel ? S.d.items.find((i) => i.uid === S.sel) : null;
     return `<div class="h"><b>小星星助手</b>${sel ? `<span class="ow-pill">已选 ${E(sel.label)} · ${KIND_LABEL[sel.kind]}<a href="#" data-ow="unsel" aria-label="取消选择"> ×</a></span>` : ""}</div>
       <div class="m" id="ow-msgs"><div class="bub">${S.area !== "gen" ? ({ preview: "这是受访者真实会看到的样子。切换语言看每种语言的版本；概念卡带受访者编号水印。", rehearsal: "AI 快速检查只看方向、只作参考：我用三种不同的受访者把大纲走一遍，告诉你哪里时间不够、哪里可能听不懂。", round: "先选：做 Pilot（推荐），或者客户不做时跳过 Pilot 直接上线。发起一轮后，被邀请的人在直播间里可以按 M 标记问题。", pilot: "每条标记都要处理：接受、拒绝或暂缓；也可以在笔录里选一句话点“圈出”，写下问题；也可以直接点“生成修改建议”，我会把标记和自动发现合并成修改，每条写明去向。客户只能圈和写意见。", publish: "发布前先看检查。发布之后新场次会用这一版；仍然可以继续改。" }[S.tab]) : S.step === "overview" ? "总览按你的设定排好了。追问深度我按每个模块的目的给了默认值，你可以直接改；下面有建议，可以多选后一起采纳。" : S.step === "questions" ? "选中一道题，再告诉我怎么改；我给出的修改只是“待定”，点“接受”才会写进大纲。" : "我先把项目里已有的信息读了一遍，还缺的在左边问你。"}</div>
-      ${S.msgs.map((m) => `<div class="bub ${m.me ? "me" : ""}">${E(m.text)}</div>${(m.revs || []).map((r) => revCard(S.d.revisions.find((x) => x.id === r.id) || r)).join("")}`).join("")}${pend.map(revCard).join("")}</div>
+      ${S.msgs.map((m) => `<div class="bub ${m.me ? "me" : ""}">${E(m.text)}${window.TInput ? TInput.cites(m.cites) : ""}</div>${(m.revs || []).map((r) => revCard(S.d.revisions.find((x) => x.id === r.id) || r)).join("")}`).join("")}${pend.map(revCard).join("")}</div>
       ${sg.length ? `<div class="ow-sug"><div class="t"><b>建议</b>（最多 3 条，可多选）<span class="ow-pill">已选 ${S.adopt.size}</span></div>${sg.map((s) => `<label><input type="checkbox" aria-label="${E(s.title)}" data-ow-sg="${s.id}"${S.adopt.has(s.id) ? " checked" : ""}><span><b>${E(s.title)}</b><small>${E(s.reason)}${s.basis ? `（依据：“${E(s.basis)}”）` : ""}</small><i class="x" data-ow-dis="${s.id}">不再提醒</i></span></label>`).join("")}<button type="button" class="p s" data-ow="adopt"${S.adopt.size ? "" : " disabled"}>采纳所选，重排结构</button></div>` : ""}
-      <form class="f" id="ow-form"><textarea class="ow-ta" id="ow-in" aria-label="对小星星助手说" rows="2" placeholder="跟 AI 说……"></textarea><button type="submit" class="p s">发送</button></form>`;
+      <form class="f" id="ow-form"><textarea class="ow-ta" id="ow-in" data-ti="chat" data-ti-send="#ow-send" aria-label="对小星星助手说" rows="2" placeholder="跟 AI 说……"></textarea><button type="submit" class="p s" id="ow-send">发送</button></form>`;
   }
 
 
@@ -582,11 +582,12 @@
     if (e.target.id !== "ow-form") return;
     e.preventDefault();
     const text = val("#ow-in").trim(); if (!text || S.busy) return;
-    S.msgs.push({ me: true, text }); S.busy = true; paint();
+    const refs = window.TInput ? TInput.takeRefs("ow-in") : [];
+    S.msgs.push({ me: true, text: text + (refs.length ? `（附 ${refs.length} 份资料）` : "") }); S.busy = true; paint();
     try {
-      const r = await call("/chat", "POST", { text, selected: S.sel });
+      const r = await call("/chat", "POST", { text, selected: S.sel, refs });
       S.d = await call(""); S.adopt = null;
-      S.msgs.push({ text: r.reply, revs: r.revisions });
+      S.msgs.push({ text: r.reply, revs: r.revisions, cites: r.cites });
     } catch { /* toast shown */ }
     S.busy = false; paint();
   }

@@ -168,6 +168,14 @@ CODES_JS = """(words) => {
 }"""
 
 
+TINPUT_JS = """() => [...document.querySelectorAll('input,textarea')].filter((el) => {
+  const t = (el.getAttribute('type') || 'text').toLowerCase();
+  if (['checkbox','radio','file','hidden','range','color','submit','button','reset','image'].includes(t)) return false;
+  const r = el.getBoundingClientRect(); if (!r.width || !r.height || getComputedStyle(el).visibility === 'hidden') return false;
+  return !el.dataset.tiOn;
+}).map((el) => (el.id || el.name || el.getAttribute('aria-label') || el.placeholder || el.tagName).slice(0, 30))"""
+
+
 def audit_page(pg, label, errs, strict_contrast=True):
     pg.mouse.move(1, 1)  # a hovered button shows its orange sweep (a pseudo-element the audit cannot see), so park the pointer
     pg.wait_for_timeout(350)
@@ -181,6 +189,8 @@ def audit_page(pg, label, errs, strict_contrast=True):
     ok(not a["names"], f"[{label}] controls without a name: {a['names'][:4]}")
     ok(not a["wrap"], f"[{label}] text wraps inside buttons/tabs/tags: {a['wrap'][:4]}")
     ok(a["topH"] <= 66, f"[{label}] top bar too tall ({a['topH']}px)")
+    loose = pg.evaluate(TINPUT_JS)   # 修正方案第 1 轮第 2 条: every visible text box is the one input component (chat / field / line / plain), none left out
+    ok(not loose, f"[{label}] text boxes not made the unified input: {loose[:4]}")
     if "/#/" in pg.url and "?t=" not in pg.url:   # the researcher side only (participant pages carry their own words)
         codes = pg.evaluate(CODES_JS, CODE_WORDS)
         ok(not codes, f"[{label}] internal codes shown on the page: {codes[:4]}")
@@ -1728,9 +1738,19 @@ def outline_wb_section(br, D):
     audit_page(pg, "outline_wb questions/desktop", errs)
     pg.screenshot(path=os.path.join(ROOT, "qa_shots", "outline_wb_questions.png"))
     old = pg.locator("#owroot .ow-item textarea >> nth=0").input_value()
-    pg.click("#owroot .ow-item textarea >> nth=0"); pg.fill("#ow-in", "改得更口语一点"); pg.click("#ow-form button")
+    pg.click("#owroot .ow-item textarea >> nth=0"); pg.fill("#ow-in", "改得更口语一点"); pg.click("#owchat .ti-send")
     ok(wait_until(lambda: pg.locator("#ow-msgs [data-ow-rev=accept]").count() == 1, 8), "[outline_wb] the edit is a pending card with an accept button")
     ok(pg.locator("#owroot .ow-item textarea >> nth=0").input_value() == old, "[outline_wb] nothing is written before it is accepted")
+    # 修正方案第 1 轮第 2 条: the chat box is the unified input: attach, link, mic, round send; a file read for this message comes back as a source card
+    ok(all(pg.locator(f"#owchat .ti-box [data-tia={k}]").count() == 1 for k in ("file", "link", "mic", "send")), "[tinput] the assistant's box has attach, link, mic and send")
+    with pg.expect_file_chooser() as fc:
+        pg.click("#owchat [data-tia=file]")
+    fc.value.set_files(files=[{"name": "品牌简报.txt", "mimeType": "text/plain", "buffer": "品牌重视成分，新加坡用户常看小红书评价。".encode()}])
+    ok(wait_until(lambda: "已读取文字" in pg.inner_text("#owchat .ti-chips"), 8), "[tinput] an attached file shows as a card with how much was read")
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "fix1_b4_tinput_chat.png"))
+    audit_page(pg, "tinput chat/desktop", errs)
+    pg.fill("#ow-in", "参考这份资料"); pg.keyboard.press("Enter")
+    ok(wait_until(lambda: "资料 1 · 品牌简报.txt" in pg.inner_text("#ow-msgs"), 8) and pg.locator("#owchat .ti-chips .ti-att").count() == 0, "[tinput] Enter sends; the answer shows the source it used and the card is cleared")
     pg.click("#ow-msgs [data-ow-rev=accept]"); ok(wait_until(lambda: pg.locator("#owroot .ow-item textarea >> nth=0").input_value() != old, 6), "[outline_wb] accepting writes it into the outline")
     pg.click('[data-ow="conf-mod"]'); ok(wait_until(lambda: pg.locator("#owroot .ow-toc [data-ow-mod] .ok").count() == 1, 6), "[outline_wb] a confirmed module is ticked in the module list on the page")
     ok(pg.locator("#owstate .ow-vline").count() == 1 and len(pg.inner_text("#owstate").strip().splitlines()) == 1, "[outline_wb] the version card at the foot of the side menu is one line")
