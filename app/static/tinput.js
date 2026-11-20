@@ -188,22 +188,48 @@
     const k = el.dataset.tiOn; if (k !== "field" && k !== "line") return;
     const voice = canVoice() && el.dataset.tiVoice !== "no", attach = canAttach(el) && el.dataset.tiAttach !== "no";
     if (!voice && !attach) return;
+    if (cur && cur !== el) release(cur);
     cur = el; const f = floatEl();
     const open = k === "field" || el.dataset.tiOpen === "1";
     f.innerHTML = `${attach && open ? `<button type="button" class="ti-b" data-tia="file" aria-label="添加附件，读到的文字放进框里" title="添加附件（读到的文字放进框里）">${svg("clip")}</button><button type="button" class="ti-b" data-tia="link" aria-label="贴链接，读到的文字放进框里" title="贴链接（读到的文字放进框里）">${svg("link")}</button>` : ""}`
       + `${voice ? `<button type="button" class="ti-b" data-tia="mic" aria-label="语音输入" title="语音输入">${svg("mic")}</button>` : ""}${attach && !open ? `<button type="button" class="ti-b" data-tia="open" aria-label="展开：附件和链接" title="展开：附件和链接">${svg("more")}</button>` : ""}<span class="ti-rec" hidden></span>`;
     f.hidden = false; place();
   }
+  /* 方案 A（用户 2026-11-20 确认效果图）：小条放在框里面的右下角（单行框放右端），框为它留出空位，
+     打的字不被盖住，框外的按钮也不被挡。正在录音时小条变宽：多行框改成占用框底的一条，单行框才退到框外下方。 */
+  const PAD = new WeakMap();   // el -> {r, b: inline paddings before we touched it; br, bb: computed base paddings}
+  function reserve(el, right, bottom) {
+    if (!PAD.has(el)) { const cs = getComputedStyle(el); PAD.set(el, { r: el.style.paddingRight, b: el.style.paddingBottom, br: parseFloat(cs.paddingRight) || 0, bb: parseFloat(cs.paddingBottom) || 0 }); }
+    const p = PAD.get(el);
+    const want = [right ? p.br + right + "px" : p.r, bottom ? p.bb + bottom + "px" : p.b];
+    if (el.style.paddingRight !== want[0]) el.style.paddingRight = want[0];
+    if (el.style.paddingBottom !== want[1]) el.style.paddingBottom = want[1];
+  }
+  function release(el) { const p = el && PAD.get(el); if (!p) return; el.style.paddingRight = p.r; el.style.paddingBottom = p.b; PAD.delete(el); }
   function place() {
     if (!cur || !float || float.hidden) return;
     const r = cur.getBoundingClientRect();
     if (!r.width || r.bottom < 0 || r.top > innerHeight) { float.style.visibility = "hidden"; return; }
     float.style.visibility = "";
-    const fw = float.offsetWidth, fh = float.offsetHeight;   // just below the box's right edge: it never covers what is being typed
-    float.style.left = Math.max(4, Math.min(innerWidth - fw - 4, r.right - fw)) + "px";
-    float.style.top = (r.bottom + fh + 6 <= innerHeight ? r.bottom + 4 : Math.max(4, r.top - fh - 4)) + "px";
+    const cs = getComputedStyle(cur), bw = (k) => parseFloat(cs[k]) || 0;
+    const sb = Math.max(0, cur.offsetWidth - cur.clientWidth - bw("borderLeftWidth") - bw("borderRightWidth"));   // a textarea's own scrollbar
+    const fw = float.offsetWidth, fh = float.offsetHeight, line = cur.dataset.tiOn === "line";
+    const right = r.right - bw("borderRightWidth") - sb - 4, bottom = r.bottom - bw("borderBottomWidth") - 4;
+    let left, top;
+    if (fw + 8 + 60 <= r.width && (line || !REC.on)) {   // the usual case: inside the box, at its right end, leaving at least 60px to type in
+      reserve(cur, fw + 8, 0);
+      left = right - fw; top = line ? r.top + (r.height - fh) / 2 : bottom - fh;
+    } else if (!line) {   // recording on a multi-line box: a strip along the box's bottom
+      reserve(cur, 0, fh + 6);
+      left = Math.max(r.left + bw("borderLeftWidth") + 4, right - fw); top = bottom - fh;
+    } else {   // recording on a one-line box: too wide to fit inside, so just below it
+      reserve(cur, 0, 0);
+      left = r.right - fw; top = r.bottom + fh + 6 <= innerHeight ? r.bottom + 4 : r.top - fh - 4;
+    }
+    float.style.left = Math.max(4, Math.min(innerWidth - fw - 4, left)) + "px";
+    float.style.top = Math.max(4, Math.min(innerHeight - fh - 4, top)) + "px";
   }
-  function hideFloat() { if (REC.on) return; if (float) float.hidden = true; cur = null; }
+  function hideFloat() { if (REC.on) return; if (float) float.hidden = true; release(cur); cur = null; }
 
   function insert(el, text) {
     if (!text) return;

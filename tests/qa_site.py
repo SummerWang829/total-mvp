@@ -2890,6 +2890,16 @@ def run():
             pg.locator("[data-rd-edit]").first.click(); pg.wait_for_selector(".modal form#f textarea")
             audit_page(pg, f"dialog 校对/{vp}", errs)
             ok(pg.locator(".modal textarea[name=text_orig]").input_value() != "", f"[{vp}] edit dialog is prefilled")
+            # the voice / attach tools sit INSIDE the focused box (方案 A, user 2026-11-20): they used to hang below it and covered 保存
+            pg.click(".modal textarea[name=text_zh]"); pg.wait_for_selector(".ti-float:not([hidden])")
+            fl = pg.evaluate("""() => { const f = document.querySelector('.ti-float').getBoundingClientRect(), t = document.querySelector('.modal textarea[name=text_zh]');
+              const r = t.getBoundingClientRect(), hit = (b) => !(b.right <= f.left || b.left >= f.right || b.bottom <= f.top || b.top >= f.bottom);
+              return {inside: f.left >= r.left && f.right <= r.right && f.top >= r.top && f.bottom <= r.bottom,
+                      covers: [...document.querySelectorAll('.modal button')].filter((b) => hit(b.getBoundingClientRect())).map((b) => b.textContent.trim()),
+                      room: parseFloat(getComputedStyle(t).paddingRight) >= f.width}; }""")
+            ok(fl["inside"] and not fl["covers"] and fl["room"], f"[{vp}] the voice tools sit inside the box, leave room for the text and cover no button ({fl})")
+            pg.click(".modal h2"); pg.wait_for_timeout(250)
+            ok(pg.evaluate("() => document.querySelector('.modal textarea[name=text_zh]').style.paddingRight") == "", f"[{vp}] the box gets its own spacing back when it loses focus")
             ok(pg.evaluate("document.querySelectorAll('.modal').length") == 1, f"[{vp}] exactly one dialog open")
             pg.keyboard.press("Escape"); pg.mouse.click(3, 3); pg.wait_for_timeout(100)
             pg.goto(B + f"/#/p/{pid}/insights"); pg.wait_for_selector("main")
