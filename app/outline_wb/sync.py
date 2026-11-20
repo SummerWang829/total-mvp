@@ -68,7 +68,7 @@ def mismatch_rows(cfg: plans.PlanConfig, sub_id: str, used: dict) -> list[dict]:
         for f in FIELDS:
             same = v[f] == used[f] if f != "languages" else set(v[f]) == set(used[f])
             if not same:
-                rows.append({"sub_id": s.id, "sub_name": s.name, "field": f, "label": FIELDS[f], "plan": text_of(f, v[f]), "outline": text_of(f, used[f]), "bound": s.id == sub_id})
+                rows.append({"sub_id": s.id, "sub_name": s.name, "field": f, "label": FIELDS[f], "plan": text_of(f, v[f]), "outline": text_of(f, used[f]), "bound": s.id == sub_id, "value": used[f]})
     return rows
 
 
@@ -100,7 +100,7 @@ def _clean(field: str, value):
     return vals
 
 
-def change(db: Session, proj: Project, o: Outline, st: StudySetting, field: str, value, user_name: str = "", user_id: str = "") -> str:
+def change(db: Session, proj: Project, o: Outline, st: StudySetting, field: str, value, user_name: str = "", user_id: str = "", sub_id: str = "") -> str:
     """The outline changes one of its three values. The plan not locked: the bound sub-project in the plan is changed (it must then be reviewed again if it was under
     review). Locked: the outline keeps the value and an unlock request is written on the plan for an admin or the project manager. Returns "plan" or "requested".
 
@@ -113,7 +113,10 @@ def change(db: Session, proj: Project, o: Outline, st: StudySetting, field: str,
     plan = db.get(ProjectPlan, proj.id)
     if plan is None:
         raise svc.OutlineError("这个项目没有立项记录")
-    sid = o.sub_id or _cfg(plan).subs[0].id
+    bound = o.sub_id or _cfg(plan).subs[0].id
+    sid = sub_id or bound
+    if sid not in {s.id for s in _cfg(plan, live=False).subs}:
+        raise svc.OutlineError("没有这个子项目", 404)
     if plan.status != "published":
         raw = json.loads(plan.config_json or "{}") or plans.default_config()
         for s in raw.get("subs", []):
@@ -130,12 +133,15 @@ def change(db: Session, proj: Project, o: Outline, st: StudySetting, field: str,
             raise svc.OutlineError(str(e)) from e
         if plan.status != "draft":
             plan.status, plan.review_hash, plan.review_note = "draft", "", "生成大纲里改了访谈设定，需要重新提交审查"
+        if sid != bound:
+            return "plan"   # another sub-project changed in the plan: the outline's own values are not touched
         if plan.version == 0:   # nothing published yet: the outline reads the plan as it stands, so it no longer needs its own value
             st.answers = {k: v for k, v in (st.answers or {}).items() if k != OVERRIDE_KEYS[field]}
         else:
             st.answers = {**(st.answers or {}), OVERRIDE_KEYS[field]: value}   # unlocked: the project still runs on the published version until it is published again
         return "plan"
-    st.answers = {**(st.answers or {}), OVERRIDE_KEYS[field]: value}
+    if sid == bound:
+        st.answers = {**(st.answers or {}), OVERRIDE_KEYS[field]: value}
     req = json.loads(plan.unlock_request) if plan.unlock_request else {"changes": []}
     changes = [c for c in req.get("changes", []) if not (c["sub_id"] == sid and c["field"] == field)]
     changes.append({"sub_id": sid, "field": field, "value": value, "text": text_of(field, value)})

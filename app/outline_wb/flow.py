@@ -46,6 +46,27 @@ SLOT_KIND = {"research_type": "choice", "materials": "multi", "price": "choice",
 OTHER = "其他"   # a code missing from the dictionary is shown as this, never as the code itself
 
 
+NUM_RE = re.compile(r"^[\s　]*(?:[（(]?\d{1,2}[.、)）．]|[①②③④⑤⑥⑦⑧⑨⑩])[\s　]*")
+
+
+def clean_goals(goals) -> list[str]:
+    """修正方案第 2 轮 A3/C7: one goal per item, without its own number ("1. 2. 3." written in one line is split; "1. 1." never shows)."""
+    out: list[str] = []
+    for g in goals or []:
+        parts = re.split(r"[\s　]+(?=(?:\d{1,2}[.、．)）]|[①②③④⑤⑥⑦⑧⑨⑩])\s*\S)", str(g).strip())
+        for p in parts:
+            p = NUM_RE.sub("", p).strip()
+            if p:
+                out.append(p)
+    return out
+
+
+def price_matters(slots: dict[str, dict]) -> bool:
+    """修正方案第 2 轮 C5: 价格怎么谈 only for a concept or pricing study, or when there is something to show."""
+    mats = [m for m in (slots.get("materials", {}).get("value") or []) if m and m != "none"]
+    return slots.get("research_type", {}).get("value") in ("concept", "pricing") or bool(mats)
+
+
 def slot_text(name: str, value) -> str:
     """The Chinese a person reads for a slot's value: never an internal code such as usage / none / skip / after_concept."""
     if name == "research_type":
@@ -122,7 +143,8 @@ def ask_score(slot: Slot, confidence: float) -> float:
 def next_questions(slots: dict[str, dict], round_no: int, already_asked: int = 0) -> list[dict]:
     """What to ask in this round: the highest scores first, at most three in a round and ten in all, none below ASK_MIN_SCORE."""
     left = max(0, MAX_TOTAL - already_asked)
-    scored = sorted(((ask_score(s, slots[s.name]["confidence"]), s) for s in SLOT_DEFS if s.round == round_no), key=lambda x: -x[0])
+    has = lambda n: slots[n]["source"] != "none"   # 修正方案第 2 轮 C4: what 已经知道的 shows is not asked again
+    scored = sorted(((ask_score(s, slots[s.name]["confidence"]), s) for s in SLOT_DEFS if s.round == round_no and not has(s.name) and (s.name != "price" or price_matters(slots))), key=lambda x: -x[0])
     out = []
     for score, s in scored:
         if score < ASK_MIN_SCORE or len(out) >= min(MAX_PER_ROUND, left):
@@ -163,7 +185,10 @@ def build_modules(slots: dict[str, dict], context: dict) -> list[dict]:
     if any(m in mats for m in ("video", "website")):
         mods.append(_module("brand", "品牌与任务", "看短片或完成网站任务后的反应", "看法、卡在哪里", "brand", [], "deep", [m for m in mats if m in ("video", "website")]))
     mods.append(_module("close", "收尾", "补充遗漏、致谢", "还有什么想说的", "close", [], "none"))
-    mods.sort(key=lambda m: (RANK[m["kind"]], m["id"]))
+    # 修正方案第 2 轮 C13: the modules follow the order of the questions to answer; warm-up first, the material, price and closing at the end
+    tail = {"concept": 3, "price": 4, "brand": 5}
+    mods.sort(key=lambda m: (0, 0) if m["kind"] == "warm" else (9, 0) if m["kind"] == "close" else (2 + tail[m["kind"]], 0) if m["kind"] in tail and not m["serves"]
+              else (1 if m["kind"] not in tail else 2 + tail[m["kind"]], m["serves"][0] if m["serves"] else 99))
     return allocate(mods, int(slots["minutes"]["value"] or 45))
 
 
@@ -233,8 +258,8 @@ def findings(modules: list[dict], context: dict, slots: dict[str, dict]) -> list
             out.append({"id": f"cover{i}", "level": "warn", "text": f"问题{i}“{_short(k)}”只有 {n} 道题，建议至少 2 道"})
     if sum(m["minutes"] for m in modules) != total:
         out.append({"id": "total", "level": "warn", "text": f"模块合计 {sum(m['minutes'] for m in modules)} 分，与设定的 {total} 分不一致"})
-    ranks = [RANK[m["kind"]] for m in modules]
-    if ranks != sorted(ranks):
+    kinds = [m["kind"] for m in modules]
+    if (kinds and (kinds[0] != "warm" and "warm" in kinds or kinds[-1] != "close" and "close" in kinds)) or ("concept" in kinds and "price" in kinds and kinds.index("price") < kinds.index("concept")):
         out.append({"id": "order", "level": "warn", "text": "模块顺序不符合“先行为后态度、先无提示后有提示、先概念后价格”"})
     for m in modules:
         if m.get("tight"):

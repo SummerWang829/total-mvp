@@ -1729,6 +1729,15 @@ def outline_wb_section(br, D):
     ok(wait_until(lambda: pg.locator("#owroot .ow-stale").count() == 1, 6), "[outline_wb] what was made from the old settings is flagged 需要重新生成, not overwritten")
     pg.screenshot(path=os.path.join(ROOT, "qa_shots", "fix1_b3_stale.png"))
     pg.click('[data-ow="stale-keep"]'); ok(wait_until(lambda: pg.locator("#owroot .ow-stale").count() == 0, 6), "[outline_wb] 不用重新生成 takes the bar away")
+    # 修正方案第 2 轮 C9/C10: entering a module writes its questions by itself; 继续 and 关注问题 open only when every module is confirmed
+    ok(pg.locator("#owroot .ow-steps [data-ow-step=focus].lock").count() == 1 and pg.locator("#owroot .ow-nav [data-ow-step=focus]").count() == 0, "[outline_wb] 继续 is not there before every module is confirmed")
+    for _ in range(12):
+        if pg.locator("#owroot .ow-steps [data-ow-step=focus].lock").count() == 0:
+            break
+        wait_until(lambda: pg.locator('#owroot [data-ow="conf-mod"]').count() == 1, 10)   # the module's questions were written without a click
+        pg.click('#owroot [data-ow="conf-mod"]'); pg.wait_for_timeout(400)
+    ok(wait_until(lambda: pg.locator("#owroot .ow-steps [data-ow-step=focus].lock").count() == 0 and (pg.locator("#owroot .ow-nav [data-ow-step=focus]").count() == 1 or pg.locator("#owroot .ow-steps .ow-st.on").inner_text().strip().endswith("关注问题")), 6)
+       and pg.locator("#owroot .bk").count() == 0, "[outline_wb] after the last module the way on opens (继续 or straight to 关注问题); there is no 备选 box")
     pg.click("#owroot .ow-steps [data-ow-step=focus]"); pg.fill("#ow-focus-in", "用户平时喜欢哪些广告？"); pg.click('[data-ow="focus-add"]')
     pg.wait_for_selector("#owroot [data-ow-fdd]"); pg.click("#owroot [data-ow-fdd]")
     ok(pg.locator("#owroot .ow-fdd-p [data-ow-fopt^='uid:']").count() >= 2 and pg.locator("#owroot .ow-fdd-p [data-ow-fopt=idea]").count() == 1 and pg.locator("#owroot .ow-fdd-p [data-ow-fopt=none]").count() == 1,

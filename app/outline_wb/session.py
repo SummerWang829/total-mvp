@@ -57,7 +57,7 @@ def context_of(db: Session, proj: Project, st: StudySetting) -> dict:
     lang = next((x for x in langs if x in ("zh", "en")), proj.language if proj.language in ("zh", "en") else "zh")
     if settings.moderator_provider == "mock":
         lang = "zh"   # the offline demo only has Chinese sample questions
-    return {"background": " ".join((proj.brief or "").split()), "goals": [g for g in (f.goals if f else []) if str(g).strip()], "audience": (f.need if f else "") or "", "minutes": minutes,
+    return {"background": " ".join((proj.brief or "").split()), "goals": flow.clean_goals(f.goals if f else []), "audience": (f.need if f else "") or "", "minutes": minutes,
             "language": lang, "languages": langs, "format": fmt, "host": proj.host_mode, "rotate": bool((st.overview or {}).get("context", {}).get("rotate")), "sync": sy}
 
 
@@ -110,7 +110,7 @@ def view(db: Session, proj: Project, user_id: str = "") -> dict:
     done = db.scalar(select(func.count()).select_from(Interview).where(Interview.project_id == proj.id, Interview.is_pilot.is_(True), Interview.status == "ended")) or 0
     return {"pilot_done": done, "versions": stage3.versions(db, proj), "outline_id": o.id, "version": {"id": v.id, "number": v.number, "rev": v.rev, "status": v.status, "used_by": svc.usage_count(db, v.id)}, "context": ctx,
             "slots": {k: {"value": s["value"], "source": s["source"], "confidence": s["confidence"], "text": flow.slot_text(k, s["value"]), "edit": flow.SLOT_KIND.get(k, "text"),
-                          "options": flow.slot_options(k)} for k, s in slots.items()}, "round_questions": rounds, "step": step, "gates": gates,
+                          "options": flow.slot_options(k)} for k, s in slots.items() if k != "price" or flow.price_matters(slots)}, "round_questions": rounds, "step": step, "gates": gates,
             "stale": bool(mods) and bool(ov.get("fp")) and ov.get("fp") != flow.fingerprint(slots, ctx["background"]), "reset": _reset_state(db, st, v),
             "steps": [{"key": k, "label": lab} for k, lab in STEPS], "overview": {"modules": mods, "totals": flow.totals(mods) if mods else {}, "findings": flow.findings(mods, ctx, slots) if mods else [],
             "depth_labels": flow.DEPTH_LABELS}, "suggestions": sugg, "revisions": pending, "focus": _focus_views(db, proj, v.id),
@@ -170,12 +170,14 @@ def answer(db: Session, proj: Project, slot: str, value, user_id: str = "") -> N
     st.answers = {**(st.answers or {}), slot: value}
 
 
-def build_overview(db: Session, proj: Project, user_id: str = "") -> dict:
+def build_overview(db: Session, proj: Project, user_id: str = "", chat=None) -> dict:
     """The overview table from what is known (all rounds' answers). Makes the table again; modules already written keep their questions only when the module still exists."""
     o, v, st = ensure(db, proj, user_id)
     ctx = context_of(db, proj, st)
     slots = _slots(ctx, st)
     mods = flow.build_modules(slots, ctx)
+    writer.name_modules(chat, mods, ctx)   # 修正方案第 2 轮 C13: short whole names (the model when there is one, otherwise the rule)
+    st.reset_backup, st.reset_at = None, None   # C8: going on to the overview means the restart is meant
     _save_ov(st, {"modules": mods, "dismissed": _ov(st).get("dismissed", []), "context": {"rotate": ctx["rotate"]}, "minutes": int(slots["minutes"]["value"] or 45), "fp": flow.fingerprint(slots, ctx["background"])})
     st.gates = {**(st.gates or {}), "goal": True, "people": True}
     _drop_orphans(db, v, mods)
@@ -275,9 +277,10 @@ def generate_module(db: Session, proj: Project, mid: str, chat, user_id: str = "
     ctx = context_of(db, proj, st)
     ov = _ov(st)
     m = _module(ov, mid)
-    qs = writer.write_module(chat, m, ctx, ctx["language"], ctx["format"])
+    kept = [it for it in svc.items_of(db, v.id) if it.module == mid and (it.config or {}).get("accepted")]   # 修正方案第 2 轮 C11: questions accepted from the dialog stay
+    qs = writer.write_module(chat, m, ctx, ctx["language"], ctx["format"], keep=[i.texts.get(ctx["language"], "") for i in kept])
     for it in svc.items_of(db, v.id):
-        if it.module == mid:
+        if it.module == mid and it not in kept:
             db.delete(it)
     db.flush()
     for q in qs:
@@ -301,18 +304,27 @@ def confirm_module(db: Session, proj: Project, mid: str, user_id: str = "") -> d
     return view(db, proj, user_id)
 
 
-def chat_turn(db: Session, proj: Project, chat, text: str, selected: str, user_id: str = "", refs: list | None = None) -> dict:
+def chat_turn(db: Session, proj: Project, chat, text: str, selected: str, user_id: str = "", refs: list | None = None, step: str = "", module: str = "") -> dict:
     """The side dialog: the model proposes up to three edits; each is checked here and stored as a pending revision (a blocked one is stored too, shown as blocked, and cannot be accepted)."""
     o, v, st = ensure(db, proj, user_id)
     ctx = context_of(db, proj, st)
-    items = [{"uid": i.item_uid, "label": i.label, "kind": i.kind, "text": i.texts.get(ctx["language"]) or ""} for i in svc.items_of(db, v.id)][:MAX_CHAT_OUTLINE]
+    if step in ("goal", "people"):   # 修正方案第 2 轮 C3: on these pages the dialog changes 已经知道的, never the questions
+        return _slot_turn(db, proj, st, ctx, chat, text, user_id)
+    items = [{"uid": i.item_uid, "label": i.label, "kind": i.kind, "text": i.texts.get(ctx["language"]) or "", "module": i.module} for i in svc.items_of(db, v.id)][:MAX_CHAT_OUTLINE]
     from .. import refs as refs_mod
     mat, cat = refs_mod.material(db, proj.org_id, proj.id, refs or [])
     reply, ops = writer.chat_ops(chat, items, selected, text, mat)
     reply, cites = refs_mod.cite(reply, cat)
     made: list[Revision] = []
     for op in ops:
-        after = op.get("after") if isinstance(op.get("after"), dict) else {}
+        after = dict(op.get("after")) if isinstance(op.get("after"), dict) else {}
+        if op.get("op") == "insert":   # a question the AI adds: its words, kind and the module it belongs to (the selected question's, else the page's module)
+            near = next((i for i in items if i["uid"] == op.get("item_uid")), None)
+            mod = (near or {}).get("module") or module
+            if not op.get("item_uid") or near is None:
+                last = [i for i in items if i["module"] == mod][-1:] or items[-1:]
+                op = {**op, "item_uid": last[0]["uid"] if last else ""}
+            after = {**after, "kind": "question", "module": mod, "texts": {ctx["language"]: str(after.get("text", ""))[:300]}, "minutes": 2.0, "config": {"depth": "shallow", "accepted": True}}
         q = quality.check_question(str(after.get("text", "")), ctx["language"], ctx["format"]) if op.get("op") in ("rewrite", "add_followup", "insert") and after.get("text") else {"blocked": False, "issues": []}
         before = {}
         it = next((i for i in svc.items_of(db, v.id) if i.item_uid == op.get("item_uid")), None)
@@ -608,11 +620,23 @@ def revise_idea(db: Session, proj: Project, fid: str, text: str, user_id: str, r
 
 # ---- 修正方案第 1 轮第 5 条：时长、形式、语言以立项子项目为准 ---------------------------------------------------------------------
 
-def set_sync(db: Session, proj: Project, field: str, value, user_id: str = "", user_name: str = "") -> str:
-    """Change the outline's length, format or languages: in the plan when it is not locked, otherwise as an unlock request. Returns "plan" or "requested"."""
+def set_sync(db: Session, proj: Project, field: str, value, user_id: str = "", user_name: str = "", sub_id: str = "") -> str:
+    """Change the outline's length, format or languages: in the plan when it is not locked, otherwise as an unlock request. Returns "plan" or "requested".
+    `sub_id`: another sub-project sharing this outline (修正方案第 2 轮 C1: “把马来西亚也改成 45 分钟”)."""
     from . import sync
     o, _, st = ensure(db, proj, user_id)
-    return sync.change(db, proj, o, st, field, value, user_name, user_id)
+    return sync.change(db, proj, o, st, field, value, user_name, user_id, sub_id=sub_id)
+
+
+def drop_sync(db: Session, proj: Project, field: str, user_id: str = "") -> dict:
+    """修正方案第 2 轮 C1 “改回立项的值”: the outline stops holding its own value and follows the 立项 again."""
+    from . import sync
+    _, _, st = ensure(db, proj, user_id)
+    key = sync.OVERRIDE_KEYS.get(field)
+    if key is None:
+        raise svc.OutlineError("只能改访谈时长、形式或语言")
+    st.answers = {k: v for k, v in (st.answers or {}).items() if k != key}
+    return view(db, proj, user_id)
 
 
 def bind_sub(db: Session, proj: Project, sub_id: str, user_id: str = "") -> dict:
@@ -621,3 +645,17 @@ def bind_sub(db: Session, proj: Project, sub_id: str, user_id: str = "") -> dict
     sync.bind(db, proj, o, sub_id)
     db.flush()
     return view(db, proj, user_id)
+
+
+def _slot_turn(db: Session, proj: Project, st: StudySetting, ctx: dict, chat, text: str, user_id: str) -> dict:
+    """修正方案第 2 轮 C3: the dialog on 目标 / 人群与执行 changes 已经知道的 (research type, questions, people, materials, price) directly, checked like the “改” buttons."""
+    slots = _slots(ctx, st)
+    reply, changes = writer.slot_ops(chat, {k: {"value": v["value"], "text": flow.slot_text(k, v["value"]), "options": flow.slot_options(k)} for k, v in slots.items()}, text)
+    done = []
+    for name, value in changes.items():
+        try:
+            answer(db, proj, name, value, user_id)
+            done.append(name)
+        except (svc.OutlineError, ValueError, TypeError):
+            continue
+    return {"reply": reply if done or not changes else "这个改动没有生效，请用“改”按钮直接改。", "cites": [], "revisions": [], "changed": done}

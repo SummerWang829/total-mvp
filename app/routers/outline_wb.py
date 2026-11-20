@@ -46,6 +46,8 @@ class ChatBody(BaseModel):
     text: str = Field(min_length=1, max_length=2000)
     selected: str = Field(default="", max_length=40)
     refs: list[RefIn] = Field(default_factory=list, max_length=5)   # 修正方案第 1 轮第 2 条: files / links / project material for this message
+    step: str = Field(default="", max_length=12)    # 修正方案第 2 轮 C3: the page the dialog is on (goal / people change 已经知道的 only)
+    module: str = Field(default="", max_length=80)  # the module on screen (where a question the AI adds goes)
 
 
 class DecideBody(BaseModel):
@@ -141,6 +143,11 @@ class TextBody(BaseModel):
 class SyncBody(BaseModel):
     field: str = Field(max_length=12)
     value: int | str | list[str]
+    sub_id: str = Field(default="", max_length=20)
+
+
+class SyncDropBody(BaseModel):
+    field: str = Field(max_length=12)
 
 
 class SubBody(BaseModel):
@@ -206,7 +213,7 @@ def answer(pid: str, body: AnswerBody, ctx: Ctx = Depends(require_roles(*STAFF))
 
 @router.post("/overview")
 def build_overview(pid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
-    return _run(db, sess.build_overview, db, _project(db, ctx, pid), ctx.user.id)
+    return _run(db, sess.build_overview, db, _project(db, ctx, pid), ctx.user.id, _chat())
 
 
 @router.put("/overview/modules/{mid}")
@@ -252,7 +259,7 @@ def chat(pid: str, body: ChatBody, ctx: Ctx = Depends(require_roles(*STAFF)), db
     p = _project(db, ctx, pid)
     if assistant_identity.asks_identity(body.text):   # "你是什么模型": answered here, before any model is asked
         return {"reply": assistant_identity.REPLY, "revisions": []}
-    return _run(db, sess.chat_turn, db, p, _chat(), body.text, body.selected, ctx.user.id, body.refs)
+    return _run(db, sess.chat_turn, db, p, _chat(), body.text, body.selected, ctx.user.id, body.refs, body.step, body.module)
 
 
 @router.post("/revisions/{rid}/accept")
@@ -316,7 +323,7 @@ def keep_overview(pid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Sessi
 def set_sync(pid: str, body: SyncBody, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
     """修正方案第 1 轮第 5 条: change length / format / languages; written into the 立项 when it is not locked, otherwise an unlock request (and a mail to who can unlock)."""
     p = _project(db, ctx, pid)
-    how = _run(db, sess.set_sync, db, p, body.field, body.value, ctx.user.id, ctx.user.name)
+    how = _run(db, sess.set_sync, db, p, body.field, body.value, ctx.user.id, ctx.user.name, body.sub_id)
     audit(db, ctx.org_id, ctx.actor, "plan.save" if how == "plan" else "plan.unlock_request", pid, ip=ctx.ip, field=body.field, source="outline_wb")
     if how == "requested":
         _mail_unlockers(db, p, ctx.user.name)
@@ -338,6 +345,12 @@ def _mail_unlockers(db: Session, p: Project, who: str) -> None:
                              p.org_id, subject=f"立项解锁申请：{p.name}", ref_id=p.id)
             except RuntimeError:
                 continue
+
+
+@router.post("/sync/drop")
+def drop_sync(pid: str, body: SyncDropBody, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    """修正方案第 2 轮 C1 “改回立项的值”."""
+    return _run(db, sess.drop_sync, db, _project(db, ctx, pid), body.field, ctx.user.id)
 
 
 @router.put("/sub")

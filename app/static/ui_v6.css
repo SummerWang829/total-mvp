@@ -16,4 +16,4 @@ body.participant .pwrap>h1{font-family:var(--fd);color:var(--brand);font-size:cl
 body.participant .pwrap>:is(p,div):not(.card):has(~ .card){color:var(--mut)}
 body.participant .card{border-radius:16px;box-shadow:none;border-color:var(--line)}
 /* logo 放在白色小底上，保留原来的颜色 */
-body.participant .pbar svg{background:#fff;border-radius:10px;padding:6px}
+body.participant .pbar svg{background:none;border-radius:0;padding:0}   /* 用户 2026-11-20：logo 融入底色，不要白色方块 */

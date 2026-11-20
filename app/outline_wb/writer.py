@@ -82,13 +82,14 @@ def _mock_questions(module: dict, context: dict) -> list[dict]:
     return [{"text": t, "followups": [fu] if fu else [], "must_cover": [], "minutes": round(module["minutes"] / n, 1), "backup": False} for t in texts]
 
 
-def write_module(chat: ModeratorChatProvider | None, module: dict, context: dict, lang: str = "zh", fmt: str = "") -> list[dict]:
+def write_module(chat: ModeratorChatProvider | None, module: dict, context: dict, lang: str = "zh", fmt: str = "", keep: list[str] | None = None) -> list[dict]:
     """The questions of one module: [{text, followups, must_cover, minutes, backup}]. Questions the quality gate blocks are dropped (and the gap is filled from the template)."""
     from . import quality
     if chat is None:
         qs = _mock_questions(module, context)
     else:
-        raw = _ask(chat, MODULE_PROMPT, {"MODULE": {k: module[k] for k in ("name", "purpose", "content", "minutes", "questions", "depth")}, "CONTEXT": {"background": context.get("background", ""), "goals": context.get("goals", []), "audience": context.get("audience", "")}, "LANGUAGE": lang, "FORMAT": fmt})
+        raw = _ask(chat, MODULE_PROMPT, {"MODULE": {k: module[k] for k in ("name", "purpose", "content", "minutes", "questions", "depth")}, "CONTEXT": {"background": context.get("background", ""), "goals": context.get("goals", []), "audience": context.get("audience", "")}, "LANGUAGE": lang, "FORMAT": fmt,
+                                           **({"ALREADY_ACCEPTED": [k for k in keep if k][:6], "NOTE": "These questions stay in the module as they are; write the others around them and do not repeat them."} if keep else {})})
         qs = []
         for q in raw.get("questions", []) if isinstance(raw.get("questions"), list) else []:
             if isinstance(q, dict) and str(q.get("text", "")).strip():
@@ -188,3 +189,64 @@ def code_answer(chat: ModeratorChatProvider | None, question: str, codes: list[s
     if codes and code not in codes:
         code, conf = "其他", min(conf, 0.5)
     return code, conf
+
+
+NAME_PROMPT = SYSTEM_RULES + (' Task: give each interview-outline module a short whole name (4-8 Chinese characters, a noun phrase such as 售后痛点 or 品牌认知对比, never a cut-off sentence). '
+                              'Input: MODULES [{id, purpose}]. Output {"names":{"<id>":"name"}}.')
+VERB_RE = re.compile(r"^(?:对比|比较|识别|观察|了解|探索|评估|测试|弄清|找出|看看|分析)")
+
+
+def _rule_name(text: str) -> str:
+    """A module name without a model: the part after the last 的 (the thing the question is about), else the start; never a cut-off half sentence."""
+    t = re.sub(r"^回答[:：]\s*", "", str(text or "")).strip().rstrip("。.？?")
+    t = VERB_RE.sub("", t)
+    tail = t.split("的")[-1] if "的" in t else t
+    if len(tail) < 4 and "的" in t:
+        tail = t.split("的")[-2][-4:] + tail
+    tail = re.split(r"[，,、；;]", tail)[0]
+    if len(tail) > 8:   # never cut a word in half: keep the first of "A 与 B"
+        for sep in "与和及":
+            if sep in tail and len(tail.split(sep)[0]) >= 2:
+                tail = tail.split(sep)[0]
+                break
+    return tail[:8] or "访谈模块"
+
+
+def name_modules(chat: ModeratorChatProvider | None, modules: list[dict], context: dict) -> None:
+    """修正方案第 2 轮 C13: the modules made from the questions to answer get short whole names (in place). Warm-up, closing, concept and price keep theirs."""
+    todo = [m for m in modules if m["kind"] in ("behaviour", "attitude")]
+    if not todo:
+        return
+    names: dict = {}
+    if chat is not None:
+        try:
+            raw = _ask(chat, NAME_PROMPT, {"MODULES": [{"id": m["id"], "purpose": m["purpose"]} for m in todo]})
+            names = raw.get("names") if isinstance(raw.get("names"), dict) else {}
+        except ChatFatalError:
+            raise
+        except ChatError as e:
+            log.warning("outline_wb: module names failed (%s); rule names used", type(e).__name__)
+    for m in todo:
+        n = " ".join(str(names.get(m["id"], "")).split())
+        m["name"] = n[:10] if 2 <= len(n) <= 10 else _rule_name(m["purpose"])
+
+
+SLOT_PROMPT = SYSTEM_RULES + (' Task: the researcher asks to change what is known about the study. Input: SLOTS {name: {value, text, options}}, USER. '
+                              'Change only these slots: research_type, key_questions (a list of up to 4), audience (text), materials (a list of option values, ["none"] for no material), price. '
+                              'Use only option values that exist. Output {"reply":"one short Chinese sentence saying what was changed","changes":{"<slot>":value}}; changes may be empty when nothing fits.')
+MAT_WORDS = {"概念": "concept", "图片": "image", "包装": "image", "实物": "image", "视频": "video", "短片": "video", "网站": "website", "网页": "website"}
+
+
+def slot_ops(chat: ModeratorChatProvider | None, slots: dict, text: str) -> tuple[str, dict]:
+    """修正方案第 2 轮 C3: (reply, {slot: new value}) for the dialog on 目标 / 人群与执行. The caller checks every value like the “改” button does."""
+    if chat is None:
+        if "物料" in text or "素材" in text:
+            if re.search(r"不看|不要|不用|没有", text):
+                return "已把“物料”改成“不看素材”。", {"materials": ["none"]}
+            picked = [v for w, v in MAT_WORDS.items() if w in text] or ["concept"]
+            return "已把“物料”改成看素材：" + "、".join(dict.fromkeys(picked)) + "。要换成别的素材吗？", {"materials": list(dict.fromkeys(picked))}
+        return "（演示模式）这一页只改“已经知道的”，比如“物料改成概念卡”。", {}
+    raw = _ask(chat, SLOT_PROMPT, {"SLOTS": slots, "USER": text})
+    changes = raw.get("changes") if isinstance(raw.get("changes"), dict) else {}
+    allowed = {"research_type", "key_questions", "audience", "materials", "price"}
+    return " ".join(str(raw.get("reply", "")).split())[:200] or "好的。", {k: v for k, v in changes.items() if k in allowed}

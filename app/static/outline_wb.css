@@ -220,3 +220,8 @@ html[data-theme="dark"] .ow-stale{background:#3A2E10;border-color:#8A6A1C;color:
 /* 修正方案第 1 轮第 5 条：大纲对应的子项目 */
 .ow-card h3 .ow-subpick{font-weight:400;font-size:13px;margin-left:10px;display:inline-flex;gap:8px;align-items:center;flex-wrap:wrap}
 .ow-subpick .ow-sel{min-height:32px}
+
+/* 修正方案第 2 轮 C1：和立项不一致的每一条都有按钮 */
+.ow-mis{flex-direction:column;align-items:stretch}.ow-misrow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:4px 0;border-top:1px dashed #E3B94A}.ow-misrow:first-of-type{border-top:0}
+.ow-misrow .sp{flex:1}.ow-misrow button{min-height:32px}
+.ow-row a.btn{min-height:32px;display:inline-flex;align-items:center;padding:0 14px;border-radius:8px;text-decoration:none;font-weight:700;white-space:nowrap}
