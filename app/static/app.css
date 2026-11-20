@@ -1213,6 +1213,7 @@ body.q4mode .q4{display:grid;grid-template-columns:1.3fr 1.3fr 1fr 1fr;gap:10px;
 @media (max-width:1000px){body.q4mode .q4{grid-template-columns:1fr;height:auto}.q4 .qt{height:220px}.q4 .qp{max-height:420px}}
 
 .q4 .qc2 .qp.cp h3 span{color:#BFD9CE}
+.q4 .qc2 .qp.cp .cap.live{color:#BFD9CE;border-color:#4E7466}   /* the line still being recognised sits on the dark-green caption column in both room themes: 8.6:1 */
 
 .q4 #stim img{max-height:150px;object-fit:contain;max-width:100%}.q4 #stim iframe{height:150px;width:100%}
 

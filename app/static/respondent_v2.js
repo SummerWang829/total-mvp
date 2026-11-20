@@ -193,7 +193,7 @@ async function openRespondent(iid, tab) {   // eslint-disable-line no-redeclare
         <div class="rd-turn"><div class="rd-lbl"><i></i>${it.moderation === "ai" ? L("AI 主持人", "AI moderator") : L("主持人", "Moderator")}</div><div class="rd-modtxt">${escAttr(askOf(g))}</div></div>
         <div class="rd-turn part"><div class="rd-bubble" data-rd-i="${i}" data-rd-at="${g.at}">
             <div class="rd-lbl"><i></i>${L("受访者", "Participant")}</div>
-            <div class="rd-acts"><span>${clock(g.at)}</span>${staff && g.parts.length ? `<button type="button" data-rd-edit="${i}" title="${L("校对转写", "Edit transcript")}">✎</button>` : ""}<button type="button" data-rd-seek="${i}" title="${L("播放这一段", "Play this segment")}">▶</button></div>
+            <div class="rd-acts"><span>${clock(g.at)}</span>${staff && said(g).length ? `<button type="button" data-rd-edit="${i}" title="${L("校对转写", "Edit transcript")}">✎</button>` : ""}<button type="button" data-rd-seek="${i}" title="${L("播放这一段", "Play this segment")}">▶</button></div>
             <div class="rd-txt" data-rd-txt="${i}">${escAttr(txtOf(g) || (lang === "en" ? (state.transMsg || L("English 译文待生成", "English translation pending")) : "—"))}</div>
             <div class="rd-dur">${L("时长", "Duration")} ${clock((g.end || g.at) - g.at)} · ${L("点文字或 ▶ 定位视频", "Click text or ▶ to seek the video")}</div>
           </div></div></div>`).join("")
@@ -319,9 +319,11 @@ async function openRespondent(iid, tab) {   // eslint-disable-line no-redeclare
     } catch (e) { setTransState(""); toast(L("翻译失败：", "Translation failed: ") + e.message, true); }
     finally { state.translating = false; }
   }
+  /* 一题的 parts 里也有主持人的提问那一句：校对 ✎ 改的是受访者的回答，不是提问 */
+  function said(g) { return g.parts.filter((p) => p.speaker !== "moderator"); }
   function editSeg(i) {
-    const g = qa[i]; if (!g || !g.parts.length) return;
-    const s = g.parts[0];
+    const g = qa[i]; const own = g ? said(g) : []; if (!own.length) return;
+    const s = own[0];
     const m = modal(`<h2>${L("校对转写", "Edit transcript")}</h2><p class="sm mut">${L("改动会记入审计日志。可让模型先给一版纠错建议，人工确认后再保存。", "Changes are audited. You can ask the model for a suggestion, then confirm before saving.")}</p>
       <form id="f"><label class="f"><span>${L("原文", "Original")}</span><textarea name="text_orig" rows="3" required>${escAttr(s.text_orig)}</textarea></label>
       <label class="f"><span>${L("中文翻译", "Chinese translation")}</span><textarea name="text_zh" rows="3">${escAttr(s.text_zh || "")}</textarea></label>
@@ -338,8 +340,8 @@ async function openRespondent(iid, tab) {   // eslint-disable-line no-redeclare
       const no = String(fd.get("text_orig") || ""), nz = String(fd.get("text_zh") || "");
       const r = await api(`/transcript/${s.id}`, { method: "PATCH", body: { text_orig: no, text_zh: nz } });
       s.text_orig = no; s.text_zh = nz;
-      g.text = g.parts.map((p) => p.text_orig || "").join(" ");
-      g.zh = g.parts.map((p) => p.text_zh || "").filter(Boolean).join(" ");
+      g.text = said(g).map((p) => p.text_orig || "").join(" ");
+      g.zh = said(g).map((p) => p.text_zh || "").filter(Boolean).join(" ");
       const cell = document.querySelector(`[data-rd-txt="${i}"]`); if (cell) cell.textContent = txtOf(g) || no;
       m.remove(); toast(r && r.insights_flagged ? L(`已保存，${r.insights_flagged} 条洞察需要重新复核`, `Saved; ${r.insights_flagged} insight(s) need review again`) : L("已保存（已记入审计日志）", "Saved (audit logged)"));   // an approved insight that quoted the old words goes back to review
     });
