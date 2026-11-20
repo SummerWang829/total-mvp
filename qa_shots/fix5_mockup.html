@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>修正方案第 5 轮 效果图</title>
+<style>
+:root{--g:#0B382C;--o:#FF6A00;--line:#e5e7eb;--m:#6b7280}
+body{margin:0;background:#f4f5f7;font:14px/1.6 "Microsoft YaHei",Inter,sans-serif;color:#333}
+.wrap{max-width:1100px;margin:0 auto;padding:24px 16px 60px}
+h1{font-size:22px;margin:0 0 4px}h2{font-size:17px;margin:28px 0 10px;color:var(--g)}
+.row{display:flex;gap:14px;flex-wrap:wrap}.col{flex:1;min-width:300px}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px;margin:8px 0}
+.no{display:inline-block;background:var(--o);color:#fff;border-radius:6px;padding:0 7px;font-size:12px;margin-right:6px}
+.before{border-left:4px solid #d33}.after{border-left:4px solid #1a8a5a}
+.lbl{font-size:12px;color:var(--m)}
+.btn{display:inline-block;border-radius:8px;padding:5px 12px;font-weight:700;font-size:13px;border:1px solid var(--line);background:#fff}
+.btn.p{background:var(--o);color:#fff;border-color:var(--o)}
+.chip{display:inline-block;background:#f1f2f4;border-radius:12px;padding:1px 9px;margin:2px;font-size:12px}
+.chat{background:#f7f7f8;border-radius:10px;padding:10px;font-size:13px}.me{text-align:right}.me span{background:#fdeee3;border-radius:8px;padding:3px 8px;display:inline-block}.ai span{background:#eceef1;border-radius:8px;padding:3px 8px;display:inline-block;margin:4px 0}
+table{border-collapse:collapse;width:100%;font-size:13px}td,th{border-bottom:1px solid var(--line);padding:6px;text-align:left}
+.q{border-left:4px solid var(--o);background:#fff;border-radius:8px;padding:10px 14px;margin:8px 0}
+</style></head><body><div class="wrap">
+<h1>修正方案第 5 轮 · 效果图（7 条）</h1>
+<div class="lbl">红边是现在，绿边是改后。确认后再改代码。</div>
+
+<h2><span class="no">1</span>最短作答时长：自动算</h2>
+<div class="row">
+<div class="card col before">不到 <b>35</b> 秒就终止（手填）</div>
+<div class="card col after">
+<b>最短作答时长</b>　<span class="chip">自动</span><br>
+预计作答 <b>3 分 30 秒</b> × 65% = 少于 <b>2 分 17 秒</b> 就终止<br>
+<span class="lbl">预计作答时长按题型算：单选 8 秒、多选 12 秒、数字 10 秒、文字 25 秒、打分 8 秒（右边“X 题 · Y 分钟”也改用这个算法）。题目一改，自动重算。</span></div></div>
+<div class="q">要您定：现在右边显示的“预计时长”是粗算的“每题 30 秒”。14 道单选题会算成 7 分钟，65% 就是 4 分半，认真但手快的人也会被误杀。所以我建议改成按题型估算（上面这套）。可以吗？</div>
+
+<h2><span class="no">2</span>对话里说“加一道题，放在最前面”没生效</h2>
+<div class="row">
+<div class="card col before">小星星说改好了，问卷没变（或者变了但不是您要的）。</div>
+<div class="card col after">
+<div class="chat"><div class="me"><span>增加一道题：您现在用的是什么手机？放在所有题目最前面</span></div><div class="ai"><span>已改：新增 Q1“您现在用的是什么手机？”，原来的 Q1–Q14 顺延为 Q2–Q15。</span></div></div>
+<span class="lbl">“改了什么”由程序比对改前改后算出来（新增、删除、移动、改字），不再用模型自己说的话；没改成就直说没改成。线上那次为什么没生效，我会查服务器日志找原因。</span></div></div>
+
+<h2><span class="no">3–4</span>导入名单</h2>
+<div class="row">
+<div class="card col before">弹窗底部：先预览 / 导入 / 取消；导入后，上面的“待发问卷 0 人”不变，“用邮件发送”还是灰的</div>
+<div class="card col after">弹窗底部只留 <span class="btn p">导入</span> <span class="btn">取消</span>（导入时自动检查，有问题的行会列出来）。<br>导入后卡片马上刷新：<b>待发问卷 1 人，其中有邮箱 1 人</b>，<span class="btn p">用邮件发送甄别问卷链接</span> 可以点。</div></div>
+
+<h2><span class="no">5</span>对话改语言要准确</h2>
+<div class="row">
+<div class="card col before"><div class="chat"><div class="me"><span>语言，增加英文和粤语。</span></div><div class="ai"><span>已把访谈语言改为中文、英文和马来文。</span></div></div></div>
+<div class="card col after"><div class="chat"><div class="me"><span>语言，增加英文和粤语。</span></div><div class="ai"><span>已增加英文，现在是中文、English。粤语暂时不支持（目前支持中文、English、马来语、泰米尔语），没有加。</span></div></div>
+<span class="lbl">语言、时长、形式这类有固定选项的，先由程序按字面识别（“增加”就是在原来的基础上加，“改成”才是替换），识别不了才问模型；支持列表以外的语言明确说不支持，绝不换成别的语言。</span></div></div>
+
+<h2><span class="no">6</span>右边的“建议”跟着当前步骤和模块走</h2>
+<div class="row">
+<div class="card col before">在“题目 · 暖场”时，右边建议是“给品牌市场份额加 3 分钟”这类整份大纲的结构建议，和眼前的暖场无关</div>
+<div class="card col after"><b>大纲总览</b>这一步才出“调时长、拆模块”这类结构建议；<b>题目</b>这一步只出当前模块的建议（比如暖场：“开场白太长，建议压到 30 秒内”“第一题太宽泛，先问最近一次的具体经历”），点“采纳”改这个模块；没有合适的就不出。</div></div>
+
+<h2><span class="no">7</span>“可以正式开始”和“发布这一版”有什么区别</h2>
+<div class="card">
+<table><tr><th style="width:22%"></th><th>可以正式开始（Pilot 修正）</th><th>发布这一版（发布）</th></tr>
+<tr><td>是什么</td><td>研究员表态：“Pilot 发现的问题都处理完了，这一版可以用”</td><td>真正把这一版定为正式版，之后新开的场次都用它</td></tr>
+<tr><td>关系</td><td colspan="2">现在是两步：先点“可以正式开始”，发布前检查才会通过，才能点“发布这一版”</td></tr></table>
+<div class="q">建议合并成一步：去掉“可以正式开始”按钮，“发布这一版”点下去时确认一次“Pilot 的问题都处理完了吗？”。这样就只有一个按钮。合并吗？</div></div>
+
+<h2>模型改进建议（您问的重点）</h2>
+<div class="card">见对话里的说明；要做的第一步是“模型路由 + 评测集”，见文末问题 3。</div>
+
+<h2>要您定的 3 件事</h2>
+<div class="q">1. 第 1 条：预计作答时长改成按题型估算，可以吗？</div>
+<div class="q">2. 第 7 条：“可以正式开始”合并进“发布这一版”，可以吗？</div>
+<div class="q">3. 模型：先做“按任务分配模型 + 评测集”（AI 后台第 3 步），再按评测结果换模型，可以吗？</div>
+</div></body></html>
