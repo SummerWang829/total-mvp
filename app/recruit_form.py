@@ -307,6 +307,21 @@ def load(stored: list) -> list[Question]:
         return []
 
 
+# ---------- how long answering takes (修正方案第 5 轮, 用户 2026-11-20) ----------
+SECONDS_BY_TYPE = {"single": 8, "multi": 12, "number": 10, "text": 25, "scale": 8}   # a careful reader's time per question, by type
+TOO_FAST_SHARE = 0.65   # answered in 65% of the expected time or less = not careful enough: screened out
+
+
+def expected_seconds(questions: list["Question"]) -> int:
+    """The expected answering time of these questions (by type), in seconds."""
+    return sum(SECONDS_BY_TYPE.get(q.type, 10) for q in questions)
+
+
+def too_fast_limit(questions: list["Question"]) -> int:
+    """Answering faster than this (seconds) counts as too fast: 65% of the expected time of the questions actually answered."""
+    return int(round(expected_seconds(questions) * TOO_FAST_SHARE))
+
+
 # ---------- running the questionnaire (server side only) ----------
 @dataclass
 class Step:

@@ -83,3 +83,17 @@ def test_asking_who_it_is_or_a_plain_question_changes_nothing():
     assert ed.edit(ScriptedModeratorChat([]), BASE, "你是什么模型", "q1", "zh", [], "")["reply"] == "我是小星星助手。"
     out = ed.edit(ScriptedModeratorChat([{"reply": "建议把年龄放前面", "questions": None}]), BASE, "你觉得顺序合理吗", "q1", "zh", [], "")
     assert not out["changed"] and out["reply"] == "建议把年龄放前面"
+
+
+def test_the_reply_says_what_really_changed():
+    """修正方案第 5 轮: “加一道题放在最前面” — the reply is worked out by comparing, not taken from the model."""
+    reply = {"reply": "好的", "questions": [{"type": "single", "text": "您现在用的是什么手机？", "options": [{"text": "苹果"}, {"text": "安卓"}]}, {"id": "q1", "keep": True}, {"id": "q2", "keep": True}]}
+    out = ed.edit(ScriptedModeratorChat([reply]), BASE, "增加一道题放在最前面", "q1", "zh", [], "")
+    assert out["questions"][0]["text"] == "您现在用的是什么手机？"
+    assert out["reply"].startswith("已改：新增 Q1“您现在用的是什么手机？”") and "顺延" in out["reply"]
+
+
+def test_a_new_question_that_reuses_an_id_still_goes_in():
+    reply = {"reply": "好的", "questions": [{"id": "q1", "type": "single", "text": "您现在用的是什么手机？", "options": [{"text": "苹果"}, {"text": "安卓"}]}, {"id": "q1", "keep": True}, {"id": "q2", "keep": True}]}
+    out = ed.edit(ScriptedModeratorChat([reply]), BASE, "增加一道题放在最前面", "q1", "zh", [], "")
+    assert [q["text"] for q in out["questions"]] == ["您现在用的是什么手机？", "您常住哪个城市？", "您的年龄是？"]

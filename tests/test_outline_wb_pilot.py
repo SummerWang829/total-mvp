@@ -98,7 +98,7 @@ def test_publishing_needs_a_round_ready_and_every_mark_decided(org, proj):
     _ready(org, proj)
     chk = _api(org, proj, "get", "/publish/check").json()
     blocks = {c["id"] for c in chk["checks"] if c["level"] == "block"}
-    assert {"pilot", "ready"} <= blocks and not chk["can_publish"]
+    assert "pilot" in blocks and "ready" not in blocks and not chk["can_publish"]   # 修正方案第 5 轮: no separate 可以正式开始 step
     assert not any(c["id"] == "rehearsal" for c in chk["checks"])                  # the AI quick check is not a gate any more
     assert not any(c["id"] == "focus" and c["level"] == "block" for c in chk["checks"])   # an unmatched focus question only warns
     out = _start(org, proj)
@@ -115,7 +115,8 @@ def test_publishing_needs_a_round_ready_and_every_mark_decided(org, proj):
         db.commit()
     chk = _api(org, proj, "get", "/publish/check").json()
     assert chk["can_publish"] and any(c["id"] == "deferred" for c in chk["checks"])   # deferred counts as handled, and is said
-    assert _api(org, proj, "post", "/publish").status_code == 200
+    assert _api(org, proj, "post", "/publish", json={"confirmed": False}).status_code == 422   # publishing is the researcher's word that the pilot is dealt with
+    assert _api(org, proj, "post", "/publish", json={"confirmed": True}).status_code == 200
 
 
 def test_skip_pilot_publishes_with_only_the_red_line_check(org, proj):

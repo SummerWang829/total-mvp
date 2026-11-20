@@ -100,7 +100,7 @@
 .qbox .qin textarea{min-height:84px}
 
 /* 修正方案第 3 轮: 按住说话 in an AI audio / video interview (participant side) */
-#chatbox .vhold{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;min-height:56px;margin:8px 0;flex:none;border:0;border-radius:28px;background:linear-gradient(135deg,#ff8a2b,#ff6a00);color:#fff;font-size:17px;font-weight:700;cursor:pointer;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+#chatbox .vhold{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;min-height:56px;margin:8px 0;flex:none;border:0;border-radius:28px;background:linear-gradient(135deg,#D9560B,#B8470A);color:#fff;font-size:17px;font-weight:700;cursor:pointer;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
 #chatbox .vhold[hidden]{display:none}
 #chatbox .vhold:disabled{background:#c9ced4;color:#3b4148;cursor:not-allowed}
 #chatbox .vhold.on{background:#0B382C;box-shadow:0 0 0 8px rgba(255,106,0,.25)}
@@ -111,3 +111,5 @@
 #chatbox .vtap[hidden]{display:none}
 #chatbox .vrec{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px}
 @media (prefers-reduced-motion: reduce){#chatbox .vhold.on .vic{animation:none}}
+/* 修正方案第 5 轮: on a computer the floating button bar at the bottom of the participant's room never covers the answer box or 发送 */
+@media (min-width:701px){body.solo #chatbox{margin-bottom:110px}html:has(body.solo){scroll-padding-bottom:120px}}

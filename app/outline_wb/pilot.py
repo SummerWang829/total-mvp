@@ -314,8 +314,8 @@ def gates(db: Session, proj: Project) -> list[dict]:
     old = db.scalar(select(Interview).where(Interview.project_id == proj.id, Interview.is_pilot.is_(True), Interview.pilot_round_id.is_(None), Interview.status == "ended"))
     done = sum(1 for r in rs if any(i.status == "ended" for i in _interviews(db, r))) + (1 if old else 0)
     marks = _marks(db, [i.id for i in its])
-    out = [{"id": "pilot", "level": "ok", "text": f"已做完 {done} 轮 pilot"} if done else {"id": "pilot", "level": "block", "text": "还没有做完一场 pilot：先在“本轮 Pilot”发起一轮；客户不做的话可以选“跳过 Pilot，直接上线”"},
-           {"id": "ready", "level": "ok", "text": "研究员已确认“可以正式开始”"} if v.ready_at else {"id": "ready", "level": "block", "text": "研究员还没有确认“可以正式开始”（在“Pilot 修正”里）"}]
+    # 修正方案第 5 轮 (用户 2026-11-20): “可以正式开始” is no longer a separate step — 发布这一版 asks “Pilot 的问题都处理完了吗？” and records it
+    out = [{"id": "pilot", "level": "ok", "text": f"已做完 {done} 轮 pilot"} if done else {"id": "pilot", "level": "block", "text": "还没有做完一场 pilot：先在“本轮 Pilot”发起一轮；客户不做的话可以选“跳过 Pilot，直接上线”"}]
     open_n, deferred = sum(1 for m in marks if not m.decision), sum(1 for m in marks if m.decision == "deferred")
     out.append({"id": "marks", "level": "block", "text": f"还有 {open_n} 条标记没处理（接受、拒绝或暂缓）"} if open_n else
                {"id": "marks", "level": "ok", "text": f"所有标记都已处理（接受 {sum(1 for m in marks if m.decision == 'accepted')} · 拒绝 {sum(1 for m in marks if m.decision == 'rejected')} · 暂缓 {deferred}）"})

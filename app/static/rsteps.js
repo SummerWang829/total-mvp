@@ -99,7 +99,7 @@ const RSteps = (() => {
       const q = S.draft.qc || {};
       return `<h3>⑤ 质量控制</h3>
         <label class="rs-tg"><input type="checkbox" data-rs-qc="trap"${q.trap ? " checked" : ""}><span><b>陷阱题</b><small>“这一题请选经常”，答错就终止（题数 6 题及以上时建议加）</small></span></label>
-        <label class="rs-tg"><input type="checkbox" data-rs-qc="timed"${q.min_seconds ? " checked" : ""}><span><b>最短作答时长</b><small>不到 <input class="rs-in num" type="number" min="5" max="1800" value="${q.min_seconds || 20}" aria-label="最短秒数" data-rs-qcs> 秒就终止。时间由服务器记，不信浏览器</small></span></label>
+        <label class="rs-tg"><input type="checkbox" data-rs-qc="timed"${timedOn(q) ? " checked" : ""}><span><b>最短作答时长</b> <span class="rs-pill">自动</span><small>${timeWords()}；按每位候选人实际答到的题算，时间由服务器记</small></span></label>
         <div class="rs-tg"><span class="rs-on">✓</span><span><b>重复参加识别</b><small>只查合格的人：同一个项目里姓名和邮箱都相同，就不再加进名单</small></span></div>${nav("下一步")}`;
     }
     return `<h3>⑥ 预览与测试</h3>${S.expandNote ? `<div class="rs-note">${E(S.expandNote)}</div>` : ""}<p class="sm mut">右边“测试答题”自己答一遍：和候选人走的是同一套逻辑，最后写通过还是终止、终止在哪一题；不保存、不计数。测到哪一题，就可以在下面对话里改这一题。</p>
@@ -115,6 +115,14 @@ const RSteps = (() => {
       if (sl && !sl.querySelector(".rs-side") && root && S.d && document.contains(root)) draw();
     });
     slotWatch.observe(document.body, { childList: true, subtree: true });
+  }
+  // 修正方案第 5 轮 (用户 2026-11-20): 最短作答时长 = 预计作答时长 × 65%, worked out from the question types (the same table as the server)
+  const SECS = { single: 8, multi: 12, number: 10, text: 25, scale: 8 };
+  const mmss = (t) => (t >= 60 ? `${Math.floor(t / 60)} 分 ${t % 60} 秒` : `${t} 秒`);
+  const timedOn = (q) => (q.timed !== undefined ? !!q.timed : !!q.min_seconds || q.min_seconds === undefined);
+  function timeWords() {
+    const qs = ctx ? ctx.getQ() : [], all = qs.reduce((a, x) => a + (SECS[x.type] || 10), 0);
+    return all ? `预计作答 ${mmss(all)} × 65% = 少于 ${mmss(Math.round(all * 0.65))} 就终止` : "按题目自动计算";
   }
   function draw() {
     if (!root || !S.d) return;
@@ -141,7 +149,7 @@ const RSteps = (() => {
     const k = S.at, order = S.d.order, next = order[order.indexOf(k) + 1];
     if (k === "test") return;
     const data = k === "include" ? { conds: S.draft.include } : k === "exclude" ? { excl: S.draft.exclude } : k === "quota" ? { quotas: S.draft.quota.map((x) => ({ ...x, field: "tag", target: +x.target })) }
-      : k === "qc" ? { qc: { ...S.draft.qc, min_seconds: S.draft.qc.timed === false ? 0 : +(S.draft.qc.min_seconds || 0) } } : {};
+      : k === "qc" ? { qc: { ...S.draft.qc, timed: timedOn(S.draft.qc), min_seconds: 0 } } : {};
     S.busy = true; draw();
     try {
       const r = await api(url(`/${k}`), { method: "PUT", body: { data, questions: ctx.getQ() } });
@@ -213,12 +221,11 @@ const RSteps = (() => {
     if (d.rsQn !== undefined) { S.draft.quota[+d.rsQn].name = t.value; return; }
     if (d.rsQv !== undefined) { S.draft.quota[+d.rsQv].value = t.value; return; }
     if (d.rsQt !== undefined) { S.draft.quota[+d.rsQt].target = t.value; const el = document.getElementById("rs-qsum"); if (el) el.textContent = S.draft.quota.reduce((a, x) => a + (+x.target || 0), 0); return; }   // 修正方案第 2 轮 A6: the total follows every keystroke
-    if (d.rsQcs !== undefined) { S.draft.qc.min_seconds = +t.value; return; }
   }
   function onChange(e) {
     const t = e.target, d = t.dataset;
     if (d.rsUse) { at(d.rsUse).c.use = t.checked; return draw(); }
-    if (d.rsQc) { if (d.rsQc === "timed") { S.draft.qc.timed = t.checked; if (t.checked && !S.draft.qc.min_seconds) S.draft.qc.min_seconds = 20; if (!t.checked) S.draft.qc.min_seconds = 0; } else S.draft.qc[d.rsQc] = t.checked; return draw(); }
+    if (d.rsQc) { S.draft.qc[d.rsQc] = t.checked; return draw(); }
   }
 
   return {

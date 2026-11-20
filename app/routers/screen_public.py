@@ -71,11 +71,16 @@ def sign_start(token: str, now: float | None = None) -> str:
     return f"{ts}.{sig}"
 
 
-def too_fast(f: RecruitForm, token: str, started: str, now: float | None = None) -> bool:
-    """Whether the questionnaire was answered in less than the shortest time set in ⑤ (a missing or forged start counts as too fast)."""
+def too_fast(f: RecruitForm, token: str, started: str, now: float | None = None, answered: list | None = None) -> bool:
+    """Whether the questionnaire was answered too fast (⑤ 最短作答时长 on; a missing or forged start counts as too fast).
+    修正方案第 5 轮 (用户 2026-11-20): the limit is worked out, not typed: 65% of the expected time of the questions this candidate actually answered
+    (by type: recruit_form.SECONDS_BY_TYPE)."""
     import hmac
     import time
-    secs = int((f.qc or {}).get("min_seconds") or 0)
+    qc = f.qc or {}
+    if not qc.get("timed", bool(qc.get("min_seconds"))):
+        return False
+    secs = recruit_form.too_fast_limit(answered if answered is not None else recruit_form.load(f.questions))
     if secs <= 0:
         return False
     ts, _, sig = (started or "").partition(".")
@@ -117,7 +122,7 @@ def screen_step(token: str, body: StepBody, request: Request, db: Session = Depe
         f.n_started = (f.n_started or 0) + 1
         started = sign_start(token)
         db.commit()
-    elif step.result == "qualified" and too_fast(f, token, body.started):   # 用户 2026-11-20: 答得太快直接终止
+    elif step.result == "qualified" and too_fast(f, token, body.started, answered=[q for q in questions if q.id in step.chosen]):   # 用户 2026-11-20: 答得太快直接终止
         step.result, step.ended_at = "out", "__time__"
     if step.result == "out":
         f.n_out = (f.n_out or 0) + 1
@@ -152,7 +157,7 @@ def screen_submit(token: str, body: SubmitBody, request: Request, db: Session = 
         step = recruit_form.next_step(questions, body.answers)
     except recruit_form.AnswerError as e:
         raise HTTPException(422, "Please check your answers / 请检查你的回答") from e
-    if step.result != "qualified" or too_fast(f, token, body.started):
+    if step.result != "qualified" or too_fast(f, token, body.started, answered=[q for q in questions if q.id in step.chosen]):
         raise HTTPException(409, "Please finish the questions first / 请先完成问卷")
     country = body.country.upper()
     if not settings.region_open(country):

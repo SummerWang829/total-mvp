@@ -264,3 +264,4 @@ html[data-theme="dark"] .ow-stale{background:#3A2E10;border-color:#8A6A1C;color:
 /* focus questions: who and the question line up at the top */
 .ow-ftbl td,.ow-ftbl th{vertical-align:top}
 .ow-item textarea.ow-in.t{overflow:hidden;height:auto}
+.ow-tip{display:flex;flex-direction:column;gap:2px;padding:6px 0;border-top:1px solid var(--line,#eee)}.ow-tip small{color:var(--muted,#6b7280);font-size:13px;line-height:1.5}.ow-tip button{align-self:flex-start;margin-top:4px}

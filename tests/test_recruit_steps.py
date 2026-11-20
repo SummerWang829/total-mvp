@@ -62,7 +62,7 @@ def test_the_trap_ends_it_and_nothing_is_asked_twice(org):
     conds = org.c.post(url(pid, "/steps/include/suggest"), headers=org.h(), json={}).json()["conds"]
     _confirm(org, pid, "include", {"conds": conds})
     qc = org.c.post(url(pid, "/steps/qc/suggest"), headers=org.h(), json={}).json()["qc"]
-    assert not qc["consistency"] and qc["min_seconds"] == 20
+    assert not qc["consistency"] and qc["timed"]   # 修正方案第 5 轮: the shortest time is worked out (65% of the expected time), not typed
     out = _confirm(org, pid, "qc", {"qc": {**qc, "trap": True, "consistency": True}})
     qs = [Question.model_validate(q) for q in out["questions"]]
     assert not any(q.qc == "consistency" for q in qs) and not any(q.text.startswith("再确认") for q in qs)
@@ -96,16 +96,19 @@ def test_the_shortest_time_is_kept_by_the_server(client, org):
     _need(org, pid)
     conds = org.c.post(url(pid, "/steps/include/suggest"), headers=org.h(), json={}).json()["conds"]
     out = _confirm(org, pid, "include", {"conds": conds[:1]})
-    _confirm(org, pid, "qc", {"qc": {"trap": False, "consistency": False, "min_seconds": 30, "dedupe": True}})
+    _confirm(org, pid, "qc", {"qc": {"trap": False, "consistency": False, "timed": True, "dedupe": True}})
     tok = org.c.post(url(pid, "/publish"), headers=org.h()).json()["link"].split("t=")[1]
     first = client.post(f"/api/public/screen/{tok}/step", json={"answers": {}}).json()
     q = out["questions"][0]
     answers = {q["id"]: next(o["id"] for o in q["options"] if o["goto"] != "end_out")}
     fast = client.post(f"/api/public/screen/{tok}/step", json={"answers": answers, "started": first["started"]}).json()
-    assert fast["result"] == "out"   # answered at once: less than 30 seconds
+    assert fast["result"] == "out"   # answered at once: less than 65% of the expected time
     with SessionLocal() as db:
         f = db.get(RecruitForm, pid)
         assert f.out_by.get("__time__") == 1
         assert too_fast(f, tok, "") and too_fast(f, tok, "123.forged")
         old = sign_start(tok, 1_000_000)
-        assert not too_fast(f, tok, old, now=1_000_031) and too_fast(f, tok, old, now=1_000_010)
+        from app import recruit_form as _rf
+        limit = _rf.too_fast_limit(_rf.load(f.questions))
+        assert limit == round(sum(_rf.SECONDS_BY_TYPE[q.type] for q in _rf.load(f.questions)) * 0.65)
+        assert not too_fast(f, tok, old, now=1_000_000 + limit + 1) and too_fast(f, tok, old, now=1_000_000 + limit - 1)

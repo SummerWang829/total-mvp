@@ -433,10 +433,14 @@ def publish_check(pid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Sessi
     return {**_run(db, stage3.publish_checks, db, p), "versions": _run(db, stage3.versions, db, p)}
 
 
+class PublishBody(BaseModel):
+    confirmed: bool = True   # 修正方案第 5 轮: “Pilot 的问题都处理完了” (the page asks before it sends)
+
+
 @router.post("/publish")
-def publish(pid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+def publish(pid: str, body: PublishBody | None = None, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
     p = _project(db, ctx, pid)
-    out = _run(db, stage3.publish, db, p, ctx.user.id)
+    out = _run(db, stage3.publish, db, p, ctx.user.id, body.confirmed if body else True)
     audit(db, ctx.org_id, ctx.actor, "outline_wb.publish", pid, ip=ctx.ip, version=out["version"])
     db.commit()
     return out

@@ -369,7 +369,7 @@ def arrange(questions: list[dict]) -> tuple[list[dict], list[str]]:
 
 def qc_default(n_questions: int) -> dict:
     """⑤ the defaults: a trap question from six questions on, the consistency check, the shortest time (4 seconds a question, at least 20) and the duplicate check."""
-    return {"trap": n_questions >= TRAP_FROM, "consistency": False, "min_seconds": max(MIN_SECONDS, n_questions * SECONDS_PER_Q), "dedupe": True}
+    return {"trap": n_questions >= TRAP_FROM, "consistency": False, "timed": True, "min_seconds": 0, "dedupe": True}   # 修正方案第 5 轮: the limit is worked out from the questions
 
 
 def confirm(db: Session, proj: Project, f: RecruitForm, step: str, data: dict, questions: list[dict]) -> list[str]:
@@ -413,7 +413,7 @@ def confirm(db: Session, proj: Project, f: RecruitForm, step: str, data: dict, q
             secs = int(q.get("min_seconds") or 0)
         except (TypeError, ValueError) as e:
             raise StepError("最短作答时长要是数字") from e
-        s["qc"] = {"trap": bool(q.get("trap")), "consistency": False, "min_seconds": max(0, min(secs, 1800)), "dedupe": bool(q.get("dedupe", True))}
+        s["qc"] = {"trap": bool(q.get("trap")), "consistency": False, "timed": bool(q.get("timed", secs > 0)), "min_seconds": 0, "dedupe": bool(q.get("dedupe", True))}
         f.qc = dict(s["qc"])
         questions, made = build(questions, "qc", s)
     s["status"][step] = "confirmed"

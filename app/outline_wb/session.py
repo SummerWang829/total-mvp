@@ -4,6 +4,7 @@
 Raises OutlineError (service.py) with a plain-Chinese message when an action is not possible.
 """
 import json
+import re
 from datetime import datetime, timezone
 
 from sqlalchemy import delete, func, select
@@ -673,8 +674,58 @@ def bind_sub(db: Session, proj: Project, sub_id: str, user_id: str = "") -> dict
     return view(db, proj, user_id)
 
 
+LANG_WORDS = {"zh": ("中文", "汉语", "普通话", "华语", "chinese", "mandarin"), "en": ("英文", "英语", "english"), "ms": ("马来语", "马来文", "malay", "bahasa"),
+              "ta": ("泰米尔", "tamil")}
+LANG_NAME = {"zh": "中文", "en": "English", "ms": "马来语", "ta": "泰米尔语"}
+UNSUPPORTED_LANGS = ("粤语", "广东话", "闽南语", "客家话", "日语", "日文", "韩语", "韩文", "泰语", "泰文", "越南语", "印尼语", "印度尼西亚语", "菲律宾语", "他加禄语",
+                     "法语", "德语", "西班牙语", "葡萄牙语", "俄语", "阿拉伯语", "印地语", "cantonese", "japanese", "korean", "thai", "vietnamese", "french", "german", "spanish")
+
+
+def asks_language(text: str) -> bool:
+    """Whether a line of the dialog is about the interview languages (“语言，增加英文和粤语”)."""
+    t = (text or "").lower()
+    return "语言" in t or any(w in t for words in LANG_WORDS.values() for w in words) or any(w in t for w in UNSUPPORTED_LANGS)
+
+
+def language_turn(text: str, current: list[str]) -> tuple[list[str] | None, str]:
+    """修正方案第 5 轮 (用户 2026-11-20: “增加英文和粤语”变成了马来语): languages are read word for word, never guessed by a model.
+    “增加/加上” adds to what there is, “去掉/不要” removes, “改成/只要/换成” replaces. A language the platform does not offer is named and left out.
+    Returns (the new list or None when nothing changes, the reply; "" = not about languages)."""
+    t = (text or "").lower()
+    named = [c for c, words in LANG_WORDS.items() if any(w in t for w in words)]
+    unsupported = list(dict.fromkeys(w for w in UNSUPPORTED_LANGS if w in t))
+    if not named and not unsupported:
+        return None, ""
+    note = f"{'、'.join(unsupported)}暂时不支持（目前支持中文、English、马来语、泰米尔语），没有加。" if unsupported else ""
+    cur = list(current or [])
+    if re.search(r"去掉|删掉|删除|不要|移除|取消", t):
+        new, verb = [c for c in cur if c not in named], "去掉了"
+    elif re.search(r"改成|改为|换成|只要|只用|仅", t):
+        new, verb = named, "改成了"
+    else:
+        new, verb = cur + [c for c in named if c not in cur], "增加了"
+    if not new:
+        return None, "至少要保留一种访谈语言。" + note
+    if new == cur:
+        return None, ("访谈语言没有变化。" if named else "") + note
+    names = "、".join(LANG_NAME[c] for c in named)
+    return new, f"已{verb}{names}，现在是{'、'.join(LANG_NAME[c] for c in new)}。{note}"
+
+
 def _slot_turn(db: Session, proj: Project, st: StudySetting, ctx: dict, chat, text: str, user_id: str) -> dict:
     """修正方案第 2 轮 C3: the dialog on 目标 / 人群与执行 changes 已经知道的 (research type, questions, people, materials, price) directly, checked like the “改” buttons."""
+    if ctx.get("sync") and asks_language(text):
+        langs, reply = language_turn(text, ctx.get("languages") or [ctx.get("language", "zh")])
+        if reply:
+            done: list[str] = []
+            if langs is not None:
+                try:
+                    if set_sync(db, proj, "languages", langs, user_id) != "plan":
+                        reply += "（立项已锁定，已申请解锁，等管理员或项目经理处理）"
+                    done = ["languages"]
+                except (svc.OutlineError, ValueError, TypeError) as e:
+                    reply = f"没有改成：{e}"
+            return {"reply": reply, "cites": [], "revisions": [], "changed": done}
     slots = _slots(ctx, st)
     reply, changes = writer.slot_ops(chat, {k: {"value": v["value"], "text": flow.slot_text(k, v["value"]), "options": flow.slot_options(k)} for k, v in slots.items()}, text)
     done, notes = [], []

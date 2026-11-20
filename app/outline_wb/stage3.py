@@ -10,7 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .. import guide_text, outline_versions
-from ..models import CaptionLine, Interview, Project, TranscriptSegment
+from ..models import CaptionLine, Interview, Project, TranscriptSegment, utcnow
 from . import media as wbmedia
 from . import flow, quality, service as svc, session as sess, writer
 from .models import FocusQuestion, HostDecision, Mark, Outline, OutlineVersion, RehearsalRun, Revision
@@ -331,16 +331,20 @@ def write_legacy_text(db: Session, proj: Project, v: OutlineVersion, st) -> None
     outline_versions.put_text(proj, outline_versions.base_key(proj), proj.outline_text)
 
 
-def publish(db: Session, proj: Project, user_id: str = "") -> dict:
+def publish(db: Session, proj: Project, user_id: str = "", confirmed: bool = True) -> dict:
     """Publish the current version: it becomes the one new interviews start on. Not a lock: it can still be edited (each edit counts in `rev`).
+    修正方案第 5 轮: publishing is also the researcher's word that the pilot's problems are dealt with (the old “可以正式开始”); it is recorded on the version.
 
     Raises:
-        OutlineError: a block in the checks.
+        OutlineError: a block in the checks, or the researcher did not confirm.
     """
     o, v, st = sess.ensure(db, proj, user_id)
     chk = publish_checks(db, proj)
     if not chk["can_publish"]:
         raise svc.OutlineError("还不能发布：" + "；".join(c["text"] for c in chk["checks"] if c["level"] == "block"))
+    if not confirmed:
+        raise svc.OutlineError("请先确认 Pilot 的问题都处理完了")
+    v.ready_by, v.ready_at = user_id, utcnow()
     return do_publish(db, proj, o, v, st)
 
 

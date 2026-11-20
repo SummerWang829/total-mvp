@@ -81,3 +81,15 @@ def test_the_dialog_changes_the_length_in_the_plan(org):
     r = _wb(org, pid, "post", "/chat", json={"text": "访谈时长改为30分钟", "step": "people"}).json()
     assert r["changed"] == ["minutes"]
     assert next(s for s in plan(org, pid)["config"]["subs"] if s["id"] == "s1")["minutes"] == 30
+
+
+def test_languages_are_read_word_for_word_in_the_dialog(org):
+    """修正方案第 5 轮 (用户 2026-11-20): “增加英文和粤语” adds English, says Cantonese is not offered, and never turns into Malay."""
+    pid = draft(org)["id"]
+    _two_subs(org, pid)
+    assert _wb(org, pid, "post", "/chat", json={"text": "语言只要中文", "step": "people"}).json()["changed"] == ["languages"]
+    assert _wb(org, pid, "get", "").json()["context"]["languages"] == ["zh"]
+    r = _wb(org, pid, "post", "/chat", json={"text": "语言，增加英文和粤语。", "step": "people"}).json()
+    assert r["changed"] == ["languages"] and "粤语暂时不支持" in r["reply"] and "马来" not in r["reply"].split("目前支持")[0]
+    langs = _wb(org, pid, "get", "").json()["context"]["languages"]
+    assert "ms" not in langs and "en" in langs and "zh" in langs

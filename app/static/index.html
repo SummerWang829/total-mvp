@@ -470,7 +470,7 @@ async function peopleView(p) {
     if (!ids.length) return toast("这批名单里没有邮箱", true);
     if (!confirm(`将向 ${ids.length} 位导入的人发送甄别问卷链接邮件，确定发送吗？`)) return;
     const r = await api(`/projects/${p.id}/recruiting/screen-invite`, { method: "POST", body: { participant_ids: ids } });
-    toast(`已发送 ${r.sent} 封，跳过 ${(r.skipped || []).length} 位`); render();
+    toast(`已发送 ${r.sent} 封，跳过 ${(r.skipped || []).length} 位`); if (window.PEOPLE_FAST) window.PEOPLE_FAST.at = 0; render();
   });
   // 同步发送甄别问卷链接（邮件）+ 假名化留痕（失败不影响发送）
   const dbsend = $("#dbsend"); if (dbsend) dbsend.onclick = guard(async () => {
@@ -810,7 +810,7 @@ function importModal(p, preset) {
       <label class="sm" style="display:block"><input type="radio" name="mode" value="invite"${preset === "screen" ? "" : " checked"}> 直接可邀请（不经问卷）</label>
       <label class="sm" style="display:block"><input type="radio" name="mode" value="screen"${preset === "screen" ? " checked" : ""}> 先发甄别问卷，合格的才进名单</label></fieldset>
     <label class="sm" style="display:flex;gap:8px;align-items:flex-start"><input type="checkbox" id="basis"> <span>我确认这批名单有合法的联系依据（对方同意被联系，或有合同 / 合作协议允许）。</span></label>
-    <div class="row"><button type="button" id="dry">先预览</button><button class="p" id="impgo">导入</button><button type="button" id="c">取消</button></div></form>`);
+    <div class="row"><button class="p" id="impgo">导入</button><button type="button" id="c">取消</button></div></form>`);
   const rows = $("#imrows", m), more = () => m.classList.toggle("im-more", $("#immore", m).checked);
   $("#immore", m).onchange = more; more();
   $("#c", m).onclick = () => m.remove();
@@ -862,11 +862,11 @@ function importModal(p, preset) {
     if (!$("[name=source]", m).value.trim()) throw new Error("请写这批名单从哪里来");
     return { csv: c, dry_run: dry, source_name: $("[name=source]", m).value.trim(), mode: m.querySelector("[name=mode]:checked").value, confirm_basis: $("#basis", m).checked };
   };
-  $("#dry", m).onclick = guard(async () => show(await api(`/projects/${p.id}/participants/import`, { method: "POST", body: body(true) })));
   $("#f", m).onsubmit = guard(async (e) => {
     e.preventDefault();
     if (!$("#basis", m).checked) throw new Error("请先勾选“我确认这批名单有合法的联系依据”");
-    const r = await api(`/projects/${p.id}/participants/import`, { method: "POST", body: body(false) }); show(r); toast(`已导入 ${r.created} 人`); setTimeout(() => { m.remove(); render(); }, 900);
+    const r = await api(`/projects/${p.id}/participants/import`, { method: "POST", body: body(false) }); show(r); toast(`已导入 ${r.created} 人`);
+    setTimeout(() => { m.remove(); if (window.PEOPLE_FAST) window.PEOPLE_FAST.at = 0; render(); }, r.skipped.length ? 2500 : 900);   // 修正方案第 5 轮: read the people again (the counts and 发送 change), not the page kept from before
   });
 }
 

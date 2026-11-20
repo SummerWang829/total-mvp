@@ -303,14 +303,32 @@
       ${(r.quality?.issues || []).map((i) => `<span class="ow-pill ${i.level === "block" ? "bad" : "warn"}">${i.level === "block" ? "碰红线：" : ""}${E(i.text)}</span>`).join("")}
       <div class="ow-revbtn">${done ? `<span class="ow-pill ${r.status === "accepted" ? "ok" : ""}">${r.status === "accepted" ? "已接受" : "已拒绝"}</span>` : blocked ? "" : `<button type="button" class="p s" data-ow-rev="accept" data-id="${r.id}">接受</button>`}${done ? "" : `<button type="button" class="s" data-ow-rev="reject" data-id="${r.id}">拒绝</button>`}</div></div>`;
   }
+  /** 修正方案第 5 轮: on 题目, suggestions for the module on screen only (worked out from its questions; “让小星星改” asks for a pending change as usual). */
+  function moduleTips() {
+    const m = mods().find((x) => x.id === S.mod); if (!m || !m.items.length) return "";
+    const tips = [], qs = m.items.filter((i) => i.kind === "question" || i.kind === "rating");
+    const open = m.items.find((i) => (i.config || {}).script === "open");
+    if (open && open.text.length > 130) tips.push({ t: "开场白偏长", w: `开场白有 ${open.text.length} 字，念出来超过半分钟，建议压到 100 字以内`, ask: `把“${m.name}”的开场白压到 100 字以内，保留：感谢、时长、录音只用于研究、没有对错、可以随时停` });
+    const long = qs.filter((i) => i.text.length > 40);
+    if (long.length) tips.push({ t: `${long.map((i) => i.label).join("、")} 太长`, w: "一句话超过 40 字，受访者听不完，建议拆短或分成两问", ask: `把“${m.name}”里超过 40 字的问题改短：${long.map((i) => i.label).join("、")}` });
+    const two = qs.filter((i) => /和|以及|还有|并且/.test(i.text) && (i.text.match(/[？?]/g) || []).length >= 1 && /(什么|怎么|为什么|哪些|多少).*(和|以及|还有|并且).*(什么|怎么|为什么|哪些|多少)/.test(i.text));
+    if (two.length) tips.push({ t: `${two.map((i) => i.label).join("、")} 一句问了两件事`, w: "拆成两道题，受访者才不会只答一半", ask: `把“${m.name}”里一句问了两件事的题拆开：${two.map((i) => i.label).join("、")}` });
+    if (m.kind === "warm" && qs[0] && /平时|一般|通常|经常/.test(qs[0].text) && !/最近|上一次|上次/.test(qs[0].text)) tips.push({ t: "暖场第一题太宽", w: "先问最近一次的具体经历，更好回答，也更容易聊开", ask: `把“${m.name}”第一道题改成先问最近一次的具体经历` });
+    if (m.kind === "close" && !qs.some((i) => /补充|还有什么|想说/.test(i.text)) && !m.items.some((i) => (i.config || {}).script === "close")) tips.push({ t: "收尾缺补充问题", w: "最后问一句“还有什么想补充的吗”，常能听到意外的信息", ask: `在“${m.name}”最后加一道题：还有什么想补充的吗` });
+    S.tips = tips.slice(0, 3).map((x) => x.ask);
+    if (!tips.length) return "";
+    return `<div class="ow-sug"><div class="t"><b>这个模块的建议</b><span class="mut sm">（${E(m.name)}）</span></div>${tips.slice(0, 3).map((x, n) => `<div class="ow-tip"><b>${E(x.t)}</b><small>${E(x.w)}</small><button type="button" class="s" data-ow="tip-ask" data-n="${n}">让小星星改</button></div>`).join("")}</div>`
+;
+  }
   function chatHtml() {
-    const sg = S.area === "gen" ? (S.d?.suggestions || []) : [];
+    const sg = S.area === "gen" && S.step === "overview" ? (S.d?.suggestions || []) : [];   // 修正方案第 5 轮: structure suggestions belong to 大纲总览 only
     if (!S.adopt) S.adopt = new Set(sg.slice(0, 2).map((s) => s.id));
     const pend = (S.d?.revisions || []).filter((r) => r.status === "pending" && !S.msgs.some((m) => (m.revs || []).some((x) => x.id === r.id)));
     const sel = S.sel ? S.d.items.find((i) => i.uid === S.sel) : null;
     return `<div class="h"><b>小星星助手</b>${sel ? `<span class="ow-pill">已选 ${E(sel.label)} · ${KIND_LABEL[sel.kind]}<a href="#" data-ow="unsel" aria-label="取消选择"> ×</a></span>` : ""}</div>
       <div class="m" id="ow-msgs"><div class="bub">${S.area !== "gen" ? ({ preview: "这是受访者真实会看到的样子。切换语言看每种语言的版本；概念卡带受访者编号水印。", rehearsal: "AI 快速检查只看方向、只作参考：我用三种不同的受访者把大纲走一遍，告诉你哪里时间不够、哪里可能听不懂。", round: "先选：做 Pilot（推荐），或者客户不做时跳过 Pilot 直接上线。发起一轮后，被邀请的人在直播间里可以按 M 标记问题。", pilot: "每条标记都要处理：接受、拒绝或暂缓；也可以在笔录里选一句话点“圈出”，写下问题；也可以直接点“生成修改建议”，我会把标记和自动发现合并成修改，每条写明去向。客户只能圈和写意见。", publish: "发布前先看检查。发布之后新场次会用这一版；仍然可以继续改。" }[S.tab]) : S.step === "overview" ? "总览按你的设定排好了。追问深度我按每个模块的目的给了默认值，你可以直接改；下面有建议，可以多选后一起采纳。" : S.step === "questions" ? "选中一道题，再告诉我怎么改；我给出的修改只是“待定”，点“接受”才会写进大纲。" : "我先把项目里已有的信息读了一遍，还缺的在左边问你。"}</div>
       ${S.msgs.map((m) => `<div class="bub ${m.me ? "me" : ""}">${E(m.text)}${window.TInput ? TInput.cites(m.cites) : ""}</div>${(m.revs || []).map((r) => S.d.revisions.find((x) => x.id === r.id) || (r.op ? r : null)).filter(Boolean).map(revCard).join("")}`).join("")}${pend.map(revCard).join("")}</div>
+      ${S.area === "gen" && S.step === "questions" ? moduleTips() : ""}
       ${sg.length ? `<div class="ow-sug"><div class="t"><b>建议</b>（最多 3 条，可多选）<span class="ow-pill">已选 ${S.adopt.size}</span></div>${sg.map((s) => `<label><input type="checkbox" aria-label="${E(s.title)}" data-ow-sg="${s.id}"${S.adopt.has(s.id) ? " checked" : ""}><span><b>${E(s.title)}</b><small>${E(s.reason)}${s.basis ? `（依据：“${E(s.basis)}”）` : ""}</small><i class="x" data-ow-dis="${s.id}">不再提醒</i></span></label>`).join("")}<button type="button" class="p s" data-ow="adopt"${S.adopt.size ? "" : " disabled"}>采纳所选，重排结构</button></div>` : ""}
       <form class="f" id="ow-form"><textarea class="ow-ta" id="ow-in" data-ti="chat" data-ti-send="#ow-send" aria-label="对小星星助手说" rows="2" placeholder="跟 AI 说……"></textarea><button type="submit" class="p s" id="ow-send">发送</button></form>`;
   }
@@ -458,9 +476,7 @@
 
     return `<div class="card ow-card ow-row2"><b>第 ${rv.number} 轮 · 大纲 v${rv.version}</b>${sel}<span class="ow-pill ${rv.ended ? "ok" : "warn"}">${rv.ended ? `${rv.ended}/${rv.interviews} 场已结束` : "还没有结束的场次"}</span>${done ? `<span class="ow-pill">已生成 v${rv.next_version}</span>` : ""}<span class="sp"></span>
 
-        ${done ? "" : `<button type="button" data-ow="rv-suggest">生成修改建议</button><button type="button" class="p" data-ow="rv-next"${canNext ? "" : " disabled"} title="${canNext ? "" : rv.ended ? "每条标记都要先处理" : "这一轮还没有做完一场"}">用接受的修改生成 v${rd.version.number + 1}</button>`}
-
-        <button type="button" data-ow="rv-ready" class="${rd.version.ready ? "on" : ""}">${rd.version.ready ? "✓ 已确认可以正式开始" : "可以正式开始"}</button></div>
+        ${done ? "" : `<button type="button" data-ow="rv-suggest">生成修改建议</button><button type="button" class="p" data-ow="rv-next"${canNext ? "" : " disabled"} title="${canNext ? "" : rv.ended ? "每条标记都要先处理" : "这一轮还没有做完一场"}">用接受的修改生成 v${rd.version.number + 1}</button>`}</div>
 
       <div class="card ow-card"><h3>这一轮的标记 <span class="mut sm">（${c.marks} 条，都要处理：接受 / 拒绝 / 暂缓）</span></h3>
 
@@ -584,7 +600,10 @@
       case "rv-suggest": { S.busy = true; paint(); try { S.rv = await call(`/pilot-rounds/${S.rid}/suggest`, "POST"); } catch { /* toast */ } S.busy = false; return paint(); }
       case "rv-next": { S.busy = true; paint(); try { const r = await call(`/pilot-rounds/${S.rid}/next-version`, "POST"); S.d = await call(""); toast(`已生成 v${r.version}（${r.changes} 处修改）`); } catch { /* toast */ } S.busy = false; return loadTab(); }
       case "rv-ready": { try { await call("/ready", "PUT", { value: !S.rd.version.ready }); } catch { /* toast */ } return loadTab(); }
-      case "pub-go": { S.busy = true; paint(); try { await call("/publish", "POST"); S.d = await call(""); S.pub = await call("/publish/check"); toast("已发布"); } catch { /* toast */ } S.busy = false; return paint(); }
+      case "pub-go": {   // 修正方案第 5 轮: one button — publishing also says the pilot's problems are dealt with
+        if (!confirm("Pilot 的问题都处理完了吗？确认后发布这一版，之后新开的场次都用它。")) return;
+        S.busy = true; paint(); try { await call("/publish", "POST", { confirmed: true }); S.d = await call(""); S.pub = await call("/publish/check"); toast("已发布"); } catch { /* toast */ } S.busy = false; return paint();
+      }
       case "sync-next": {
         const f = d.f, label = { minutes: "访谈时长", format: "访谈形式", languages: "访谈语言" }[f];
         const v = f === "languages" ? qa("[data-ow-sl]").filter((x) => x.checked).map((x) => x.dataset.owSl) : f === "minutes" ? parseInt(val("#ow-ed"), 10) : val("#ow-ed");
@@ -651,6 +670,10 @@
       }
       case "up-cancel": S.upAsk = null; return paint();
       case "up-replace": case "up-add": { const a = S.upAsk; S.upAsk = null; return uploadMedia(a.uid, a.files, d.ow === "up-replace" ? "replace" : "add"); }
+      case "tip-ask": {   // the module tip goes to the dialog as a request (the answer is a pending change, accepted by hand as always)
+        const ta = q("#ow-in"), text = (S.tips || [])[+d.n]; if (!ta || !text) return;
+        ta.value = text; q("#ow-form").requestSubmit(); return;
+      }
       case "focus-add": { const v = val("#ow-focus-in").trim(); return v ? act("/focus", "POST", { text: v }) : toast("先写下问题", true); }
       case "focus-pick": {   // an outline question becomes a focus question, already pointing at that question
         const it = S.d.items.find((x) => x.uid === d.uid); if (!it || S.busy) return;

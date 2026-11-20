@@ -40,6 +40,8 @@ function rfAutosize(t) {
 }
 
 /** 整个“招募问卷”卡片，返回 { html, wire, fit }。 */
+// 修正方案第 5 轮: the expected answering time by question type (the same table as the server: recruit_form.SECONDS_BY_TYPE)
+function rfTime(qs) { const t = qs.reduce((a, q) => a + ({ single: 8, multi: 12, number: 10, text: 25, scale: 8 }[q.type] || 10), 0); return t >= 60 ? `${Math.floor(t / 60)} 分 ${t % 60 ? (t % 60) + " 秒" : ""}`.trim() : `${t} 秒`; }
 function rfCard(p, form, rec, plannedN) {
   // 修正方案第 4 轮: only the newest questionnaire editor on the page may draw or wire anything — an older one still finishing a request used to
   // re-wire the new page with its own (stale) list of questions, so the ✓ / ✗ and other buttons changed nothing
@@ -623,7 +625,7 @@ function rfCard(p, form, rec, plannedN) {
   };
   // 访谈大纲结构：甄别问卷一行，再按访谈大纲的每个环节一行（读的是访谈页里的同一份大纲）
   const flowRows = () => {
-    const rows = [{ stage: "甄别问卷", ask: Q.slice(0, 3).map((q) => q.text).join("；"), n: String(Q.length), time: Q.length ? `${Math.max(1, Math.round(Q.length / 2))} 分钟` : "", goal: "判断受访者是否符合，不符合即筛除" }];
+    const rows = [{ stage: "甄别问卷", ask: Q.slice(0, 3).map((q) => q.text).join("；"), n: String(Q.length), time: Q.length ? rfTime(Q) : "", goal: "判断受访者是否符合，不符合即筛除" }];
     if (olSum) {
       const total = Math.max(1, olSum.question_count);
       olSum.parts.forEach((x) => {

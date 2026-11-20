@@ -105,6 +105,39 @@ def _lang_ok(questions: list[dict], changed: set[str], lang: str) -> bool:
     return True
 
 
+def describe(old: list[dict], new: list[dict]) -> str:
+    """What really changed, worked out by comparing (修正方案第 5 轮: the model's own account is not trusted — it said “改好了” when nothing had changed)."""
+    before = {str(q.get("id", "")): (i, q) for i, q in enumerate(old)}
+    after_ids = [q["id"] for q in new]
+    parts = []
+    added = [(i, q) for i, q in enumerate(new) if q["id"] not in before]
+    for i, q in added:
+        parts.append(f"新增 Q{i + 1}“{str(q.get('text', ''))[:24]}”")
+    gone = [(i, q) for qid, (i, q) in before.items() if qid not in after_ids]
+    for i, q in gone:
+        parts.append(f"删掉原 Q{i + 1}“{str(q.get('text', ''))[:20]}”")
+    kept_old = [qid for qid in before if qid in after_ids]
+    kept_new = [qid for qid in after_ids if qid in before]
+    if kept_old != kept_new:
+        parts.append("调整了题目顺序" if not added and not gone else "其余题目顺序有调整")
+    elif added and not gone:
+        first = min(i for i, _ in added)
+        if first < len(new) - len(added):
+            parts.append(f"原来的 Q{first + 1} 起顺延")
+    for i, q in enumerate(new):
+        if q["id"] in before and before[q["id"]][1] != q:
+            o = before[q["id"]][1]
+            what = []
+            if o.get("text") != q.get("text"):
+                what.append("题干")
+            if [x.get("text") for x in o.get("options") or []] != [x.get("text") for x in q.get("options") or []]:
+                what.append("选项")
+            if [(x.get("goto"), x.get("show_if"), x.get("excl"), x.get("tag")) for x in o.get("options") or []] != [(x.get("goto"), x.get("show_if"), x.get("excl"), x.get("tag")) for x in q.get("options") or []] or o.get("show_if") != q.get("show_if") or o.get("randomize") != q.get("randomize") or o.get("type") != q.get("type"):
+                what.append("逻辑")
+            parts.append(f"改了 Q{i + 1} 的{'、'.join(what or ['设置'])}")
+    return "；".join(parts) if parts else "没有改动"
+
+
 def edit(chat: ModeratorChatProvider | None, questions: list[dict], instruction: str, focus_qid: str, language: str, goals: list[str], need: str) -> dict:
     """Change the questionnaire as the researcher asked.
 
@@ -146,6 +179,14 @@ def edit(chat: ModeratorChatProvider | None, questions: list[dict], instruction:
             if not isinstance(items, list) or not items:
                 raise recruit_form.FormError("没有给出题目")
             out = [_expand(it, before) for it in items if isinstance(it, dict)]
+            seen: set[str] = set()   # a new question that reuses a kept question's id (or another's) gets its own id
+            kept_ids = {str(it.get("id")) for it in items if isinstance(it, dict) and it.get("keep")}
+            for q, it in zip(out, [it for it in items if isinstance(it, dict)]):
+                qid = str(q.get("id") or "")
+                if qid and (qid in seen or (not it.get("keep") and qid in kept_ids)):
+                    q.pop("id", None)
+                elif qid:
+                    seen.add(qid)
             form = recruit_form.normalize({"source": "ai", "questions": out, "goals": goals, "need": need})
             new = [q.model_dump() for q in form.questions]
             changed = {q["id"] for q in new if before.get(q["id"]) != q}
@@ -159,5 +200,5 @@ def edit(chat: ModeratorChatProvider | None, questions: list[dict], instruction:
             continue
         if [q["id"] for q in new] == list(before) and not changed:
             return {"changed": False, "reply": reply or "这次没有需要改的地方"}
-        return {"changed": True, "questions": new, "reply": reply or "已改好"}
+        return {"changed": True, "questions": new, "reply": "已改：" + describe(questions, new)}
     raise EditError(f"没有改成：{last or '小星星没给出可用的问卷'}，请换个说法再试一次")

@@ -1865,7 +1865,7 @@ def outline_wb_test_section(br, D):
     audit_page(pg, "outline_wb_test pilot review/desktop", errs)
     pg.screenshot(path=os.path.join(ROOT, "qa_shots", "fix1_b2_review.png"))
     pg.click('[data-ow="rv-next"]'); ok(wait_until(lambda: "v2" in pg.inner_text("#owstate"), 8), "[outline_wb_test] the next version v2 is made from the round")
-    pg.click('[data-ow="rv-ready"]'); ok(wait_until(lambda: "已确认可以正式开始" in pg.inner_text("#owroot3"), 6), "[outline_wb_test] the researcher says 可以正式开始")
+    ok(pg.locator('#owroot3 [data-ow="rv-ready"]').count() == 0, "[outline_wb_test] no separate 可以正式开始 button (merged into 发布这一版, 用户 2026-11-20)")
     pg.click("[data-ow-tab=publish]"); ok(wait_until(lambda: pg.locator("#owroot3 [data-ow=pub-go]").count() == 1, 6), "[outline_wb_test] the publish page lists checks and versions")
     ok("新建版本" not in pg.inner_text("#owroot3") and pg.locator("[data-ow=ver-new]").count() == 0, "[outline_wb_test] there is no 新建版本 button")
     heads = [x.strip() for x in pg.locator("#owroot3 .ow-tbl").last.locator("th").all_inner_texts()]
@@ -1879,7 +1879,8 @@ def outline_wb_test_section(br, D):
         audit_page(pg, f"outline_wb_test publish/{th}", errs)
     pg.evaluate("document.documentElement.dataset.theme = 'light'")
     if pg.locator('[data-ow="pub-go"]:not([disabled])').count():
-        pg.click('[data-ow="pub-go"]'); ok(wait_until(lambda: "已发布" in pg.inner_text("#owstate"), 8), "[outline_wb_test] after publishing the side menu says 已发布")
+        asked = []; pg.once("dialog", lambda d: (asked.append(d.message), d.accept()))
+        pg.click('[data-ow="pub-go"]'); ok(wait_until(lambda: "已发布" in pg.inner_text("#owstate"), 8) and asked and "Pilot 的问题都处理完了吗" in asked[0], "[outline_wb_test] 发布这一版 asks whether the pilot is dealt with, then the side menu says 已发布")
     ctx.close()
 
 
@@ -2001,10 +2002,11 @@ def fix4_section(br, D):
     ok(pg.locator("#imrows tr").count() >= 1 and pg.locator(".im-tbl th:visible").count() == 3, "[fix4] the import is 姓名 + 邮箱 rows (国家、语言、标签 hidden until asked for)")
     pg.click("#impaste"); pg.fill("#impastet", "bobbie bobbie@example.com" + chr(10) + "林小雨,lin@example.com"); pg.click("#impasteok")
     ok(pg.locator("#imrows tr").count() == 2 and pg.locator("#imrows .im-e").nth(1).input_value() == "lin@example.com", "[fix4] pasted lines without a header fill the rows")
-    pg.fill("[name=source]", "自己采集"); pg.click("#dry")
-    ok(wait_until(lambda: "将新增" in pg.inner_text("#prev") and "2" in pg.inner_text("#prev"), 6), "[fix4] the preview counts the two people (no 第一行必须有 name 列 error)")
-    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "fix4_import.png"))
-    audit_page(pg, "fix4 import/desktop", errs)
+    ok(pg.locator("#dry").count() == 0, "[fix5] the import has no 先预览 button")
+    pg.fill("[name=source]", "自己采集"); pg.check("#basis"); pg.screenshot(path=os.path.join(ROOT, "qa_shots", "fix4_import.png")); audit_page(pg, "fix4 import/desktop", errs)
+    pg.click("#impgo")
+    ok(wait_until(lambda: pg.locator("#imrows").count() == 0 and "待发问卷 2" in pg.inner_text("main").replace(" ", "").replace("待发问卷2", "待发问卷 2"), 10), "[fix5] after importing, the card counts the two people waiting (no 第一行必须有 name 列 error)")
+    ok(wait_until(lambda: pg.is_enabled("#dbimpsend"), 6), "[fix5] 用邮件发送甄别问卷链接 can be clicked right after importing")
     ctx.close()
 
 
