@@ -10,6 +10,7 @@
 - 环境：`.env` 未改（`OCR_PROVIDER`、`TTS_PROVIDER` 保持）。没有新表、新列、新依赖。
 - 部署：本地生成 `git archive bb35e86 app` 的 tar 文件后上传解包（307 个文件与 bb35e86 一致）；`docker compose -p deploy up -d --build --no-deps app`。重建期间一次健康检查短暂显示 unhealthy，是重建过渡时的旧状态；新容器随后 healthy，重启次数 0。
 - 核对（5.1）：启动日志 error / traceback / cannot add 为 0；`/api/health`、`/index.html`、`/rform.js`、`/rsteps.js`、`/outline_wb.js`、`/join.html`、`/room.html` 都是 200；公网 `/api/health` 200；表总数 85；`app.doctor` 没有必须解决的问题；保留期 dry-run：`projects_with_active_interviews` 为 `[]`。
+- 5.7 看板压测（用户确认法务后跑，LOAD_REAL=1，30 场 × 3 题 × 2 句，每句间隔 25 秒）：任务 90，失败 0，访谈错误 0，写入编码回答 124；从句子进来到写入数据库：中位数 1.02 秒，p95 2.69 秒，最大 3.76 秒。**限制：报告里的“模型调用 0 次”说明计数器没统计真实模型，每场调用次数和费用没有测出；需要在 DeepSeek 用量后台核对本次用量和费用。** 日志里 429/rate/quota/余额/限额 为 0。报告副本 `/opt/total-mvp/backups/board_load-20261120-1958.md`（服务器上）。
 - 还没做：5.2 甄别问卷（滚轮、✓/✗、按城市出区用真模型、区名截图给用户核对）；5.3 导入名单粘贴预览；5.4 生成大纲；5.5 手机看同意书和 AI 房间；5.6 前几轮遗留检查；5.7 看板真模型压测（**等用户确认法务问题后再跑**）。因为这些没有全部通过，**没有写 DEPLOYED.txt**。
 
 ## 2026-11-20 · 修正方案第 4 轮（用户线上试用 14 条）
