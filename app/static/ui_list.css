@@ -21,3 +21,7 @@ html body .plbox .ptbl thead th:has(.msm:not([hidden])){z-index:70}
 #plist .fres{margin-top:10px}
 #plist .fres:empty{display:none}
 @media (max-width:900px){#plist .rd-tool{flex-wrap:wrap}#plist .rd-tool button,#plist .rd-tool .more-lab{height:auto;min-height:36px;flex:none}.rd-three button.lnk,#quotas{min-height:36px;padding:0 10px}}   /* phone: the list tools wrap instead of being squeezed below 36px (qa tap targets) */
+
+/* 修正方案第 2 轮 B1：数据库筛选及发送 · 导入名单，发送甄别问卷 */
+.dbimp{margin-bottom:14px}.dbimp-g{display:grid;grid-template-columns:1fr 320px;gap:18px;align-items:start}.dbimp-t td{padding:6px 10px}.dbimp-t td:last-child{text-align:right}
+@media (max-width:900px){.dbimp-g{grid-template-columns:1fr}}

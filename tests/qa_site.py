@@ -1984,6 +1984,10 @@ def rsteps_section(br, D):
         pg.evaluate(f"document.documentElement.dataset.theme = '{th}'"); pg.wait_for_timeout(300)
         audit_page(pg, f"rsteps/{th}", errs)
     pg.evaluate("document.documentElement.dataset.theme = 'light'")
+    pg.goto(B + f"/#/p/{pid}/people/db"); pg.wait_for_selector(".dbimp")
+    ok(pg.locator("#dbimp").count() == 1 and pg.locator("#dbimpsend").count() == 1, "[rsteps] 数据库筛选及发送 has 导入名单 and 用邮件发送甄别问卷链接 (fix round 2 B1)")
+    audit_page(pg, "db import/desktop", errs)
+    pg.evaluate("document.documentElement.dataset.theme = 'light'")
     ctx.close()
 
 

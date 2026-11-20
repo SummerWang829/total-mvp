@@ -25,6 +25,8 @@ def fresh_db():
     Base.metadata.create_all(engine)
     settings.llm_provider = "mock"
     settings.moderator_provider, settings.moderator_vendor = "mock", ""
+    from app import ratelimit
+    ratelimit.reset()   # each test starts from nothing, like the database (the limits themselves are tested in test_ratelimit.py)
     yield
 
 

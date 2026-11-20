@@ -158,6 +158,13 @@ def screen_submit(token: str, body: SubmitBody, request: Request, db: Session = 
         raise HTTPException(403, "Sorry, this study is not open in your region yet / 抱歉，这项研究暂时不面向你所在的地区")
     twin = recruit.duplicate_participant(db, proj.id, body.name, email)  # the same person = the same name AND e-mail; one e-mail with another name is another person
     same = twin.id if twin else None
+    if twin is not None and not twin.screen_result:   # 修正方案第 2 轮 B1: someone imported to be screened first answered and qualified: now they are in the list
+        twin.screen_result, twin.screen_reason = "qualified", f"招募问卷（第 {f.version} 版）：符合"
+        twin.tags = recruit.clean_tags(list(dict.fromkeys([*(twin.tags or []), *step.tags])))
+        screener.save(db, proj.org_id, twin.id, step.items)
+        f.n_qualified = (f.n_qualified or 0) + 1
+        f.tally = recruit_insights.record(f.tally, "q", questions, step.chosen)
+        audit(db, proj.org_id, "participant:screen", "recruit.form_qualified", proj.id, participant=twin.id)
     if same is None:
         p = Participant(org_id=proj.org_id, project_id=proj.id, name=body.name.strip(), email=email, country=country, language=proj.language,
                         tags=recruit.clean_tags(step.tags), screening="eligible", screen_result="qualified", screen_reason=f"招募问卷（第 {f.version} 版）：符合",

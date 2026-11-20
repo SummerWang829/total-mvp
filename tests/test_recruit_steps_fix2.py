@@ -53,3 +53,18 @@ def test_a_powerpoint_is_read_slide_by_slide():
         z.writestr("ppt/slides/slide1.xml", "<p:sld><a:p><a:r><a:t>配额</a:t></a:r></a:p></p:sld>")
     out = attachments.extract("配额.pptx", b.getvalue())
     assert out["kind"] == "ppt" and out["text"].splitlines() == ["第 1 页：配额", "第 2 页：新势力车主 / 2 人"]
+
+
+def test_someone_imported_to_be_screened_joins_the_list_only_when_they_qualify(client, org):
+    from test_screen_form import published
+    pid, tok = published(org)
+    r = org.c.post(f"/api/projects/{pid}/participants/import", headers=org.h(), json={"csv": "姓名,邮箱\n林小雨,lin@example.com\n王大明,wang@example.com", "dry_run": False,
+                                                                                        "source_name": "客户老客户", "mode": "screen", "confirm_basis": True}).json()
+    assert r["created"] == 2
+    ppl = {x["name"]: x for x in org.c.get(f"/api/projects/{pid}/participants", headers=org.h()).json()}
+    assert ppl["林小雨"]["screen_result"] == "" and ppl["林小雨"]["source"] == "import"   # waiting: the list page does not show them yet
+    answers = {"age": 28, "use": "daily", "chan": ["on"], "why": "价格"}
+    first = client.post(f"/api/public/screen/{tok}/step", json={"answers": {}}).json()
+    assert client.post(f"/api/public/screen/{tok}/submit", json={"answers": answers, "started": first.get("started", ""), "name": "林小雨", "email": "lin@example.com", "country": "SG", "consent": True}).status_code == 201
+    ppl = {x["name"]: x for x in org.c.get(f"/api/projects/{pid}/participants", headers=org.h()).json()}
+    assert ppl["林小雨"]["screen_result"] == "qualified" and "线上买家" in ppl["林小雨"]["tags"] and ppl["王大明"]["screen_result"] == ""

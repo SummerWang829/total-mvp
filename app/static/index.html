@@ -329,6 +329,10 @@ const RULE_EFFECTS = [["require", "必须满足"], ["exclude", "命中就排除"
 async function peopleView(p) {
   const my = renderSeq;
   let [parts, its, rec, form, lib, impB, mon, aud] = await Promise.all([api(`/projects/${p.id}/participants`), api(`/projects/${p.id}/interviews`), api(`/projects/${p.id}/recruiting`), api(`/projects/${p.id}/recruiting/form`), api(`/projects/${p.id}/recruiting/tags`), api(`/projects/${p.id}/recruiting/import/batches`).catch(() => ({ batches: [], orphans_pending: 0 })), api(`/projects/${p.id}/monitor`).catch(() => ({})), (STAFF() ? api(`/projects/${p.id}/creation/audience`).catch(() => ({})) : {})]);
+  // 修正方案第 2 轮 B1: people imported to be screened first are not in the list until they qualify; 数据库筛选及发送 sends them the questionnaire and shows the counts
+  const waitingScreen = (x) => x.source === "import" && !x.screen_result;
+  const toScreen = parts.filter(waitingScreen);
+  parts = parts.filter((x) => !waitingScreen(x));
   const plannedN = (aud && aud.total) || (mon && mon.i && mon.i.target) || 0;   // 创建访谈里定的深访总人数，回退立项配额表
   const rf = rfCard(p, form, rec, plannedN), rd = await rdBuild(p, rec);
   if (stale(my)) return;
@@ -397,7 +401,15 @@ async function peopleView(p) {
       <div class="row" style="margin-top:18px"><button type="button" class="p" id="rmnext">下一步 →</button></div></div>`;
   // 数据库发送：人群圈选与假名化（复刻参考页功能）+ 保留原有「N 人符合筛选 / 同步发送甄别问卷链接」
   const dbTotal = parts.length;
-  const dbHtml = `<div class="card rdb-card au-card">
+  const fs = (form && form.stats) || {};
+  const dbImport = `<div class="card rdb-card dbimp"><div class="au-pageh"><div><h2>导入名单，发送甄别问卷</h2></div></div>
+    <div class="dbimp-g"><div><p class="sm" style="margin:0 0 8px">导入 Excel / CSV 名单（姓名、邮箱等，字段和“配额及受访者名单”一致），给他们发甄别问卷链接；答完合格的人才进名单，不合格的只记人数。</p>
+      <div class="row" style="flex-wrap:wrap"><button type="button" id="dbimp">导入名单</button><span class="sm">待发问卷 <b>${toScreen.length}</b> 人，其中有邮箱 <b>${toScreen.filter((x) => x.email).length}</b> 人</span><span class="sp"></span>
+      <button type="button" class="p" id="dbimpsend"${toScreen.some((x) => x.email) ? "" : " disabled"}>用邮件发送甄别问卷链接</button></div>
+      <p class="sm mut" style="margin:6px 0 0">短信暂不支持，先用邮件。</p></div>
+    <table class="tbl dbimp-t"><tbody><tr><td>开始作答</td><td>${fs.started || 0}</td></tr><tr><td>合格（已进名单）</td><td><b>${fs.qualified || 0}</b></td></tr><tr><td>不合格（只记人数）</td><td>${fs.out || 0}</td></tr>
+      <tr><td>被筛掉最多的题</td><td>${(() => { const ob = fs.out_by || {}, k = Object.keys(ob).sort((a, b) => ob[b] - ob[a])[0]; if (!k) return "—"; const i = (form.questions || []).findIndex((q) => q.id === k); return k === "__time__" ? `答得太快（${ob[k]} 人）` : `${i >= 0 ? "S" + (i + 1) + " " + esc(((form.questions[i] || {}).text || "").slice(0, 16)) : esc(k)}（${ob[k]} 人）`; })()}</td></tr></tbody></table></div></div>`;
+  const dbHtml = dbImport + `<div class="card rdb-card au-card">
     <div class="au-pageh"><div><h2>人群圈选与假名化</h2><div class="sm mut">受众圈选条件、假名化处理、留痕</div></div><span class="sp"></span><span class="au-mod">数据库发送</span></div>
     <section class="au-grp">
       <div class="au-grphd"><b>人群定义</b><span class="au-pill v">v1</span><span class="au-pill draft">草稿</span><span class="au-pill unsaved" id="ausaved">未保存</span><span class="sp"></span><span class="sm mut">锁定前均可修改 ⓘ</span></div>
@@ -431,6 +443,14 @@ async function peopleView(p) {
     <div class="lpop" id="lpop" hidden></div></div>`, { active: "people", p });
   window.__ptabGo = (name) => { location.hash = `#/p/${p.id}/people/${{ "ols-gen": "outline", "ols-test": "test" }[name] || name}`; };   // every part has its own address (修正方案第 1 轮第 1 条)
   if (ptab === "ols" && window.OutlineWb) window.OutlineWb.mount(p.id, olSeg() === "outline" ? "gen" : olSeg());   // 招募问卷页右上角「确认并下一步」跳到数据库筛选及发送
+  const dbimp = $("#dbimp"); if (dbimp) dbimp.onclick = () => importModal(p, "screen");
+  const dbimpsend = $("#dbimpsend"); if (dbimpsend) dbimpsend.onclick = guard(async () => {
+    const ids = toScreen.filter((x) => x.email && !x.anonymized).map((x) => x.id);
+    if (!ids.length) return toast("这批名单里没有邮箱", true);
+    if (!confirm(`将向 ${ids.length} 位导入的人发送甄别问卷链接邮件，确定发送吗？`)) return;
+    const r = await api(`/projects/${p.id}/recruiting/screen-invite`, { method: "POST", body: { participant_ids: ids } });
+    toast(`已发送 ${r.sent} 封，跳过 ${(r.skipped || []).length} 位`); render();
+  });
   // 同步发送甄别问卷链接（邮件）+ 假名化留痕（失败不影响发送）
   const dbsend = $("#dbsend"); if (dbsend) dbsend.onclick = guard(async () => {
     const numEl = $("#dbnum"), want = numEl ? Math.max(0, Math.min(+numEl.value || 0, parts.length)) : parts.length;
@@ -743,17 +763,17 @@ async function peopleView(p) {
   };
 }
 
-function importModal(p) {
+function importModal(p, preset) {
   const m = modal(`<h2>导入名单（外部渠道）</h2><form id="f">
     <label class="f"><span>这批名单从哪里来？（必填，会显示在名单的“来源”列）</span><input name="source" required maxlength="60" placeholder="例如：客户 A 老客户名单"></label>
     <div class="row" style="flex-wrap:wrap;margin:-4px 0 8px">${["客户提供", "合作方 / 社群", "自己采集", "其他"].map((s) => `<button type="button" class="s" data-src="${s}">${s}</button>`).join("")}</div>
     <p class="sm mut">表头：姓名（必填）；邮箱、国家、语言、标签（分号分隔）；其余列为关键回答。最多 500 行。<button type="button" class="lnk" id="tpl">下载模板</button></p>
-    <label class="f"><span>选择文件（.csv / .txt，Excel 请另存为 CSV UTF-8）</span><input type="file" id="file" accept=".csv,.txt,text/csv,text/plain"></label>
+    <label class="f"><span>选择文件（Excel .xlsx、.csv 或 .txt）</span><input type="file" id="file" accept=".xlsx,.csv,.txt,text/csv,text/plain"></label>
     <label class="f"><span>或粘贴内容</span><textarea name="csv" rows="6" required placeholder="姓名,邮箱,国家,语言,标签,年龄&#10;林小雨,lin@example.com,SG,zh,女性;学生,22"></textarea></label>
     <div id="prev" class="sm" role="status" aria-live="polite"></div>
     <fieldset class="f" style="border:0;padding:0;margin:0 0 8px"><legend class="sm">导入后怎么处理</legend>
-      <label class="sm" style="display:block"><input type="radio" name="mode" value="invite" checked> 直接可邀请（不经问卷）</label>
-      <label class="sm" style="display:block"><input type="radio" name="mode" value="screen"> 先发问卷链接再甄别（仍按旧版资格规则判断）</label></fieldset>
+      <label class="sm" style="display:block"><input type="radio" name="mode" value="invite"${preset === "screen" ? "" : " checked"}> 直接可邀请（不经问卷）</label>
+      <label class="sm" style="display:block"><input type="radio" name="mode" value="screen"${preset === "screen" ? " checked" : ""}> 先发甄别问卷，合格的才进名单</label></fieldset>
     <label class="sm" style="display:flex;gap:8px;align-items:flex-start"><input type="checkbox" id="basis"> <span>我确认这批名单有合法的联系依据（对方同意被联系，或有合同 / 合作协议允许）。</span></label>
     
     <div class="row"><button type="button" id="dry">先预览</button><button class="p" id="impgo">导入</button><button type="button" id="c">取消</button></div></form>`);
@@ -762,7 +782,18 @@ function importModal(p) {
   $("#tpl", m).onclick = () => {
     const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(["﻿姓名,邮箱,国家,语言,标签,年龄\n林小雨,lin@example.com,SG,zh,女性;学生,22\n"], { type: "text/csv" })); a.download = "名单模板.csv"; document.body.appendChild(a); a.click(); a.remove();
   };
-  $("#file", m).onchange = async (e) => { const f = e.target.files[0]; if (f) $("[name=csv]", m).value = await f.text(); };
+  $("#file", m).onchange = guard(async (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    if (/\.xlsx$/i.test(f.name)) {   // 修正方案第 2 轮 B1: an Excel list is read by the server (first sheet) and turned into the same comma lines
+      const fd = new FormData(); fd.append("file", f);
+      const r = await fetch("/api/attachments/extract", { method: "POST", headers: { Authorization: "Bearer " + store.get("tt_token") }, body: fd });
+      const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.detail || "Excel 没有读出来");
+      const lines = String(d.text || "").split("\n"), start = lines.findIndex((l) => l.startsWith("表："));
+      const body = [];
+      for (const l of lines.slice(start + 1)) { if (l.startsWith("表：")) break; if (l.trim()) body.push(l.split(" | ").map((c) => (/[,"]/.test(c) ? `"${c.replace(/"/g, '""')}"` : c)).join(",")); }
+      $("[name=csv]", m).value = body.join("\n");
+    } else $("[name=csv]", m).value = await f.text();
+  });
   const show = (r) => { $("#prev", m).innerHTML = `${r.dry_run ? "预览：将新增" : "已新增"} <b>${r.created}</b> 人${r.skipped.length ? `，跳过 ${r.skipped.length} 行：<ul style="margin:4px 0 0 18px">${r.skipped.slice(0, 8).map((s) => `<li>第 ${s.line} 行：${esc(s.why)}</li>`).join("")}${r.skipped.length > 8 ? "<li>…</li>" : ""}</ul>` : ""}`; };
   const body = (dry) => ({ csv: $("[name=csv]", m).value, dry_run: dry, source_name: $("[name=source]", m).value.trim(), mode: m.querySelector("[name=mode]:checked").value, confirm_basis: $("#basis", m).checked });
   $("#dry", m).onclick = guard(async () => show(await api(`/projects/${p.id}/participants/import`, { method: "POST", body: body(true) })));
