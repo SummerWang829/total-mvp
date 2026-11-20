@@ -36,6 +36,7 @@ function rfAutosize(t) {
     t.style.overflowY = t.scrollHeight > max + 1 ? "auto" : "hidden";
   };
   t.addEventListener("input", fit); fit();
+  ["focus", "blur"].forEach((ev) => t.addEventListener(ev, () => setTimeout(fit, 80)));   // the voice strip makes room inside the box (tinput.js): fit again
 }
 
 /** 整个“招募问卷”卡片，返回 { html, wire, fit }。 */

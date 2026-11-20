@@ -1714,6 +1714,8 @@ def outline_wb_section(br, D):
     pg.click('[data-ow="gen"]'); ok(wait_until(lambda: pg.locator("#owroot .ow-item").count() >= 2, 8), "[outline_wb] the module's questions appear")
     rows = pg.evaluate("""() => [...document.querySelectorAll('#owroot .ow-item .h')].map((h) => { const c = [...h.children].map((e) => { const r = e.getBoundingClientRect(); return (r.top + r.bottom) / 2; }); return Math.max(...c) - Math.min(...c); })""")
     ok(rows and max(rows) <= 2, f"[outline_wb] label, text, minutes and delete sit on one line in every question (largest spread {max(rows) if rows else '-'}px)")
+    pg.click("#owroot .ow-item textarea.t >> nth=0"); pg.wait_for_timeout(300)   # 修正方案第 4 轮: the opening words grow the box, and the voice strip inside it covers nothing
+    ok(pg.evaluate("(() => { const t = document.querySelector('#owroot .ow-item textarea.t'); return t.scrollHeight <= t.clientHeight + 2; })()"), "[outline_wb] a long text box shows all its words, also while it has the voice strip")
     audit_page(pg, "outline_wb questions/desktop", errs)
     pg.screenshot(path=os.path.join(ROOT, "qa_shots", "outline_wb_questions.png"))
     old = pg.locator("#owroot .ow-item textarea >> nth=0").input_value()
@@ -2860,6 +2862,8 @@ def run():
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "outline_board_section": guard_section(outline_board_section, br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "voice_section": guard_section(voice_section, br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "rsteps_section": guard_section(rsteps_section, br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "fix3_section": guard_section(fix3_section, br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "fix4_section": guard_section(fix4_section, br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "tabs_section": guard_section(tabs_section, br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "shell_behaviour_section": guard_section(shell_behaviour_section, br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "fill_section": guard_section(fill_section, br, D)

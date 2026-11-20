@@ -709,6 +709,9 @@
     document.addEventListener("change", (e) => { if (q("#owroot")?.contains(e.target) || q("#owroot3")?.contains(e.target)) onChange(e); });
     document.addEventListener("submit", onSubmit);
     document.addEventListener("input", (e) => { if (e.target.id === "ow-focus-in") focusDrop(); if (e.target.matches && e.target.matches("#owroot .ow-item textarea.t")) growBox(e.target); });
+    // the voice strip makes room inside a box it is in (tinput.js): the words wrap again, so the box grows again when it gains or loses the focus
+    const regrow = (e) => { const t = e.target; if (t.matches && t.matches("#owroot .ow-item textarea.t")) { requestAnimationFrame(() => growBox(t)); setTimeout(() => growBox(t), 80); } };
+    document.addEventListener("focusin", regrow); document.addEventListener("focusout", regrow);
     document.addEventListener("focusin", onFocusIn);
   }
 

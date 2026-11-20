@@ -103,6 +103,18 @@ def main() -> int:
     elif board._chat() is None:
         print("LOAD_REAL=1 but no real model is configured (MODERATOR_PROVIDER / MODERATOR_VENDOR / key): nothing to measure.")
         return 2
+    if REAL:   # 2026-11-20: the real model is counted too (the report said 0 calls, so the calls per interview and the cost could not be worked out)
+        real_chat = board._chat
+
+        class Counting:
+            def __init__(self, inner):  # noqa: ANN001
+                self.inner, self.name = inner, getattr(inner, "name", "real")
+
+            def complete(self, msgs, **kw):  # noqa: ANN001, ANN003
+                CALLS["n"] += 1
+                return self.inner.complete(msgs, **kw)
+
+        board._chat = lambda: (lambda c: Counting(c) if c is not None else None)(real_chat())   # type: ignore[assignment]
     errors: list[str] = []
     t0 = time.time()
     ts = [threading.Thread(target=one, args=(pid, n, errors)) for n in range(N)]
