@@ -1303,7 +1303,11 @@ def wizard_section(br, D):
     # step 2: only the research design per sub-project, to read (no choosing here any more)
     pg.wait_for_selector("text=各子项目的研究设计")
     pg.wait_for_selector("#wzsug .sugtabs", timeout=20000)   # (the four kinds of suggestion became tabs of one card in the 11-07 wizard)
-    ok(pg.locator("#wzsug").count() == 1 and [x.strip() for x in pg.locator("#wzsug .sugtabs [role=tab]").all_inner_texts()] == ["深访提纲", "座谈会大纲", "配额", "舆情关键词"], "[wizard] after 下一步 the AI's suggestions are made in the background and shown on step 2 (interview and group outlines, quota hint, listening keywords)")
+    tabs = [x.strip() for x in pg.locator("#wzsug .sugtabs [role=tab]").all_inner_texts()]
+    live = [x.strip() for x in pg.locator("#wzsug .sugtabs [role=tab][data-sugtab]").all_inner_texts()]
+    want = ["深访提纲", "舆情关键词"]   # both sub-projects run 深访 (none a 座谈会) and the second one collects 舆情
+    ok(pg.locator("#wzsug").count() == 1 and tabs == ["深访提纲", "座谈会大纲", "舆情关键词"] and live == want,
+       f"[wizard] step 2 shows the AI's suggestions; only the chosen methods' tabs open, the others are grey, 配额 is gone (用户 2026-11-20 第 3 轮; open: {live})")
     audit_page(pg, "wizard step 2 suggestions/desktop", errs)
     ok(pg.locator("input[name=design]").count() == 0 and pg.locator("input[data-method]").count() == 0 and pg.locator(".wzbody tbody tr").count() == 2, "[wizard] step 2 only lists each sub-project's research design")
     audit_page(pg, "wizard step 2/desktop", errs); pg.click("#wznext")
@@ -1667,7 +1671,8 @@ def outline_wb_section(br, D):
     pg.locator(".sub2 .l1", has_text="数据库筛选及发送").click(); pg.wait_for_selector("#ptab-db:not([hidden])")
     t0 = pg.evaluate("performance.now()"); pg.locator(".sub2 .l1", has_text="生成大纲").click(); pg.wait_for_selector("#owroot:not([hidden]) .ow"); dt = pg.evaluate("performance.now()") - t0
     ok(dt < 400 and pg.locator(".sub2 .l1.on .tx").inner_text().strip() == "生成大纲", f"[outline_wb] the side menu switches 数据库筛选及发送 → 生成大纲 in {dt:.0f} ms (under 400) and marks the new page")
-    ok(wait_until(lambda: pg.locator("#owroot .ow-steps .ow-st").count() == 5, 6), "[outline_wb] the five steps are a bar at the top of the page")
+    ok(wait_until(lambda: pg.locator("#owroot .ow-steps .ow-st").count() == 4, 6) and pg.locator("#owroot .ow-steps .ow-st >> nth=0").inner_text().strip().endswith("目标与人群"),
+       "[outline_wb] the four steps are a bar at the top of the page; 目标 and 人群与执行 are one step (用户 2026-11-20 第 3 轮)")
     ok(pg.locator(".sub2 .l1 .l1, .sub2 .l2slot, .sub2 .ow-l3, .sub2 .ow-l4, .sub2 .ow-st").count() == 0, "[outline_wb] the side menu has at most two levels (no steps or modules in it)")
     ok([x.strip() for x in pg.locator(".sub2 .sgrp[data-grp=create] .l1 .tx").all_inner_texts()] == ["招募/主持/问卷", "甄别问卷", "数据库筛选及发送", "生成大纲", "预览测试", "Pilot", "配额及受访者名单"],
        "[outline_wb] 生成大纲 and 预览测试 sit right under 数据库筛选及发送, at the same level")
@@ -1678,14 +1683,20 @@ def outline_wb_section(br, D):
     pg.fill('[data-ow-free="key_questions"]', "她们买护肤品最看重什么\n价格接受范围"); pg.click('[data-ow-freeok="key_questions"]')
     ok(wait_until(lambda: "价格接受范围" in pg.inner_text("#owroot"), 6), "[outline_wb] the researcher's answer is kept")
     audit_page(pg, "outline_wb goal/desktop", errs)
-    pg.click('[data-ow="goal-next"]'); pg.click('[data-ow="build"]'); pg.wait_for_selector("#owroot .ow-tbl")
+    kind = call(f"/projects/{pid}/outline-wb", None, adm)["slots"]["research_type"]["value"]
+    ok(pg.locator('#owroot [data-ow="goal-next"]').count() == 0 and ("价格怎么谈" not in pg.inner_text("#owroot .ow-card") or kind == "pricing"), f"[outline_wb] one button goes on from 目标与人群; 价格怎么谈 shows only for a pricing study ({kind})")
+    pg.fill("#ow-in", "你好"); pg.keyboard.press("Enter")
+    ok(wait_until(lambda: "没有改动" in pg.inner_text("#ow-msgs"), 8), "[outline_wb] the dialog does not claim a change it did not make")
+    pg.reload(); pg.wait_for_selector("#owroot .ow")
+    ok(wait_until(lambda: "没有改动" in pg.inner_text("#ow-msgs"), 6), "[outline_wb] the dialog is still there after a reload")
+    pg.click('[data-ow="build"]'); pg.wait_for_selector("#owroot .ow-tbl")
     ok("45 分" in pg.inner_text("#owroot .ow-tbl"), "[outline_wb] the overview table adds up to the interview length")
     ok(pg.locator("#owroot [data-ow-m][data-f=depth]").count() >= 3, "[outline_wb] every module has a follow-up depth choice")
     ok(pg.locator("#owroot .ow-steps [data-ow-step=questions].lock").count() == 1, "[outline_wb] the questions step is closed until the overview is confirmed")
     ok(pg.url.endswith("/people/outline/overview"), f"[outline_wb] the step is in the address ({pg.url})")
     pg.reload(); pg.wait_for_selector("#owroot .ow-steps")
     ok(wait_until(lambda: pg.locator("#owroot .ow-steps .ow-st.on").inner_text().strip().endswith("大纲总览"), 6), "[outline_wb] a reload stays on the same step")
-    pg.click("#owroot .ow-steps [data-ow-step=goal]"); ok(wait_until(lambda: pg.locator("#owroot .ow-steps .ow-st.on").inner_text().strip().endswith("目标"), 6), "[outline_wb] an earlier step can be clicked")
+    pg.click("#owroot .ow-steps [data-ow-step=goal]"); ok(wait_until(lambda: pg.locator("#owroot .ow-steps .ow-st.on").inner_text().strip().endswith("目标与人群"), 6), "[outline_wb] an earlier step can be clicked")
     pg.click("#owroot .ow-steps [data-ow-step=overview]"); pg.wait_for_selector("#owroot .ow-tbl")
     off = pg.evaluate("""() => [...document.querySelectorAll('#owroot .ow-tbl tbody tr:not(.tot)')].map((tr) => { const cs = [...tr.querySelectorAll('td')].map((td) => { const ctl = td.querySelectorAll('input,select'); const el = ctl.length === 1 ? ctl[0] : td; const r = el.getBoundingClientRect(); return (r.top + r.bottom) / 2; }); return Math.max(...cs) - Math.min(...cs); })""")
     ok(off and max(off) <= 14, f"[outline_wb] in every overview row the cells sit on one line (largest spread {max(off) if off else '-'}px)")
@@ -1742,18 +1753,22 @@ def outline_wb_section(br, D):
         pg.click('#owroot [data-ow="conf-mod"]'); pg.wait_for_timeout(400)
     ok(wait_until(lambda: pg.locator("#owroot .ow-steps [data-ow-step=focus].lock").count() == 0 and (pg.locator("#owroot .ow-nav [data-ow-step=focus]").count() == 1 or pg.locator("#owroot .ow-steps .ow-st.on").inner_text().strip().endswith("关注问题")), 6)
        and pg.locator("#owroot .bk").count() == 0, "[outline_wb] after the last module the way on opens (继续 or straight to 关注问题); there is no 备选 box")
-    pg.click("#owroot .ow-steps [data-ow-step=focus]"); pg.fill("#ow-focus-in", "用户平时喜欢哪些广告？"); pg.click('[data-ow="focus-add"]')
-    pg.wait_for_selector("#owroot [data-ow-fdd]"); pg.click("#owroot [data-ow-fdd]")
-    ok(pg.locator("#owroot .ow-fdd-p [data-ow-fopt^='uid:']").count() >= 2 and pg.locator("#owroot .ow-fdd-p [data-ow-fopt=idea]").count() == 1 and pg.locator("#owroot .ow-fdd-p [data-ow-fopt=none]").count() == 1,
-       "[outline_wb] 对应到 lists the questions, 新增想法 and 暂不对应")
-    pg.click("#owroot .ow-fdd-p [data-ow-fopt^='uid:'] >> nth=0"); pg.click("#owroot .ow-fdd-p [data-ow-fopt^='uid:'] >> nth=1")
-    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "fix1_b3_focus_dd.png"))
-    pg.click('[data-ow="fdd-ok"]'); ok(wait_until(lambda: "、" in pg.inner_text("#owroot [data-ow-fdd]"), 6), "[outline_wb] a focus question can point at two questions")
-    pg.click("#owroot [data-ow-fdd]"); pg.click("#owroot .ow-fdd-p [data-ow-fopt=idea]"); pg.click('[data-ow="fdd-ok"]')
-    ok(wait_until(lambda: pg.locator("#owroot .ow-idea [data-ow-rev=accept]").count() == 1, 8), "[outline_wb] 新增想法 drafts a new question that waits to be accepted")
+    # 用户 2026-11-20 第 3 轮: no “对应到” column; the box searches the outline's questions by keyword (or adds a new focus question); 下一步 goes to 预览测试
+    pg.click("#owroot .ow-steps [data-ow-step=focus]"); pg.wait_for_selector("#ow-focus-in")
+    ok(pg.locator("#owroot [data-ow-fdd]").count() == 0 and "对应到" not in pg.inner_text("#owroot .ow-ftbl"), "[outline_wb] the focus table has no 对应到 column")
+    first = call(f"/projects/{pid}/outline-wb", None, adm)["items"]
+    q1 = next(i for i in first if i["kind"] == "question")
+    word = q1["text"][2:6]
+    pg.fill("#ow-focus-in", word)
+    ok(wait_until(lambda: pg.locator("#ow-fdrop [data-ow=focus-pick]").count() >= 1, 4), f"[outline_wb] typing “{word}” lists the outline's questions with it")
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "fix3_focus_search.png"))
+    pg.click("#ow-fdrop [data-ow=focus-pick] >> nth=0")
+    ok(wait_until(lambda: pg.locator("#owroot .ow-ftbl tbody tr").count() == 1 and pg.locator("#owroot .ow-ftbl .ow-pill").count() == 1, 8), "[outline_wb] the picked question becomes a focus question pointing at it")
+    pg.fill("#ow-focus-in", "用户平时喜欢哪些广告？"); pg.click('#owroot .ow-fsearch > [data-ow="focus-add"]')
+    ok(wait_until(lambda: pg.locator("#owroot .ow-ftbl tbody tr").count() == 2, 8), "[outline_wb] a new focus question can be written")
+    ok(pg.locator(f'#owroot .ow-nav a[href="#/p/{pid}/people/test"]').count() == 1, "[outline_wb] 关注问题 has 下一步：预览测试")
     audit_page(pg, "outline_wb focus/desktop", errs)
     pg.screenshot(path=os.path.join(ROOT, "qa_shots", "fix1_b3_focus.png"))
-    pg.click("#owroot .ow-idea [data-ow-rev=accept]"); ok(wait_until(lambda: pg.locator("#owroot .ow-idea").count() == 0 and "新增想法" not in pg.inner_text("#owroot [data-ow-fdd]"), 8), "[outline_wb] accepting puts the new question in and links it")
     pg.click('[data-ow="rs-open"]'); ok(pg.locator("#owroot .ow-ask input[value=all]").count() == 1, "[outline_wb] 重新开始 asks: only my answers, or everything")
     pg.click('[data-ow="rs-go"]'); ok(wait_until(lambda: pg.locator("#owroot .ow-undo").count() == 1, 6), "[outline_wb] after clearing, 撤销清除 is offered")
     pg.screenshot(path=os.path.join(ROOT, "qa_shots", "fix1_b3_undo.png"))
@@ -1808,6 +1823,7 @@ def outline_wb_test_section(br, D):
     box = pg.locator("#owroot3 .ow-chat").bounding_box()
     ok(box and box["height"] >= 500, "[outline_wb_test] the assistant panel fills the height of the page")
     ok(wait_until(lambda: pg.locator("#owroot3 .ow-phone").count() == 1, 6), "[outline_wb_test] the preview shows a phone with what the participant sees")
+    ok(pg.locator("#owroot3 [data-ow=pv-lang][data-l=ms], #owroot3 [data-ow=pv-lang][data-l=ta]").count() == 0, "[outline_wb_test] the preview offers only the interview's languages")
     audit_page(pg, "outline_wb_test preview/desktop", errs)
     pg.click("[data-ow-tab=rehearsal]"); pg.click('[data-ow="rh-run"]')
     ok(wait_until(lambda: pg.locator("#owroot3 .ow-kv").count() == 1 and "场数" in pg.inner_text("#owroot3"), 8), "[outline_wb_test] a rehearsal runs and reports")
@@ -1821,7 +1837,8 @@ def outline_wb_test_section(br, D):
     pg.click('[data-ow="rd-skip-cancel"]')
     pg.click('[data-ow="rd-open"]'); pg.wait_for_selector("#owroot3 [data-ow=rd-start]")
     ok(pg.locator("#owroot3 [data-ow-w]").count() >= 2 and "真人主持" in pg.inner_text("#owroot3"), "[outline_wb_test] the start form lists the people to invite and says the host comes from the project")
-    pg.click('[data-ow="rd-pk"][data-v="col"]'); pg.fill("#ow-r-name", "同事小林"); pg.fill("#ow-r-email", "lin@example.com")
+    ok(pg.locator("#owroot3 [data-ow=rd-pk]").count() == 0 and pg.locator("#owroot3 #ow-r-email").count() == 1, "[outline_wb_test] the participant is one email box (no 从名单选 / 同事, 用户 2026-11-20 第 3 轮)")
+    pg.fill("#ow-r-email", "lin@example.com")
     audit_page(pg, "outline_wb_test round form/desktop", errs)
     pg.screenshot(path=os.path.join(ROOT, "qa_shots", "fix1_b2_round.png"))
     pg.click('[data-ow="rd-start"]')
@@ -1945,6 +1962,34 @@ def voice_section(br, D):
     ctx.close()
 
 
+def fix3_section(br, D):
+    """修正方案第 3 轮: from 招募/主持/问卷 a click on 甄别问卷 shows the six steps in the side menu at once; the host switch, the step clicks and the outline
+    step clicks answer within 400 ms; ② shows its table without 重新生成; the buttons say 下一步; ⑥'s 测试答题 breathes; the outline's first step is 目标与人群."""
+    import time as _t
+    rs = D["tok"]["researcher"]
+    pid = call("/projects", {"name": "第 3 轮测试", "market": "SG", "language": "zh", "brief": "了解售后保养决策。"}, rs)["id"]
+    call(f"/projects/{pid}/recruiting/form", {"source": "ai", "questions": [], "need": "近 12 个月在 4S 店保养过；一线或新一线城市；本田车主", "goals": ["了解保养决策"]}, rs, method="PUT")
+    ctx, pg, errs = new_page(br, 1440, h=900, token=rs)
+    pg.goto(B + "/"); pg.evaluate("sessionStorage.removeItem('ptab')")
+    pg.goto(B + f"/#/p/{pid}/people/mode"); pg.wait_for_selector("#rmode [data-hm=ai]")
+    t0 = _t.time(); pg.click("#rmode [data-hm=ai]")
+    ok(wait_until(lambda: pg.locator("#rmode [data-hm=ai].on").count() == 1, 0.4), f"[fix3] AI 主持 lights up at once ({int((_t.time() - t0) * 1000)} ms)")
+    pg.wait_for_timeout(600)
+    ok(call(f"/projects/{pid}/recruiting", token=rs).get("host_mode") == "ai", "[fix3] … and the choice is saved")
+    pg.click(f'.sub2 .l1[href="#/p/{pid}/people/form"]'); pick_mode(pg)
+    ok(wait_until(lambda: pg.locator(".sub2 .l2slot .rs-sst").count() == 6, 6), "[fix3] from 招募/主持/问卷, 甄别问卷 shows its six steps in the side menu (user 2026-11-20)")
+    ok(pg.locator(".sub2 .l2slot").evaluate("e => !e.hidden && e.getBoundingClientRect().height > 100"), "[fix3] the six steps are visible, not a hidden slot")
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "fix3_side.png"))
+    ok("近 12 个月" in pg.inner_text("#ccroot") and "了解保养决策" in pg.inner_text("#ccroot"), "[fix3] ① shows the goals and the need instead of —")
+    t0 = _t.time(); pg.click("#ccroot [data-rs=ok]")
+    ok(wait_until(lambda: pg.locator("#ccroot .rs-ctbl tbody tr").count() >= 1, 8), f"[fix3] ② shows its table without 重新生成 ({int((_t.time() - t0) * 1000)} ms)")
+    ok(pg.locator("#ccroot [data-rs=ok]").inner_text().strip() == "下一步" and "全部重做" in pg.inner_text("#ccroot"), "[fix3] the button says 下一步 and the link 全部重做")
+    audit_page(pg, "fix3 include/desktop", errs)
+    t0 = _t.time(); pg.click(".sub2 .rs-sst[data-rs-go=plan]")
+    ok(wait_until(lambda: pg.locator(".sub2 .rs-sst.on[data-rs-go=plan]").count() == 1, 0.4), f"[fix3] a step in the side menu answers at once ({int((_t.time() - t0) * 1000)} ms)")
+    ctx.close()
+
+
 def rsteps_section(br, D):
     """甄别问卷的 6 步 (修正方案第 1 轮第 4 条): ① read the 立项, ② conditions → questions, ③ exclusions first, ⑤ trap and consistency, ⑥ testing ends a
     contradiction; going back remakes only one step; the three themes are audited."""
@@ -1977,13 +2022,13 @@ def rsteps_section(br, D):
     pg.locator("#ccroot [data-rs-qt='0']").fill("4"); ok(pg.inner_text("#rs-qsum").strip() == "6", "[rsteps] the total follows the typing")
     pg.click("#ccroot [data-rs=ok]")
     pg.wait_for_selector("#ccroot [data-rs-qc=trap]"); pg.check("#ccroot [data-rs-qc=trap]"); pg.click("#ccroot [data-rs=ok]")
-    ok(wait_until(lambda: pg.locator("#rfout .rf-q").count() == 9, 8), "[rsteps] ⑤ the trap and the consistency check are added")
+    ok(wait_until(lambda: pg.locator("#rfout .rf-q").count() == 8, 8) and pg.locator("#ccroot [data-rs-qc=consistency]").count() == 0, "[rsteps] ⑤ the trap is added; no “再确认一下” question any more (用户 2026-11-20 第 3 轮: 重复的题目都不留)")
     ok(wait_until(lambda: pg.locator(".sub2 .rs-sst.on").inner_text().strip().endswith("预览与测试"), 6), "[rsteps] ⑥ comes after ⑤")
     pg.screenshot(path=os.path.join(ROOT, "qa_shots", "fix1_b5_qc.png"))
     ok(pg.locator("#ccroot .rs-chatf[data-rs-chat=test]").count() == 1, "[rsteps] ⑥ has a dialog to change the question being tested")
     pg.click(".sub2 .rs-sst[data-rs-go=include]"); pg.wait_for_selector("#ccroot .rs-ctbl tbody tr")
     pg.uncheck("#ccroot [data-rs-use='include|3']"); pg.click("#ccroot [data-rs=ok]")
-    ok(wait_until(lambda: pg.locator("#rfout .rf-q").count() == 8, 8), "[rsteps] going back to ② remakes only its questions (the others stay)")
+    ok(wait_until(lambda: pg.locator("#rfout .rf-q").count() == 7, 8), "[rsteps] going back to ② remakes only its questions (the others stay)")
     for th in ("orange", "dark"):
         pg.evaluate(f"document.documentElement.dataset.theme = '{th}'"); pg.wait_for_timeout(300)
         audit_page(pg, f"rsteps/{th}", errs)

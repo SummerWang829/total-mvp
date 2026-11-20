@@ -232,7 +232,7 @@ def _next_id(questions: list[dict]) -> str:
 
 
 def build(questions: list[dict], step: str, s: dict) -> tuple[list[dict], list[str]]:
-    """The questionnaire with `step`'s questions made again from the saved choices (the others kept). Order: 筛掉谁, 筛进谁, 质量控制, then the rest.
+    """The questionnaire with `step`'s questions made again from the saved choices (the others kept, the team's order kept).
     Returns (questions, ids of the questions just made)."""
     keep = [q for q in questions if q.get("step") != step]
     made: list[dict] = []
@@ -252,24 +252,44 @@ def build(questions: list[dict], step: str, s: dict) -> tuple[list[dict], list[s
         if qc.get("trap"):
             made.append(_question(_next_id(pool + made), "qc", "trap", "single", "为了确认你在认真作答，这一题请选“经常”。",
                                   [{"text": "从不", "pass": False}, {"text": "偶尔", "pass": False}, {"text": "经常", "pass": True}], tags=False) | {"qc": "trap"})
-    # 用户 2026-11-20 第 3 轮: the order the team set (in the dialog or by dragging) is kept — the remade questions go where this step's questions were;
-    # only a step seen for the first time takes its usual place (排除题 before 筛进题, 质控题 after them)
-    old_pos = next((i for i, q in enumerate(questions) if q.get("step") == step), None)
-    if old_pos is not None:
-        at = sum(1 for q in questions[:old_pos] if q.get("step") != step)
+    # 用户 2026-11-20 第 3 轮: the order the team set (in the dialog or by dragging) is kept — each remade question takes the place (and the id, so jumps
+    # to it still work) of the question it remakes; a new condition goes after the last question of its step; a step seen for the first time takes its
+    # usual place (排除题 before 筛进题, 质控题 after them); a new trap goes right after the first condition
+    by_cond = {q.get("cond_id"): q for q in made if q.get("cond_id")}
+    used: set[str] = set()
+    all_q: list[dict] = []
+    for q in questions:
+        if q.get("step") != step:
+            all_q.append(q)
+            continue
+        m = by_cond.get(q.get("cond_id"))
+        if m is not None and q.get("cond_id") not in used:
+            used.add(q.get("cond_id"))
+            m["id"] = q["id"]
+            all_q.append(m)
+    left = [q for q in made if q.get("cond_id") not in used]
+    trap = next((q for q in left if q.get("qc") == "trap"), None)
+    rest = [q for q in left if q is not trap]
+    mine = [i for i, q in enumerate(all_q) if q.get("step") == step]
+    if mine:
+        at = mine[-1] + 1
     elif step == "exclude":
-        at = next((i for i, q in enumerate(keep) if q.get("step") in ("include", "qc", "")), len(keep))
+        at = next((i for i, q in enumerate(all_q) if q.get("step") in ("include", "qc", "")), len(all_q))
     elif step == "include":
-        at = next((i for i, q in enumerate(keep) if q.get("step") not in ("exclude",)), len(keep))
+        at = next((i for i, q in enumerate(all_q) if q.get("step") != "exclude"), len(all_q))
     else:
-        at = max([i + 1 for i, q in enumerate(keep) if q.get("step") in ("exclude", "include")] + [0])
-    trap = next((q for q in made if q.get("qc") == "trap"), None)
-    rest = [q for q in made if q is not trap]
-    all_q = keep[:at] + rest + keep[at:]
-    inc_ids = [q["id"] for q in all_q if q.get("step") == "include"]
-    if trap:   # a new trap goes right after the first condition, so it is not the obvious last question
-        idx = [q["id"] for q in all_q].index(inc_ids[0]) + 1 if inc_ids else len(all_q)
-        all_q.insert(idx, trap)
+        at = max([i + 1 for i, q in enumerate(all_q) if q.get("step") in ("exclude", "include")] + [0])
+    all_q[at:at] = rest
+    if trap:
+        inc_ids = [q["id"] for q in all_q if q.get("step") == "include"]
+        all_q.insert([q["id"] for q in all_q].index(inc_ids[0]) + 1 if inc_ids else len(all_q), trap)
+    ids = [q["id"] for q in all_q]
+    if len(set(ids)) != len(ids):   # a reused id met a new one: give the new ones fresh ids
+        seen: set[str] = set()
+        for q in all_q:
+            if q["id"] in seen:
+                q["id"] = _next_id(all_q)
+            seen.add(q["id"])
     all_q, _ = arrange(all_q)
     return all_q, [q["id"] for q in made if any(x["id"] == q["id"] for x in all_q)]
 

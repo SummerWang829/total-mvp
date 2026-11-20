@@ -22,7 +22,7 @@ from . import service as svc
 log = logging.getLogger(__name__)
 
 KINDS = {"concept": ("image", "pdf"), "video": ("video",)}
-MAX_BYTES = {"image": 15 * 1024 * 1024, "pdf": 15 * 1024 * 1024, "video": 300 * 1024 * 1024}
+MAX_BYTES = {"image": 15 * 1024 * 1024, "pdf": 15 * 1024 * 1024, "video": 95 * 1024 * 1024}   # the gateway in front of the site takes at most 100MB in one request
 MAX_FILES = 12
 TTL_S = 3600
 EXT = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "application/pdf": "pdf", "video/mp4": "mp4", "video/webm": "webm", "video/quicktime": "mov"}
@@ -99,7 +99,7 @@ def add(db: Session, proj: Project, item_uid: str, filename: str, data: bytes, m
     if kind not in KINDS[it.kind]:
         raise MediaError("概念卡只能传图片（PNG、JPG、WEBP）或 PDF" if it.kind == "concept" else "视频片段只能传 MP4、WEBM 或 MOV", 415)
     if len(data) > MAX_BYTES[kind]:
-        raise MediaError(f"文件太大：{'视频请控制在 300MB' if kind == 'video' else '请控制在 15MB'}以内", 413)
+        raise MediaError(f"文件太大：{'视频请控制在 95MB' if kind == 'video' else '请控制在 15MB'}以内", 413)
     cfg = dict(it.config or {})
     have = list(cfg.get("media") or [])
     if mode == "replace":

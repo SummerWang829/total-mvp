@@ -27,7 +27,8 @@ html body .wzbody .wzsubs input:not([type=checkbox]):not([type=radio]),html body
 /* 研究设计页的建议：四个页签，一次看一块 */
 .sugtabs{display:flex;gap:20px;border-bottom:1px solid var(--line2)}
 .sugtabs span{padding:6px 0;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent}
-.sugtabs span.off{color:var(--muted);opacity:.45;cursor:not-allowed}
+.sugtabs span[data-sugtab]{color:var(--ink)}
+.sugtabs span.off{color:var(--muted);font-weight:400;cursor:not-allowed}
 .sugtabs span.on{color:var(--ink);border-bottom-color:var(--orange)}
 .sugbody{padding-top:6px}
 .sugrow{display:grid;grid-template-columns:220px 1fr;gap:14px;padding:10px 0;border-bottom:1px solid var(--line2)}

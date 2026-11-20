@@ -105,6 +105,16 @@ const RSteps = (() => {
       ${chatBox("test", "边测边改当前这一题，比如“加一个官方上门保养的选项”")}
       <div class="rs-nav"><button type="button" data-rs="prev">‹ 上一步</button><span><button type="button" class="rs-breathe" data-rs="test">测试答题</button> <button type="button" class="p" data-rs="list">去发布（配额及受访者名单）</button></span></div>`;
   }
+  // 修正方案第 3 轮: the side menu (and its slot under 甄别问卷) may be drawn after us, or drawn again by the shell: whenever an empty slot appears, fill it
+  let slotWatch = null;
+  function watchSlot() {
+    if (slotWatch) return;
+    slotWatch = new MutationObserver(() => {
+      const sl = document.querySelector(".sub2 #l2slot");
+      if (sl && !sl.querySelector(".rs-side") && root && S.d && document.contains(root)) draw();
+    });
+    slotWatch.observe(document.body, { childList: true, subtree: true });
+  }
   function draw() {
     if (!root || !S.d) return;
     if (["include", "exclude", "quota", "qc"].includes(S.at) && !S.draft[S.at] && !S.busy) { suggest(S.at); return; }
@@ -116,6 +126,7 @@ const RSteps = (() => {
       if (!slot.dataset.rsWired) { slot.dataset.rsWired = "1"; slot.addEventListener("click", onClick); }
       slot.hidden = false;   // the shell hides an empty slot when the page is drawn
     }
+    watchSlot();
     root.innerHTML = `<div class="rs">${slot ? "" : bar()}<div class="rs-body${S.busy ? " busy" : ""}">${body()}</div></div>`;
   }
 
@@ -206,7 +217,8 @@ const RSteps = (() => {
   }
 
   return {
-    redraw() { if (root && S.d && document.contains(root)) draw(); },   // 修正方案第 2 轮 D2: the page came back into view without being drawn again
+    redraw() { if (root && S.d && document.contains(root)) draw(); },
+    _dbg() { return { root: !!root, inDoc: !!(root && document.contains(root)), d: !!S.d, same: root === document.querySelector("#ccroot") }; },   // 修正方案第 2 轮 D2: the page came back into view without being drawn again
     render(el, c) {
       ctx = c; root = el;
       if (S.pid !== c.p.id) Object.assign(S, { pid: c.p.id, d: null, at: "plan", draft: {}, busy: false, open: "", msgs: {}, expandNote: "", expanded: false });

@@ -262,6 +262,7 @@ function shMount({ rail, top, sub, notice, inner, cls, thin }) {
 }
 function shMoveSub(a) {   // the page's own second-level controls go under the current first-level menu item
   const slot = a.querySelector(".sub2 .l2slot"), main = a.querySelector(".body2>main"); if (!slot || !main) return;
+  if (slot.id === "l2slot" && window.RSteps) setTimeout(() => RSteps.redraw(), 0);   // 修正方案第 3 轮: 甄别问卷's six steps fill the new side menu at once
   slot.querySelectorAll(":scope > .mvd").forEach((e) => e.remove());   // 只清上一次搬进来的；静态二级（.l2e）保留
   const anchor = slot.querySelector(":scope > .l2e");
   main.querySelectorAll(":scope > .hubtabs.sub, [data-subrow]").forEach((e) => {   // a direct .hubtabs.sub, or any element marked data-subrow (at any depth)

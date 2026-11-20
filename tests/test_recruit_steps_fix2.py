@@ -99,3 +99,17 @@ def test_remaking_a_step_keeps_the_order_the_team_set(org):
     mine = [q for q in qs if q["step"] == "include"] + [q for q in qs if q["step"] != "include"]   # the team moves the conditions to the top
     again = org.c.put(url(pid, "/steps/exclude"), headers=org.h(), json={"data": {"excl": excl}, "questions": mine}).json()
     assert [q["step"] for q in again["questions"]][: len(conds)] == ["include"] * len(conds)
+
+
+def test_remaking_a_step_keeps_each_question_where_the_team_put_it(org):
+    """The team moved one condition to the very top and left the others lower down: remaking ② puts each one back in its own place, with its id."""
+    pid = org.project()
+    _need(org, pid)
+    conds = org.c.post(url(pid, "/steps/include/suggest"), headers=org.h(), json={}).json()["conds"]
+    _confirm(org, pid, "include", {"conds": conds})
+    excl = org.c.post(url(pid, "/steps/exclude/suggest"), headers=org.h(), json={}).json()["excl"]
+    qs = _confirm(org, pid, "exclude", {"excl": excl})["questions"]
+    inc = [q for q in qs if q["step"] == "include"]
+    mine = [inc[-1]] + [q for q in qs if q is not inc[-1]]   # the last condition dragged to the top; the others stay below the exclusions
+    again = org.c.put(url(pid, "/steps/include"), headers=org.h(), json={"data": {"conds": conds}, "questions": mine}).json()["questions"]
+    assert [q["id"] for q in again] == [q["id"] for q in mine] and again[0]["cond_id"] == inc[-1]["cond_id"]
