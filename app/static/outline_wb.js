@@ -484,12 +484,15 @@
   }
 
   // ---- 绘制与事件 ---------------------------------------------------------------------------------
-  const MSG_KEY = () => `ow_msgs_${S.pid}`;
-  function saveMsgs() { try { localStorage.setItem(MSG_KEY(), JSON.stringify(S.msgs.slice(-80).map((m) => ({ me: !!m.me, text: m.text, revs: (m.revs || []).map((r) => ({ id: r.id })), cites: m.cites || [] })))); } catch { /* private window */ } }
-  function loadMsgs() { try { const v = JSON.parse(localStorage.getItem(MSG_KEY()) || "[]"); return Array.isArray(v) ? v : []; } catch { return []; } }
+  // 用户 2026-11-20 第 3 轮: the dialog is kept on the server (any computer shows it); saved a moment after it changes
+  function saveMsgs() {
+    clearTimeout(S.saveT); const pid = S.pid, msgs = S.msgs.slice(-120).map((m) => ({ me: !!m.me, text: String(m.text || "").slice(0, 6000), revs: (m.revs || []).map((r) => ({ id: r.id })), cites: m.cites || [] }));
+    S.saveT = setTimeout(() => api(`/projects/${pid}/outline-wb/chat-log`, { method: "PUT", body: { messages: msgs } }).catch(() => {}), 0);
+  }
+  async function loadMsgs(pid) { try { const r = await api(`/projects/${pid}/outline-wb/chat-log`); return Array.isArray(r.messages) ? r.messages : []; } catch { return []; } }
   function paint() {
     const root = q(S.area === "gen" ? "#owroot" : "#owroot3"); if (!root) return;
-    if (S.pid && S.msgs.length !== S.savedN) { S.savedN = S.msgs.length; saveMsgs(); }
+    if (S.pid && S.msgsLoaded && S.msgs.length !== S.savedN) { S.savedN = S.msgs.length; saveMsgs(); }
     if (!S.d) { root.innerHTML = `<div class="card ow-card mut">正在读取……</div>`; return; }
     if (S.d !== S.undoFor) { S.undoFor = S.d; S.undoUntil = Date.now() + 1000 * ((S.d.reset || {}).undo_left_s || 0); }
     clearInterval(S.undoTick);
@@ -699,7 +702,8 @@
   window.OutlineWb = {
     async mount(pid, area) {
       wire();
-      if (S.pid !== pid) Object.assign(S, { pid, d: null, step: "", mod: "", sel: "", msgs: (S.pid = pid, loadMsgs()), savedN: -1, adopt: null, form: null, pv: null, rh: null, pl: null, pil: null, pub: null, edit: "", fdd: "", ideaEdit: "", resetAsk: false, syncAsk: null });
+      if (S.pid !== pid) { Object.assign(S, { pid, d: null, step: "", mod: "", sel: "", msgs: [], savedN: 0, msgsLoaded: false, adopt: null, form: null, pv: null, rh: null, pl: null, pil: null, pub: null, edit: "", fdd: "", ideaEdit: "", resetAsk: false, syncAsk: null });
+        loadMsgs(pid).then((m) => { if (S.pid !== pid) return; S.msgs = [...m, ...S.msgs]; S.savedN = S.msgs.length; S.msgsLoaded = true; paint(); }); }
       S.area = ["test", "pilot"].includes(area) ? area : "gen";
       if (S.area !== "gen" && !TABS[S.area].some(([k]) => k === S.tab)) S.tab = TABS[S.area][0][0];
       const fromUrl = (location.hash.split("/")[5] || "").split("?")[0];   // #/p/<id>/people/outline/<step>: a reload stays on that step

@@ -338,6 +338,21 @@
       else this.cut(true);
       this.cleanup();
     },
+    /** 修正方案第 3 轮 (按住说话): stop and wait until the last words are in the box (the live recogniser's final line, or the last piece recognised). */
+    stopWait() {
+      if (!this.on) return Promise.resolve();
+      const el = this.el, w = this.ws;
+      if (!w) { this.cut(true); this.cleanup(); return this.queue; }
+      return new Promise((done) => {
+        let over = false;
+        const finish = () => { if (over) return; over = true; if (this.partial) { insert(el, this.partial); this.partial = ""; } done(); };
+        const prev = w.onclose; w.onclose = (e) => { if (prev) prev(e); finish(); };
+        const prevMsg = w.onmessage; w.onmessage = (ev) => { prevMsg && prevMsg(ev); try { const m = JSON.parse(ev.data); if (m.final === 1) { finish(); try { w.close(); } catch {} } } catch {} };
+        try { if (w.readyState === 1) w.send(JSON.stringify({ type: "end" })); } catch {}
+        this.ws = null; this.cleanup();
+        setTimeout(() => { try { w.close(); } catch {} finish(); }, 2000);
+      });
+    },
     cleanup() {
       clearInterval(this.timer); clearInterval(this.clock); this.on = false;
       if (this.stream) this.stream.getTracks().forEach((t) => t.stop());
@@ -382,5 +397,9 @@
       return `<div class="ti-cites">${list.map((c) => `<span class="ti-att sm"><span class="ic">${svg(c.kind === "file" ? "file" : "globe")}</span><span class="t"><b>资料 ${c.n} · ${E(c.title)}</b><small>${c.kind === "repo" ? "项目资料" : c.kind === "link" ? "本次链接" : "本次附件"}${c.host ? " · " + E(c.host) : ""}</small></span></span>`).join("")}</div>`;
     },
     scan,
+    /** 修正方案第 3 轮: press-and-hold voice into a box (the AI room's “按住说话”); `release` resolves once the words are in the box. */
+    async hold(el, ui, bar) { if (REC.on || !el) return false; await REC.start(el, ui, bar); return REC.on; },
+    release() { return REC.stopWait(); },
+    recording() { return REC.on; },
   };
 })();

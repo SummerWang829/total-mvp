@@ -711,3 +711,44 @@ def get_media(pid: str, mid: str, e: int = 0, s: str = "", db: Session = Depends
     if not os.path.isfile(path):
         raise HTTPException(404, "没有这个文件")
     return FileResponse(path, media_type=wbmedia.MIME.get(mid.rsplit(".", 1)[-1], "application/octet-stream"), headers={"Cache-Control": "private, max-age=3600", "X-Content-Type-Options": "nosniff"})
+
+
+# ---- 修正方案第 3 轮: the dialog of these pages is kept on the server (用户 2026-11-20: 存服务器，不可以换电脑丢失) -----------------------------------------
+
+MAX_CHAT_LOG = 120
+
+
+class ChatLogMsg(BaseModel):
+    me: bool = False
+    text: str = Field(default="", max_length=6000)
+    revs: list[dict] = Field(default_factory=list, max_length=20)
+    cites: list[dict] = Field(default_factory=list, max_length=10)
+
+
+class ChatLogBody(BaseModel):
+    messages: list[ChatLogMsg] = Field(default_factory=list, max_length=400)
+
+
+@router.get("/chat-log")
+def get_chat_log(pid: str, ctx: Ctx = Depends(require_roles(*STAFF, *VIEWERS)), db: Session = Depends(get_db)):
+    """This person's own dialog on the outline pages (nobody else's)."""
+    from ..outline_wb.models import OutlineChat
+    p = _project(db, ctx, pid)
+    row = db.scalar(select(OutlineChat).where(OutlineChat.project_id == p.id, OutlineChat.user_id == ctx.user.id))
+    return {"messages": (row.messages if row else [])[-MAX_CHAT_LOG:]}
+
+
+@router.put("/chat-log")
+def put_chat_log(pid: str, body: ChatLogBody, ctx: Ctx = Depends(require_roles(*STAFF, *VIEWERS)), db: Session = Depends(get_db)):
+    """Keep this person's dialog (the last MAX_CHAT_LOG messages). The words are never written to the audit log."""
+    from ..models import utcnow
+    from ..outline_wb.models import OutlineChat
+    p = _project(db, ctx, pid)
+    row = db.scalar(select(OutlineChat).where(OutlineChat.project_id == p.id, OutlineChat.user_id == ctx.user.id))
+    if row is None:
+        row = OutlineChat(org_id=p.org_id, project_id=p.id, user_id=ctx.user.id)
+        db.add(row)
+    row.messages = [{"me": m.me, "text": m.text, "revs": [{"id": str(r.get("id", ""))[:40]} for r in m.revs if isinstance(r, dict)], "cites": m.cites} for m in body.messages][-MAX_CHAT_LOG:]
+    row.updated_at = utcnow()
+    db.commit()
+    return {"kept": len(row.messages)}

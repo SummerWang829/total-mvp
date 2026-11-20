@@ -118,7 +118,7 @@ def test_the_participant_sees_nothing_internal_and_staff_see_the_ai_notes(room):
     _say(org, itv, "Yes, ready.")
     _say(org, itv, "I use Grab mostly.")
     mine = _participant(org, itv)
-    assert set(mine) == {"started", "control", "finished", "messages"}  # no alert, no engine state
+    assert set(mine) == {"started", "control", "finished", "messages", "voice"}  # no alert, no engine state (voice: whether the AI speaks, 修正方案第 3 轮)
     for m in mine["messages"]:
         assert set(m) == {"seq", "sender", "text", "at_ms"}
     ai_lines = [m for m in _staff(org, itv)["messages"] if m["sender"] == "ai"]

@@ -101,6 +101,14 @@ class Settings:
     tencent_ocr_secret_id: str = os.getenv("TENCENT_OCR_SECRET_ID", "") or os.getenv("TENCENT_ASR_SECRET_ID", "")
     tencent_ocr_secret_key: str = os.getenv("TENCENT_OCR_SECRET_KEY", "") or os.getenv("TENCENT_ASR_SECRET_KEY", "")
     tencent_ocr_region: str = os.getenv("TENCENT_OCR_REGION", "ap-guangzhou")
+    # 修正方案第 3 轮 (用户 2026-11-20): the AI moderator's voice in AI-hosted audio / video interviews — Tencent Cloud speech synthesis (TextToVoice), basic voices.
+    # Off unless TTS_PROVIDER=tencent (or mock in tests); the keys default to the speech-recognition ones. Only the AI's own words are sent, never the participant's.
+    tts_provider: str = os.getenv("TTS_PROVIDER", "")
+    tencent_tts_secret_id: str = os.getenv("TENCENT_TTS_SECRET_ID", "") or os.getenv("TENCENT_ASR_SECRET_ID", "")
+    tencent_tts_secret_key: str = os.getenv("TENCENT_TTS_SECRET_KEY", "") or os.getenv("TENCENT_ASR_SECRET_KEY", "")
+    tencent_tts_region: str = os.getenv("TENCENT_TTS_REGION", "ap-guangzhou")
+    tts_voice_zh: int = int(os.getenv("TTS_VOICE_ZH", "1001"))   # a basic female voice; check it in the console
+    tts_voice_en: int = int(os.getenv("TTS_VOICE_EN", "1051"))
 
     # AI moderator (docs/AI主持人_工程与训练任务说明_v1.md). Any OpenAI-compatible chat API; switching model = changing these lines only.
     # Empty values fall back to the LLM_* settings above. A local server (Ollama on 127.0.0.1) keeps transcripts on this computer;

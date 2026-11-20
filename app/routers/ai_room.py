@@ -134,3 +134,23 @@ def chat_send(token: str, body: TextBody, db: Session = Depends(get_db)):
     itv = _in_room(db, token)
     _run(db, ai_room.participant_says, itv, body.text)
     return {"ok": True}
+
+
+@router.get("/public/join/{token}/tts/{seq}")
+def chat_voice(token: str, seq: int, db: Session = Depends(get_db)):
+    """修正方案第 3 轮: one of the AI's own lines read aloud (MP3), for a participant in the room of an AI-hosted audio / video interview.
+    Only an AI line can be read (the text comes from the stored chat, never from the browser); nothing of the participant's goes to the voice service."""
+    from fastapi.responses import Response
+    from .. import tts
+    from ..models import ChatMessage
+    itv = _in_room(db, token)
+    if not ai_room.voice_on(itv):
+        raise HTTPException(404, "No voice for this interview / 这场访谈没有语音")
+    row = db.scalar(select(ChatMessage).where(ChatMessage.interview_id == itv.id, ChatMessage.seq == seq, ChatMessage.sender == "ai"))
+    if row is None:
+        raise HTTPException(404, "No such line / 没有这句话")
+    try:
+        audio = tts.speak(f"{itv.id}:{seq}", row.text, itv.language or "zh")
+    except tts.TTSError as e:
+        raise HTTPException(503, str(e)) from e
+    return Response(audio, media_type="audio/mpeg", headers={"Cache-Control": "private, max-age=600"})

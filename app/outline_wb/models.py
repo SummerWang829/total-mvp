@@ -245,3 +245,16 @@ class PilotRound(Base):
     next_version_id: Mapped[str] = mapped_column(String(32), default="")
     created_by: Mapped[str] = mapped_column(String(32), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class OutlineChat(Base):
+    """修正方案第 3 轮 (用户 2026-11-20): what a researcher and 小星星助手 said on the 生成大纲 / 预览测试 / Pilot pages, kept on the server so it is there on any
+    computer. One row per project and person; only that person reads it; it goes with the project's data at clean-up."""
+    __tablename__ = "outline_chats"
+    __table_args__ = (UniqueConstraint("project_id", "user_id"),)
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
+    org_id: Mapped[str] = mapped_column(String(32), index=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
+    user_id: Mapped[str] = mapped_column(String(32))
+    messages: Mapped[list] = mapped_column(JSON, default=list)  # [{me, text, revs: [{id}], cites: [...]}], the last MAX_CHAT_LOG
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

@@ -9,7 +9,7 @@ import hashlib
 from .config import settings
 from .moderator.compliance import moderator_runs_locally
 
-VERSION = "2026-11-draft-9"  # draft-9: voice input on the participant pages (the voice goes to Tencent Cloud speech recognition to become text, not kept); draft-8: the number of days before deletion is the project's own choice (30/60/120/180); draft-7: studies done alone, in text, at any time have their own paragraph; draft-6: how things are said (pace, pauses, volume) and emoji are noted; draft-5: the AI also reads the screening answers; draft-4: AI-moderator disclosure (AI interviews only)
+VERSION = "2026-11-draft-10"  # draft-10: in an AI audio / video interview the AI speaks with a synthesized voice and the participant holds the mic to answer (用户 2026-11-20: 写“合成语音”，不写服务商); draft-9: voice input on the participant pages (the voice goes to Tencent Cloud speech recognition to become text, not kept); draft-8: the number of days before deletion is the project's own choice (30/60/120/180); draft-7: studies done alone, in text, at any time have their own paragraph; draft-6: how things are said (pace, pauses, volume) and emoji are noted; draft-5: the AI also reads the screening answers; draft-4: AI-moderator disclosure (AI interviews only)
 
 # A study done alone: replaces the picture of a live video call that the base text gives.
 TEXT_ONLY_TEXTS = {
@@ -128,11 +128,21 @@ AI_LABELS = {
 }
 
 
+# 修正方案第 3 轮 (用户 2026-11-20): an audio / video AI interview is spoken — a synthesized voice reads the AI's words; the participant holds the mic to answer.
+# Only the AI's own words are turned into speech. The text says "合成语音" and names no provider (the user's decision).
+AI_VOICE = {
+    "en": "In an audio or video interview, the AI's questions are read aloud in a synthesized voice; hold the microphone button while you answer and let go when you are done.",
+    "zh": "如果是语音或视频访谈，AI 主持人的问题会用合成语音读出来；您按住麦克风说话，松开就会发送。",
+    "ms": "Dalam temu bual audio atau video, soalan AI dibacakan dengan suara sintetik; tekan dan tahan butang mikrofon semasa menjawab dan lepaskan apabila selesai.",
+    "ta": "ஒலி அல்லது காணொளி நேர்காணலில், AI-யின் கேள்விகள் செயற்கைக் குரலில் வாசிக்கப்படும்; பதில் சொல்லும்போது மைக் பொத்தானை அழுத்திப் பிடித்து, முடிந்ததும் விடுங்கள்.",
+}
+
+
 def _ai_disclosure(lang: str) -> str:
-    """The AI paragraph for one language: who moderates, and where the AI runs (a cloud provider is named)."""
+    """The AI paragraph for one language: who moderates, the synthesized voice, and where the AI runs (a cloud provider is named)."""
     where = AI_LOCAL[lang] if moderator_runs_locally() else AI_CLOUD[lang].format(vendor=settings.moderator_vendor.strip())
     sep = "" if lang == "zh" else " "  # Chinese sentences are not separated by spaces
-    return AI_TEXTS[lang] + sep + AI_PROFILE[lang] + sep + where + sep
+    return AI_TEXTS[lang] + sep + AI_VOICE[lang] + sep + AI_PROFILE[lang] + sep + where + sep
 
 
 def consent_for(lang: str, org_name: str, ai: bool = False, text_only: bool = False, retention_days: int = 180) -> dict:

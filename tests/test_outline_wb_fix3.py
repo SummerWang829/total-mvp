@@ -54,3 +54,12 @@ def test_material_is_uploaded_ordered_and_served_only_by_a_signed_address(org, p
 def test_the_dialog_does_not_claim_a_change_it_did_not_make(org, proj):
     r = _api(org, proj, "post", "/chat", json={"text": "你好", "step": "people"}).json()
     assert r["changed"] == [] and "没有改动" in r["reply"]
+
+
+def test_the_dialog_is_kept_on_the_server_for_each_person(org, proj):
+    """用户 2026-11-20: 存服务器，不可以换电脑丢失 — and nobody reads another person's dialog."""
+    msgs = [{"me": True, "text": "物料改为看素材"}, {"me": False, "text": "已经知道的没有改动。", "revs": [{"id": "r1"}]}]
+    assert _api(org, proj, "put", "/chat-log", json={"messages": msgs}).json()["kept"] == 2
+    got = _api(org, proj, "get", "/chat-log").json()["messages"]
+    assert [m["text"] for m in got] == ["物料改为看素材", "已经知道的没有改动。"] and got[1]["revs"] == [{"id": "r1"}]
+    assert _api(org, proj, "get", "/chat-log", role="admin").json()["messages"] == []

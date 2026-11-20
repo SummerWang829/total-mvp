@@ -99,6 +99,8 @@ def purge_project_extras(db: Session, project: Project, actor: str, reason: str)
     db.execute(delete(ChatThread).where(ChatThread.project_id == project.id))  # the research assistant conversations about the project go with it
     from .outline_wb import media as wbmedia
     wbmedia.purge(project.id)   # 修正方案第 3 轮: uploaded 概念卡 / 视频片段 files are kept no longer than the project's data
+    from .outline_wb.models import OutlineChat
+    db.execute(delete(OutlineChat).where(OutlineChat.project_id == project.id))   # and the outline pages' dialog
     out = {"participants": len(people), "mentions": posts, "documents": docs}
     if any(out.values()):
         audit(db, project.org_id, actor, "project.purge_extras", project.id, reason=reason, **out)

@@ -1687,6 +1687,7 @@ def outline_wb_section(br, D):
     ok(pg.locator('#owroot [data-ow="goal-next"]').count() == 0 and ("价格怎么谈" not in pg.inner_text("#owroot .ow-card") or kind == "pricing"), f"[outline_wb] one button goes on from 目标与人群; 价格怎么谈 shows only for a pricing study ({kind})")
     pg.fill("#ow-in", "你好"); pg.keyboard.press("Enter")
     ok(wait_until(lambda: "没有改动" in pg.inner_text("#ow-msgs"), 8), "[outline_wb] the dialog does not claim a change it did not make")
+    ok(wait_until(lambda: len(call(f"/projects/{pid}/outline-wb/chat-log", None, adm)["messages"]) >= 2, 6), "[outline_wb] the dialog is kept on the server (用户 2026-11-20: 换电脑不丢)")
     pg.reload(); pg.wait_for_selector("#owroot .ow")
     ok(wait_until(lambda: "没有改动" in pg.inner_text("#ow-msgs"), 6), "[outline_wb] the dialog is still there after a reload")
     pg.click('[data-ow="build"]'); pg.wait_for_selector("#owroot .ow-tbl")
@@ -2044,7 +2045,7 @@ def main():
     global QA_DB
     tmp = tempfile.mkdtemp()
     QA_DB = f"{tmp}/qa.db"
-    env = {**os.environ, "CONCEPT_TEST_FIXTURE": "1", "DATABASE_URL": f"sqlite:///{tmp}/qa.db", "MEDIA_DIR": f"{tmp}/media", "LIVEKIT_URL": "", "ASR_PROVIDER": "mock", "LLM_PROVIDER": "mock", "ASR_API_KEY": "", "LLM_API_KEY": "",
+    env = {**os.environ, "CONCEPT_TEST_FIXTURE": "1", "DATABASE_URL": f"sqlite:///{tmp}/qa.db", "MEDIA_DIR": f"{tmp}/media", "LIVEKIT_URL": "", "ASR_PROVIDER": "mock", "LLM_PROVIDER": "mock", "ASR_API_KEY": "", "LLM_API_KEY": "", "TTS_PROVIDER": "mock",
            "MODERATOR_PROVIDER": "mock", "MODERATOR_API_KEY": "", "MODERATOR_VENDOR": ""}  # never use the developer's real keys or video server in QA
     srv = subprocess.Popen([sys.executable, "-m", "uvicorn", "app.main:app", "--port", str(PORT), "--log-level", "warning"], cwd=ROOT, env=env)
     try:
@@ -2204,6 +2205,21 @@ def ai_room_section(br, D):
             ok(pg.locator("#lpan:visible, #rpan:visible").count() == 0, f"[ai room participant {tag}] no internal panels")
             ok(wait_until(lambda: any("AI 主持人" in x for x in log_texts(pg)), 8), f"[ai room participant {tag}] sees the AI's opening, labelled")
             ok(pg.locator("#clog .m details").count() == 0 and "悄悄话" not in pg.inner_text("body"), f"[ai room participant {tag}] sees no notes or whispers")
+            # 修正方案第 3 轮: an AI video interview speaks — the waiting question is read aloud (or a tap is asked for), and 按住说话 is there
+            ok(wait_until(lambda: pg.is_visible("#vhold"), 8) and "按住说话" in pg.inner_text("#vhold"), f"[ai room participant {tag}] 按住说话 is there in an AI video interview")
+            heard = pg.evaluate("() => performance.getEntriesByType('resource').some((e) => e.name.includes('/tts/'))")
+            ok(heard or pg.is_visible("#vtap"), f"[ai room participant {tag}] the AI's question is read aloud (or the page asks for one tap first)")
+            if theme is None and vp == "desktop":   # hold to talk needs a microphone: a browser with a simulated one
+                fb = br.browser_type.launch(args=["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream"])
+                c3, p3, e3 = new_page(fb, w, permissions=["microphone", "camera"])
+                p3.goto(B + f"/room.html?t={tk}"); p3.wait_for_selector("#cin"); wait_until(lambda: p3.is_visible("#vhold") and p3.is_enabled("#vhold"), 10)
+                p3.evaluate("document.getElementById('vhold').scrollIntoView({block: 'center'})"); n0 = len(log_texts(p3)); hb = p3.locator("#vhold").bounding_box()
+                ok(p3.evaluate("([x, y]) => document.elementFromPoint(x, y)?.closest('#vhold') !== null", [hb["x"] + hb["width"] / 2, hb["y"] + hb["height"] / 2]), f"[ai room participant {tag}] nothing covers 按住说话")
+                p3.mouse.move(hb["x"] + hb["width"] / 2, hb["y"] + hb["height"] / 2); p3.mouse.down()
+                ok(wait_until(lambda: "松开发送" in p3.inner_text("#vhold"), 4), f"[ai room participant {tag}] holding the button listens")
+                p3.wait_for_timeout(3200); p3.screenshot(path=os.path.join(ROOT, "qa_shots", "fix3_voice_room.png")); p3.mouse.up()
+                ok(wait_until(lambda: len(log_texts(p3)) > n0, 15), f"[ai room participant {tag}] letting go sends what was heard, with no other click (用户 2026-11-20: 手抬起来就发了)")
+                c3.close(); fb.close()
             if vp == "desktop":   # the answer box is big (about 16 cm x 8 cm) and the emoji panel opens above it, like a phone keyboard
                 bx = pg.locator("#cform").bounding_box()
                 ok(540 <= bx["width"] <= 640 and 240 <= bx["height"] <= 340, f"[ai room participant {tag}] the answer box is about 16 x 8 cm (got {bx['width']:.0f} x {bx['height']:.0f} px)")
@@ -2240,7 +2256,8 @@ def ai_room_section(br, D):
     pgp.goto(B + f"/room.html?t={tk}"); pgp.wait_for_selector("#cin")
     ok(wait_until(lambda: pgp.is_enabled("#cin"), 8), "[ai room] the participant can type once the AI has started")
     pgp.fill("#cin", "我平时在网上买护肤品，因为方便。"); pgp.click("#csend")
-    ok(wait_until(lambda: len(log_texts(pgp)) >= 3, 12) and "我平时在网上买护肤品" in pgp.inner_text("#clog"), "[ai room] the participant's line and the AI's reply appear")
+    n_before = len(log_texts(pgp))
+    ok(wait_until(lambda: "我平时在网上买护肤品" in pgp.inner_text("#clog") and len(log_texts(pgp)) >= max(3, n_before + 1), 12), "[ai room] the participant's line and the AI's reply appear")
     pg.fill("#pin", "多问问退货的体验"); pg.click("#psend")
     ok(wait_until(lambda: any("多问问退货" in x for x in log_texts(pg)), 8), "[ai room] the whisper shows in the team's log")
     ok("多问问退货" not in pgp.inner_text("body"), "[ai room] the participant never sees a whisper")

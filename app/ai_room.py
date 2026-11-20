@@ -442,6 +442,15 @@ def _at_ms(itv: Interview, row: ChatMessage) -> int:
     return max(0, int((row.created_at - started).total_seconds() * 1000))
 
 
+VOICE_FORMATS = ("", "audio", "video", "video_screen")   # 修正方案第 3 轮: the AI speaks in audio / video interviews ("" = video); a text interview stays text
+
+
+def voice_on(itv: Interview) -> bool:
+    """Whether the AI's lines are read aloud and the participant answers by holding the mic (用户 2026-11-20: 手抬起来就发了)."""
+    from . import tts
+    return itv.moderation == "ai" and (itv.format or "") in VOICE_FORMATS and (itv.language or "zh") in tts.LANGS and tts.enabled()
+
+
 def state(db: Session, itv: Interview, after: int, view: str) -> dict:
     """What a viewer sees of the chat.
 
@@ -467,7 +476,7 @@ def state(db: Session, itv: Interview, after: int, view: str) -> dict:
         if view == "staff":
             line.update(note=json.loads(r.note) if r.note else None, operator=r.operator, phase=r.phase, prompt_version=r.prompt_version, model=r.model)
         out_rows.append(line)
-    out = {"started": True, "control": sess.control, "finished": sess.finished, "messages": out_rows}
+    out = {"started": True, "control": sess.control, "finished": sess.finished, "messages": out_rows, "voice": voice_on(itv)}
     if view == "staff":
         out.update(alert=sess.alert, alert_reason=sess.alert_reason, engine_alive=itv.id in _ENGINES)
     return out
