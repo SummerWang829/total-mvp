@@ -20,6 +20,7 @@ class Outline(Base):
     project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
     name: Mapped[str] = mapped_column(String(200))
     current_version_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    sub_id: Mapped[str] = mapped_column(String(20), default="")  # 修正方案第 1 轮第 5 条: the 立项 sub-project it is bound to ("" = the first); the others share it for now
     created_by: Mapped[str] = mapped_column(String(32), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 

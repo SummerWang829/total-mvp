@@ -957,6 +957,7 @@ class ProjectPlan(Base):
     published_json: Mapped[str] = mapped_column(Text, default="")  # the config as last published: the project runs on this while an unlocked plan is being edited
     review_hash: Mapped[str] = mapped_column(String(32), default="")  # fingerprint of the config when it was submitted for review
     review_note: Mapped[str] = mapped_column(String(300), default="")  # why a reviewer sent it back
+    unlock_request: Mapped[str] = mapped_column(Text, default="")  # 修正方案第 1 轮第 5 条: {by, by_name, at, from, changes: [{sub_id, field, value, text}]} asked from 生成大纲 while locked
     submitted_by: Mapped[str] = mapped_column(String(32), default="")
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     approved_by: Mapped[str] = mapped_column(String(32), default="")

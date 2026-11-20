@@ -45,9 +45,19 @@ const wzSel = (attr, val, opts, w) => `<select ${attr} ${w ? `style="max-width:$
 const wzInp = (attr, v, extra = "") => `<input ${attr} value="${esc(v)}" ${extra}>`;
 const wzCheck = (ok) => (ok ? `<span class="pill">✓ 通过</span>` : `<span class="pill r">待处理</span>`);
 
+let WZ_SYNC = [];
+/** 修正方案第 1 轮第 5 条: an unlock asked for from 生成大纲 (only who can unlock sees the buttons), and where the outline disagrees with this 立项. */
+function wzSyncNotes() {
+  const rq = WZ.plan.unlock_request;
+  const req = rq && rq.changes && rq.changes.length && wzCanUnlock() ? `<div class="wzreq" role="status"><b>${esc(rq.by_name || "有人")}申请解锁</b><span>${rq.changes.map((c) => `${esc((WZ.cfg.subs.find((x) => x.id === c.sub_id) || {}).name || c.sub_id)} · ${esc({ minutes: "访谈时长", format: "访谈形式", languages: "访谈语言" }[c.field] || "设定")}改成 ${esc(c.text)}`).join("；")}（来自“${esc(rq.from || "生成大纲")}”，${esc(rq.at ? new Date(rq.at + "Z").toLocaleString("zh-CN", { hour12: false, month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : "")}）</span><span class="sp"></span><button class="p s" id="wzunlockreq" type="button">解锁并带上这项修改</button><button class="s" id="wzreqno" type="button">不同意</button></div>` : "";
+  const mis = WZ_SYNC.length ? `<div class="note wzmis"><b>和生成大纲不一致：</b>${WZ_SYNC.slice(0, 4).map((m) => `${esc(m.sub_name)}的${esc(m.label)}在立项里是${esc(m.plan)}，大纲是${esc(m.outline)}`).join("；")}</div>` : "";
+  return req + mis;
+}
+
 async function wizardView(p) {
   const my = renderSeq;
   const [plan, users] = await Promise.all([api(`/projects/${p.id}/plan`), api(`/projects/${p.id}/plan/people`)]);
+  WZ_SYNC = plan.legacy ? [] : (await api(`/projects/${p.id}/plan/outline-sync`).catch(() => ({ mismatch: [] }))).mismatch;   // 修正方案第 1 轮第 5 条: the same check as 生成大纲
   const live = plan.live ? await api(`/projects/${p.id}/languages`).catch(() => null) : null;   // a published project: languages and formats are the live ones (shared with the overview page)
   if (stale(my)) return;
   if (plan.legacy) {
@@ -367,7 +377,7 @@ function wzDraw() {
   const lockNote = locked ? `<div class="note"><b>立项已确认，暂时锁定。</b>要更新样本、追加或新增执行方案，请管理员或项目经理点“解锁修改”；改完需要重新审查、发布，涉及的定量、深访、座谈会、舆情的配额、问卷和监测大盘会同步变动。${wzCanUnlock() ? ` <button class="s" id="wzunlock2" type="button">解锁修改</button>` : ""}</div>`
     : P.live ? `<div class="note"><b>修改中。</b>项目在这期间仍按已发布的版本（v${P.version}）运行；改完提交审查、通过后发布，配额和监控才会按新内容更新。</div>` : "";
   shell(`${head("立项向导", "一次选好角色、样本、人群和合规", `<span class="pill ${stCls}">${stLabel}</span><span class="sm mut" id="wzstat" role="status">${locked ? "已锁定，只读" : "改动会自动保存"}</span>`)}
-    ${lockNote}<div class="chain" role="list">${WZ_STEPS.map((x, i) => `<button class="step ${s === i ? "on" : ""}" data-step="${i}" type="button" ${s === i ? 'aria-current="step"' : ""}>${i + 1} ${x}</button>`).join("")}</div>
+    ${wzSyncNotes()}${lockNote}<div class="chain" role="list">${WZ_STEPS.map((x, i) => `<button class="step ${s === i ? "on" : ""}" data-step="${i}" type="button" ${s === i ? 'aria-current="step"' : ""}>${i + 1} ${x}</button>`).join("")}</div>
     ${s === 0 && WZ.live ? `<div class="card wzlive">${wzLangFmt()}</div>` : ""}<div class="wzgrid"><fieldset class="card wzbody" ${locked ? "disabled" : ""}>${wzBody()}</fieldset></div>
     <div class="row" style="justify-content:space-between"><button id="wzprev" type="button" ${s ? "" : "disabled"}>上一步</button>${s < 6 ? `<button class="p" id="wznext" type="button">下一步</button>` : `<a class="btn p" id="wzhome" href="#/p/${WZ.p.id}/home" ${P.status === "published" || P.live ? "" : 'aria-disabled="true" hidden'}>去项目总览</a>`}</div>`,
     { active: "wiz", p: WZ.p });
@@ -527,6 +537,14 @@ function wzClick(b, e) {
   if (b.id === "subimp") return $("#subfile").click();
   if (b.id === "wzconfirmn") return guard(async () => { await wzSave(true); wzRedraw(); toast("样本量已确认并保存"); })();
   if (b.id === "wzall") { wzMutate(() => ["xb", "minor", "rec", "recon", "mask", "ai"].forEach((k) => (c.cons[k] = true))); return wzSave(true).then(() => wzRedraw()).catch((er) => toast(er.message, true)); }
+  if (b.id === "wzunlockreq" || b.id === "wzreqno") return guard(async () => {
+    const yes = b.id === "wzunlockreq";
+    const r = await api(yes ? `/projects/${WZ.p.id}/plan/unlock?with_request=true` : `/projects/${WZ.p.id}/plan/unlock-request/dismiss`, { method: "POST" });
+    WZ.plan = { ...WZ.plan, ...r }; WZ.cfg = r.config; if (yes) WZ.step = 0;
+    toast(yes ? "已解锁，并带上了申请里的修改；改完请重新提交审查" : "已不同意这项申请");
+    if (yes) { PROJECTS = null; await projects(true); WZ.p = (PROJECTS || []).find((x) => x.id === WZ.p.id) || WZ.p; }
+    wzDraw();
+  })();
   if (b.id === "wzunlock" || b.id === "wzunlock2") return guard(async () => {
     if (!confirm("解锁后可以修改立项。项目这期间照常按旧版本运行；改完要重新提交审查，通过并发布后，配额、问卷、监控才按新内容更新。确定解锁吗？")) return;
     const r = await api(`/projects/${WZ.p.id}/plan/unlock`, { method: "POST" });

@@ -1763,6 +1763,31 @@ def outline_wb_section(br, D):
     pg.screenshot(path=os.path.join(ROOT, "qa_shots", "fix1_b3_undo.png"))
     audit_page(pg, "outline_wb reset/desktop", errs)
     pg.click('[data-ow="rs-undo"]'); ok(wait_until(lambda: pg.locator("#owroot .ow-undo").count() == 0 and pg.locator("#owroot .ow-steps .ow-st.done").count() >= 2, 6), "[outline_wb] 撤销清除 puts it all back")
+    # 修正方案第 1 轮第 5 条: a project with a published 立项: length, format and languages come from its sub-project; a change asks for an unlock
+    dp = call("/projects/draft", {"name": "QA 大纲同步"}, adm)["id"]
+    cfg = call(f"/projects/{dp}/plan", None, adm)["config"]
+    cfg["subs"] = [{**cfg["subs"][0], "design": "i", "minutes": 45}, {**cfg["subs"][0], "id": "s2", "name": "马来西亚", "design": "i", "minutes": 60}]
+    cfg["cons"] = {k: True for k in cfg["cons"]}
+    cfg["n"] = {"q": 0, "i": 5, "f": 0, "fs": 6}
+    cfg["lt"] = {"dims": ["国家"], "rows": [{"id": "r1", "vs": ["s1"], "t": 0, "i": 5, "f": 0}]}
+    call(f"/projects/{dp}/plan", {"config": cfg}, adm, method="PUT")
+    for step in ("submit", "approve", "publish"):
+        call(f"/projects/{dp}/plan/{step}", {}, adm)
+    pg.goto(B + f"/#/p/{dp}/people/outline/goal"); pg.reload(); pg.wait_for_selector("#owroot [data-ow-edit='sync:minutes']")
+    ok("来自立项" in pg.inner_text("#owroot .ow-card") and pg.locator("#owroot [data-ow-edit='sync:format']").count() == 1, "[outline_wb] length, format and languages come from the 立项 sub-project")
+    ok(wait_until(lambda: pg.locator("#owroot .ow-stale").count() == 1 and "马来西亚" in pg.inner_text("#owroot .ow-stale"), 6), "[outline_wb] a sharing sub-project that differs is flagged")
+    pg.click("#owroot [data-ow-edit='sync:minutes']"); pg.fill("#ow-ed", "50"); pg.click('[data-ow="sync-next"]')
+    ok(wait_until(lambda: "锁定" in pg.inner_text("#owroot .ow-ask"), 6), "[outline_wb] a locked 立项: the change asks for an unlock")
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "fix1_b4_sync.png"))
+    audit_page(pg, "outline_wb sync/desktop", errs)
+    pg.click('[data-ow="sync-ok"]'); ok(wait_until(lambda: "等待解锁" in pg.inner_text("#owroot .ow-card"), 6), "[outline_wb] the outline uses 50 minutes, waiting for the unlock")
+    pg.goto(B + f"/#/p/{dp}/wiz"); pg.wait_for_selector(".chain")
+    ok(wait_until(lambda: pg.locator(".wzreq").count() == 1 and pg.locator(".wzmis").count() == 1, 6), "[wizard] the unlock request and the difference with the outline are shown")
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "fix1_b4_wizard_req.png"))
+    audit_page(pg, "wizard sync/desktop", errs)
+    pg.click("#wzunlockreq"); ok(wait_until(lambda: pg.locator(".wzreq").count() == 0, 6), "[wizard] unlocking carries the asked change")
+    ok(next(x for x in call(f"/projects/{dp}/plan", None, adm)["config"]["subs"] if x["id"] == "s1")["minutes"] == 50, "[wizard] the 立项 now says 50 minutes")
+    pg.goto(B + f"/#/p/{pid}/people/outline/questions"); pg.reload(); pg.wait_for_selector("#owroot .ow-steps")
     pg.locator(".sub2 .l1", has_text="甄别问卷").click(); pg.wait_for_url("**/people/form"); pg.go_back()
     ok(wait_until(lambda: "/people/outline" in pg.url and pg.locator("#owroot .ow-steps").count() == 1, 8), "[outline_wb] the browser's Back button returns to 生成大纲")
     for th in ("orange", "dark"):   # the three themes are all checked (contrast, sizes, names)

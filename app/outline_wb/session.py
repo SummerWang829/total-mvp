@@ -48,11 +48,17 @@ def context_of(db: Session, proj: Project, st: StudySetting) -> dict:
     except (ValueError, TypeError, KeyError):
         minutes = None
     fmts = (proj.formats or {}).get("depth") or []
-    lang = proj.language if proj.language in ("zh", "en") else "zh"
+    fmt, langs = (fmts[0] if fmts else "video"), [proj.language]
+    from . import sync
+    o = db.get(Outline, st.outline_id)
+    sy = sync.state(db, proj, o, st) if o is not None else None
+    if sy:   # 修正方案第 1 轮第 5 条: the bound 立项 sub-project decides (the outline's own value only while an unlock is asked for)
+        minutes, fmt, langs = sy["values"]["minutes"]["value"], sy["values"]["format"]["value"], sy["values"]["languages"]["value"]
+    lang = next((x for x in langs if x in ("zh", "en")), proj.language if proj.language in ("zh", "en") else "zh")
     if settings.moderator_provider == "mock":
         lang = "zh"   # the offline demo only has Chinese sample questions
     return {"background": " ".join((proj.brief or "").split()), "goals": [g for g in (f.goals if f else []) if str(g).strip()], "audience": (f.need if f else "") or "", "minutes": minutes,
-            "language": lang, "format": fmts[0] if fmts else "video", "host": proj.host_mode, "rotate": bool((st.overview or {}).get("context", {}).get("rotate"))}
+            "language": lang, "languages": langs, "format": fmt, "host": proj.host_mode, "rotate": bool((st.overview or {}).get("context", {}).get("rotate")), "sync": sy}
 
 
 def _slots(ctx: dict, st: StudySetting) -> dict:
@@ -89,7 +95,7 @@ def view(db: Session, proj: Project, user_id: str = "") -> dict:
     ov = _ov(st)
     mods = [dict(m) for m in ov.get("modules", [])]   # a copy: the page adds the questions to each module, and that must not be saved back
     by_mod = _items_by_module(db, v.id)
-    asked = len(st.answers or {})
+    asked = len([k for k in (st.answers or {}) if k in {d.name for d in flow.SLOT_DEFS}])
     rounds = {r: flow.next_questions(slots, r, asked) for r in ROUNDS}
     for m in mods:
         m["items"] = [_item_view(i, ctx["language"]) for i in by_mod.get(m["id"], [])]
@@ -154,6 +160,9 @@ def answer(db: Session, proj: Project, slot: str, value, user_id: str = "") -> N
     _, _, st = ensure(db, proj, user_id)
     if slot == "key_questions" and isinstance(value, str):
         value = [x.strip() for x in value.splitlines() if x.strip()][:4]
+    if slot == "minutes" and context_of(db, proj, st).get("sync"):
+        set_sync(db, proj, "minutes", value, user_id)
+        return
     if slot == "minutes":
         value = int(value)
         if not 10 <= value <= 180:
@@ -591,4 +600,21 @@ def revise_idea(db: Session, proj: Project, fid: str, text: str, user_id: str, r
         raise svc.OutlineError("先写下新题")
     svc.reject(db, proj.org_id, old.id, user_id, role)
     draft_idea(db, proj, f, None, text, user_id)
+    return view(db, proj, user_id)
+
+
+# ---- 修正方案第 1 轮第 5 条：时长、形式、语言以立项子项目为准 ---------------------------------------------------------------------
+
+def set_sync(db: Session, proj: Project, field: str, value, user_id: str = "", user_name: str = "") -> str:
+    """Change the outline's length, format or languages: in the plan when it is not locked, otherwise as an unlock request. Returns "plan" or "requested"."""
+    from . import sync
+    o, _, st = ensure(db, proj, user_id)
+    return sync.change(db, proj, o, st, field, value, user_name, user_id)
+
+
+def bind_sub(db: Session, proj: Project, sub_id: str, user_id: str = "") -> dict:
+    from . import sync
+    o, _, _ = ensure(db, proj, user_id)
+    sync.bind(db, proj, o, sub_id)
+    db.flush()
     return view(db, proj, user_id)

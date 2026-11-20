@@ -272,6 +272,9 @@ def publish_checks(db: Session, proj: Project) -> dict:
         checks.append({"id": "empty", "level": "block", "text": "还没有题"})
     blocked = [i.label for i in qs if quality.check_question(i.texts.get(ctx["language"], ""), ctx["language"], ctx["format"])["blocked"]]
     checks.append({"id": "quality", "level": "block", "text": "碰到红线的题：" + "、".join(blocked)} if blocked else {"id": "quality", "level": "ok", "text": "质检通过，没有碰红线的题"})
+    sy = (ctx.get("sync") or {}).get("mismatch") or []   # 修正方案第 1 轮第 5 条: the outline and the 立项 must agree on length, format and languages
+    checks.append({"id": "sync", "level": "block", "text": "和立项不一致：" + "；".join(f"{m['sub_name']} {m['label']}立项是{m['plan']}、大纲是{m['outline']}" for m in sy[:4])} if sy
+                  else {"id": "sync", "level": "ok", "text": "时长、形式、语言和立项一致"})
     mods = (st.overview or {}).get("modules", [])
     todo = [m["name"] for m in mods if m.get("status") != "confirmed"]
     checks.append({"id": "modules", "level": "warn", "text": "还有模块没有确认：" + "、".join(todo)} if todo else {"id": "modules", "level": "ok", "text": "每个模块都已确认，总时长 " + str((st.overview or {}).get("minutes", "")) + " 分"})

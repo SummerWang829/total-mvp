@@ -83,7 +83,37 @@
     const tag = (s) => `<span class="ow-tag ${s.source === "inferred" || s.source === "default" ? "w" : ""}">${lbl(SRC[s.source], s.source)}${s.source === "inferred" ? ` · 把握 ${s.confidence.toFixed(1)}` : ""}</span>`;
     const btn = (k, label) => (ed === k ? "" : `<button type="button" class="ow-edit" data-ow-edit="${k}" aria-label="改${label}">改</button>`);
     const base = `<div class="ow-slot${ed === "background" ? " editing" : ""}"><span class="k">研究背景</span><span class="v">${ed === "background" ? editor("background") : E(c.background) || "—"}</span><span class="ow-tag">来自项目设置</span>${btn("background", "研究背景")}</div>`;
-    return base + Object.entries(S.d.slots).map(([k, s]) => `<div class="ow-slot${ed === k ? " editing" : ""}"><span class="k">${lbl(L[k], k)}</span><span class="v">${ed === k ? editor(k) : shown(k, s)}</span>${tag(s)}${btn(k, lbl(L[k], k))}</div>`).join("");
+    const sy = c.sync;
+    const syncRow = (f, label) => { const x = sy.values[f], k = "sync:" + f; return `<div class="ow-slot${ed === k ? " editing" : ""}"><span class="k">${label}</span><span class="v">${ed === k ? syncEditor(f) : E(x.text)}</span><span class="ow-tag${x.own ? " w" : ""}">来自立项 · ${E(sy.sub_name)}${x.own ? " · 等待解锁" : ""}</span>${btn(k, label)}</div>`; };
+    const rows = Object.entries(S.d.slots).map(([k, s]) => (sy && k === "minutes" ? syncRow("minutes", "访谈时长") + syncRow("format", "访谈形式") + syncRow("languages", "访谈语言")
+      : `<div class="ow-slot${ed === k ? " editing" : ""}"><span class="k">${lbl(L[k], k)}</span><span class="v">${ed === k ? editor(k) : shown(k, s)}</span>${tag(s)}${btn(k, lbl(L[k], k))}</div>`)).join("");
+    return base + rows;
+  }
+  /** 修正方案第 1 轮第 5 条: length, format and languages belong to the 立项 sub-project this outline is bound to. */
+  const LANGS = { zh: "中文", en: "English", ms: "马来语", ta: "泰米尔语" };
+  function syncEditor(f) {
+    const x = S.d.context.sync.values[f], ok = `<span class="ow-edbtn"><button type="button" class="p s" data-ow="sync-next" data-f="${f}">下一步</button><button type="button" class="s" data-ow="ed-cancel">取消</button></span>`;
+    if (f === "minutes") return `<input class="ow-in num" id="ow-ed" type="number" min="5" max="240" aria-label="访谈时长（分钟）" value="${E(x.value)}"> 分钟${ok}`;
+    if (f === "format") return `<select class="ow-sel" id="ow-ed" aria-label="访谈形式">${Object.entries(FORMAT).map(([v, t]) => `<option value="${v}"${v === x.value ? " selected" : ""}>${t}</option>`).join("")}</select>${ok}`;
+    return `<span class="ow-multi">${Object.entries(LANGS).map(([v, t]) => `<label><input type="checkbox" data-ow-sl="${v}"${x.value.includes(v) ? " checked" : ""}> ${t}</label>`).join("")}</span>${ok}`;
+  }
+  function subPick() {
+    const sy = S.d.context.sync; if (!sy) return "";
+    return sy.subs.length > 1 ? `<span class="ow-subpick">这份大纲对应 <select class="ow-sel" aria-label="这份大纲对应的子项目" data-ow-sub>${sy.subs.map((x) => `<option value="${E(x.id)}"${x.id === sy.sub_id ? " selected" : ""}>${E(x.name)}</option>`).join("")}</select><span class="mut sm">其他子项目先共用这份大纲</span></span>`
+      : `<span class="ow-subpick mut sm">这份大纲对应 ${E(sy.sub_name)}</span>`;
+  }
+  function syncBar() {
+    const sy = S.d?.context?.sync; if (!sy || !sy.mismatch.length) return "";
+    const req = sy.request && sy.request.changes.length ? `<span class="mut sm">已申请解锁，等管理员或项目经理处理</span>` : "";
+    return `<div class="ow-stale" role="status"><b>和立项不一致</b>：${sy.mismatch.slice(0, 4).map((m) => `${E(m.sub_name)}的${E(m.label)}在立项里是${E(m.plan)}，大纲是${E(m.outline)}`).join("；")}。<span class="sp"></span>${req}<span class="sm">发布这份大纲前要先处理</span></div>`;
+  }
+  function syncAsk() {
+    const a = S.syncAsk; if (!a) return "";
+    const sy = S.d.context.sync, cur = sy.values[a.field].plan, curText = a.field === "minutes" ? `${cur} 分钟` : a.field === "format" ? FORMAT[cur] : cur.map((x) => LANGS[x]).join("、");
+    const head = sy.locked ? `立项已发布并锁定` : `立项里${E(sy.sub_name)}是${E(curText)}，要同步改立项吗？`;
+    const body = sy.locked ? `要把${E(sy.sub_name)}的${E(a.label)}改成 <b>${E(a.text)}</b>，需要管理员或项目经理先“解锁修改”。改完仍要重新审查、通过、发布新版本。申请会显示在立项页顶部${"，配了邮件服务的话也会发邮件"}。`
+      : `改成 <b>${E(a.text)}</b>。会直接改立项里${E(sy.sub_name)}的${E(a.label)}，并记进审计日志${sy.plan_status !== "draft" ? "；立项需要重新提交审查" : ""}。`;
+    return `<div class="card ow-card ow-ask" role="dialog" aria-label="${E(head)}"><h3>${head}</h3><p>${body}</p><div class="ow-actions"><button type="button" class="p" data-ow="sync-ok">${sy.locked ? "申请解锁并同步" : "同步改立项"}</button><button type="button" data-ow="sync-cancel">取消</button></div></div>`;
   }
   const NL = String.fromCharCode(10);
   function editor(k) {
@@ -112,12 +142,12 @@
     }).join("") + `</div>`;
   }
   function goalView() {
-    return `<div class="card ow-card"><h3>已经知道的</h3>${slotRows()}</div>${roundCard(1)}
+    return `<div class="card ow-card"><h3>已经知道的 ${subPick()}</h3>${slotRows()}</div>${roundCard(1)}
       <div class="ow-actions"><button type="button" class="p" data-ow="goal-next">${gates().goal ? "继续" : "确认目标，继续"}</button></div>`;
   }
   function peopleView() {
     const c = roundCard(2) + roundCard(3);
-    return `<div class="card ow-card"><h3>已经知道的</h3>${slotRows()}</div>${c}
+    return `<div class="card ow-card"><h3>已经知道的 ${subPick()}</h3>${slotRows()}</div>${c}
       <div class="ow-actions"><button type="button" class="p" data-ow="build">${mods().length ? "按这些回答重新生成大纲总览" : "生成大纲总览"}</button></div>`;
   }
   const depthSel = (cur, attr) => `<select class="ow-sel" aria-label="追问深度" ${attr}>${DEPTH.map(([v, l]) => `<option value="${v}"${v === cur ? " selected" : ""}>${l}</option>`).join("")}</select>`;
@@ -133,7 +163,7 @@
       <div class="ow-slot"><span class="k">研究背景</span><span class="v">${E(c.background) || "—"}</span><span class="ow-tag">来自项目设置</span></div>
       <div class="ow-slot"><span class="k">要回答的问题</span><span class="v">${(c.goals.length ? c.goals : S.d.slots.key_questions.value || []).map((x, i) => `${"①②③④"[i]} ${E(x)}`).join("　")}</span></div>
       <div class="ow-slot"><span class="k">访谈对象</span><span class="v">${E(c.audience) || "—"}</span><span class="ow-tag">来自甄别问卷</span></div>
-      <div class="ow-slot"><span class="k">形式与语言</span><span class="v">${E(lbl({ ai: "AI 主持", human: "真人主持" }[c.host], c.host))} · ${E(lbl(FORMAT[c.format], c.format))} · ${E(c.language === "zh" ? "中文" : "English")}</span><span class="ow-tag">来自项目设置</span></div></div>
+      <div class="ow-slot"><span class="k">形式与语言</span><span class="v">${E(lbl({ ai: "AI 主持", human: "真人主持" }[c.host], c.host))} · ${E(lbl(FORMAT[c.format], c.format))} · ${E((c.languages || [c.language]).map((x) => lbl(LANGS[x], x)).join("、"))}</span><span class="ow-tag">来自项目设置</span></div></div>
       <div class="card ow-card"><h3>大纲由这几部分组成</h3>
       <table class="ow-tbl"><thead><tr><th style="width:90px">模块</th><th>目的与要了解的内容</th><th class="c" style="width:44px">问题</th><th class="c" style="width:78px">时长（分）</th><th class="c" style="width:46px">题数</th><th style="width:96px">追问</th></tr></thead><tbody>${rows}
       <tr class="tot"><td>合计</td><td></td><td></td><td>${o.totals.minutes} 分</td><td class="c">${o.totals.questions}</td><td></td></tr></tbody></table></div>
@@ -413,7 +443,7 @@
     const keep = { y: q("#owmain")?.scrollTop || 0, chat: q("#ow-msgs")?.scrollTop || 0, focusId: document.activeElement?.id || "" };
     const view = S.area !== "gen" ? { preview: previewView, rehearsal: rehearsalView, round: roundView, pilot: pilotView, publish: publishView }[S.tab] : ({ goal: goalView, people: peopleView, overview: overviewView, questions: questionsView, focus: focusView }[S.step] || goalView);
     const body = S.area === "gen" && S.step === "questions" ? `<div class="ow-qwrap">${tocHtml()}<div>${view()}</div></div>` : view();
-    root.innerHTML = `<div class="ow${S.busy ? " busy" : ""}"><div class="ow-main" id="owmain">${stepBar()}${S.area === "gen" ? resetUi() : ""}${body}${S.area === "gen" ? stepNav() : ""}</div><aside class="ow-chat" id="owchat">${chatHtml()}</aside></div>`;
+    root.innerHTML = `<div class="ow${S.busy ? " busy" : ""}"><div class="ow-main" id="owmain">${stepBar()}${S.area === "gen" ? resetUi() + syncBar() + syncAsk() : ""}${body}${S.area === "gen" ? stepNav() : ""}</div><aside class="ow-chat" id="owchat">${chatHtml()}</aside></div>`;
     q("#owmain").scrollTop = keep.y; const m = q("#ow-msgs"); if (m) m.scrollTop = keep.chat || m.scrollHeight;
     menuState(); keepStep();
   }
@@ -488,6 +518,15 @@
       case "rv-next": { S.busy = true; paint(); try { const r = await call(`/pilot-rounds/${S.rid}/next-version`, "POST"); S.d = await call(""); toast(`已生成 v${r.version}（${r.changes} 处修改）`); } catch { /* toast */ } S.busy = false; return loadTab(); }
       case "rv-ready": { try { await call("/ready", "PUT", { value: !S.rd.version.ready }); } catch { /* toast */ } return loadTab(); }
       case "pub-go": { S.busy = true; paint(); try { await call("/publish", "POST"); S.d = await call(""); S.pub = await call("/publish/check"); toast("已发布"); } catch { /* toast */ } S.busy = false; return paint(); }
+      case "sync-next": {
+        const f = d.f, label = { minutes: "访谈时长", format: "访谈形式", languages: "访谈语言" }[f];
+        const v = f === "languages" ? qa("[data-ow-sl]").filter((x) => x.checked).map((x) => x.dataset.owSl) : f === "minutes" ? parseInt(val("#ow-ed"), 10) : val("#ow-ed");
+        if (f === "languages" && !v.length) return toast("至少选一种语言", true);
+        if (f === "minutes" && !(v >= 5 && v <= 240)) return toast("访谈时长应在 5 到 240 分钟之间", true);
+        S.edit = ""; S.syncAsk = { field: f, value: v, label, text: f === "minutes" ? `${v} 分钟` : f === "format" ? FORMAT[v] : v.map((x) => LANGS[x]).join("、") }; return paint();
+      }
+      case "sync-cancel": S.syncAsk = null; return paint();
+      case "sync-ok": { const a = S.syncAsk; S.syncAsk = null; await act("/sync", "PUT", { field: a.field, value: a.value }); if (S.d.sync_result) toast(S.d.sync_result === "plan" ? "已同步改立项" : "已申请解锁，等管理员或项目经理处理"); return; }
       case "fdd-cancel": S.fdd = ""; return paint();
       case "fdd-ok": { const x = S.fsel; S.fdd = ""; return act(`/focus/${d.f}/link`, "PUT", { item_uids: [...x.uids], state: x.none ? "none" : x.idea ? "new_idea" : "linked" }); }
       case "idea-edit": S.ideaEdit = d.f; return paint();
@@ -537,6 +576,7 @@
     if (d.owPil !== undefined) { S.pilId = t.value; S.pil = null; paint(); return loadTab(); }
     if (d.owMs !== undefined) { const all = qa("[data-ow-ms]"); if (t.checked) all.forEach((x) => { if ((d.owMs === "none") !== (x.dataset.owMs === "none")) x.checked = false; }); return; }
     if (t.name === "ow-rs") { S.resetMode = t.value; return paint(); }
+    if (d.owSub !== undefined) return act("/sub", "PUT", { sub_id: t.value });
   }
   async function onSubmit(e) {
     if (e.target.id !== "ow-form") return;
@@ -572,7 +612,7 @@
   window.OutlineWb = {
     async mount(pid, area) {
       wire();
-      if (S.pid !== pid) Object.assign(S, { pid, d: null, step: "", mod: "", sel: "", msgs: [], adopt: null, form: null, pv: null, rh: null, pl: null, pil: null, pub: null, edit: "", fdd: "", ideaEdit: "", resetAsk: false });
+      if (S.pid !== pid) Object.assign(S, { pid, d: null, step: "", mod: "", sel: "", msgs: [], adopt: null, form: null, pv: null, rh: null, pl: null, pil: null, pub: null, edit: "", fdd: "", ideaEdit: "", resetAsk: false, syncAsk: null });
       S.area = ["test", "pilot"].includes(area) ? area : "gen";
       if (S.area !== "gen" && !TABS[S.area].some(([k]) => k === S.tab)) S.tab = TABS[S.area][0][0];
       const fromUrl = (location.hash.split("/")[5] || "").split("?")[0];   // #/p/<id>/people/outline/<step>: a reload stays on that step

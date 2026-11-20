@@ -90,7 +90,7 @@ def known(context: dict, answers: dict) -> dict[str, dict]:
     """Every slot with its value, where it came from (project / answer / inferred / default / none) and how sure that is (0..1). `context` is read from the project, `answers` are the researcher's."""
     out: dict[str, dict] = {}
     for s in SLOT_DEFS:
-        if s.name in answers:
+        if s.name in answers and not (s.name == "minutes" and context.get("sync")):   # a bound 立项 sub-project owns the length (修正方案第 1 轮第 5 条)
             out[s.name] = {"value": answers[s.name], "source": "answer", "confidence": 1.0}
         elif s.name == "key_questions" and context.get("goals"):
             out[s.name] = {"value": list(context["goals"])[:4], "source": "project", "confidence": 1.0}

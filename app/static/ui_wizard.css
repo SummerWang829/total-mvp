@@ -47,3 +47,8 @@ html body .wzsubs td input[type=checkbox] { margin: 0; }
 html body .wzsubs td > input:not([type=checkbox]),
 html body .wzsubs td > select { height: 24px; min-height: 0; line-height: 24px; margin-top: 0; vertical-align: top; }
 @media (max-width:900px){.wzsubs label.chk{display:inline-flex!important;align-items:center;justify-content:center;min-width:36px;min-height:36px!important;height:auto!important}.wzsubs{overflow-x:auto}.wzsubs>table.tbl{min-width:900px}.wzsubs button,.wzsubs select,.wzsubs input{min-height:36px!important;min-width:36px}}   /* phone: the sub-project table scrolls sideways instead of squeezing its fields below 36px */
+/* 修正方案第 1 轮第 5 条：生成大纲来的解锁申请、和大纲不一致 */
+.wzreq{display:flex;flex-wrap:wrap;align-items:center;gap:10px;background:#0B382C;color:#fff;border-radius:12px;padding:10px 14px;margin:0 0 12px}
+.wzreq .sp{flex:1}.wzreq button{min-height:34px}.wzreq button:not(.p){background:transparent;color:#FFD7B5;border-color:#FFD7B5}
+.wzmis{background:#FFF5DE!important;border-color:#E3B94A!important;color:#6B4E00!important}
+html[data-theme="dark"] .wzmis{background:#3A2E10!important;border-color:#8A6A1C!important;color:#F3D58A!important}

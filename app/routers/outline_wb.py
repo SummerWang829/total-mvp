@@ -6,6 +6,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..audit import audit
@@ -133,6 +134,15 @@ class LinkManyBody(BaseModel):
 
 class TextBody(BaseModel):
     text: str = Field(min_length=1, max_length=4000)
+
+
+class SyncBody(BaseModel):
+    field: str = Field(max_length=12)
+    value: int | str | list[str]
+
+
+class SubBody(BaseModel):
+    sub_id: str = Field(min_length=1, max_length=20)
 
 
 class ResetBody(BaseModel):
@@ -298,6 +308,39 @@ def edit_background(pid: str, body: TextBody, ctx: Ctx = Depends(require_roles(*
 @router.post("/overview/keep")
 def keep_overview(pid: str, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
     return _run(db, sess.keep_overview, db, _project(db, ctx, pid), ctx.user.id)
+
+
+@router.put("/sync")
+def set_sync(pid: str, body: SyncBody, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    """修正方案第 1 轮第 5 条: change length / format / languages; written into the 立项 when it is not locked, otherwise an unlock request (and a mail to who can unlock)."""
+    p = _project(db, ctx, pid)
+    how = _run(db, sess.set_sync, db, p, body.field, body.value, ctx.user.id, ctx.user.name)
+    audit(db, ctx.org_id, ctx.actor, "plan.save" if how == "plan" else "plan.unlock_request", pid, ip=ctx.ip, field=body.field, source="outline_wb")
+    if how == "requested":
+        _mail_unlockers(db, p, ctx.user.name)
+    db.commit()
+    return {**sess.view(db, p, ctx.user.id), "sync_result": how}
+
+
+def _mail_unlockers(db: Session, p: Project, who: str) -> None:
+    """Tell the project's admins and project managers that someone asked to unlock the 立项 (only when a mail service is set up)."""
+    from .. import mailer
+    from ..models import ProjectMember, User
+    if not mailer.configured():
+        return
+    ids = {m.user_id for m in db.scalars(select(ProjectMember).where(ProjectMember.project_id == p.id))}
+    for u in db.scalars(select(User).where(User.org_id == p.org_id, User.active.is_(True), User.role.in_(("admin", "recruiter")))):
+        if u.email and (u.role == "admin" or u.id in ids):
+            try:
+                mailer.queue(db, u.email, "plan_unlock", f"{u.name}，您好：\n\n{who} 在“生成大纲”里申请解锁项目“{p.name}”的立项，修改访谈时长、形式或语言。\n请登录后到立项向导查看。\n",
+                             p.org_id, subject=f"立项解锁申请：{p.name}", ref_id=p.id)
+            except RuntimeError:
+                continue
+
+
+@router.put("/sub")
+def bind_sub(pid: str, body: SubBody, ctx: Ctx = Depends(require_roles(*STAFF)), db: Session = Depends(get_db)):
+    return _run(db, sess.bind_sub, db, _project(db, ctx, pid), body.sub_id, ctx.user.id)
 
 
 @router.post("/reset")

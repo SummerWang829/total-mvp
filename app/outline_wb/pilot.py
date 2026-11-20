@@ -331,7 +331,7 @@ def skip_publish(db: Session, proj: Project, user_id: str = "") -> dict:
         OutlineError: a question breaks a red line, or there are no questions.
     """
     o, v, st = sess.ensure(db, proj, user_id)
-    chk = [c for c in stage3.publish_checks(db, proj)["checks"] if c["id"] in ("quality", "empty")]
+    chk = [c for c in stage3.publish_checks(db, proj)["checks"] if c["id"] in ("quality", "empty", "sync")]
     if any(c["level"] == "block" for c in chk):
         raise svc.OutlineError("还不能上线：" + "；".join(c["text"] for c in chk if c["level"] == "block"))
     v.pilot_skipped = True

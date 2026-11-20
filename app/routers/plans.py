@@ -69,6 +69,7 @@ def plan_out(project: Project, plan: ProjectPlan | None, library_docs: int | Non
             "submitted_at": plan.submitted_at.isoformat() if plan.submitted_at else None, "approved_at": plan.approved_at.isoformat() if plan.approved_at else None,
             "published_at": plan.published_at.isoformat() if plan.published_at else None, "retention_days": cfg.retention, "live": plan.version > 0,
             "suggest": json.loads(plan.suggest_json) if plan.suggest_json else None, "sums": plans.quota_sums(cfg),
+            "unlock_request": json.loads(plan.unlock_request) if plan.unlock_request else None,
             **({"library_docs": library_docs} if library_docs is not None else {})}
 
 
@@ -262,7 +263,7 @@ def publish_plan(pid: str, ctx: Ctx = Depends(require_roles(*PLAN_ROLES)), db: S
 
 
 @router.post("/projects/{pid}/plan/unlock")
-def unlock_plan(pid: str, ctx: Ctx = Depends(require_roles(*UNLOCKERS)), db: Session = Depends(get_db)):
+def unlock_plan(pid: str, with_request: bool = False, ctx: Ctx = Depends(require_roles(*UNLOCKERS)), db: Session = Depends(get_db)):
     """Unlock a published plan for changes (a client adds samples or a new method): an admin or the project's manager. The project keeps running on the
     published version; the changed plan goes through review and publishing again, and then quotas and monitoring follow it."""
     project, plan = _plan(db, ctx, pid)
@@ -270,9 +271,40 @@ def unlock_plan(pid: str, ctx: Ctx = Depends(require_roles(*UNLOCKERS)), db: Ses
         raise HTTPException(409, "只有已发布并锁定的立项才能解锁")
     plan.published_json = plan.published_json or plan.config_json  # the running version, kept while the plan is edited
     plan.status, plan.review_hash, plan.review_note = "draft", "", "已解锁修改，改完需要重新提交审查"
-    audit(db, ctx.org_id, ctx.actor, "plan.unlock", project.id, version=plan.version)
+    if with_request and plan.unlock_request:   # 修正方案第 1 轮第 5 条: unlock and carry the changes asked for from 生成大纲
+        from ..outline_wb import sync
+        raw = sync.apply_request(json.loads(plan.config_json or "{}") or plans.default_config(), json.loads(plan.unlock_request))
+        try:
+            plan.config_json = json.dumps(plans.validate(raw).model_dump(), ensure_ascii=False)
+        except ValueError as e:
+            raise HTTPException(422, str(e)) from e
+        plan.unlock_request = ""
+    audit(db, ctx.org_id, ctx.actor, "plan.unlock", project.id, version=plan.version, with_request=bool(with_request))
     db.commit()
     return plan_out(project, plan)
+
+
+@router.post("/projects/{pid}/plan/unlock-request/dismiss")
+def dismiss_unlock_request(pid: str, ctx: Ctx = Depends(require_roles(*UNLOCKERS)), db: Session = Depends(get_db)):
+    """不同意: the request from 生成大纲 is dropped (the outline then still shows that it disagrees with the 立项)."""
+    project, plan = _plan(db, ctx, pid)
+    if plan is None or not plan.unlock_request:
+        raise HTTPException(409, "没有解锁申请")
+    plan.unlock_request = ""
+    audit(db, ctx.org_id, ctx.actor, "plan.unlock_request_dismiss", project.id)
+    db.commit()
+    return plan_out(project, plan)
+
+
+@router.get("/projects/{pid}/plan/outline-sync")
+def outline_sync(pid: str, ctx: Ctx = Depends(require_roles(*PLAN_ROLES)), db: Session = Depends(get_db)):
+    """Where 生成大纲 and the 立项 disagree on length, format or languages (the same check the outline page and its publishing use)."""
+    project, plan = _plan(db, ctx, pid)
+    from ..outline_wb import session as wbsess, sync
+    from ..outline_wb.models import Outline, StudySetting
+    o = db.get(Outline, project.outline_id) if project.outline_id else None
+    st = db.scalar(select(StudySetting).where(StudySetting.outline_id == o.id)) if o is not None else None
+    return {"mismatch": sync.mismatch(db, project, o, st) if (plan is not None and o is not None and st is not None) else []}
 
 
 # ---------- watching the quotas ----------
