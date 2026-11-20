@@ -17,3 +17,8 @@ body.participant .pwrap>:is(p,div):not(.card):has(~ .card){color:var(--mut)}
 body.participant .card{border-radius:16px;box-shadow:none;border-color:var(--line)}
 /* logo 放在白色小底上，保留原来的颜色 */
 body.participant .pbar svg{background:none;border-radius:0;padding:0}   /* 用户 2026-11-20：logo 融入底色，不要白色方块 */
+/* 修正方案第 4 轮: the consent as headings and short points */
+.participant .ctext h3{font-size:15px;margin:14px 0 4px}
+.participant .ctext h3:first-child{margin-top:0}
+.participant .ctext ul{margin:0 0 4px;padding-left:20px}
+.participant .ctext li{margin:3px 0;line-height:1.6}

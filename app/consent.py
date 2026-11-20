@@ -9,70 +9,83 @@ import hashlib
 from .config import settings
 from .moderator.compliance import moderator_runs_locally
 
-VERSION = "2026-11-draft-10"  # draft-10: in an AI audio / video interview the AI speaks with a synthesized voice and the participant holds the mic to answer (用户 2026-11-20: 写“合成语音”，不写服务商); draft-9: voice input on the participant pages (the voice goes to Tencent Cloud speech recognition to become text, not kept); draft-8: the number of days before deletion is the project's own choice (30/60/120/180); draft-7: studies done alone, in text, at any time have their own paragraph; draft-6: how things are said (pace, pauses, volume) and emoji are noted; draft-5: the AI also reads the screening answers; draft-4: AI-moderator disclosure (AI interviews only)
+VERSION = "2026-11-draft-11"  # draft-11: the same points written as short bullet points under four headings (用户 2026-11-20: 清楚明了，简单); the AI disclosure is the first section; draft-10: in an AI audio / video interview the AI speaks with a synthesized voice and the participant holds the mic to answer (用户 2026-11-20: 写“合成语音”，不写服务商); draft-9: voice input on the participant pages (the voice goes to Tencent Cloud speech recognition to become text, not kept); draft-8: the number of days before deletion is the project's own choice (30/60/120/180); draft-7: studies done alone, in text, at any time have their own paragraph; draft-6: how things are said (pace, pauses, volume) and emoji are noted; draft-5: the AI also reads the screening answers; draft-4: AI-moderator disclosure (AI interviews only)
 
-# A study done alone: replaces the picture of a live video call that the base text gives.
+# 修正方案第 4 轮 (用户 2026-11-20: 写得清楚明了，简单): the same points as draft-10, written as short bullet points under four headings.
+# Every line that starts with "• " is a point; the other lines are headings. Malay and Tamil are first drafts to be checked by native speakers and counsel.
+HEADS = {
+    "en": ("About this interview", "What we record", "Where your data goes", "Your rights"),
+    "zh": ("关于这次访谈", "我们会记录什么", "数据去哪里", "您的权利"),
+    "ms": ("Tentang temu bual ini", "Apa yang kami rakam", "Ke mana data anda pergi", "Hak anda"),
+    "ta": ("இந்த நேர்காணல் பற்றி", "நாங்கள் பதிவு செய்வது", "உங்கள் தரவு எங்கே செல்கிறது", "உங்கள் உரிமைகள்"),
+}
+WHO = {
+    "en": "TOTAL runs this interview for {org}, for market research.",
+    "zh": "本次访谈由星桐代 {org} 进行，用于市场研究。",
+    "ms": "TOTAL menjalankan temu bual ini bagi pihak {org}, untuk kajian pasaran.",
+    "ta": "சந்தை ஆய்வுக்காக {org} சார்பாக TOTAL இந்த நேர்காணலை நடத்துகிறது.",
+}
+OBSERVERS = {
+    "en": "Client observers may listen silently; you will not see them.",
+    "zh": "委托方的观察员可能静默旁听，您看不到他们。",
+    "ms": "Pemerhati klien mungkin mendengar secara senyap; anda tidak akan melihat mereka.",
+    "ta": "வாடிக்கையாளர் பார்வையாளர்கள் அமைதியாகக் கேட்கலாம்; நீங்கள் அவர்களைப் பார்க்க முடியாது.",
+}
+# A study done alone: replaces the picture of a live video call.
 TEXT_ONLY_TEXTS = {
-    "en": "This study is a written conversation that you complete on your own, at any time that suits you. No video or sound is recorded: what you type is the record. "
-          "Nobody watches live; the research team reads the conversation afterwards. In what follows, \"recording\" means your typed answers, and \"observers\" means team members who read them later.",
-    "zh": "这项研究是一场文字对话，由您自己在方便的时间完成。不录像、不录音，您输入的文字就是记录。没有人在现场旁观，研究团队会在事后阅读这场对话。"
-          "下文中的“录制”指您输入的文字，“观察员”指事后阅读这些文字的团队成员。",
-    "ms": "Kajian ini ialah perbualan bertulis yang anda selesaikan sendiri pada bila-bila masa yang sesuai. Tiada video atau bunyi dirakam: apa yang anda taip ialah rekod. "
-          "Tiada sesiapa menonton secara langsung; pasukan penyelidik membaca perbualan itu kemudian. Di bawah, \"rakaman\" bermaksud jawapan yang anda taip, dan \"pemerhati\" bermaksud ahli pasukan yang membacanya kemudian.",
-    "ta": "இந்த ஆய்வு நீங்களே, உங்களுக்கு வசதியான நேரத்தில் முடிக்கும் எழுத்து உரையாடல். வீடியோவோ ஒலியோ பதிவு செய்யப்படாது: நீங்கள் தட்டச்சு செய்வதே பதிவு. "
-          "யாரும் நேரலையில் பார்ப்பதில்லை; ஆய்வுக் குழு பின்னர் உரையாடலைப் படிக்கும். கீழே “பதிவு” என்பது நீங்கள் தட்டச்சு செய்த பதில்கள், “பார்வையாளர்கள்” என்பது அவற்றைப் பின்னர் படிக்கும் குழு உறுப்பினர்கள்.",
+    "en": "This is a written conversation you complete on your own, at any time. No video or sound is recorded — what you type is the record; the team reads it afterwards.",
+    "zh": "这是一场文字对话，您自己在方便的时间完成。不录像、不录音，您输入的文字就是记录，研究团队事后阅读。",
+    "ms": "Ini perbualan bertulis yang anda selesaikan sendiri, pada bila-bila masa. Tiada video atau bunyi dirakam — apa yang anda taip ialah rekod; pasukan membacanya kemudian.",
+    "ta": "இது நீங்களே எந்த நேரத்திலும் முடிக்கும் எழுத்து உரையாடல். வீடியோ, ஒலி பதிவு இல்லை — நீங்கள் தட்டச்சு செய்வதே பதிவு; குழு பின்னர் படிக்கும்.",
 }
-
-# How things are said, and emoji: stated in every interview (the live captions are always on). Numbers and the participant's own emoji only.
+RECORD = {
+    "en": "Video and sound are recorded, turned into text and translated into Chinese.",
+    "zh": "录制视频和声音，转写成文字并翻译成中文。",
+    "ms": "Video dan bunyi dirakam, ditukar menjadi teks dan diterjemahkan ke bahasa Cina.",
+    "ta": "காணொளியும் ஒலியும் பதிவு செய்யப்பட்டு, எழுத்தாக மாற்றப்பட்டு, சீன மொழியில் மொழிபெயர்க்கப்படும்.",
+}
+RECORD_TEXT = {
+    "en": "Your typed answers are kept and translated into Chinese.",
+    "zh": "保存您输入的文字，并翻译成中文。",
+    "ms": "Jawapan yang anda taip disimpan dan diterjemahkan ke bahasa Cina.",
+    "ta": "நீங்கள் தட்டச்சு செய்த பதில்கள் சேமிக்கப்பட்டு சீன மொழியில் மொழிபெயர்க்கப்படும்.",
+}
+# How things are said, and emoji (the live captions are always on): numbers and the participant's own emoji only.
 SIGNALS_TEXTS = {
-    "en": "To help the research team see where to ask more, we note how things are said (speaking pace, pauses and volume, compared only with your own usual way of speaking) "
-          "and any emoji you choose to send. We do not judge your feelings from this: only these numbers and your own emoji are kept.",
-    "zh": "为了帮助研究团队知道哪些地方值得多问，我们会记录您说话的语速、停顿和音量（只和您自己平时的说话习惯比较），以及您主动发送的表情。"
-          "我们不会据此判断您的情绪，只保存这些数值和您自己发的表情。",
-    "ms": "Untuk membantu pasukan penyelidik mengetahui di mana perlu bertanya lebih lanjut, kami mencatat cara anda bercakap (kelajuan, jeda dan kelantangan, dibandingkan dengan cara "
-          "biasa anda sendiri bercakap) dan sebarang emoji yang anda pilih untuk hantar. Kami tidak menilai perasaan anda daripada ini: hanya nombor ini dan emoji anda sendiri disimpan.",
-    "ta": "ஆய்வுக் குழு எங்கு மேலும் கேட்கலாம் என்பதை அறிய உதவ, நீங்கள் பேசும் விதத்தை (உங்கள் வழக்கமான பேச்சுடன் மட்டும் ஒப்பிட்ட வேகம், இடைநிறுத்தம், ஒலி அளவு) "
-          "மற்றும் நீங்களாக அனுப்பும் எமோஜிகளை நாங்கள் பதிவு செய்கிறோம். இதிலிருந்து உங்கள் உணர்வுகளை நாங்கள் மதிப்பிடுவதில்லை: இந்த எண்களும் நீங்கள் அனுப்பிய எமோஜிகளும் மட்டுமே சேமிக்கப்படும்.",
+    "en": "We note your speaking pace, pauses and volume (compared only with your own usual way of speaking) and any emoji you send — not to judge your feelings.",
+    "zh": "记录您说话的语速、停顿和音量（只和您自己平时比较）以及您发的表情，不用来判断您的情绪。",
+    "ms": "Kami mencatat kelajuan, jeda dan kelantangan anda bercakap (dibandingkan hanya dengan cara biasa anda) dan emoji yang anda hantar — bukan untuk menilai perasaan anda.",
+    "ta": "உங்கள் பேச்சின் வேகம், இடைநிறுத்தம், ஒலி அளவு (உங்கள் வழக்கத்துடன் மட்டும் ஒப்பிட்டு) மற்றும் நீங்கள் அனுப்பும் எமோஜிகளைக் குறிக்கிறோம் — உங்கள் உணர்வுகளை மதிப்பிட அல்ல.",
 }
-
-VOICE_TEXTS = {   # 修正方案第 1 轮第 2 条（用户 2026-11-20 确认）: the participant pages have a microphone button; ms / ta are first drafts, to be checked by native speakers and legal
-    "en": "If you use voice input, your voice is sent to Tencent Cloud speech recognition only to turn it into text; the recording is not kept.",
-    "zh": "如果你用说话输入，声音只用来转成文字，会发送给腾讯云语音识别，录音不保存。",
-    "ms": "Jika anda menggunakan input suara, suara anda dihantar kepada pengecaman pertuturan Tencent Cloud hanya untuk ditukar menjadi teks; rakaman itu tidak disimpan.",
-    "ta": "நீங்கள் குரல் உள்ளீட்டைப் பயன்படுத்தினால், உங்கள் குரல் உரையாக மாற்றப்படுவதற்காக மட்டுமே Tencent Cloud பேச்சு அறிதலுக்கு அனுப்பப்படும்; பதிவு சேமிக்கப்படாது.",
+VOICE_TEXTS = {   # 修正方案第 1 轮第 2 条: the microphone on the participant pages
+    "en": "If you speak instead of typing, your voice goes to Tencent Cloud speech recognition only to become text; the recording is not kept.",
+    "zh": "用说话输入时，声音只用来转成文字（发给腾讯云语音识别），录音不保存。",
+    "ms": "Jika anda bercakap dan bukan menaip, suara anda dihantar kepada pengecaman pertuturan Tencent Cloud hanya untuk menjadi teks; rakaman tidak disimpan.",
+    "ta": "தட்டச்சுக்குப் பதில் பேசினால், உங்கள் குரல் உரையாக மாற மட்டுமே Tencent Cloud பேச்சு அறிதலுக்கு அனுப்பப்படும்; பதிவு சேமிக்கப்படாது.",
 }
-
-
-TEXTS = {
-    "en": (
-        "This interview is run by TOTAL on behalf of {org}. We will record video and audio, transcribe it and translate it into Chinese "
-        "for market research. We will not share your name or contact details with the client without your separate consent. "
-        "Client observers may listen silently and you will not see them. Your information is stored on secure servers in Singapore and is accessed by our team in China, where we apply "
-        "protections comparable to those required in Singapore. It is deleted {days} days after the research project ends. "
-        "You may withdraw your consent, or ask to access, correct or delete your data, at any time by contacting {dpo}."
-    ),
-    "zh": (
-        "本次访谈由星桐代 {org} 进行。我们会录制访谈的视频和声音，转写成文字并翻译成中文，用于市场研究。"
-        "未经您另行同意，我们不会把您的姓名或联系方式提供给委托方。委托方的观察员可能静默旁听，您看不到他们。"
-        "您的信息存放在位于新加坡的安全服务器上，并由我们在中国的团队访问，我们会妥善保管，并采取与新加坡要求相当的保护措施。研究项目结束 {days} 天后删除。"
-        "您可以随时撤回同意，或要求查阅、更正、删除您的数据，联系 {dpo} 即可。"
-    ),
-    "ms": (
-        "Temu bual ini dijalankan oleh TOTAL bagi pihak {org}. Kami akan merakam video dan audio, menyalinnya kepada teks dan menterjemahkannya "
-        "ke bahasa Cina untuk kajian pasaran. Nama dan butiran hubungan anda tidak akan dikongsi dengan klien tanpa persetujuan berasingan anda. "
-        "Pemerhati klien mungkin mendengar secara senyap dan anda tidak akan melihat mereka. Maklumat anda disimpan di pelayan selamat di Singapura dan diakses oleh pasukan kami di China; "
-        "kami menjaganya dengan selamat dan menggunakan perlindungan yang setanding dengan yang diperlukan di Singapura. "
-        "Maklumat itu dipadam {days} hari selepas projek kajian tamat. Anda boleh menarik balik persetujuan, atau meminta akses, pembetulan "
-        "atau pemadaman data anda pada bila-bila masa dengan menghubungi {dpo}."
-    ),
-    "ta": (
-        "இந்த நேர்காணலை {org} சார்பாக TOTAL நடத்துகிறது. சந்தை ஆய்வுக்காக உங்கள் காணொளி மற்றும் ஒலியை நாங்கள் பதிவு செய்து, "
-        "எழுத்தாக மாற்றி, சீன மொழியில் மொழிபெயர்ப்போம். உங்கள் தனி ஒப்புதல் இல்லாமல் உங்கள் பெயர் அல்லது தொடர்பு விவரங்களை "
-        "வாடிக்கையாளருடன் பகிர மாட்டோம். வாடிக்கையாளர் பார்வையாளர்கள் அமைதியாகக் கேட்கலாம்; நீங்கள் அவர்களைப் பார்க்க முடியாது. "
-        "உங்கள் தகவல் சிங்கப்பூரில் உள்ள பாதுகாப்பான சேவையகங்களில் சேமிக்கப்பட்டு, சீனாவில் உள்ள எங்கள் குழுவால் அணுகப்படும்; அதைப் பாதுகாப்பாக வைத்து, சிங்கப்பூரில் தேவைப்படும் அளவுக்கு இணையான "
-        "பாதுகாப்புகளைப் பயன்படுத்துவோம். ஆய்வுத் திட்டம் முடிந்த {days} நாட்களுக்குப் பிறகு அது நீக்கப்படும். எந்த நேரத்திலும் "
-        "{dpo} ஐத் தொடர்புகொண்டு ஒப்புதலைத் திரும்பப் பெறலாம், அல்லது உங்கள் தரவைப் பார்க்க, திருத்த, நீக்கக் கோரலாம்."
-    ),
+STORE = {
+    "en": "Stored on secure servers in Singapore and accessed by our team in China, with protections comparable to Singapore's.",
+    "zh": "存放在新加坡的安全服务器上，由我们在中国的团队访问，保护措施与新加坡要求相当。",
+    "ms": "Disimpan di pelayan selamat di Singapura dan diakses oleh pasukan kami di China, dengan perlindungan setanding dengan keperluan Singapura.",
+    "ta": "சிங்கப்பூரில் உள்ள பாதுகாப்பான சேவையகங்களில் சேமிக்கப்பட்டு, சீனாவில் உள்ள எங்கள் குழுவால் அணுகப்படும்; சிங்கப்பூருக்கு இணையான பாதுகாப்புடன்.",
+}
+DELETE = {
+    "en": "Deleted {days} days after the research project ends.",
+    "zh": "研究项目结束 {days} 天后删除。",
+    "ms": "Dipadam {days} hari selepas projek kajian tamat.",
+    "ta": "ஆய்வுத் திட்டம் முடிந்து {days} நாட்களுக்குப் பிறகு நீக்கப்படும்.",
+}
+NO_SHARE = {
+    "en": "We will not give your name or contact details to the client without your separate consent.",
+    "zh": "未经您另行同意，不会把您的姓名或联系方式提供给委托方。",
+    "ms": "Kami tidak akan memberi nama atau butiran hubungan anda kepada klien tanpa persetujuan berasingan anda.",
+    "ta": "உங்கள் தனி ஒப்புதல் இல்லாமல் உங்கள் பெயரையோ தொடர்பு விவரங்களையோ வாடிக்கையாளருக்குத் தர மாட்டோம்.",
+}
+RIGHTS = {
+    "en": "You can withdraw your consent, or ask to see, correct or delete your data, at any time: write to {dpo}.",
+    "zh": "您可以随时撤回同意，或要求查阅、更正、删除您的数据：联系 {dpo}。",
+    "ms": "Anda boleh menarik balik persetujuan, atau meminta untuk melihat, membetulkan atau memadam data anda, pada bila-bila masa: tulis kepada {dpo}.",
+    "ta": "எந்த நேரத்திலும் ஒப்புதலைத் திரும்பப் பெறலாம், அல்லது உங்கள் தரவைப் பார்க்க, திருத்த, நீக்கக் கேட்கலாம்: {dpo} க்கு எழுதுங்கள்.",
 }
 LABELS = {
     "en": {"recording": "I agree to video and audio recording", "observers": "I understand client observers may listen silently",
@@ -84,41 +97,47 @@ LABELS = {
            "observers": "வாடிக்கையாளர் பார்வையாளர்கள் அமைதியாகக் கேட்கக்கூடும் என்பதை நான் புரிந்துகொள்கிறேன்",
            "cross_border": "என் தகவல் சிங்கப்பூரில் சேமிக்கப்பட்டு, சீனாவில் உள்ள குழுவால் அணுகப்படுவதற்கு நான் ஒப்புக்கொள்கிறேன் (தனி ஒப்புதல்)"},
 }
+TEXTS = WHO   # (older code imported TEXTS to know which languages exist)
 
-
-# Only for interviews run by the AI moderator: it must be disclosed up front (red line H3). A human-moderated interview never shows it.
+# Only for interviews run by the AI moderator: it must be disclosed first (red line H3). A human-moderated interview never shows it.
 AI_TEXTS = {
-    "en": "This interview is moderated by an AI interviewer, not a person: it asks the questions and follows up on your answers in a text chat. "
-          "A member of our research team can see the conversation and may step in at any time. The AI will never ask for your name, "
-          "phone number or ID. You can ask to stop at any time.",
-    "zh": "本次访谈由 AI 主持人进行，不是真人：它会在文字聊天中提问，并就您的回答继续追问。我们研究团队的成员能看到对话，并可随时接手。"
-          "AI 不会询问您的姓名、电话或证件。您可以随时要求停止。",
-    "ms": "Temu bual ini dikendalikan oleh pewawancara AI, bukan manusia: ia bertanya soalan dan bertanya lanjut tentang jawapan anda dalam sembang teks. "
-          "Ahli pasukan kajian kami boleh melihat perbualan dan boleh mengambil alih pada bila-bila masa. AI tidak akan meminta nama, "
-          "nombor telefon atau dokumen pengenalan anda. Anda boleh meminta untuk berhenti pada bila-bila masa.",
-    "ta": "இந்த நேர்காணலை ஒரு மனிதர் அல்ல, AI நேர்காணலாளர் நடத்துகிறது: அது உரை அரட்டையில் கேள்விகள் கேட்டு, உங்கள் பதில்களைப் பற்றி மேலும் கேட்கும். "
-          "எங்கள் ஆய்வுக் குழு உறுப்பினர் ஒருவர் உரையாடலைப் பார்க்க முடியும், எந்த நேரத்திலும் பொறுப்பேற்கலாம். AI உங்கள் பெயர், தொலைபேசி எண் "
-          "அல்லது அடையாள ஆவணத்தைக் கேட்காது. எந்த நேரத்திலும் நிறுத்தச் சொல்லலாம்.",
+    "en": "This interview is run by an AI interviewer, not a person. Our research team can see the conversation and may step in at any time.",
+    "zh": "本次访谈由 AI 主持人提问，不是真人；研究团队能看到对话，可随时接手。",
+    "ms": "Temu bual ini dikendalikan oleh pewawancara AI, bukan manusia. Pasukan kajian kami boleh melihat perbualan dan boleh mengambil alih pada bila-bila masa.",
+    "ta": "இந்த நேர்காணலை ஒரு மனிதர் அல்ல, AI நேர்காணலாளர் நடத்துகிறது. எங்கள் ஆய்வுக் குழு உரையாடலைப் பார்க்கலாம், எந்த நேரத்திலும் பொறுப்பேற்கலாம்.",
+}
+AI_SAFE = {
+    "en": "The AI never asks for your name, phone number or ID, and you can ask to stop at any time.",
+    "zh": "AI 不会问您的姓名、电话或证件；您可以随时要求停止。",
+    "ms": "AI tidak akan meminta nama, nombor telefon atau dokumen pengenalan anda, dan anda boleh meminta untuk berhenti pada bila-bila masa.",
+    "ta": "AI உங்கள் பெயர், தொலைபேசி எண் அல்லது அடையாள ஆவணத்தைக் கேட்காது; எந்த நேரத்திலும் நிறுத்தச் சொல்லலாம்.",
+}
+# 修正方案第 3 轮: an audio / video AI interview is spoken (synthesized voice, no provider named — the user's decision).
+AI_VOICE = {
+    "en": "In an audio or video interview, the AI speaks in a synthesized voice; hold the microphone button to answer and let go to send.",
+    "zh": "语音或视频访谈中，AI 用合成语音说话；您按住麦克风说话，松开就发送。",
+    "ms": "Dalam temu bual audio atau video, AI bercakap dengan suara sintetik; tekan dan tahan butang mikrofon untuk menjawab dan lepaskan untuk menghantar.",
+    "ta": "ஒலி அல்லது காணொளி நேர்காணலில் AI செயற்கைக் குரலில் பேசும்; பதில் சொல்ல மைக் பொத்தானை அழுத்திப் பிடித்து, அனுப்ப விடுங்கள்.",
+}
+# The screening answers are background for the AI (it must not ask again what was already answered).
+AI_PROFILE = {
+    "en": "The AI can see your earlier screening answers, so it does not ask the same things again.",
+    "zh": "AI 能看到您之前的甄别问卷答案，以免重复询问。",
+    "ms": "AI boleh melihat jawapan saringan anda sebelum ini supaya tidak bertanya perkara yang sama lagi.",
+    "ta": "நீங்கள் முன்பு அளித்த தேர்வுப் பதில்களை AI பார்க்கலாம்; அதனால் ஒரே கேள்விகளை மீண்டும் கேட்காது.",
 }
 # Where the AI runs. A cloud model is one more transfer of the participant's words, so the provider is named (task doc part 3).
 AI_LOCAL = {
-    "en": "The AI runs on our own servers; your answers are not sent to any other company for this.",
-    "zh": "AI 运行在我们自己的服务器上，您的回答不会为此发送给其他公司。",
-    "ms": "AI berjalan pada pelayan kami sendiri; jawapan anda tidak dihantar kepada syarikat lain untuk tujuan ini.",
-    "ta": "AI எங்கள் சொந்த சேவையகங்களில் இயங்குகிறது; இதற்காக உங்கள் பதில்கள் வேறு எந்த நிறுவனத்துக்கும் அனுப்பப்படாது.",
+    "en": "The AI runs on our own servers; your answers are not sent to any other company for it.",
+    "zh": "AI 运行在我们自己的服务器上，您的回答不会为此发给其他公司。",
+    "ms": "AI berjalan pada pelayan kami sendiri; jawapan anda tidak dihantar kepada syarikat lain untuknya.",
+    "ta": "AI எங்கள் சொந்த சேவையகங்களில் இயங்குகிறது; இதற்காக உங்கள் பதில்கள் வேறு நிறுவனத்துக்கு அனுப்பப்படாது.",
 }
 AI_CLOUD = {
-    "en": "To run the AI, your answers are sent to {vendor}, an AI service provider, which processes them on our behalf for this interview only.",
-    "zh": "为了运行 AI，您的回答会发送给 AI 服务提供商 {vendor}，由其仅为本次访谈代我们处理。",
-    "ms": "Untuk menjalankan AI, jawapan anda dihantar kepada {vendor}, pembekal perkhidmatan AI, yang memprosesnya bagi pihak kami untuk temu bual ini sahaja.",
-    "ta": "AI-ஐ இயக்க, உங்கள் பதில்கள் AI சேவை வழங்குநரான {vendor}-க்கு அனுப்பப்படும்; அது எங்கள் சார்பில் இந்த நேர்காணலுக்காக மட்டுமே அவற்றைச் செயலாக்கும்.",
-}
-# The screening questionnaire answers are background for the AI (it must not ask again what was already answered).
-AI_PROFILE = {
-    "en": "The AI can also see the screening questions you answered earlier, so that it does not ask the same things again.",
-    "zh": "AI 也能看到您之前填写的甄别问卷答案，以免重复询问。",
-    "ms": "AI juga boleh melihat soal selidik saringan yang anda jawab sebelum ini supaya tidak menanyakan perkara yang sama lagi.",
-    "ta": "நீங்கள் முன்பு பதிலளித்த தேர்வு வினாக்களையும் AI பார்க்க முடியும்; அதனால் ஒரே கேள்விகளை மீண்டும் கேட்காது.",
+    "en": "To run the AI, your answers are sent to the AI service provider {vendor}, which handles them for this interview only.",
+    "zh": "为运行 AI，您的回答会发给 AI 服务商 {vendor}，仅为本次访谈处理。",
+    "ms": "Untuk menjalankan AI, jawapan anda dihantar kepada pembekal perkhidmatan AI {vendor}, yang mengendalikannya untuk temu bual ini sahaja.",
+    "ta": "AI-ஐ இயக்க, உங்கள் பதில்கள் AI சேவை வழங்குநர் {vendor}-க்கு அனுப்பப்படும்; இந்த நேர்காணலுக்கு மட்டுமே கையாளப்படும்.",
 }
 AI_LABELS = {
     "en": "I understand the interviewer is an AI, not a person",
@@ -128,21 +147,8 @@ AI_LABELS = {
 }
 
 
-# 修正方案第 3 轮 (用户 2026-11-20): an audio / video AI interview is spoken — a synthesized voice reads the AI's words; the participant holds the mic to answer.
-# Only the AI's own words are turned into speech. The text says "合成语音" and names no provider (the user's decision).
-AI_VOICE = {
-    "en": "In an audio or video interview, the AI's questions are read aloud in a synthesized voice; hold the microphone button while you answer and let go when you are done.",
-    "zh": "如果是语音或视频访谈，AI 主持人的问题会用合成语音读出来；您按住麦克风说话，松开就会发送。",
-    "ms": "Dalam temu bual audio atau video, soalan AI dibacakan dengan suara sintetik; tekan dan tahan butang mikrofon semasa menjawab dan lepaskan apabila selesai.",
-    "ta": "ஒலி அல்லது காணொளி நேர்காணலில், AI-யின் கேள்விகள் செயற்கைக் குரலில் வாசிக்கப்படும்; பதில் சொல்லும்போது மைக் பொத்தானை அழுத்திப் பிடித்து, முடிந்ததும் விடுங்கள்.",
-}
-
-
-def _ai_disclosure(lang: str) -> str:
-    """The AI paragraph for one language: who moderates, the synthesized voice, and where the AI runs (a cloud provider is named)."""
-    where = AI_LOCAL[lang] if moderator_runs_locally() else AI_CLOUD[lang].format(vendor=settings.moderator_vendor.strip())
-    sep = "" if lang == "zh" else " "  # Chinese sentences are not separated by spaces
-    return AI_TEXTS[lang] + sep + AI_VOICE[lang] + sep + AI_PROFILE[lang] + sep + where + sep
+def _where(lang: str) -> str:
+    return AI_LOCAL[lang] if moderator_runs_locally() else AI_CLOUD[lang].format(vendor=settings.moderator_vendor.strip())
 
 
 def consent_for(lang: str, org_name: str, ai: bool = False, text_only: bool = False, retention_days: int = 180) -> dict:
@@ -158,13 +164,14 @@ def consent_for(lang: str, org_name: str, ai: bool = False, text_only: bool = Fa
     Returns:
         {"version", "lang", "text", "labels", "ai", "sha256"}; sha256 is stored with the consent so the exact text can be proven later.
     """
-    l = "zh" if (lang or "").startswith("zh") else lang if lang in TEXTS else "en"  # anything else: English
-    text = TEXTS[l].format(org=org_name, dpo=settings.dpo_email, days=retention_days)
-    text = text + ("" if l == "zh" else " ") + SIGNALS_TEXTS[l] + ("" if l == "zh" else " ") + VOICE_TEXTS[l]
+    l = "zh" if (lang or "").startswith("zh") else lang if lang in WHO else "en"  # anything else: English
+    h = HEADS[l]
+    about = ([AI_TEXTS[l], AI_SAFE[l], AI_VOICE[l]] if ai else []) + ([TEXT_ONLY_TEXTS[l]] if text_only else []) + [WHO[l].format(org=org_name), OBSERVERS[l]]
+    record = [RECORD_TEXT[l] if text_only else RECORD[l], SIGNALS_TEXTS[l], VOICE_TEXTS[l]] + ([AI_PROFILE[l]] if ai else [])
+    where = ([_where(l)] if ai else []) + [STORE[l], DELETE[l].format(days=retention_days)]
+    rights = [NO_SHARE[l], RIGHTS[l].format(dpo=settings.dpo_email)]
+    text = "\n".join(f"{head}\n" + "\n".join("• " + x for x in points) for head, points in zip(h, (about, record, where, rights)))
     labels = dict(LABELS[l])
-    if text_only:
-        text = TEXT_ONLY_TEXTS[l] + (" " if l != "zh" else "") + text
     if ai:
-        text = _ai_disclosure(l) + text
         labels = {"ai": AI_LABELS[l], **labels}
     return {"version": VERSION, "lang": l, "text": text, "labels": labels, "ai": ai, "sha256": hashlib.sha256(text.encode()).hexdigest()}

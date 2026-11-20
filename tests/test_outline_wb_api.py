@@ -82,6 +82,11 @@ def proj(org):
     return pid
 
 
+def _questions(org, pid):
+    """The outline's items without the spoken opening / closing notes (修正方案第 4 轮), i.e. what is asked."""
+    return [i for i in _api(org, pid, "get", "").json()["items"] if i["kind"] != "note"]
+
+
 def _api(org, pid, method, path, role="researcher", **kw):
     return getattr(org.c, method)(f"/api/projects/{pid}/outline-wb{path}", headers=org.h(role), **kw)
 
@@ -125,11 +130,11 @@ def test_the_side_dialog_only_proposes_and_a_client_cannot_accept(org, proj):
     _api(org, proj, "post", "/overview")
     _api(org, proj, "post", "/overview/confirm")
     _api(org, proj, "post", "/modules/warm/generate")
-    items = _api(org, proj, "get", "").json()["items"]
+    items = _questions(org, proj)
     uid = items[0]["uid"]
     r = _api(org, proj, "post", "/chat", json={"text": "改得更口语一点", "selected": uid}).json()
     assert r["revisions"] and r["revisions"][0]["status"] == "pending"
-    assert _api(org, proj, "get", "").json()["items"][0]["text"] == items[0]["text"]       # nothing changed yet
+    assert _questions(org, proj)[0]["text"] == items[0]["text"]       # nothing changed yet
     rid = r["revisions"][0]["id"]
     assert _api(org, proj, "post", f"/revisions/{rid}/accept", role="observer").status_code == 403
     ok = _api(org, proj, "post", f"/revisions/{rid}/accept")
@@ -141,7 +146,7 @@ def test_editing_a_question_refuses_a_red_line_text(org, proj):
     _api(org, proj, "post", "/overview")
     _api(org, proj, "post", "/overview/confirm")
     _api(org, proj, "post", "/modules/warm/generate")
-    uid = _api(org, proj, "get", "").json()["items"][0]["uid"]
+    uid = _questions(org, proj)[0]["uid"]
     bad = _api(org, proj, "put", f"/items/{uid}", json={"text": "难道你不觉得它很好用吗？"})
     assert bad.status_code == 422 and "红线" in bad.json()["detail"]
     assert _api(org, proj, "put", f"/items/{uid}", json={"text": "你平时怎么挑护肤品？", "depth": "none"}).status_code == 200
@@ -151,11 +156,11 @@ def test_focus_questions_link_to_a_question_and_an_observer_cannot_touch_the_out
     _api(org, proj, "post", "/overview")
     _api(org, proj, "post", "/overview/confirm")
     _api(org, proj, "post", "/modules/warm/generate")
-    uid = _api(org, proj, "get", "").json()["items"][0]["uid"]
+    uid = _questions(org, proj)[0]["uid"]
     v = _api(org, proj, "post", "/focus", json={"text": "对包装颜色有什么看法？"}).json()
     assert v["focus"][0]["label"] == "" and v["focus"][0]["role"] == "researcher"
     linked = _api(org, proj, "put", f"/focus/{v['focus'][0]['id']}", json={"item_uid": uid}).json()
-    assert linked["focus"][0]["label"] == _api(org, proj, "get", "").json()["items"][0]["label"]
+    assert linked["focus"][0]["label"] == _questions(org, proj)[0]["label"]
     assert _api(org, proj, "post", "/focus", role="observer", json={"text": "x"}).status_code == 403
     assert _api(org, proj, "post", "/overview", role="observer").status_code == 403
 
@@ -201,7 +206,7 @@ def _ready(org, proj, modules=("warm",)):
 
 def test_preview_shows_what_a_participant_sees_and_flags_a_missing_language(org, proj):
     _ready(org, proj)
-    uid = _api(org, proj, "get", "").json()["items"][0]["uid"]
+    uid = _questions(org, proj)[0]["uid"]
     _api(org, proj, "post", "/items", json={"kind": "concept", "text": "请看这张概念卡", "after_uid": uid, "config": {"title": "概念 A"}})
     pv = _api(org, proj, "get", "/preview").json()
     concept = next(i for i in pv["items"] if i["kind"] == "concept")
@@ -214,7 +219,7 @@ def test_rehearsal_is_saved_and_goes_stale_after_an_edit(org, proj):
     _ready(org, proj)
     r = _api(org, proj, "post", "/rehearsal")
     assert r.status_code == 200 and r.json()["runs"][0]["sessions"] == 3 and not r.json()["runs"][0]["stale"]
-    uid = _api(org, proj, "get", "").json()["items"][0]["uid"]
+    uid = _questions(org, proj)[0]["uid"]
     _api(org, proj, "put", f"/items/{uid}", json={"minutes": 3})
     assert _api(org, proj, "get", "/rehearsal").json()["runs"][0]["stale"] is True
 
@@ -225,7 +230,7 @@ def _pilot_setup(org, proj):
     from app.models import CaptionLine, Interview, Participant, Project
     from app.outline_wb import service as svc, stage3
     _ready(org, proj)
-    items = _api(org, proj, "get", "").json()["items"]
+    items = _questions(org, proj)
     with SessionLocal() as db:
         p = db.get(Project, proj)
         part = Participant(org_id=p.org_id, project_id=p.id, name="演示", country="SG", language="zh", code="M-901")
@@ -260,7 +265,7 @@ def test_publishing_freezes_for_new_interviews_and_keeps_the_older_pages_in_step
         assert "## 暖场" in proj_row.outline_text and proj_row.outline_text.count("\n- ") >= 1      # the older pages read the published outline
         snap = db.get(OutlineSnapshot, itv.outline_snapshot_id)
         before = [i["texts"]["zh"] for i in snap.content["items"]]
-    uid = _api(org, proj, "get", "").json()["items"][0]["uid"]
+    uid = _questions(org, proj)[0]["uid"]
     _api(org, proj, "put", f"/items/{uid}", json={"text": "你平时怎么买东西呢？"})      # edited after the pilot started
     with SessionLocal() as db:
         assert [i["texts"]["zh"] for i in db.get(OutlineSnapshot, itv.outline_snapshot_id).content["items"]] == before
@@ -292,7 +297,7 @@ def test_pilot_suggestions_merge_by_question_and_have_three_possible_destination
     _api(org, proj, "post", f"/pilots/{iid}/marks", json={"line_id": lines[1], "start": 0, "end": 4, "tag": "unclear", "note": "没听懂"})
     _api(org, proj, "post", f"/pilots/{iid}/marks", json={"line_id": lines[0], "start": 0, "end": 3, "tag": "host", "note": "主持引导不当"})
     out = _api(org, proj, "post", f"/pilots/{iid}/suggest").json()
-    first = _api(org, proj, "get", "").json()["items"][0]["uid"]
+    first = _questions(org, proj)[0]["uid"]
     mine = [r for r in out["revisions"] if r["item_uid"] == first]
     assert [r["destination"] for r in mine].count("outline") == 1 and "host_engine" in {r["destination"] for r in mine}   # two marks and a finding about one question made ONE outline rewrite
     assert all(r["item_uid"] == first for r in out["revisions"])                                                         # a question nobody asked has nothing to rewrite ...
@@ -301,7 +306,7 @@ def test_pilot_suggestions_merge_by_question_and_have_three_possible_destination
     ok = _api(org, proj, "post", f"/revisions/{host['id']}/accept")
     assert ok.status_code == 200                                           # a training case number is made for it
     outline_rev = next(r for r in out["revisions"] if r["destination"] == "outline")
-    before = _api(org, proj, "get", "").json()["items"][0]["text"]
+    before = _questions(org, proj)[0]["text"]
     assert _api(org, proj, "post", f"/revisions/{outline_rev['id']}/accept", role="observer").status_code == 403
     assert _api(org, proj, "post", f"/revisions/{outline_rev['id']}/accept").json()["items"][0]["text"] != before
 
@@ -330,7 +335,7 @@ def _board_setup(org, proj):
     from app.models import Interview, Participant, Project
     from app.outline_wb import stage3
     _ready(org, proj, ("warm",))
-    uid = _api(org, proj, "get", "").json()["items"][0]["uid"]
+    uid = _questions(org, proj)[0]["uid"]
     fid = _api(org, proj, "post", "/focus", json={"text": "她们平时怎么买东西", "item_uid": uid}).json()["focus"][0]["id"]
     with SessionLocal() as db:
         p = db.get(Project, proj)
@@ -388,7 +393,7 @@ def _wait(fn, secs=8):
 
 def test_a_line_is_put_under_its_question_and_only_answers_are_coded(org, proj):
     iid, fid, uid = _board_setup(org, proj)
-    items = _api(org, proj, "get", "").json()["items"]
+    items = _questions(org, proj)
     assert _say(iid, "moderator", items[0]["text"], 1) is None                    # the moderator's line is placed, never coded
     t = _say(iid, "participant", "我平时在网上买，价格偏贵。", 2)
     assert t is not None and t.item_uid == uid                                    # the answer stays under the question that was asked
@@ -400,7 +405,7 @@ def test_a_line_is_put_under_its_question_and_only_answers_are_coded(org, proj):
 
 def test_an_answer_under_another_question_that_talks_about_it_counts_as_volunteered(org, proj):
     iid, fid, uid = _board_setup(org, proj)
-    items = _api(org, proj, "get", "").json()["items"]
+    items = _questions(org, proj)
     _say(iid, "moderator", items[1]["text"], 1)                                   # a different question is on
     _say(iid, "participant", "我平时怎么买东西？一般在网上买。", 2)
     assert _wait(lambda: _api(org, proj, "get", f"/board/focus/{fid}").json()["quotes"] != [])
@@ -411,7 +416,7 @@ def test_an_answer_under_another_question_that_talks_about_it_counts_as_voluntee
 
 def test_percentages_wait_for_twenty_people_and_low_confidence_goes_to_review(org, proj):
     iid, fid, uid = _board_setup(org, proj)
-    items = _api(org, proj, "get", "").json()["items"]
+    items = _questions(org, proj)
     _say(iid, "moderator", items[0]["text"], 1)
     _say(iid, "participant", "我平时在网上买东西。", 2)
     assert _wait(lambda: _api(org, proj, "get", f"/board/focus/{fid}").json()["n"] == 1)
@@ -428,7 +433,7 @@ def test_percentages_wait_for_twenty_people_and_low_confidence_goes_to_review(or
 
 def test_recoding_keeps_the_ai_code_and_a_client_sees_only_numbers_and_cannot_change(org, proj):
     iid, fid, uid = _board_setup(org, proj)
-    items = _api(org, proj, "get", "").json()["items"]
+    items = _questions(org, proj)
     _say(iid, "moderator", items[0]["text"], 1)
     _say(iid, "participant", "我平时在网上买东西。", 2)
     assert _wait(lambda: _api(org, proj, "get", f"/board/focus/{fid}").json()["quotes"] != [])
@@ -445,7 +450,7 @@ def test_recoding_keeps_the_ai_code_and_a_client_sees_only_numbers_and_cannot_ch
 
 def test_the_board_asks_by_keyword_and_answers_with_numbers_only(org, proj):
     iid, fid, uid = _board_setup(org, proj)
-    items = _api(org, proj, "get", "").json()["items"]
+    items = _questions(org, proj)
     _say(iid, "moderator", items[0]["text"], 1)
     _say(iid, "participant", "我平时在网上买东西，价格偏贵。", 2)
     assert _wait(lambda: _api(org, proj, "get", "/board").json()["cards"][0]["answered"] == 1)
@@ -512,7 +517,7 @@ def test_coding_choices_are_checked_and_collect_mode_waits_to_be_grouped(org, pr
     assert bad.status_code == 422
     assert _api(org, proj, "post", "/board/focus/new", json={"text": "包装环保", "coding": "wrong"}).status_code == 422
     new = _api(org, proj, "post", "/board/focus/new", json={"text": "她们平时怎么买东西的渠道", "item_uids": [uid], "coding": "collect"}).json()["id"]
-    items = _api(org, proj, "get", "").json()["items"]
+    items = _questions(org, proj)
     _say(iid, "moderator", items[0]["text"], 1)
     _say(iid, "participant", "我平时在网上买东西，渠道主要是电商。", 2)
     assert _wait(lambda: _api(org, proj, "get", f"/board/focus/{new}").json()["pending"] == 1)
@@ -527,7 +532,7 @@ def test_eight_collected_answers_can_be_grouped_and_only_confirmed_groups_count(
     from app.outline_wb import service as svc
     iid, fid, uid = _board_setup(org, proj)
     new = _api(org, proj, "post", "/board/focus/new", json={"text": "她们平时怎么买东西的渠道", "item_uids": [uid], "coding": "collect"}).json()["id"]
-    items = _api(org, proj, "get", "").json()["items"]
+    items = _questions(org, proj)
     _say(iid, "moderator", items[0]["text"], 1)
     texts = ["我平时在网上买东西，电商比较方便。"] * 4 + ["我喜欢去实体店亲自挑选东西。"] * 4
     for n, t in enumerate(texts, 2):
@@ -543,7 +548,7 @@ def test_eight_collected_answers_can_be_grouped_and_only_confirmed_groups_count(
 
 def test_looking_back_finds_lines_said_in_other_questions_and_counts_only_the_ticked(org, proj):
     iid, fid, uid = _board_setup(org, proj)
-    items = _api(org, proj, "get", "").json()["items"]
+    items = _questions(org, proj)
     _say(iid, "moderator", items[1]["text"], 1)                                   # another question is on ...
     _say(iid, "participant", "说到价格，我觉得包装的环保材料比较重要。", 2)         # ... and she talks about packaging
     new = _api(org, proj, "post", "/board/focus/new", json={"text": "包装的环保材料", "item_uids": [uid], "coding": "collect"}).json()["id"]
@@ -562,19 +567,20 @@ def test_a_question_added_for_the_next_interviews_is_a_pending_revision_that_lin
     new = _api(org, proj, "post", "/board/focus/new", json={"text": "包装是否环保", "item_uids": [], "coding": "collect"}).json()["id"]
     r = _api(org, proj, "post", f"/board/focus/{new}/add-question").json()["revision"]
     assert r["status"] == "pending" and "包装是否环保" in r["after"]["texts"]["zh"]
-    n_before = len(_api(org, proj, "get", "").json()["items"])
+    n_before = len(_questions(org, proj))
     assert _api(org, proj, "post", f"/revisions/{r['id']}/accept", role="observer").status_code == 403
     assert _api(org, proj, "post", f"/revisions/{r['id']}/accept").status_code == 200
     v = _api(org, proj, "get", "").json()
-    assert len(v["items"]) == n_before + 1
+    qs = [i for i in v["items"] if i["kind"] != "note"]
+    assert len(qs) == n_before + 1
     f = next(x for x in v["focus"] if x["id"] == new)
-    assert f["item_uid"] == v["items"][-1]["uid"]                               # the focus question now points at the new question
+    assert f["item_uid"] == qs[-1]["uid"]                                       # the focus question now points at the new question
     from app.db import SessionLocal
     from app.models import Interview
     with SessionLocal() as db:
         running = db.get(Interview, iid)
         from app.outline_wb.models import OutlineSnapshot
-        assert len(db.get(OutlineSnapshot, running.outline_snapshot_id).content["items"]) == n_before     # the interview already running keeps its snapshot
+        assert len([i for i in db.get(OutlineSnapshot, running.outline_snapshot_id).content["items"] if i["kind"] != "note"]) == n_before     # the interview already running keeps its snapshot
 
 
 # ---- which question a line belongs to: host > ai > guess, and a fix afterwards ---------------------------------------------------------------------------------
@@ -592,7 +598,7 @@ def test_the_ai_engine_says_which_prepared_question_it_asked_and_follow_ups_stay
     from app.models import CaptionLine, Interview
     from app.outline_wb import board
     iid, fid, uid = _board_setup(org, proj)
-    items = _api(org, proj, "get", "").json()["items"]
+    items = _questions(org, proj)
     with SessionLocal() as db:
         itv = db.get(Interview, iid)
         a = CaptionLine(org_id=itv.org_id, interview_id=iid, seq=1, speaker="moderator", text="随便什么话", at_ms=1)
@@ -615,7 +621,7 @@ def test_the_ai_engine_says_which_prepared_question_it_asked_and_follow_ups_stay
 
 def test_when_nobody_says_it_is_a_guess_and_the_board_marks_the_guesses(org, proj):
     iid, fid, uid = _board_setup(org, proj)
-    items = _api(org, proj, "get", "").json()["items"]
+    items = _questions(org, proj)
     _say(iid, "moderator", items[0]["text"], 1)
     _say(iid, "participant", "我平时在网上买东西，价格偏贵。", 2)
     assert _line_row(iid, 1)[1] == "guess" and _line_row(iid, 2)[1] == "guess"
@@ -626,7 +632,7 @@ def test_when_nobody_says_it_is_a_guess_and_the_board_marks_the_guesses(org, pro
 
 def test_the_human_moderator_can_say_which_question_is_being_asked_and_that_wins(org, proj):
     iid, fid, uid = _board_setup(org, proj)
-    items = _api(org, proj, "get", "").json()["items"]
+    items = _questions(org, proj)
     r = _api(org, proj, "put", f"/interviews/{iid}/current-question", json={"item_uid": items[2]["uid"]}, role="moderator")
     assert r.status_code in (200, 404)                              # the moderator of this interview may; a moderator not on it gets "not found"
     r = _api(org, proj, "put", f"/interviews/{iid}/current-question", json={"item_uid": items[2]["uid"]})
@@ -641,7 +647,7 @@ def test_the_human_moderator_can_say_which_question_is_being_asked_and_that_wins
 
 def test_a_researcher_can_fix_a_lines_question_afterwards_and_it_is_coded_again(org, proj):
     iid, fid, uid = _board_setup(org, proj)
-    items = _api(org, proj, "get", "").json()["items"]
+    items = _questions(org, proj)
     _say(iid, "moderator", items[1]["text"], 1)
     _say(iid, "participant", "我平时在网上买东西，价格偏贵。", 2)
     assert _wait(lambda: _api(org, proj, "get", f"/board/focus/{fid}").json()["quotes"] != [])
@@ -672,7 +678,7 @@ def test_a_pilot_is_numbered_but_not_coded(org, proj):
 
 def test_the_room_gives_the_human_moderator_the_questions_to_point_at_and_not_the_ai_or_clients(org, proj):
     iid, fid, uid = _board_setup(org, proj)
-    items = _api(org, proj, "get", "").json()["items"]
+    items = _questions(org, proj)
     a = org.c.get(f"/api/interviews/{iid}/assist", headers=org.h()).json()
     assert a["wb"]["current"] is None and {i["uid"] for i in a["wb"]["items"]} >= {items[0]["uid"]}
     assert org.c.put(f"/api/interviews/{iid}/current-question", headers=org.h(), json={"item_uid": items[1]["uid"]}).json()["current"] == items[1]["uid"]
@@ -753,7 +759,7 @@ def test_the_model_reads_answers_only_in_ai_moderated_interviews_whose_consent_n
     board._chat = lambda: Spy()
     try:
         iid, fid, uid = _board_setup(org, proj)                                                     # a human-moderated interview
-        items = _api(org, proj, "get", "").json()["items"]
+        items = _questions(org, proj)
         _say(iid, "moderator", items[0]["text"], 1)
         _say(iid, "participant", "我平时在网上买，价格偏贵。", 2)
         assert _wait(lambda: _api(org, proj, "get", "/board").json()["cards"][0]["answered"] == 1)

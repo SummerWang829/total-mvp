@@ -72,3 +72,12 @@ def test_a_project_without_a_plan_keeps_reading_the_project(org):
     v = _wb(org, pid, "get", "").json()
     assert v["context"]["sync"] is None and v["context"]["minutes"] in (None, 45)
     assert _wb(org, pid, "post", "/answer", json={"slot": "minutes", "value": 30}).json()["slots"]["minutes"]["value"] == 30
+
+
+def test_the_dialog_changes_the_length_in_the_plan(org):
+    """修正方案第 4 轮: “访谈时长改为30分钟” in the dialog does what 改 → 同步改立项 does."""
+    pid = draft(org)["id"]
+    _two_subs(org, pid)
+    r = _wb(org, pid, "post", "/chat", json={"text": "访谈时长改为30分钟", "step": "people"}).json()
+    assert r["changed"] == ["minutes"]
+    assert next(s for s in plan(org, pid)["config"]["subs"] if s["id"] == "s1")["minutes"] == 30

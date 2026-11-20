@@ -1963,6 +1963,49 @@ def voice_section(br, D):
     ctx.close()
 
 
+def fix4_section(br, D):
+    """修正方案第 4 轮: the ✓ / ✗ in front of an option switches pass / screen-out; the questionnaire on the right scrolls with the mouse wheel anywhere;
+    下一步 goes back to the top; no 来自立项 line on ② – ⑥; from 招募/主持/问卷 下一步 opens ① with the six steps."""
+    rs = D["tok"]["researcher"]
+    pid = call("/projects", {"name": "第 4 轮测试", "market": "SG", "language": "zh", "brief": "了解售后保养决策。"}, rs)["id"]
+    qs = [{"type": "single", "text": f"第{i}题？", "options": [{"text": "是"}, {"text": "否", "goto": "end_out"}]} for i in range(1, 13)]
+    call(f"/projects/{pid}/recruiting/form", {"source": "ai", "questions": qs, "need": "近 12 个月在 4S 店保养过", "goals": ["了解保养决策"]}, rs, method="PUT")
+    ctx, pg, errs = new_page(br, 1440, h=900, token=rs)
+    pg.goto(B + "/"); pg.evaluate("sessionStorage.removeItem('ptab')")
+    pg.goto(B + f"/#/p/{pid}/people/mode"); pg.wait_for_selector("#rmode")
+    nxt = pg.locator("#rmode button", has_text="下一步")
+    if nxt.count():
+        nxt.first.click(); pick_mode(pg)
+        ok(wait_until(lambda: pg.locator(".sub2 .l2slot .rs-sst").count() == 6 and pg.locator(".sub2 .rs-sst.on[data-rs-go=plan]").count() == 1, 8), "[fix4] 下一步 from 招募/主持/问卷 opens ① with the six steps shown (用户 2026-11-20)")
+    else:
+        ok(False, "[fix4] 招募/主持/问卷 has a 下一步 button")
+    pg.wait_for_selector("#rfout [data-pass]")
+    b = pg.locator("#rfout [data-pass]").first
+    b.scroll_into_view_if_needed()
+    before = b.inner_text().strip(); b.click()
+    ok(wait_until(lambda: pg.locator("#rfout [data-pass]").first.inner_text().strip() != before, 4), f"[fix4] a click on {before} in front of an option switches it")
+    box = pg.locator("#rfout").bounding_box()
+    pg.mouse.move(box["x"] + box["width"] / 2, box["y"] + 200)
+    y0 = pg.evaluate("(() => { const e = document.querySelector('#rfout'); let s = e; while (s && s.scrollHeight <= s.clientHeight + 2) s = s.parentElement; return s ? s.scrollTop : -1; })()")
+    pg.mouse.wheel(0, 600); pg.wait_for_timeout(500)
+    y1 = pg.evaluate("(() => { const e = document.querySelector('#rfout'); let s = e; while (s && s.scrollHeight <= s.clientHeight + 2) s = s.parentElement; return s ? s.scrollTop : -1; })()")
+    ok(y1 > y0, f"[fix4] the mouse wheel over the questionnaire scrolls it ({y0} → {y1})")
+    pg.click(".sub2 .rs-sst[data-rs-go=plan]"); pg.wait_for_selector("#ccroot [data-rs=ok]"); pg.click("#ccroot [data-rs=ok]")
+    ok(wait_until(lambda: pg.locator(".sub2 .rs-sst.on[data-rs-go=include]").count() == 1, 6) and pg.locator("#ccroot .rs-from").count() == 0, "[fix4] ② has no 来自立项 line")
+    audit_page(pg, "fix4 include/desktop", errs)
+    # 导入名单: 姓名 + 邮箱 rows, pasted lines need no header; 国家、语言、标签 optional
+    pg.locator(".sub2 .l1", has_text="数据库筛选及发送").click(); pg.wait_for_selector("#dbimp"); pg.click("#dbimp")
+    pg.wait_for_selector("#imrows")
+    ok(pg.locator("#imrows tr").count() >= 1 and pg.locator(".im-tbl th:visible").count() == 3, "[fix4] the import is 姓名 + 邮箱 rows (国家、语言、标签 hidden until asked for)")
+    pg.click("#impaste"); pg.fill("#impastet", "bobbie bobbie@example.com" + chr(10) + "林小雨,lin@example.com"); pg.click("#impasteok")
+    ok(pg.locator("#imrows tr").count() == 2 and pg.locator("#imrows .im-e").nth(1).input_value() == "lin@example.com", "[fix4] pasted lines without a header fill the rows")
+    pg.fill("[name=source]", "自己采集"); pg.click("#dry")
+    ok(wait_until(lambda: "将新增" in pg.inner_text("#prev") and "2" in pg.inner_text("#prev"), 6), "[fix4] the preview counts the two people (no 第一行必须有 name 列 error)")
+    pg.screenshot(path=os.path.join(ROOT, "qa_shots", "fix4_import.png"))
+    audit_page(pg, "fix4 import/desktop", errs)
+    ctx.close()
+
+
 def fix3_section(br, D):
     """修正方案第 3 轮: from 招募/主持/问卷 a click on 甄别问卷 shows the six steps in the side menu at once; the host switch, the step clicks and the outline
     step clicks answer within 400 ms; ② shows its table without 重新生成; the buttons say 下一步; ⑥'s 测试答题 breathes; the outline's first step is 目标与人群."""

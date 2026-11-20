@@ -15,7 +15,8 @@ const RSteps = (() => {
   async function load() {
     try { S.d = await api(url()); } catch (e) { toast(e.message, true); return; }
     const first = S.d.order.find((k) => status(k) !== "confirmed");
-    S.at = S.d.order.includes(S.at) && S.at !== "plan" ? S.at : first || "test";
+    S.at = S.want && S.d.order.includes(S.want) ? S.want : S.d.order.includes(S.at) && S.at !== "plan" ? S.at : first || "test";
+    S.want = "";
     draw();
   }
   async function suggest(k, force) {
@@ -90,18 +91,18 @@ const RSteps = (() => {
       <h4>语言 · 访谈形式</h4><p>${E((p.languages || []).join("、"))} · ${E((p.formats || []).join("、"))}</p></div>
       <div class="rs-nav"><span class="sm mut">要改的话直接在右边改，会同步到项目总览和立项</span><button type="button" class="p" data-rs="ok">确认，下一步</button></div>`;
     const nav = (label) => `<div class="rs-nav"><button type="button" data-rs="prev">‹ 上一步</button><button type="button" class="p" data-rs="ok"${S.busy ? " disabled" : ""}>${label}</button></div>`;
-    if (k === "include") return `${from()}<h3>② 要筛进谁</h3><p class="sm mut">小星星按研究背景、目标和招募需求生成的条件；在下面对话里改，点“下一步”生成题目。<button type="button" class="lnk" data-rs="resuggest">全部重做</button></p>${condTable("include")}${chatBox("include", "说说要怎么改，比如“城市只要一线和新一线”")}${nav("下一步")}`;
-    if (k === "exclude") return `${from()}<h3>③ 要筛掉谁</h3><p class="sm mut">常见排除项按访谈形式预先勾好，小星星补了本项目特有的；排除题放在问卷最前面，命中就终止。</p>${condTable("exclude")}${chatBox("exclude", "说说要怎么改，比如“去掉年龄那条”")}${nav("下一步")}`;
-    if (k === "quota") return `${from()}<h3>④ 配额</h3><p class="sm">${(S.draft.quota || []).length ? `<span class="rs-pill ok">已有配额</span> ` : ""}可以导入配额文件（Word、Excel、PDF、PPT、图片），小星星识别后出配额表让你确认；也可以直接改表格或在对话里说。</p>
+    if (k === "include") return `<h3>② 要筛进谁</h3><p class="sm mut">小星星按研究背景、目标和招募需求生成的条件；在下面对话里改，点“下一步”生成题目。<button type="button" class="lnk" data-rs="resuggest">全部重做</button></p>${condTable("include")}${chatBox("include", "说说要怎么改，比如“城市只要一线和新一线”")}${nav("下一步")}`;
+    if (k === "exclude") return `<h3>③ 要筛掉谁</h3><p class="sm mut">常见排除项按访谈形式预先勾好，小星星补了本项目特有的；排除题放在问卷最前面，命中就终止。</p>${condTable("exclude")}${chatBox("exclude", "说说要怎么改，比如“去掉年龄那条”")}${nav("下一步")}`;
+    if (k === "quota") return `<h3>④ 配额</h3><p class="sm">${(S.draft.quota || []).length ? `<span class="rs-pill ok">已有配额</span> ` : ""}可以导入配额文件（Word、Excel、PDF、PPT、图片），小星星识别后出配额表让你确认；也可以直接改表格或在对话里说。</p>
       <button type="button" class="s" data-rs="import">导入配额文件</button>${quotaTable()}${chatBox("quota", "上传配额文件，或说“A 组改成 4 人”")}${nav("下一步")}`;
     if (k === "qc") {
       const q = S.draft.qc || {};
-      return `${from()}<h3>⑤ 质量控制</h3>
+      return `<h3>⑤ 质量控制</h3>
         <label class="rs-tg"><input type="checkbox" data-rs-qc="trap"${q.trap ? " checked" : ""}><span><b>陷阱题</b><small>“这一题请选经常”，答错就终止（题数 6 题及以上时建议加）</small></span></label>
         <label class="rs-tg"><input type="checkbox" data-rs-qc="timed"${q.min_seconds ? " checked" : ""}><span><b>最短作答时长</b><small>不到 <input class="rs-in num" type="number" min="5" max="1800" value="${q.min_seconds || 20}" aria-label="最短秒数" data-rs-qcs> 秒就终止。时间由服务器记，不信浏览器</small></span></label>
         <div class="rs-tg"><span class="rs-on">✓</span><span><b>重复参加识别</b><small>只查合格的人：同一个项目里姓名和邮箱都相同，就不再加进名单</small></span></div>${nav("下一步")}`;
     }
-    return `${from()}<h3>⑥ 预览与测试</h3>${S.expandNote ? `<div class="rs-note">${E(S.expandNote)}</div>` : ""}<p class="sm mut">右边“测试答题”自己答一遍：和候选人走的是同一套逻辑，最后写通过还是终止、终止在哪一题；不保存、不计数。测到哪一题，就可以在下面对话里改这一题。</p>
+    return `<h3>⑥ 预览与测试</h3>${S.expandNote ? `<div class="rs-note">${E(S.expandNote)}</div>` : ""}<p class="sm mut">右边“测试答题”自己答一遍：和候选人走的是同一套逻辑，最后写通过还是终止、终止在哪一题；不保存、不计数。测到哪一题，就可以在下面对话里改这一题。</p>
       ${chatBox("test", "边测边改当前这一题，比如“加一个官方上门保养的选项”")}
       <div class="rs-nav"><button type="button" data-rs="prev">‹ 上一步</button><span><button type="button" class="rs-breathe" data-rs="test">测试答题</button> <button type="button" class="p" data-rs="list">去发布（配额及受访者名单）</button></span></div>`;
   }
@@ -128,6 +129,10 @@ const RSteps = (() => {
     }
     watchSlot();
     root.innerHTML = `<div class="rs">${slot ? "" : bar()}<div class="rs-body${S.busy ? " busy" : ""}">${body()}</div></div>`;
+    if (S.drawnAt !== S.at) {   // 修正方案第 4 轮: a new step starts at its top
+      S.drawnAt = S.at;
+      for (let e = root; e && e !== document.body; e = e.parentElement) if (e.scrollTop) e.scrollTop = 0;
+    }
   }
 
   // ---- actions ------------------------------------------------------------------------------------------------------------------
@@ -218,6 +223,8 @@ const RSteps = (() => {
 
   return {
     redraw() { if (root && S.d && document.contains(root)) draw(); },
+    /** 修正方案第 4 轮: open a given step (从“招募/主持/问卷”点下一步 = ① 读取立项), also before the steps have loaded. */
+    goto(k) { S.at = k; S.want = k; S.open = ""; if (root && S.d && document.contains(root)) draw(); },
     _dbg() { return { root: !!root, inDoc: !!(root && document.contains(root)), d: !!S.d, same: root === document.querySelector("#ccroot") }; },   // 修正方案第 2 轮 D2: the page came back into view without being drawn again
     render(el, c) {
       ctx = c; root = el;

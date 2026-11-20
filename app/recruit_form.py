@@ -30,7 +30,8 @@ from .moderator.providers import ChatError, ChatFatalError, ModeratorChatProvide
 log = logging.getLogger(__name__)
 
 MAX_QUESTIONS = 30
-MAX_OPTIONS = 12
+MAX_OPTIONS = 200   # 用户 2026-11-20 第 4 轮: options that follow an earlier answer (e.g. every district of six cities) can be many; each candidate only sees the ones that apply
+MAX_CONDS = 8
 MAX_RULES = 4
 MAX_ATTEMPTS = 2
 MAX_URL = 500
@@ -106,6 +107,27 @@ class AnswerError(ValueError):
     """An answer does not fit its question (a wrong option, a number that is not a number...)."""
 
 
+class Cond(BaseModel):
+    """One condition on an EARLIER question's answer (修正方案第 4 轮, Qualtrics-style display logic).
+
+    op "any" = chose at least one of `opts`; "none" = chose none of them; "all" = chose every one of them (multiple choice);
+    "answered" / "skipped" = gave an answer or not; lt / lte / gt / gte / eq compare a number answer with `value`."""
+
+    model_config = ConfigDict(extra="forbid")
+    q: str = Field(min_length=1, max_length=20)
+    op: Literal["any", "none", "all", "answered", "skipped", "lt", "lte", "gt", "gte", "eq"] = "any"
+    opts: list[str] = Field(default_factory=list, max_length=MAX_OPTIONS)
+    value: float | None = None
+
+
+class Logic(BaseModel):
+    """Show something only when its conditions hold: all of them (AND) or any of them (OR). No conditions = always shown."""
+
+    model_config = ConfigDict(extra="forbid")
+    mode: Literal["all", "any"] = "all"
+    conds: list[Cond] = Field(default_factory=list, max_length=MAX_CONDS)
+
+
 class Option(BaseModel):
     model_config = ConfigDict(extra="forbid")
     id: str = Field(default="", max_length=20)
@@ -113,6 +135,8 @@ class Option(BaseModel):
     goto: str = Field(default="", max_length=20)  # "" = next question | a later question's id | END_OUT | END_OK
     tag: str = Field(default="", max_length=30)  # a label the participant gets when they choose this (matches the quota tables)
     excl: list[str] = Field(default_factory=list, max_length=MAX_OPTIONS)  # ids of the options of the same multiple-choice question that cannot be chosen together with this one (always two-way)
+    show_if: Logic | None = None   # 修正方案第 4 轮: shown only when an earlier answer fits (e.g. a district only for the city chosen before)
+    fixed: bool = False            # stays in its place when the options are shuffled (e.g. "以上都没有")
 
     @model_validator(mode="before")
     @classmethod
@@ -148,6 +172,8 @@ class Question(BaseModel):
     step: Literal["", "include", "exclude", "qc"] = ""
     cond_id: str = Field(default="", max_length=40)
     qc: Literal["", "trap", "consistency"] = ""
+    show_if: Logic | None = None   # 修正方案第 4 轮: the question is asked only when earlier answers fit (otherwise skipped)
+    randomize: bool = False        # the options in a random order for each candidate (fixed options keep their place)
     pair: str = Field(default="", max_length=20)  # a consistency question: the earlier question it asks again; a different answer ends the questionnaire (用户 2026-11-20: 矛盾直接终止)
 
     @model_validator(mode="before")
@@ -233,6 +259,17 @@ def _check_logic(questions: list[Question]) -> None:
                 continue
             if target not in pos or pos[target] <= i:
                 raise FormError(f"第 {i + 1} 题的跳转只能跳到后面的题，或选“结束”")
+        for what, lg in [("这道题", q.show_if)] + [(f"选项“{o.text[:12]}”", o.show_if) for o in q.options]:
+            for c in (lg.conds if lg else []):
+                if c.q not in pos or pos[c.q] >= i:
+                    raise FormError(f"第 {i + 1} 题{what}的显示条件只能看前面的题")
+                ref = questions[pos[c.q]]
+                if c.op in ("any", "none", "all"):
+                    have = {o.id for o in ref.options}
+                    if not c.opts or any(x not in have for x in c.opts):
+                        raise FormError(f"第 {i + 1} 题{what}的显示条件用了第 {pos[c.q] + 1} 题里没有的选项")
+                elif c.op in ("lt", "lte", "gt", "gte", "eq") and (ref.type != "number" or c.value is None):
+                    raise FormError(f"第 {i + 1} 题{what}的显示条件要比较数字，但第 {pos[c.q] + 1} 题不是数字题")
 
 
 def normalize(raw: dict) -> FormBody:
@@ -286,12 +323,56 @@ class Step:
     chosen: dict = field(default_factory=dict)  # question id -> the option id(s) or number answered on the path (for the anonymous tallies)
 
 
-def public_question(q: Question, index: int, total: int) -> dict:
-    """What a candidate may see of a question: no jumps, no tags, nothing about which answer screens out."""
-    return {"id": q.id, "type": q.type, "text": q.text, "required": q.required, "options": [{"id": o.id, "text": o.text, "excl": o.excl} for o in q.options], "index": index, "total": total}
+def _holds(lg: "Logic | None", chosen: dict) -> bool:
+    """Whether display logic holds for the answers on the path (`chosen`: question id -> option id / ids / number / text; skipped questions are absent)."""
+    if lg is None or not lg.conds:
+        return True
+    def one(c: Cond) -> bool:
+        a = chosen.get(c.q)
+        if c.op == "answered":
+            return a is not None
+        if c.op == "skipped":
+            return a is None
+        if c.op in ("any", "none", "all"):
+            got = {a} if isinstance(a, str) else set(a) if isinstance(a, list) else set()
+            return {"any": bool(got & set(c.opts)), "none": not (got & set(c.opts)), "all": set(c.opts) <= got}[c.op]
+        if not isinstance(a, (int, float)) or c.value is None:
+            return False
+        return {"lt": a < c.value, "lte": a <= c.value, "gt": a > c.value, "gte": a >= c.value, "eq": a == c.value}[c.op]
+    res = [one(c) for c in lg.conds]
+    return all(res) if lg.mode == "all" else any(res)
 
 
-def _check_answer(q: Question, raw) -> object:
+def visible_options(q: Question, chosen: dict, seed: str = "") -> list[Option]:
+    """The options this candidate sees, in the order they see them (shuffled with `seed` when the question asks for it; fixed options keep their place)."""
+    opts = [o for o in q.options if _holds(o.show_if, chosen)]
+    if q.randomize and len(opts) > 1:
+        import random
+        free = [o for o in opts if not o.fixed]
+        random.Random(f"{seed}|{q.id}").shuffle(free)
+        it = iter(free)
+        opts = [o if o.fixed else next(it) for o in opts]
+    return opts
+
+
+PIPE = re.compile(r"\{\{\s*(q\d+)\s*\}\}")
+
+
+def _piped(text: str, questions: list["Question"], chosen: dict) -> str:
+    """Words like {{q7}} in a question become the candidate's own answer to that question (piped text, as survey tools call it)."""
+    by = {q.id: q for q in questions}
+    return PIPE.sub(lambda m: _words(by[m.group(1)], chosen.get(m.group(1))) if m.group(1) in by else "", text)
+
+
+def public_question(q: Question, index: int, total: int, options: list[Option] | None = None, text: str | None = None) -> dict:
+    """What a candidate may see of a question: no jumps, no tags, no display logic, nothing about which answer screens out."""
+    opts = q.options if options is None else options
+    shown = {o.id for o in opts}
+    return {"id": q.id, "type": q.type, "text": q.text if text is None else text, "required": q.required,
+            "options": [{"id": o.id, "text": o.text, "excl": [x for x in o.excl if x in shown]} for o in opts], "index": index, "total": total}
+
+
+def _check_answer(q: Question, raw, allowed: set[str] | None = None) -> object:
     """The answer in its clean form (an option id, a list of ids, a string, a float) or None for a skipped optional question.
 
     Raises:
@@ -302,7 +383,7 @@ def _check_answer(q: Question, raw) -> object:
         if q.required:
             raise AnswerError("required")
         return None
-    ids = {o.id for o in q.options}
+    ids = {o.id for o in q.options} if allowed is None else allowed   # an option hidden from this candidate cannot be their answer
     if q.type in ("single", "scale"):
         if not isinstance(raw, str) or raw not in ids:
             raise AnswerError("option")
@@ -361,8 +442,9 @@ def _same(a: Question, ans_a, b: Question, ans_b) -> bool:
     return texts(a, ans_a) == texts(b, ans_b)
 
 
-def next_step(questions: list[Question], answers: dict) -> Step:
+def next_step(questions: list[Question], answers: dict, seed: str = "") -> Step:
     """Walk the questionnaire with the answers given so far and say what comes next. Answers to questions that are not on the path are ignored.
+    A question whose display logic does not hold (or whose options are all hidden) is skipped; only the options this candidate may see are shown and accepted.
 
     Raises:
         AnswerError: an answer on the path does not fit its question.
@@ -372,10 +454,14 @@ def next_step(questions: list[Question], answers: dict) -> Step:
     i = 0
     while i < len(questions):
         q = questions[i]
+        opts = visible_options(q, step.chosen, seed) if q.options else []
+        if not _holds(q.show_if, step.chosen) or (q.type in ("single", "multi", "scale") and not opts):
+            i += 1   # not for this candidate
+            continue
         if q.id not in answers:
-            step.question, step.index = public_question(q, i + 1, len(questions)), i + 1
+            step.question, step.index = public_question(q, i + 1, len(questions), opts, _piped(q.text, questions, step.chosen)), i + 1
             return step
-        ans = _check_answer(q, answers[q.id])
+        ans = _check_answer(q, answers[q.id], {o.id for o in opts} if q.options else None)
         if ans is not None:
             step.chosen[q.id] = ans
             step.items.append((q.text, _words(q, ans)))

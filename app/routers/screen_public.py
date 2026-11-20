@@ -109,7 +109,7 @@ def screen_step(token: str, body: StepBody, request: Request, db: Session = Depe
     _open(f)
     questions = recruit_form.load(f.questions)
     try:
-        step = recruit_form.next_step(questions, body.answers)
+        step = recruit_form.next_step(questions, body.answers, seed=body.started or "")   # shuffled options stay in one order for this candidate
     except recruit_form.AnswerError as e:
         raise HTTPException(422, "Please check your answer / 请检查你的回答") from e
     started = ""
@@ -127,6 +127,7 @@ def screen_step(token: str, body: StepBody, request: Request, db: Session = Depe
     question = step.question
     if question and body.lang in _offered(f, proj):  # the same question in the language the candidate picked (answers go by option id, so the logic is the same)
         question = recruit_translate.localize(question, next(q for q in questions if q.id == question["id"]), f.translations or {}, body.lang)
+        question = {**question, "text": recruit_form._piped(question["text"], questions, step.chosen)}   # a translated {{q7}} gets the answer too
     return {"question": question, "result": step.result, **({"started": started} if started else {})}
 
 

@@ -597,3 +597,5 @@ html[data-theme="dark"] .rs-note{background:#3A2E10;border-color:#8A6A1C;color:#
 .rs .rs-breathe{border:2px solid var(--orange,#FF6A00);color:var(--orange,#FF6A00);animation:rsBreathe 1.8s ease-in-out infinite}
 @keyframes rsBreathe{0%,100%{box-shadow:0 0 0 0 rgba(255,106,0,.45)}50%{box-shadow:0 0 0 8px rgba(255,106,0,0)}}
 @media (prefers-reduced-motion: reduce){.rs .rs-breathe{animation:none}}
+/* 修正方案第 4 轮: display logic on a question / option */
+.rf-lg.cond{background:#FFF1E6;color:#8A3B00}

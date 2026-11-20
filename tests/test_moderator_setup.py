@@ -32,14 +32,14 @@ AI_WORD = {"en": "AI interviewer", "zh": "AI 主持人", "ms": "pewawancara AI",
 
 # ---- consent ----
 def test_consent_version_bumped():
-    assert consent_mod.VERSION == "2026-11-draft-10"
+    assert consent_mod.VERSION == "2026-11-draft-11"
 
 
 @pytest.mark.parametrize("lang", LANGS)
 def test_ai_interview_consent_discloses_ai_in_every_language(lang):
     c = consent_mod.consent_for(lang, "Acme", ai=True)
     assert c["lang"] == lang and c["ai"] is True
-    assert c["text"].startswith(consent_mod.AI_TEXTS[lang])  # disclosed first, before anything else
+    assert c["text"].split(chr(10))[1] == "• " + consent_mod.AI_TEXTS[lang]  # disclosed first: the first point under the first heading (draft-11)
     assert AI_WORD[lang] in c["text"]
     assert list(c["labels"])[0] == "ai" and c["labels"]["ai"] == consent_mod.AI_LABELS[lang]
     assert consent_mod.AI_LOCAL[lang] in c["text"]  # mock / local model: nothing leaves this computer

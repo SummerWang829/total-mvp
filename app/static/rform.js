@@ -40,6 +40,10 @@ function rfAutosize(t) {
 
 /** 整个“招募问卷”卡片，返回 { html, wire, fit }。 */
 function rfCard(p, form, rec, plannedN) {
+  // 修正方案第 4 轮: only the newest questionnaire editor on the page may draw or wire anything — an older one still finishing a request used to
+  // re-wire the new page with its own (stale) list of questions, so the ✓ / ✗ and other buttons changed nothing
+  const me = {}; window.RF_INST = me; const rfLive = () => window.RF_INST === me;
+  const passBack = new Map();   // ✓ ⇄ ✗: the jump an option had before it was set to screen out, given back when it is set to pass again
   // 修正方案第 2 轮 A3: goals written as “1. … 2. …” in one line are one goal per line, without their own numbers
   const cleanGoals = (list) => (list || []).flatMap((g) => String(g).split(/\s+(?=(?:\d{1,2}[.、．)）]|[①②③④⑤⑥⑦⑧⑨⑩])\s*\S)/)).map((g) => g.replace(/^\s*(?:[（(]?\d{1,2}[.、)）．]|[①②③④⑤⑥⑦⑧⑨⑩])\s*/, "").trim()).filter(Boolean).slice(0, 8);
   let f = form, mode = form.source === "html" ? "html" : "ai", seg = "outline", Q = JSON.parse(JSON.stringify(form.questions || [])), goals = cleanGoals(form.goals), need = form.need || "";
@@ -408,6 +412,7 @@ function rfCard(p, form, rec, plannedN) {
   };
 
   const drawLeft = () => {
+    if (!rfLive()) return;
     const c = $("#ccroot"); if (!c) return;
     if (mode === "html") { c.innerHTML = `<div class="cc-sc">${importHtml()}</div>`; const g = $("#rfgooutline"); if (g) g.onclick = goOutline; return; }
     // 修正方案第 1 轮第 4 条：左栏是 6 步（app/static/rsteps.js），没有单独的对话栏；改某一题用右栏题干旁的 AI 图标
@@ -418,8 +423,8 @@ function rfCard(p, form, rec, plannedN) {
       askQ: async (text) => {   // 修正方案第 2 轮 A7: change the question being tested, from the dialog under ⑥
         const qid = window.RF_TEST_QID || (Q[0] || {}).id; if (!qid) return "还没有题可以改";
         const r = await api(`/projects/${p.id}/recruiting/form/ask`, { method: "POST", body: { qid, instruction: text, questions: Q, goals, need } });
-        if (r.changed && Array.isArray(r.questions)) { pushHist(); changedIds = diffIds(Q, r.questions); Q = JSON.parse(JSON.stringify(r.questions)); save(); seg = "test"; drawRight(); return `已改好第 ${Q.findIndex((x) => x.id === qid) + 1} 题，测试从头开始。${r.reply ? r.reply + "。" : ""}`; }
-        return r.reply || "这一题没有改动，换个说法试试";
+        if (r.changed && Array.isArray(r.questions)) { pushHist(); changedIds = diffIds(Q, r.questions); Q = JSON.parse(JSON.stringify(r.questions)); save(); seg = "test"; drawRight(); return `${r.reply || "已改好"}。测试从头开始。`; }
+        return r.reply || "这次没有改动，换个说法试试";
       },
     });
   };
@@ -537,18 +542,30 @@ function rfCard(p, form, rec, plannedN) {
       aria-label="${out ? "筛掉，点击改为通过" : "通过，点击改为筛掉"}" aria-pressed="${out}">${out ? "✗" : "✓"}</button>`;
   };
   const jumpBadge = (g) => (g && !g.startsWith("end_") ? badge(g) : "");   // the two endings show as ✓ / ✗; only a jump to a question needs its own label
+  // 修正方案第 4 轮: display logic, shuffling and piping read in words on the card ("第 7 题选“北京”才出示")
+  const RF_COP = { lt: "小于", lte: "不大于", gt: "大于", gte: "不小于", eq: "等于" };
+  function condWords(lg) {
+    if (!lg || !(lg.conds || []).length) return "";
+    const one = (c) => {
+      const k = Q.findIndex((x) => x.id === c.q), rq = Q[k]; if (!rq) return "";
+      const names = (c.opts || []).map((id) => `“${(rq.options.find((o) => o.id === id) || {}).text || id}”`).join("、");
+      return `第 ${k + 1} 题` + ({ any: `选${names}`, none: `没选${names}`, all: `都选了${names}`, answered: "答了", skipped: "没答" }[c.op] || `${RF_COP[c.op] || c.op} ${c.value}`);
+    };
+    return lg.conds.map(one).filter(Boolean).join(lg.mode === "any" ? "，或" : "，且");
+  }
+  const pipeWords = (t) => String(t || "").replace(/\{\{\s*(q\d+)\s*\}\}/g, (m, id) => { const k = Q.findIndex((x) => x.id === id); return k >= 0 ? `［第 ${k + 1} 题的回答］` : m; });
   function qCard(q, i) {
     if (editing.has(q.id)) return `<div class="rf-q" data-qid="${q.id}" data-qi="${i}">${qEditor(q, i)}</div>`;
     const qk = "q:" + q.id, choice = q.type === "single" || q.type === "multi" || q.type === "scale";
     const opts = choice ? q.options.map((o, j) => {
       const ok = `o:${q.id}:${j}`;
-      return `<div class="rq-opt">${optMark(q, o, j)}<span>${esc(o.text || "（空选项）")}</span>${jumpBadge(o.goto)}${o.tag ? `<span class="rf-lg jump">标签：${esc(o.tag)}</span>` : ""}${(o.excl || []).length ? `<span class="rf-lg exb">互斥：${exLabel(q, o)}</span>` : ""}<span class="sp"></span>
+      return `<div class="rq-opt">${optMark(q, o, j)}<span>${esc(o.text || "（空选项）")}</span>${jumpBadge(o.goto)}${o.tag ? `<span class="rf-lg jump">标签：${esc(o.tag)}</span>` : ""}${(o.excl || []).length ? `<span class="rf-lg exb">互斥：${exLabel(q, o)}</span>` : ""}${o.show_if && (o.show_if.conds || []).length ? `<span class="rf-lg cond">${esc(condWords(o.show_if))}才出示</span>` : ""}${o.fixed && q.randomize ? `<span class="rf-lg jump">固定位置</span>` : ""}<span class="sp"></span>
         <button class="rq-more" type="button" data-menu="${ok}" aria-label="选项 ${j + 1} 菜单" aria-expanded="${menu === ok}">${rfIcon(RF_IC.dots)}</button>${menu === ok ? oMenu(q, i, j) : ""}</div>`;
     }).join("") + `<button class="rq-add" type="button" data-oadd-view="${q.id}">＋ 添加选项</button>` : "";
     const rules = q.type === "number" ? (q.rules || []).map((r) => `<div class="rq-opt">如果数字${RF_OP[r.op]} ${r.value} ${badge(r.goto)}</div>`).join("") : "";
     return `<div class="rf-q${changedIds.has(q.id) ? " rf-hl" : ""}${askOpen === q.id ? " rf-ask-target" : ""}" data-qid="${q.id}" data-qi="${i}" data-selk="q:${q.id}">
       <span class="rq-grip" data-grip="${i}" tabindex="0" role="button" title="按住拖动排序，或用上下方向键移动" aria-label="拖动第 ${i + 1} 题">${rfIcon(RF_IC.grip)}</span>
-      <div class="rq-top"><span class="rq-qn">Q${i + 1}</span><span class="rq-title" role="button" tabindex="0" data-edit="${q.id}" title="点一下改这一题">${esc(q.text || "（还没写题目）")}</span>${qBadge(q)}<span class="sp"></span>
+      <div class="rq-top"><span class="rq-qn">Q${i + 1}</span><span class="rq-title" role="button" tabindex="0" data-edit="${q.id}" title="点一下改这一题">${esc(pipeWords(q.text) || "（还没写题目）")}</span>${qBadge(q)}${q.show_if && (q.show_if.conds || []).length ? `<span class="rf-lg cond">${esc(condWords(q.show_if))}才问</span>` : ""}${q.randomize ? `<span class="rf-lg jump">选项随机</span>` : ""}<span class="sp"></span>
         <span class="rq-type-wrap"><button class="rq-type rq-type-btn" type="button" data-typetg="${q.id}" aria-haspopup="true" aria-expanded="false" title="点一下切换题型">${lbl(RF_TYPE[q.type], q.type)}${q.required ? " · 必答" : ""}${rfIcon(RF_IC.chev)}</button>${typeMenuOpen === q.id ? `<div class="rq-type-menu" role="menu">${Object.entries(RF_TYPE).map(([k, n]) => `<button type="button" role="menuitem" data-typeset="${q.id}" data-t="${k}" class="${q.type === k ? "on" : ""}">${n}</button>`).join("")}</div>` : ""}</span>
         <button class="rq-ask" type="button" data-ask="${q.id}" aria-label="让 AI 改这一题" title="让 AI 改这一题">${rfIcon(RF_IC.spark)}</button>
         <button class="rq-more" type="button" data-menu="${qk}" aria-label="题目菜单" aria-expanded="${menu === qk}">${rfIcon(RF_IC.dots)}</button>${menu === qk ? qMenu(q, i) : ""}</div>
@@ -682,7 +699,7 @@ function rfCard(p, form, rec, plannedN) {
         if (r.changed && Array.isArray(r.questions)) {
           pushHist(); changedIds = diffIds(Q, r.questions); Q = JSON.parse(JSON.stringify(r.questions)); editing = new Set();
           askBusy = false; askFail = ""; askDone = true; askDraft[q.id] = ""; save(); drawRight();   // 面板保留，只有点「关闭」才收
-          toast("已按你的要求改好这一题"); return;
+          toast(r.reply || "已按你的要求改好"); return;
         }
         askFail = r.reply || "模型没有改这一题，换个说法试试";
       } catch (e) { askFail = e.message || "改题失败"; }
@@ -691,6 +708,7 @@ function rfCard(p, form, rec, plannedN) {
   }
 
   function drawRight() {
+    if (!rfLive()) return;
     const r = $("#rfright"); if (!r) return;
     const keep = $("#rfout") ? $("#rfout").scrollTop : 0;
     r.innerHTML = rightHead() + `<div class="rf-sc" id="rfout"><div class="rf-col">${seg === "outline" ? (isSource() ? outline() : `<div id="rftr"><div class="mut" style="padding:12px">加载中…</div></div>`) : `<p class="sm mut" style="margin:0">就是候选人看到的样子：直接填写，看会走到哪里。</p><div id="rfrun"></div><div class="note" id="rfresult" role="status" aria-live="polite" hidden></div>`}</div></div>`;
@@ -772,6 +790,7 @@ function rfCard(p, form, rec, plannedN) {
   });
 
   function wireRight() {
+    if (!rfLive()) return;
     const nx = $("#rfnext"); if (nx) nx.onclick = guard(async () => {
       try { await api(`/projects/${p.id}/recruiting/form/questions/confirm`, { method: "POST", body: { formats: [], quotas: [] } }); } catch (e) { /* 还没出题时保留原有跳转 */ }
       if (window.__ptabGo) window.__ptabGo("db"); else toast("请稍后再试", true);
@@ -915,6 +934,8 @@ function rfCard(p, form, rec, plannedN) {
   // mode 在开头已取 form.source，进页面直接用，不再二次询问。
   const draw = () => { $("#rfbody").innerHTML = panels(); wire(); };
   const fit = () => { const w = $("#rfws"); if (w && w.offsetParent) { const h = Math.max(380, innerHeight - w.getBoundingClientRect().top - 18); w.style.height = h + "px"; const m = w.parentElement; if (m && m.classList.contains("rf-main")) m.style.height = h + "px"; } };
+  if (!window.RF_FIT) addEventListener("resize", () => window.RF_FIT && window.RF_FIT());
+  window.RF_FIT = fit;   // 修正方案第 4 轮: the page may be drawn while hidden (opened from 招募/主持/问卷); size the two columns when it is shown, or the whole page grows and the wheel / clicks miss
 
   function wire() {
     drawLeft(); drawRight(); fit(); wireSplit(); loadOl();   // 两栏先画出来，两种来源都要画（导入态也有左引导 + 右大纲）

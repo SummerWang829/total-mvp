@@ -172,3 +172,9 @@ body.pphone-ai.pm-kb #grid>.aihost .aiface{width:48px}
 .pmk-note{color:var(--r-mut,#566A60)}
 .pmk.float{position:fixed;right:16px;bottom:90px;width:320px;z-index:30;background:var(--r-pan,#fff);border:1px solid var(--r-line,#DCE5DF);border-radius:12px;padding:12px}
 @media (max-width:700px){.pmk .pmk-go,.pmk-a button{min-height:36px}}
+/* 修正方案第 4 轮 (用户 2026-11-20, 受访者手机 · AI 访谈): 平分 = the AI card on top and my picture below, the same width and height;
+   the conversation box is about 8 cm high (enough for the captions); 大屏 and the keyboard strip stay as they were */
+body.pphone-ai:not(.pm-kb) .rbody>section:not(.pv-bigsec){height:316px!important}
+body.pphone-ai:not(.pm-kb) #grid:not(.pv-big){flex-direction:column}
+body.pphone-ai:not(.pm-kb) #grid:not(.pv-big)>.tile{flex:1 1 0!important;width:100%!important;height:auto!important}
+body.pphone-ai #chatbox{flex:0 1 8cm!important;min-height:120px}

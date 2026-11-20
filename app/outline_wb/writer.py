@@ -232,13 +232,19 @@ def name_modules(chat: ModeratorChatProvider | None, modules: list[dict], contex
 
 
 SLOT_PROMPT = SYSTEM_RULES + (' Task: the researcher asks to change what is known about the study. Input: SLOTS {name: {value, text, options}}, USER. '
-                              'Change only these slots: research_type, key_questions (a list of up to 4), audience (text), materials (a list of option values, ["none"] for no material), price. '
+                              'Change only these slots: research_type, key_questions (a list of up to 4), audience (text), materials (a list of option values, ["none"] for no material), price, '
+                              'minutes (the interview length, an integer 5-240), format (one of audio, text, text_voice, video, video_screen), languages (a list of zh, en, ms, ta). '
                               'Use only option values that exist. Output {"reply":"one short Chinese sentence saying what was changed","changes":{"<slot>":value}}; changes may be empty when nothing fits.')
 MAT_WORDS = {"概念": "concept", "图片": "image", "包装": "image", "实物": "image", "视频": "video", "短片": "video", "网站": "website", "网页": "website"}
 
 
 def slot_ops(chat: ModeratorChatProvider | None, slots: dict, text: str) -> tuple[str, dict]:
-    """修正方案第 2 轮 C3: (reply, {slot: new value}) for the dialog on 目标 / 人群与执行. The caller checks every value like the “改” button does."""
+    """修正方案第 2 轮 C3: (reply, {slot: new value}) for the dialog on 目标 / 人群与执行. The caller checks every value like the “改” button does.
+    修正方案第 4 轮: the length, format and languages too (“访谈时长改为30分钟”)."""
+    m = re.search(r"(?:时长|多长|访谈).{0,8}?(\d{1,3})\s*分钟|(\d{1,3})\s*分钟", text or "")
+    if m and re.search(r"时长|分钟", text) and not re.search(r"物料|素材|价格", text):   # a plain length change needs no model
+        n = int(m.group(1) or m.group(2))
+        return f"已把访谈时长改为 {n} 分钟。", {"minutes": n}
     if chat is None:
         if "物料" in text or "素材" in text:
             if re.search(r"不看|不要|不用|没有", text):
@@ -248,5 +254,5 @@ def slot_ops(chat: ModeratorChatProvider | None, slots: dict, text: str) -> tupl
         return "（演示模式）这一页只改“已经知道的”，比如“物料改成概念卡”。", {}
     raw = _ask(chat, SLOT_PROMPT, {"SLOTS": slots, "USER": text})
     changes = raw.get("changes") if isinstance(raw.get("changes"), dict) else {}
-    allowed = {"research_type", "key_questions", "audience", "materials", "price"}
+    allowed = {"research_type", "key_questions", "audience", "materials", "price", "minutes", "format", "languages"}
     return " ".join(str(raw.get("reply", "")).split())[:200] or "好的。", {k: v for k, v in changes.items() if k in allowed}

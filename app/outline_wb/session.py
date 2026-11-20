@@ -271,6 +271,25 @@ def _module(ov: dict, mid: str) -> dict:
     return m
 
 
+def opening_words(ctx: dict) -> str:
+    """The moderator's spoken opening (who, why, how long, recording only for research, no right or wrong, stop any time)."""
+    mins = ctx.get("minutes") or 45
+    if ctx.get("language") == "en":
+        return (f"Hi, thank you so much for joining today. I'd love to hear about your own experiences and views — it will take about {mins} minutes. "
+                "There are no right or wrong answers; just tell me what you really think. The session is recorded only for research, and your personal details stay private. "
+                "If there's anything you'd rather not answer, just say so. Shall we start?")
+    return (f"您好，非常感谢您抽时间参加今天的访谈！今天想听听您自己的真实经历和想法，大概 {mins} 分钟。"
+            "回答没有对错之分，您怎么想就怎么说。访谈会录音录像，只用于研究，不会公开您的个人信息。中间有不想回答的，随时告诉我就好。那我们开始吧？")
+
+
+def closing_words(ctx: dict) -> str:
+    """The moderator's spoken thanks at the end (anything to add, how the reward is given, thanks again)."""
+    if ctx.get("language") == "en":
+        return ("That's all my questions for today. Thank you so much for sharing — it really helps us. Is there anything else you'd like to add? "
+                "Your thank-you gift will be sent as agreed after the session. Thanks again, and have a great day!")
+    return "今天的问题就到这里。非常感谢您的分享，对我们帮助很大！关于今天聊的内容，您还有什么想补充的吗？礼金会在访谈结束后按约定方式发给您。再次感谢，祝您生活愉快！"
+
+
 def generate_module(db: Session, proj: Project, mid: str, chat, user_id: str = "") -> dict:
     """Write one module's questions (replacing what it had). Nothing is written for a module before the overview is confirmed."""
     o, v, st = ensure(db, proj, user_id)
@@ -285,9 +304,14 @@ def generate_module(db: Session, proj: Project, mid: str, chat, user_id: str = "
         if it.module == mid and it not in kept:
             db.delete(it)
     db.flush()
+    lang = ctx["language"]
+    if m.get("kind") == "warm":   # 修正方案第 4 轮 (用户 2026-11-20): the warm-up opens with a spoken introduction, the closing ends with thanks — both can be edited
+        svc.add_item(db, v, module=mid, kind="note", texts={lang: opening_words(ctx)}, minutes=1.0, config={"depth": "none", "script": "open"})
     for q in qs:
         svc.add_item(db, v, module=mid, kind="question", texts={ctx["language"]: q["text"]}, followups=q["followups"], must_cover=q["must_cover"], minutes=q["minutes"], is_backup=q["backup"],
                      config={"depth": m["depth"]}, key_question=(ctx["goals"][m["serves"][0] - 1] if m["serves"] and m["serves"][0] <= len(ctx["goals"]) else ""))
+    if m.get("kind") == "close":
+        svc.add_item(db, v, module=mid, kind="note", texts={lang: closing_words(ctx)}, minutes=1.0, config={"depth": "none", "script": "close"})
     m["status"] = "draft"
     _save_ov(st, ov)
     return view(db, proj, user_id)
@@ -653,13 +677,20 @@ def _slot_turn(db: Session, proj: Project, st: StudySetting, ctx: dict, chat, te
     """修正方案第 2 轮 C3: the dialog on 目标 / 人群与执行 changes 已经知道的 (research type, questions, people, materials, price) directly, checked like the “改” buttons."""
     slots = _slots(ctx, st)
     reply, changes = writer.slot_ops(chat, {k: {"value": v["value"], "text": flow.slot_text(k, v["value"]), "options": flow.slot_options(k)} for k, v in slots.items()}, text)
-    done = []
+    done, notes = [], []
     for name, value in changes.items():
         try:
-            answer(db, proj, name, value, user_id)
+            if name in ("minutes", "format", "languages") and ctx.get("sync"):   # 修正方案第 4 轮: the same as 改 → 同步改立项 (or an unlock request when the 立项 is locked)
+                res = set_sync(db, proj, name, value, user_id)
+                if res != "plan":
+                    notes.append("立项已锁定，已申请解锁，等管理员或项目经理处理")
+            else:
+                answer(db, proj, name, value, user_id)
             done.append(name)
         except (svc.OutlineError, ValueError, TypeError):
             continue
+    if notes:
+        reply = (reply or "") + "（" + "；".join(dict.fromkeys(notes)) + "）"
     if not done:   # 修正方案第 3 轮: never say something was changed when 已经知道的 did not change (“物料改为看素材” said so and nothing moved)
         mats = "、".join(o["text"] for o in flow.slot_options("materials") or [] if isinstance(o, dict) and o.get("text"))
         reply = ("这个改动没有生效，请用“改”按钮直接改。" if changes else

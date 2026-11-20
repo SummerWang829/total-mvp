@@ -4,7 +4,15 @@
 <body class="participant"><div class="pbar" id="logobar"></div><div class="pwrap" id="box"><p class="mut">…</p></div>
 <script src="/tinput.js"></script><script src="/app.js"></script>
 <script src="/logo.js"></script>
-<script>$("#logobar").innerHTML = LOGO_SVG; brandPlay();</script>
+<script>
+// 修正方案第 4 轮: the consent is headings with short points ("• " lines) — shown as a heading and a list, not one long paragraph
+function consentHtml(t) {
+  const out = []; let list = [];
+  const flush = () => { if (list.length) { out.push(`<ul>${list.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>`); list = []; } };
+  String(t || "").split(String.fromCharCode(10)).forEach((line) => { const l = line.trim(); if (!l) return; if (l.startsWith("• ")) list.push(l.slice(2)); else { flush(); out.push(`<h3>${esc(l)}</h3>`); } });
+  flush(); return out.join("");
+}
+$("#logobar").innerHTML = LOGO_SVG; brandPlay();</script>
 <script>
 // Participant journey (design spec part 3): invitation -> device test -> privacy & consent -> [pre-interview questions] -> waiting room -> interview room -> thanks.
 // No login or time picking yet: the invitation link is the credential and the research team sets the time. The pre-task step only appears when configured.
@@ -240,7 +248,7 @@ function deviceStep() {
 // ---------- 2. privacy & consent ----------
 function consentStep() {
   const c = info.consent;
-  frame(IX.consent, `<form class="card" id="f"><h1 style="margin-bottom:10px">${x.before}</h1><p>${esc(c.text)}</p>
+  frame(IX.consent, `<form class="card" id="f"><h1 style="margin-bottom:10px">${x.before}</h1><div class="ctext">${consentHtml(c.text)}</div>
     <label class="f"><span>${x.where}</span><select name="country" required><option value="">${x.pick}</option>${countryOpts("")}</select></label>
     ${Object.keys(c.labels).map((k) => `<label class="chk"><input type="checkbox" name="${k}"><span>${esc(c.labels[k])}</span></label>`).join("")}
     <button class="p pbig">${x.go}</button><p class="sm mut" style="margin:12px 0 0">${x.skip}</p></form>`);

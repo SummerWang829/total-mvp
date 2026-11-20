@@ -181,7 +181,7 @@
       <div class="ow-actions"><button type="button" class="p" data-ow="confirm-ov">${gates().overview ? "继续写题目" : "确认总览，开始写第一个模块"}</button><button type="button" data-ow="back-people">上一步</button></div></div>`;
   }
   const itemRow = (it) => `<div class="ow-item${S.sel === it.uid ? " sel" : ""}" data-ow-sel="${it.uid}">
-      <div class="h"><span class="lab">${E(it.label)}</span><span class="kind">${KIND_LABEL[it.kind] || ""}</span>
+      <div class="h"><span class="lab">${E(it.label)}</span><span class="kind">${(it.config || {}).script === "open" ? "开场白" : (it.config || {}).script === "close" ? "结束语" : KIND_LABEL[it.kind] || ""}</span>
       <textarea class="ow-in t" rows="1" aria-label="题目文字" data-ow-i="${it.uid}" data-f="text">${E(it.text)}</textarea>
       <span class="ow-min">${it.minutes} 分</span><button type="button" class="ow-x" data-ow-del="${it.uid}" aria-label="删除这一条">×</button></div>
       ${it.kind === "question" || it.kind === "rating" ? `<div class="fu">${it.followups.length ? "追问：" + E(it.followups.join(" · ")) : ""}<span class="ow-ctl">${depthSel(it.depth, `data-ow-i="${it.uid}" data-f="depth"`)}</span></div>` : this_cfg(it) + mediaBlock(it)}</div>`;
@@ -224,9 +224,20 @@
     const pre = p ? `<span class="ow-pill ${p.https && p.public_host && !p.maybe_login ? "ok" : "warn"}">${p.https ? "https" : "不是 https"}</span>${p.maybe_login ? `<span class="ow-pill warn">地址像要登录</span>` : ""}<span class="ow-pill">只检查了地址，没有实际打开</span>` : "";
     return `<div class="fu">${parts}${pre}</div>`;
   }
+  // 修正方案第 4 轮: a question that talks about material with none after it — the matching insert button grows and breathes until it is added
+  function wantKinds(after) {
+    const its = S.d.items, i = its.findIndex((x) => x.uid === after), it = its[i]; if (!it || it.kind !== "question") return [];
+    const t = it.text || "", next = its[i + 1], want = [];
+    if (/视频|短片|广告片|片段|影片|video|clip/i.test(t)) want.push("video");
+    if (/概念卡|概念|图片|卡片|海报|包装|设计稿|concept|picture|image/i.test(t)) want.push("concept");
+    if (/网站|网页|官网|小程序|website|web ?page/i.test(t)) want.push("website");
+    if (!want.length && /素材|物料|material/i.test(t)) want.push("concept", "video");
+    const prev = its[i - 1];
+    return want.filter((k) => !(next && next.kind === k) && !(prev && prev.kind === k));
+  }
   function insertForm(after) {
     const f = S.form;
-    if (!f || f.after !== after) return `<div class="ow-ins" data-after="${after}">＋ 插入 ${["question", "concept", "video", "website", "rating"].map((k) => `<button type="button" class="ow-chipb" data-ow-ins="${k}" data-after="${after}">${KIND_LABEL[k]}</button>`).join("")}</div>`;
+    if (!f || f.after !== after) { const want = wantKinds(after); return `<div class="ow-ins" data-after="${after}">＋ 插入 ${["question", "concept", "video", "website", "rating"].map((k) => `<button type="button" class="ow-chipb${want.includes(k) ? " glow" : ""}" data-ow-ins="${k}" data-after="${after}"${want.includes(k) ? ` title="这道题提到了${KIND_LABEL[k]}，点这里插入"` : ""}>${KIND_LABEL[k]}</button>`).join("")}</div>`; }
     const web = f.kind === "website" || f.kind === "video", up = f.kind === "concept" || f.kind === "video";
     return `<div class="ow-ins open"><b>插入${KIND_LABEL[f.kind]}</b><textarea class="ow-ta" id="ow-f-text" aria-label="要对受访者说的话" rows="2" placeholder="要对受访者说的话"></textarea>
       ${up ? `<label class="ow-upl2">上传${f.kind === "concept" ? "图片 / PDF" : "视频（MP4）"}：<input type="file" id="ow-f-file" aria-label="上传素材" accept="${f.kind === "concept" ? "image/png,image/jpeg,image/webp,application/pdf" : "video/mp4,video/webm,video/quicktime"}"${f.kind === "concept" ? " multiple" : ""}></label>` : ""}
@@ -502,9 +513,11 @@
     const view = S.area !== "gen" ? { preview: previewView, rehearsal: rehearsalView, round: roundView, pilot: pilotView, publish: publishView }[S.tab] : ({ goal: goalView, people: goalView, overview: overviewView, questions: questionsView, focus: focusView }[S.step] || goalView);
     const body = S.area === "gen" && S.step === "questions" ? `<div class="ow-qwrap">${tocHtml()}<div>${view()}</div></div>` : view();
     root.innerHTML = `<div class="ow${S.busy ? " busy" : ""}"><div class="ow-main" id="owmain">${stepBar()}${S.area === "gen" ? resetUi() + syncBar() + syncAsk() : ""}${body}${S.area === "gen" ? stepNav() : ""}</div><aside class="ow-chat" id="owchat">${chatHtml()}</aside></div>`;
+    qa("#owroot .ow-item textarea.t").forEach(growBox);   // 修正方案第 4 轮: a long question / the opening words show in full
     q("#owmain").scrollTop = keep.y; const m = q("#ow-msgs"); if (m) m.scrollTop = keep.chat || m.scrollHeight;
     menuState(); keepStep();
   }
+  function growBox(t) { t.style.height = "auto"; t.style.height = Math.max(34, t.scrollHeight + 2) + "px"; }
   const val = (s) => q(s)?.value ?? "";
   const num = (s) => parseFloat(val(s)) || 0;
 
@@ -695,7 +708,7 @@
     });
     document.addEventListener("change", (e) => { if (q("#owroot")?.contains(e.target) || q("#owroot3")?.contains(e.target)) onChange(e); });
     document.addEventListener("submit", onSubmit);
-    document.addEventListener("input", (e) => { if (e.target.id === "ow-focus-in") focusDrop(); });
+    document.addEventListener("input", (e) => { if (e.target.id === "ow-focus-in") focusDrop(); if (e.target.matches && e.target.matches("#owroot .ow-item textarea.t")) growBox(e.target); });
     document.addEventListener("focusin", onFocusIn);
   }
 

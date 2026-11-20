@@ -63,3 +63,21 @@ def test_the_dialog_is_kept_on_the_server_for_each_person(org, proj):
     got = _api(org, proj, "get", "/chat-log").json()["messages"]
     assert [m["text"] for m in got] == ["物料改为看素材", "已经知道的没有改动。"] and got[1]["revs"] == [{"id": "r1"}]
     assert _api(org, proj, "get", "/chat-log", role="admin").json()["messages"] == []
+
+
+def test_the_dialog_changes_the_length(org, proj):
+    """修正方案第 4 轮: “访谈时长改为30分钟” in the dialog changes 已经知道的 (it used to say nothing changed)."""
+    r = _api(org, proj, "post", "/chat", json={"text": "访谈时长改为30分钟", "step": "people"}).json()
+    assert r["changed"] == ["minutes"] and "30" in r["reply"]
+    assert _api(org, proj, "get", "").json()["slots"]["minutes"]["value"] == 30
+
+
+def test_the_warm_up_opens_with_an_introduction_and_the_closing_thanks(org, proj):
+    """修正方案第 4 轮: 暖场 starts with a spoken opening, 收尾 ends with thanks (both editable notes)."""
+    v = _api(org, proj, "post", "/overview").json()
+    _api(org, proj, "post", "/overview/confirm")
+    mods = {m["kind"]: m["id"] for m in v["overview"]["modules"]}
+    w = next(m for m in _api(org, proj, "post", f"/modules/{mods['warm']}/generate").json()["overview"]["modules"] if m["id"] == mods["warm"])
+    assert w["items"][0]["kind"] == "note" and "感谢" in w["items"][0]["text"] and "没有对错" in w["items"][0]["text"]
+    c = next(m for m in _api(org, proj, "post", f"/modules/{mods['close']}/generate").json()["overview"]["modules"] if m["id"] == mods["close"])
+    assert c["items"][-1]["kind"] == "note" and "感谢" in c["items"][-1]["text"]

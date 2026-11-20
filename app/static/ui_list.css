@@ -25,3 +25,9 @@ html body .plbox .ptbl thead th:has(.msm:not([hidden])){z-index:70}
 /* 修正方案第 2 轮 B1：数据库筛选及发送 · 导入名单，发送甄别问卷 */
 .dbimp{margin-bottom:14px}.dbimp-g{display:grid;grid-template-columns:1fr 320px;gap:18px;align-items:start}.dbimp-t td{padding:6px 10px}.dbimp-t td:last-child{text-align:right}
 @media (max-width:900px){.dbimp-g{grid-template-columns:1fr}}
+/* 修正方案第 4 轮: 导入名单 = 姓名 + 邮箱 rows; 国家、语言、标签 optional, shown on demand */
+.im-wrap{max-height:280px;overflow:auto;border:1px solid var(--line,#e5e7eb);border-radius:8px}
+.im-tbl{width:100%;margin:0}.im-tbl th,.im-tbl td{padding:4px 6px}.im-tbl input{width:100%;min-width:0;box-sizing:border-box}
+.im-tbl td:last-child{width:40px}
+.im-x{display:none}.im-more .im-x{display:table-cell}
+#impastebox textarea{width:100%;box-sizing:border-box;margin:4px 0}

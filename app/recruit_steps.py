@@ -121,9 +121,22 @@ def _rule_conditions(need: str) -> list[dict]:
              "options": [{"text": "符合", "pass": True}, {"text": "不符合", "pass": False}]} for i, p in enumerate(parts[:5], 1)]
 
 
-def _model_json(chat, system: str, user: str) -> dict:
+LANG_WORD = {"zh": "Simplified Chinese (简体中文)", "en": "English", "ms": "Malay", "ta": "Tamil"}
+
+
+def _model_json(chat, system: str, user: str, lang: str = "zh") -> dict:
+    """修正方案第 4 轮: everything the model writes is in the questionnaire's language (a Chinese questionnaire had English conditions)."""
+    system = system + f" Write every name, note, question and option ONLY in {LANG_WORD.get(lang, LANG_WORD['zh'])}; never mix in another language."
     raw = chat.complete([{"role": "system", "content": system}, {"role": "user", "content": user}], temperature=0.2)
     return raw if isinstance(raw, dict) else {}
+
+
+def in_lang(item: dict, lang: str) -> bool:
+    """Whether a condition / question the model wrote is in the questionnaire's language (checked for Chinese: its words must contain Chinese)."""
+    if lang != "zh":
+        return True
+    words = " ".join([str(item.get("name", "")), str(item.get("question", "")), str(item.get("text", ""))] + [str(o.get("text", "")) for o in item.get("options") or [] if isinstance(o, dict)])
+    return bool(re.search(r"[一-鿿]", words)) and not re.search(r"[A-Za-z]{4,}(?:\s+[A-Za-z]{2,}){2,}", words)
 
 
 def _clean_options(raw) -> list[dict]:
@@ -139,11 +152,11 @@ def suggest_conditions(db: Session, proj: Project, f: RecruitForm, chat) -> list
     plan = plan_summary(db, proj, f)   # 修正方案第 3 轮: an empty need reads the 立项's 人群 (and the goals the 研究背景's), as ① shows them
     if chat is not None and plan["need"].strip():
         try:
-            raw = _model_json(chat, COND_SYSTEM, json.dumps({"need": plan["need"], "goals": plan["goals"]}, ensure_ascii=False))
+            raw = _model_json(chat, COND_SYSTEM, json.dumps({"need": plan["need"], "goals": plan["goals"]}, ensure_ascii=False), proj.language or "zh")
             for c in (raw.get("conditions") or [])[:5]:
                 opts = _clean_options(c.get("options")) if isinstance(c, dict) else []
                 q = str(c.get("question", "")).strip()[:300] if isinstance(c, dict) else ""
-                if opts and q and not recruit_form.CONTACT_WORDS.search(q):
+                if opts and q and not recruit_form.CONTACT_WORDS.search(q) and in_lang(c, proj.language or "zh"):
                     found.append({"id": _cid("a", len(found) + 1), "name": str(c.get("name", "")).strip()[:20] or q[:16], "type": "multi" if c.get("type") == "multi" else "single",
                                   "question": q, "use": True, "src": "ai", "quota": False, "options": opts})
         except ChatFatalError:
@@ -167,12 +180,12 @@ def suggest_exclusions(db: Session, proj: Project, f: RecruitForm, chat) -> list
     need = plan_summary(db, proj, f)["need"]
     if chat is not None and need.strip():
         try:
-            raw = _model_json(chat, EXCL_SYSTEM, json.dumps({"need": need}, ensure_ascii=False))
+            raw = _model_json(chat, EXCL_SYSTEM, json.dumps({"need": need}, ensure_ascii=False), proj.language or "zh")
             for n, e in enumerate((raw.get("exclusions") or [])[:MAX_AI_EXCL], 1):
                 basis = str(e.get("basis", "")).strip() if isinstance(e, dict) else ""
                 opts = _clean_options(e.get("options")) if isinstance(e, dict) else []
                 q = str(e.get("question", "")).strip()[:300] if isinstance(e, dict) else ""
-                if basis and basis in need and opts and q and not recruit_form.CONTACT_WORDS.search(q):   # no basis in the need's own words: not shown
+                if basis and basis in need and opts and q and not recruit_form.CONTACT_WORDS.search(q) and in_lang(e, proj.language or "zh"):   # no basis in the need's own words: not shown
                     out.append({"id": f"ai{n}", "name": str(e.get("name", "")).strip()[:20] or q[:16], "note": f"依据：“{basis[:60]}”", "use": True, "src": "ai", "type": "single", "question": q, "options": opts})
         except ChatFatalError:
             raise
@@ -486,7 +499,7 @@ def chat_step(db: Session, proj: Project, f: RecruitForm, step: str, text: str, 
         reply, new = _rule_chat(step, text, draft, material)
     else:
         try:
-            raw = _model_json(chat, STEP_CHAT_SYSTEM[step], json.dumps({"CONTEXT": _ctx(proj, f), "DRAFT": draft, "USER": text, **({"MATERIAL": material[:20000]} if material else {})}, ensure_ascii=False))
+            raw = _model_json(chat, STEP_CHAT_SYSTEM[step], json.dumps({"CONTEXT": _ctx(proj, f), "DRAFT": draft, "USER": text, **({"MATERIAL": material[:20000]} if material else {})}, ensure_ascii=False), proj.language or "zh")
         except ChatFatalError:
             raise
         except (ChatError, ValueError) as e:
@@ -503,6 +516,8 @@ def chat_step(db: Session, proj: Project, f: RecruitForm, step: str, text: str, 
     for n, c in enumerate(new[:12], 1):
         if not isinstance(c, dict) or not str(c.get("question", "")).strip():
             continue   # 修正方案第 2 轮 A5: an empty condition never shows
+        if not in_lang(c, proj.language or "zh"):
+            continue   # 修正方案第 4 轮: never a condition in another language
         try:
             out.append(_check_cond({**c, "id": c.get("id") or f"c{n}", "use": c.get("use", True), "src": c.get("src", "ai")}))
         except StepError:
@@ -521,11 +536,11 @@ def expand(db: Session, proj: Project, f: RecruitForm, chat) -> list[str]:
     new: list[dict] = []
     if chat is not None:
         try:
-            raw = _model_json(chat, EXPAND_SYSTEM, json.dumps({"CONTEXT": _ctx(proj, f), "HAVE": [q["text"] for q in questions], "N": need}, ensure_ascii=False))
+            raw = _model_json(chat, EXPAND_SYSTEM, json.dumps({"CONTEXT": _ctx(proj, f), "HAVE": [q["text"] for q in questions], "N": need}, ensure_ascii=False), proj.language or "zh")
             for q in (raw.get("questions") or [])[:need]:
                 opts = _clean_options(q.get("options")) if isinstance(q, dict) else []
                 t = str(q.get("text", "")).strip()[:300] if isinstance(q, dict) else ""
-                if opts and t and not recruit_form.CONTACT_WORDS.search(t):
+                if opts and t and not recruit_form.CONTACT_WORDS.search(t) and in_lang(q, proj.language or "zh"):
                     new.append({"text": t, "type": "multi" if q.get("type") == "multi" else "single", "options": opts})
         except ChatFatalError:
             raise
