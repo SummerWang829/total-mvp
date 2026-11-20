@@ -4,6 +4,14 @@
 > 每条记录写：日期 · 做了什么 · `scripts/qa.sh` 结果数字 · 还差什么 · 风险。最新的写在最上面。
 > qa.sh 数字的顺序：逻辑测试（pytest）/ 全站浏览器检查 / 真实视频访谈 / 一键启动。
 
+## 2026-11-20 · 部署 70ccb68（修正方案第 1 轮，第 0–5 批）：服务器已更新，未写 DEPLOYED.txt（浏览器检查和压测未完成）
+- 前提：线上 app 与 3652fd2 一致（忽略 CRLF，295 个文件）；访谈直播 0 个进行中、0 个录制、0 个未结束的 AI 会话。
+- 备份：数据库在线备份 `/opt/total-mvp/backups/total-20261120-1221.db`（integrity_check = ok，2867200 字节）；代码 `app-20261120-1221.tgz`（5063950 字节）；异地 COS `total-20261120-042115.db.gz` 上传成功。镜像标签 `total-app:rollback-3652fd2`。`.env` 改动前的备份 `backups/env-before-ocr-20261120.bak`。
+- 基线：表 83 个；projects 2、interviews 4、participants 5、recruit_forms 2、outlines 1、outline_versions 2、marks 0、focus_questions 2、repo_documents 2。
+- `.env` 新增一行 `OCR_PROVIDER=tencent`（OCR 密钥未填，沿用 ASR 密钥；ASR 三项原本已配置）。
+- 部署：`git archive 70ccb68 app` 覆盖 `/opt/total-mvp/app`；删除 `app/static/voice_fast.js`、`voice_fast.css`；`docker compose -p deploy up -d --build --no-deps app`。
+- 核对：启动日志 error / traceback / cannot add / board job failed 为 0；表 84 = 83 + 1，`pilot_rounds` 存在；12 组新列全部存在；app healthy；`/api/health`、`/index.html`、`/tinput.js`、`/rsteps.js`、`/labels.js` 200；公网 `tinput.js` md5 与本机一致；线上 app 与 70ccb68 一致（304 个文件）；`app.doctor` 没有必须解决的问题；保留期 dry-run：`would purge: {'interviews': 0, 'projects': {}, 'projects_with_active_interviews': []}`。
+- 还没做：6.2 侧边栏和大纲、6.3 真人 Pilot（三浏览器）、6.4 统一输入框（OCR 截图要真实上传验证）、6.5 甄别问卷 6 步、6.6 老项目和权限隔离、6.7 三种主题和手机宽度；6.9 看板真模型压测**等用户确认法务问题后再跑**。因为 6.2–6.9 没有全部通过，**没有写 DEPLOYED.txt**。
 ## 2026-11-20 · 修正方案第 1 轮 · 第 5 批：甄别问卷 6 步（用户确认效果图和方案，并回答：配额直接引用立项、矛盾和太快直接终止、不要单独对话栏、老问卷不用管、旧检查按新的来）
 - 左栏改成 6 步（`app/static/rsteps.js`，`app/recruit_steps.py`）：① 读取立项（只读，可跳去立项改）② 要筛进谁（立项的变量 + 从招募需求拆条件：有模型用模型，没有按分句规则；每条可勾选、改题目和选项、通过/终止、自己加）③ 要筛掉谁（固定清单按访谈形式预勾，模型最多补 2 条且必须引用招募需求原文）④ 配额（直接引用立项第 4 步的配额表，可增删改，确认写进项目配额，两变量组合用“A+B”标签）⑤ 质量控制（陷阱题、前后一致性=把第一个条件换顺序再问一次、最短作答时长由服务器签名计时、重复参加只查合格的人）⑥ 预览与测试。确认一步只重做这一步的题，手动加的题保留；改了条件后配额会标“需要重新确认”。陷阱题答错、前后矛盾、答得太快都直接终止（只记匿名人数，太快记在 `out_by.__time__`）。
 - 右栏不变；没有单独对话栏，改题用题干旁的 AI 图标（原来的 💬 换成线条图标）；题目文字改成可点的文字块（长题可换行，Enter/空格也能打开）。
