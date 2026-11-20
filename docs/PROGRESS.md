@@ -4,6 +4,14 @@
 > 每条记录写：日期 · 做了什么 · `scripts/qa.sh` 结果数字 · 还差什么 · 风险。最新的写在最上面。
 > qa.sh 数字的顺序：逻辑测试（pytest）/ 全站浏览器检查 / 真实视频访谈 / 一键启动。
 
+## 2026-11-20 · 部署 bb35e86（修正方案第 4 轮，含第 3 轮补丁 110e8d4）：服务器已更新，5.1 通过，未写 DEPLOYED.txt（5.2–5.7 未完成）
+- 前提：线上 app 与 99ad526 一致（306 个文件，补丁 110e8d4 未部署过）；0 个进行中场次、0 个录制、0 个未结束的 AI 会话。
+- 备份：数据库在线备份 `/opt/total-mvp/backups/total-20261120-1950.db`（integrity_check = ok，3067904 字节，85 张表）；代码 `app-20261120-1950.tgz`（5156524 字节）；`deploy/backup.sh` 异地 COS `total-20261120-115014.db.gz`（394 KB，media 36K）上传成功。镜像标签 `total-app:rollback-99ad526`。
+- 环境：`.env` 未改（`OCR_PROVIDER`、`TTS_PROVIDER` 保持）。没有新表、新列、新依赖。
+- 部署：本地生成 `git archive bb35e86 app` 的 tar 文件后上传解包（307 个文件与 bb35e86 一致）；`docker compose -p deploy up -d --build --no-deps app`。重建期间一次健康检查短暂显示 unhealthy，是重建过渡时的旧状态；新容器随后 healthy，重启次数 0。
+- 核对（5.1）：启动日志 error / traceback / cannot add 为 0；`/api/health`、`/index.html`、`/rform.js`、`/rsteps.js`、`/outline_wb.js`、`/join.html`、`/room.html` 都是 200；公网 `/api/health` 200；表总数 85；`app.doctor` 没有必须解决的问题；保留期 dry-run：`projects_with_active_interviews` 为 `[]`。
+- 还没做：5.2 甄别问卷（滚轮、✓/✗、按城市出区用真模型、区名截图给用户核对）；5.3 导入名单粘贴预览；5.4 生成大纲；5.5 手机看同意书和 AI 房间；5.6 前几轮遗留检查；5.7 看板真模型压测（**等用户确认法务问题后再跑**）。因为这些没有全部通过，**没有写 DEPLOYED.txt**。
+
 ## 2026-11-20 · 修正方案第 4 轮（用户线上试用 14 条）
 - 效果图 `qa_shots/fix4_mockup.html`；用户定：问卷逻辑要像 SurveyMonkey / Qualtrics；区名由小星星写、用户核对；同意书写得清楚简单可升版；导入名单国家语言标签保留但不必填。
 - 做了：
