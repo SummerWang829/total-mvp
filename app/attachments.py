@@ -129,6 +129,25 @@ def _from_xlsx(data: bytes) -> str:
         raise AttachmentError("这不是一个能读的 Excel（.xlsx）文件") from e
 
 
+def _from_pptx(data: bytes) -> str:
+    """修正方案第 2 轮 A6: the words on every slide of a PowerPoint (.pptx), slide by slide."""
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as z:
+            if sum(i.file_size for i in z.infolist()) > MAX_XLSX_XML_BYTES:
+                raise AttachmentError("PPT 文件太大，读不了")
+            slides = sorted((n for n in z.namelist() if re.fullmatch(r"ppt/slides/slide\d+\.xml", n)), key=lambda n: int(re.findall(r"\d+", n)[-1]))
+            out = []
+            for n, name in enumerate(slides, 1):
+                xml = z.read(name).decode("utf-8", "replace")
+                paras = [html.unescape("".join(re.findall(r"<a:t>([^<]*)</a:t>", p))) for p in re.findall(r"<a:p>(.*?)</a:p>", xml, re.S)]
+                lines = [x.strip() for x in paras if x.strip()]
+                if lines:
+                    out.append(f"第 {n} 页：" + " / ".join(lines))
+            return "\n".join(out)
+    except (zipfile.BadZipFile, KeyError) as e:
+        raise AttachmentError("这不是一个能读的 PPT（.pptx）文件") from e
+
+
 def extract(filename: str, data: bytes) -> dict:
     """The plain text of an attached file.
 
@@ -155,6 +174,8 @@ def extract(filename: str, data: bytes) -> dict:
             raise AttachmentError(str(e), e.status) from e
     elif suffix == ".xlsx":
         kind, text = "excel", _from_xlsx(data)
+    elif suffix == ".pptx":
+        kind, text = "ppt", _from_pptx(data)
     elif suffix == ".pdf":
         kind, text = "pdf", _from_pdf(data)
     elif suffix == ".docx":
@@ -162,7 +183,7 @@ def extract(filename: str, data: bytes) -> dict:
     elif suffix in TEXT_SUFFIXES:
         kind, text = "text", _from_text(data)
     else:
-        raise AttachmentError("只能上传 PDF、Word（.docx）、Excel（.xlsx）、文字文件（.txt、.md、.csv）、图片或录音视频", 415)
+        raise AttachmentError("只能上传 PDF、Word（.docx）、Excel（.xlsx）、PPT（.pptx）、文字文件（.txt、.md、.csv）、图片或录音视频", 415)
     text = re.sub(r"[ \t]+\n", "\n", text).strip()
     if not text:
         raise AttachmentError("没有读到文字（扫描件或图片组成的文件读不了）")

@@ -295,7 +295,7 @@ function shMoveSub(a) {   // the page's own second-level controls go under the c
     body.innerHTML = ""; body.appendChild(t);
   };
   const wrap = (tbl) => {
-    if (!tbl || tbl.dataset.ccTbl || tbl.closest(".cc-tcard, .cc-tmodal")) return;
+    if (!tbl || tbl.dataset.ccTbl || tbl.closest(".cc-tcard, .cc-tmodal, .rs")) return;   // the 甄别问卷 step tables are the page's own, not an AI reply
     if (!tbl.closest(CHAT)) return;
     tbl.dataset.ccTbl = "1";
     const card = document.createElement("div"); card.className = "cc-tcard";

@@ -187,7 +187,8 @@ class FormBody(BaseModel):
     @field_validator("goals")
     @classmethod
     def _goals(cls, v: list[str]) -> list[str]:
-        return [g.strip()[:300] for g in v if g.strip()]
+        from .outline_wb.flow import clean_goals   # 修正方案第 2 轮 A3: "1. … 2. …" in one line becomes one goal per line, without its own number
+        return [g[:300] for g in clean_goals(v)][:8]
 
 
 def clean_url(url: str) -> str:

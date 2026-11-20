@@ -1163,3 +1163,44 @@ def confirm_step(pid: str, step: str, body: StepConfirmBody, ctx: Ctx = Depends(
     audit(db, ctx.org_id, ctx.actor, "recruit.form_step", proj.id, step=step, made=len(fresh))
     db.commit()
     return {**_full(db, proj, f), **_steps_out(db, proj, f), "fresh": fresh}
+
+
+class StepChatBody(BaseModel):
+    text: str = Field(min_length=1, max_length=2000)
+    draft: list[dict] = Field(default_factory=list, max_length=40)
+    refs: list[RefIn] = Field(default_factory=list, max_length=5)   # files attached in the dialog (④: the quota file)
+
+
+@router.post("/projects/{pid}/recruiting/form/steps/{step}/chat")
+def chat_step(pid: str, step: str, body: StepChatBody, ctx: Ctx = Depends(require_roles(*RECRUITERS)), db: Session = Depends(get_db)):
+    """修正方案第 2 轮 A4–A6: the dialog under ② ③ ④ returns the whole new draft; nothing is saved until the step is confirmed. What is said goes to the AI service, never to the log."""
+    from .. import recruit_steps
+    proj = get_project(db, ctx, pid)
+    f = db.get(RecruitForm, proj.id) or RecruitForm(project_id=proj.id, org_id=proj.org_id, goals=[], need="", questions=[], plan_steps={}, qc={})
+    mat, _ = refs_mod.material(db, proj.org_id, proj.id, body.refs)
+    try:
+        out = recruit_steps.chat_step(db, proj, f, step, body.text, body.draft, mat, _ai_chat())
+    except recruit_steps.StepError as e:
+        raise HTTPException(422, str(e)) from e
+    except ChatFatalError as e:
+        raise _refused(e) from e
+    audit(db, ctx.org_id, ctx.actor, "recruit.form_step_chat", proj.id, step=step, files=len(body.refs))
+    db.commit()
+    return out
+
+
+@router.post("/projects/{pid}/recruiting/form/steps/test/expand")
+def expand_steps(pid: str, ctx: Ctx = Depends(require_roles(*RECRUITERS)), db: Session = Depends(get_db)):
+    """⑥ 主动补题 (用户 2026-11-20): a questionnaire shorter than the study needs gets questions added, once."""
+    from .. import recruit_steps
+    proj = get_project(db, ctx, pid)
+    f = _form_row(db, proj)
+    try:
+        fresh = recruit_steps.expand(db, proj, f, _ai_chat())
+    except ChatFatalError as e:
+        raise _refused(e) from e
+    if fresh:
+        f.version, f.updated_at = (f.version or 0) + 1, utcnow()
+        audit(db, ctx.org_id, ctx.actor, "recruit.form_expand", proj.id, made=len(fresh))
+    db.commit()
+    return {**_full(db, proj, f), **_steps_out(db, proj, f), "fresh": fresh}

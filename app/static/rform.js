@@ -40,7 +40,9 @@ function rfAutosize(t) {
 
 /** 整个“招募问卷”卡片，返回 { html, wire, fit }。 */
 function rfCard(p, form, rec, plannedN) {
-  let f = form, mode = form.source === "html" ? "html" : "ai", seg = "outline", Q = JSON.parse(JSON.stringify(form.questions || [])), goals = [...(form.goals || [])], need = form.need || "";
+  // 修正方案第 2 轮 A3: goals written as “1. … 2. …” in one line are one goal per line, without their own numbers
+  const cleanGoals = (list) => (list || []).flatMap((g) => String(g).split(/\s+(?=(?:\d{1,2}[.、．)）]|[①②③④⑤⑥⑦⑧⑨⑩])\s*\S)/)).map((g) => g.replace(/^\s*(?:[（(]?\d{1,2}[.、)）．]|[①②③④⑤⑥⑦⑧⑨⑩])\s*/, "").trim()).filter(Boolean).slice(0, 8);
+  let f = form, mode = form.source === "html" ? "html" : "ai", seg = "outline", Q = JSON.parse(JSON.stringify(form.questions || [])), goals = cleanGoals(form.goals), need = form.need || "";
   const rm = (rec && rec.recruit_mode) || "screen_then_invite", hm = (rec && rec.host_mode) || "human";   // 招募方式 / 主持方式（决定阶段增减）
   if (rm === "onelink") { mode = "ai"; f = { ...f, source: "ai", source_confirmed: "ai" }; }   // 一站式 = AI 问卷 + AI 访谈，来源锁定为 AI，不弹来源选择、不可切换
   let timer = null, hist = [], redo = [], editing = new Set();
@@ -413,6 +415,12 @@ function rfCard(p, form, rec, plannedN) {
       p, getQ: () => JSON.parse(JSON.stringify(Q)),
       apply: (r) => { pushHist(); Q = JSON.parse(JSON.stringify(r.questions || [])); f = { ...f, ...r }; changedIds = new Set(r.fresh || []); drawRight(); },
       test: () => { seg = "test"; drawRight(); },
+      askQ: async (text) => {   // 修正方案第 2 轮 A7: change the question being tested, from the dialog under ⑥
+        const qid = window.RF_TEST_QID || (Q[0] || {}).id; if (!qid) return "还没有题可以改";
+        const r = await api(`/projects/${p.id}/recruiting/form/ask`, { method: "POST", body: { qid, instruction: text, questions: Q, goals, need } });
+        if (r.changed && Array.isArray(r.questions)) { pushHist(); changedIds = diffIds(Q, r.questions); Q = JSON.parse(JSON.stringify(r.questions)); save(); seg = "test"; drawRight(); return `已改好第 ${Q.findIndex((x) => x.id === qid) + 1} 题，测试从头开始。`; }
+        return r.reply || "这一题没有改动，换个说法试试";
+      },
     });
   };
 
@@ -735,7 +743,7 @@ function rfCard(p, form, rec, plannedN) {
     if (incomplete()) { host.innerHTML = `<div class="empty"><b>有题目还没写完</b><span>题目和选项都写好后，这里就能测试。</span></div>`; return; }
     scrRunner(host, {
       lang: ["zh", "en", "ms", "ta"].includes(ver) ? ver : "zh",
-      step: async (answers) => { const r = await api(`/projects/${p.id}/recruiting/form/preview`, { method: "POST", body: { questions: Q, answers, lang: isSource() ? "" : ver } }); return r.result ? { result: r.result } : { question: r.question }; },
+      step: async (answers) => { const r = await api(`/projects/${p.id}/recruiting/form/preview`, { method: "POST", body: { questions: Q, answers, lang: isSource() ? "" : ver } }); if (r.question) window.RF_TEST_QID = r.question.id; return r.result ? { result: r.result } : { question: r.question }; },
       onEnd: (result, answers, ctx) => {
         res.hidden = false;
         const back = ctx && ctx.back ? `<button type="button" class="s" id="scrbackretry">← 返回上一题</button>` : "";
@@ -841,8 +849,15 @@ function rfCard(p, form, rec, plannedN) {
       el.onkeydown = (e) => {
         if (e.key !== "Enter" || e.isComposing) return;
         e.preventDefault();
+        // 修正方案第 2 轮 A3: Enter splits the line where the cursor is — what follows the cursor becomes the next line
+        let rest = "";
+        const sel = window.getSelection();
+        if (sel && sel.rangeCount && el.contains(sel.anchorNode)) {
+          const r = sel.getRangeAt(0).cloneRange(); r.selectNodeContents(el); r.setStart(sel.getRangeAt(0).endContainer, sel.getRangeAt(0).endOffset);
+          rest = r.toString(); r.deleteContents();
+        }
         const li = document.createElement("li"), t = document.createElement("span");
-        t.className = "rq-bt"; t.contentEditable = "true"; t.spellcheck = false; li.append(t); el.parentElement.after(li); bindBullet(t, leave); t.focus();
+        t.className = "rq-bt"; t.contentEditable = "true"; t.spellcheck = false; t.textContent = rest.trim(); li.append(t); el.parentElement.after(li); bindBullet(t, leave); t.focus();
       };
     };
     const commitList = (kind) => {   // 研究目标: up to 8 goals; 招募需求: its lines; saved with the form, and only when something changed

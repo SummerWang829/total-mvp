@@ -581,3 +581,13 @@ body.v11 .sub2 .l2slot .rs-sst.confirmed i{background:#E6F2EC;border-color:#2E7D
 body.v11 .sub2 .l2slot .rs-sst.stale i{background:#FFF1E6;border-color:#E3A15C;color:#8A4A0A}
 body.v11 .sub2 .l2slot .rs-sst:disabled{cursor:not-allowed;color:var(--muted)}body.v11 .sub2 .l2slot .rs-sst:disabled i{border-style:dashed}
 html[data-theme="dark"] body.v11 .sub2 .l2slot .rs-sst.confirmed i{background:#173A2C;color:#7FD1A8;border-color:#2E5D47}
+/* 修正方案第 2 轮 A2–A7：像正式文件一样分段；条件表；每一步下方的对话 */
+.rs-doc h4{margin:12px 0 4px;font-size:13px;color:var(--muted)}.rs-doc p{margin:0 0 6px;line-height:1.75}.rs-doc ol,.rs-doc ul{margin:0 0 6px;padding-left:22px;line-height:1.75}.rs-doc li{margin:2px 0}
+.rs-ctbl td{vertical-align:top;font-size:14px}.rs-ctbl small{display:block;color:var(--muted);font-size:12px}.rs-ctbl tr.off td{color:var(--muted)}.rs-ctbl tr.off b{color:var(--muted)}
+.rs-chat{margin-top:12px;display:flex;flex-direction:column;gap:6px}
+.rs-bub{background:var(--wash);border-radius:10px;padding:8px 10px;font-size:14px;line-height:1.6;max-width:92%}.rs-bub.me{align-self:flex-end;background:#FFF1E6;color:var(--ink)}
+html[data-theme="dark"] .rs-bub.me{background:#3F2812}
+.rs-chatf{display:flex;flex-direction:column;gap:6px}.rs-chatf .ti-box{width:100%}
+.rs-note{background:#FFF5DE;border:1px solid #E3B94A;color:#6B4E00;border-radius:10px;padding:8px 12px;font-size:14px;margin:6px 0}
+html[data-theme="dark"] .rs-note{background:#3A2E10;border-color:#8A6A1C;color:#F3D58A}
+.rs-ctbl th:nth-child(4),.rs-ctbl th:nth-child(5),.rs-ctbl td:nth-child(4),.rs-ctbl td:nth-child(5){min-width:5em;width:18%}.rs-ctbl th{white-space:nowrap}

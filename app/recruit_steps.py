@@ -269,7 +269,7 @@ def confirm(db: Session, proj: Project, f: RecruitForm, step: str, data: dict, q
     s = state(f)
     made: list[str] = []
     if step == "include":
-        conds = [_check_cond(c) for c in (data.get("conds") or [])][:MAX_CONDS]
+        conds = [_check_cond(c) for c in (data.get("conds") or []) if str((c or {}).get("question", "")).strip()][:MAX_CONDS]   # an empty condition is dropped
         if not any(c["use"] for c in conds):
             raise StepError("至少选一个要筛进的条件")
         old_tags = {o["text"] for c in s["conds"] if c.get("use") for o in c["options"] if o["pass"]}
@@ -282,7 +282,7 @@ def confirm(db: Session, proj: Project, f: RecruitForm, step: str, data: dict, q
             questions, more = build(questions, "qc", s)   # the check asks the first condition again: follow it
             made += more
     elif step == "exclude":
-        s["excl"] = [_check_cond(e) for e in (data.get("excl") or [])][:12]
+        s["excl"] = [_check_cond(e) for e in (data.get("excl") or []) if str((e or {}).get("question", "")).strip()][:12]
         questions, made = build(questions, "exclude", s)
     elif step == "quota":
         try:
@@ -325,3 +325,123 @@ def _check_cond(c: dict) -> dict:
     return {"id": str(c.get("id", ""))[:40] or "u", "name": str(c.get("name", "")).strip()[:20] or q[:16], "type": "multi" if c.get("type") == "multi" else "single",
             "question": q, "options": opts or [{"text": "符合", "pass": True}, {"text": "不符合", "pass": False}], "use": use, "src": str(c.get("src", "user"))[:6],
             "quota": bool(c.get("quota")), "note": str(c.get("note", ""))[:120]}
+
+
+# ---- 修正方案第 2 轮 A4–A7：每一步下方的对话；⑥ 主动补题 --------------------------------------------------------------------------------
+
+STEP_CHAT_SYSTEM = {
+    "include": ("You help a researcher decide who a screening questionnaire lets in. Input: CONTEXT (background, goals, need), DRAFT (the current conditions), USER. "
+                'Answer with ONE JSON object {"reply":"one or two short Chinese sentences","conds":[{"name","type":"single|multi","question","options":[{"text","pass":true|false}],"quota":true|false}]} '
+                "where conds is the whole new list (keep what the user did not ask to change). Each condition has a passing and a failing option; never ask for contact details; never lead."),
+    "exclude": ("You help a researcher decide who a screening questionnaire screens out. Input: CONTEXT, DRAFT (the current exclusions), USER. "
+                'Answer with ONE JSON object {"reply":"...","excl":[{"name","type":"single|multi","question","options":[{"text","pass":true|false}]}]} with the whole new list.'),
+    "quota": ("You read a quota plan for a qualitative study. Input: MATERIAL (text of the files the researcher attached, may be empty), DRAFT (current quota groups), USER. "
+              'Answer with ONE JSON object {"reply":"...","quotas":[{"name":"group name","value":"tag or tags joined with +","target":number}]} with the whole new list.'),
+}
+EXPAND_SYSTEM = ("You add screening questions to a recruiting questionnaire that is too short for its study. Input: CONTEXT (background, goals, need), HAVE (the questions it has), N. "
+                 'Answer with ONE JSON object {"questions":[{"text","type":"single|multi","options":[{"text","pass":true|false}]}]} with N new questions that do not repeat HAVE, '
+                 "each with at least one passing and one failing option; real recent behaviour; never contact details; never lead.")
+EXPAND_TO = 8   # ⑥: fewer questions than this and the AI adds some (用户 2026-11-20: 主动加入)
+EXPAND_TEMPLATES = [
+    {"text": "你最近 12 个月里有没有亲自做过和这次研究相关的决定？", "options": [["有，是我自己决定的", True], ["一起商量", True], ["没有", False]]},
+    {"text": "这件事最近一次发生在什么时候？", "options": [["3 个月内", True], ["3–12 个月前", True], ["一年以前", False]]},
+    {"text": "你愿意在访谈里具体讲讲自己的经历吗？", "options": [["愿意", True], ["不太愿意", False]]},
+    {"text": "你的年龄段是？", "options": [["18–29 岁", True], ["30–44 岁", True], ["45 岁及以上", True], ["18 岁以下", False]]},
+]
+
+
+def _ctx(proj: Project, f: RecruitForm) -> dict:
+    return {"background": (proj.brief or "")[:1500], "goals": f.goals or [], "need": f.need or ""}
+
+
+def _rule_chat(step: str, text: str, draft: list, material: str) -> tuple[str, list]:
+    """Without a model: the few plain commands that need no understanding (add a condition, drop one, read “组名 N 人” lines)."""
+    draft = [dict(x) for x in draft]
+    if step == "quota":
+        rows = re.findall(r"([^\s:：,，；;\n]{1,30})\s*[:：]?\s*(\d{1,4})\s*人", (material or "") + "\n" + text)
+        if rows:
+            return f"（演示模式）读到 {len(rows)} 组，请确认：", [{"name": n, "field": "tag", "question": "", "value": n, "target": int(t)} for n, t in rows]
+        return "（演示模式）没有读到“组名 N 人”这样的内容。接上小星星助手后可以读任意格式。", draft
+    m = re.search(r"(?:加一?条|增加|添加)[：:“\"]?(.+?)[”\"]?$", text.strip())
+    if m:
+        name = m.group(1).strip()[:20]
+        draft.append({"id": "u" + str(len(draft) + 1), "name": name, "type": "single", "question": f"下面这一条符合你的情况吗：{name}？", "use": True, "src": "user", "quota": False,
+                      "options": [{"text": "符合", "pass": step == "include"}, {"text": "不符合", "pass": step != "include"}]})
+        return f"（演示模式）已加一条“{name}”。", draft
+    gone = [d for d in draft if d["name"] and d["name"] in text and re.search(r"去掉|删|不要", text)]
+    if gone:
+        return f"（演示模式）已去掉“{gone[0]['name']}”。", [d for d in draft if d is not gone[0]]
+    return "（演示模式）可以说“加一条……”或“去掉……”；接上小星星助手后可以随便说。", draft
+
+
+def chat_step(db: Session, proj: Project, f: RecruitForm, step: str, text: str, draft: list, material: str, chat) -> dict:
+    """One turn of the dialog under ② ③ ④: the reply and the whole new draft (nothing is saved until the step is confirmed).
+
+    Raises:
+        StepError: an unknown step, or a model answer that cannot be used.
+    """
+    from .moderator.providers import ChatError, ChatFatalError
+    if step not in STEP_CHAT_SYSTEM:
+        raise StepError("这一步没有对话")
+    if chat is None:
+        reply, new = _rule_chat(step, text, draft, material)
+    else:
+        try:
+            raw = _model_json(chat, STEP_CHAT_SYSTEM[step], json.dumps({"CONTEXT": _ctx(proj, f), "DRAFT": draft, "USER": text, **({"MATERIAL": material[:20000]} if material else {})}, ensure_ascii=False))
+        except ChatFatalError:
+            raise
+        except (ChatError, ValueError) as e:
+            raise StepError("小星星这次没有给出可用的结果，请再说一次") from e
+        reply = " ".join(str(raw.get("reply", "")).split())[:300] or "好的。"
+        new = raw.get({"include": "conds", "exclude": "excl", "quota": "quotas"}[step]) or []
+    if step == "quota":
+        try:
+            rows = recruit.validate_quotas([{**q, "field": "tag", "question": ""} for q in new if isinstance(q, dict)])
+        except recruit.RecruitError as e:
+            raise StepError(str(e)) from e
+        return {"reply": reply, "quotas": rows}
+    out = []
+    for n, c in enumerate(new[:12], 1):
+        if not isinstance(c, dict) or not str(c.get("question", "")).strip():
+            continue   # 修正方案第 2 轮 A5: an empty condition never shows
+        try:
+            out.append(_check_cond({**c, "id": c.get("id") or f"c{n}", "use": c.get("use", True), "src": c.get("src", "ai")}))
+        except StepError:
+            continue
+    return {"reply": reply, "conds" if step == "include" else "excl": out}
+
+
+def expand(db: Session, proj: Project, f: RecruitForm, chat) -> list[str]:
+    """⑥ 主动补题 (用户 2026-11-20): when the questionnaire is shorter than EXPAND_TO, questions are added for this study (once). Returns the ids added."""
+    from .moderator.providers import ChatError, ChatFatalError
+    s = state(f)
+    questions = [q.model_dump() for q in recruit_form.load(f.questions)]
+    need = EXPAND_TO - len(questions)
+    if need <= 0 or s.get("expanded"):
+        return []
+    new: list[dict] = []
+    if chat is not None:
+        try:
+            raw = _model_json(chat, EXPAND_SYSTEM, json.dumps({"CONTEXT": _ctx(proj, f), "HAVE": [q["text"] for q in questions], "N": need}, ensure_ascii=False))
+            for q in (raw.get("questions") or [])[:need]:
+                opts = _clean_options(q.get("options")) if isinstance(q, dict) else []
+                t = str(q.get("text", "")).strip()[:300] if isinstance(q, dict) else ""
+                if opts and t and not recruit_form.CONTACT_WORDS.search(t):
+                    new.append({"text": t, "type": "multi" if q.get("type") == "multi" else "single", "options": opts})
+        except ChatFatalError:
+            raise
+        except (ChatError, ValueError) as e:
+            log.warning("recruit steps: expand failed (%s); templates used", type(e).__name__)
+    have = {q["text"] for q in questions}
+    if len(new) < need:
+        new += [{"text": t["text"], "type": "single", "options": [{"text": o, "pass": ok} for o, ok in t["options"]]} for t in EXPAND_TEMPLATES if t["text"] not in have][: need - len(new)]
+    made = []
+    for q in new:
+        qq = _question(_next_id(questions), "", "auto", q["type"], q["text"], q["options"], tags=False)
+        questions.append(qq)
+        made.append(qq["id"])
+    form = recruit_form.normalize({"source": "ai", "questions": questions, "goals": f.goals or [], "need": f.need or ""})
+    f.questions = [x.model_dump() for x in form.questions]
+    s["expanded"] = True
+    _save(f, s)
+    return made
