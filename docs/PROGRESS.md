@@ -22,6 +22,7 @@
 - 部署：`git archive 99ad526 app` 先经管道解包卡住（已停掉残留进程），改为本地生成 tar 文件后上传解包；`docker compose -p deploy up -d --build --no-deps app`；容器 healthy。
 - 核对：启动后日志 error / traceback / cannot add / board job failed 为 0；`/api/health`、`/index.html`、`/rsteps.js`、`/outline_wb.js`、`/room.html` 200；公网 `/api/health` 200；线上 app 与 99ad526 一致（306 个文件）；表总数 85，`outline_chats` 存在；`app.doctor` 没有必须解决的问题；保留期 dry-run：`{'interviews': 0, 'projects': {}, 'projects_with_active_interviews': []}`。
 - 语音实测（用户授权）：服务器上用 `app/tts.py` 各合成一句中文、英文，都失败，错误码 `UnsupportedOperation.PkgExhausted`（资源包耗尽/未开通计费），说明签名和服务可达，但账户没有可用额度；已停止，未购买任何东西。需要用户在腾讯云控制台开通后付费或购买资源包，然后重测。
+- 后续（用户授权并选择方案 1）：在腾讯云控制台“免费领取基础/精品音色免费资源包”（赠送，约 800 万字符，3 个月，未付款；后付费保持关闭）。再测：中文 OK（8208 字节）、英文 OK（10512 字节），签名和音色 1001/1051 可用，子账号权限已够。6.4 手机实际访谈仍待做，日志里的 tts refused 和用掉的字符数待核对。
 - 还没做：腾讯云控制台（开通语音合成、子账号权限、确认 1001/1051 音色）；6.2 立项与甄别问卷、6.3 生成大纲（含 50MB mp4 上传测试）、6.4 AI 语音访谈（手机受访者，中英各一场，看日志 tts refused，统计字符数）；6.5 上两轮遗留检查；6.6 看板真模型压测（**等用户确认法务问题后再跑**）。因为这些没有全部通过，**没有写 DEPLOYED.txt**。
 
 ## 2026-11-20 · 修正方案第 3 轮 · 第 3 部分：大纲对话存服务器、AI 语音访谈
