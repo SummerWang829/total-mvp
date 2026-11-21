@@ -1,0 +1,57 @@
+/* 玻璃胶囊 + 左栏渐变底 + 玻璃小提示（2026-11-21 用户确认效果图 qa_shots/glass_nav_mockup.html）。胶囊的位置和动画在 glassnav.js。
+   当前项原来的白底/边框/小色条只在挂上胶囊（.gl-on）之后才去掉；脚本没跑时保持原样。 */
+body.v11{
+  --g-bg:linear-gradient(180deg,rgba(255,255,255,.92),rgba(255,255,255,.62));--g-tint:rgba(11,56,44,.05);--g-ring:rgba(255,255,255,1);--g-edge:rgba(11,56,44,.14);
+  --g-shadow:0 8px 18px -8px rgba(11,56,44,.32),0 1px 2px rgba(11,56,44,.10);
+  --sub-grad:linear-gradient(180deg,#F6F7F6 0%,#EDF3EF 55%,#F7ECDF 100%)}
+html[data-theme="orange"] body.v11{
+  --g-bg:linear-gradient(180deg,rgba(255,255,255,.92),rgba(255,250,245,.6));--g-tint:rgba(154,66,8,.05);--g-edge:rgba(154,66,8,.16);
+  --g-shadow:0 8px 18px -8px rgba(120,56,10,.34),0 1px 2px rgba(120,56,10,.10);
+  --sub-grad:linear-gradient(180deg,#FAF7F4 0%,#F8EFE6 55%,#F5E8DA 100%)}
+html[data-theme="dark"] body.v11{
+  --g-bg:linear-gradient(180deg,rgba(255,255,255,.16),rgba(255,255,255,.05));--g-tint:rgba(255,255,255,.02);--g-ring:rgba(255,255,255,.38);--g-edge:rgba(255,255,255,.10);
+  --g-shadow:0 10px 22px -10px rgba(0,0,0,.7),0 1px 2px rgba(0,0,0,.4);
+  --sub-grad:linear-gradient(180deg,#12241C 0%,#162A21 55%,#2A2115 100%)}
+
+/* 左栏渐变底（玻璃要有东西在后面才看得出来） */
+html body.v11 .v11app aside.sub2{background:var(--sub-grad)}
+
+/* 胶囊本体：放在每个菜单容器的第一个位置，绝对定位，压在菜单项下面 */
+.gl-on:not(.rin){position:relative}
+.gl-on>:not(.gcap):not(.rin){position:relative;z-index:1}
+.gl-on .rk,.gl-on .rlogo{z-index:1}
+body.v11 .gcap{position:absolute!important;left:0!important;top:0!important;z-index:0!important;display:block!important;margin:0!important;padding:0!important;border:0!important;
+  border-radius:999px!important;pointer-events:none;min-height:0!important;flex:none!important;
+  background:var(--g-bg),var(--g-tint)!important;-webkit-backdrop-filter:blur(14px) saturate(1.6);backdrop-filter:blur(14px) saturate(1.6);
+  box-shadow:inset 0 1px 0 var(--g-ring),inset 0 -1px 0 rgba(0,0,0,.05),0 0 0 1px var(--g-edge),var(--g-shadow)!important;
+  will-change:transform,width,height;transition:opacity .15s}
+body.v11 .gcap::after{content:"";position:absolute;inset:0;border-radius:inherit;padding:1px;pointer-events:none;
+  background:linear-gradient(135deg,var(--g-ring) 0%,transparent 35%,transparent 65%,var(--g-ring) 100%);
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;opacity:.9}
+body.v11 .gcap.gcap-off{opacity:0!important}
+/* 深色窄栏上的胶囊：更淡的白玻璃 */
+body.v11 .rail2 .gcap{--g-bg:linear-gradient(180deg,rgba(255,255,255,.22),rgba(255,255,255,.07));--g-tint:rgba(255,255,255,0);--g-ring:rgba(255,255,255,.45);--g-edge:rgba(255,255,255,.12);
+  --g-shadow:0 8px 18px -8px rgba(0,0,0,.5)}
+
+/* 挂上胶囊后：当前项原来的底、边框、小色条去掉，由胶囊代替；未选中项悬停仍是浅灰底，形状和胶囊一样圆 */
+html body.v11 .sub2 .mn.gl-on .l1.on,html body.v11 .sub2 .mn.gl-on .l1.on:hover{background:transparent!important;box-shadow:none!important}
+html body.v11 .sub2 .mn.gl-on .l1.on::before{display:none!important}
+html body.v11 .sub2 .mn.gl-on .l1{border-radius:999px}
+html body.v11 .sub2 .l2slot.gl-on a,html body.v11 .sub2 .l2slot.gl-on button{border-radius:999px}
+html body.v11 .sub2 .l2slot.gl-on a.on,html body.v11 .sub2 .l2slot.gl-on button.on,html body.v11 .sub2 .l2slot.gl-on a[aria-selected="true"],
+html body.v11 .sub2 .l2slot.gl-on button[aria-selected="true"],html body.v11 .sub2 .l2slot.gl-on a[aria-current="page"]{background:transparent!important;box-shadow:none!important}
+html body.v11 .sub2 .l2slot.gl-on a.on::before,html body.v11 .sub2 .l2slot.gl-on button.on::before,html body.v11 .sub2 .l2slot.gl-on a[aria-selected="true"]::before,
+html body.v11 .sub2 .l2slot.gl-on button[aria-selected="true"]::before{display:none!important}
+html body.v11 .rail2.gl-on .rk.on,html body.v11 .rin.gl-on .rk.on{background:transparent}
+html body.v11 .rail2.gl-on .rk.on::before,html body.v11 .rin.gl-on .rk.on::before{display:none}
+html body.v11 .top2 .mods.gl-on .mod{border-radius:999px}
+html body.v11 .top2 .mods.gl-on .mod.on{background:transparent!important;border-color:transparent!important}
+html body.v11 .top2 .mods.gl-on .mod.on::after{display:none}
+
+/* 收起状态的小提示（图一）：浅色玻璃小胶囊，深色主题用深色玻璃 */
+html body .railtip{background:linear-gradient(180deg,rgba(255,255,255,.96),rgba(245,246,247,.88));color:#2F3437;font-size:13px;font-weight:600;padding:7px 12px;border-radius:10px;
+  -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);box-shadow:inset 0 1px 0 #fff,0 0 0 1px rgba(0,0,0,.08),0 8px 20px -8px rgba(0,0,0,.35)}
+html body .railtip::before{display:none}
+html[data-theme="dark"] body .railtip{background:linear-gradient(180deg,rgba(40,56,49,.96),rgba(24,36,31,.92));color:#F4F8F5;box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 0 0 1px rgba(255,255,255,.08),0 8px 20px -8px rgba(0,0,0,.6)}
+
+@media (prefers-reduced-motion:reduce){body.v11 .gcap{transition:none}}

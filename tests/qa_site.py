@@ -2554,6 +2554,63 @@ def shell_behaviour_section(br, D):
     ctx.close()
 
 
+def glassnav_section(br, D):
+    """玻璃胶囊（2026-11-21 用户确认）：第二层菜单、页面小页签、窄栏、顶部项目条的当前项下面各有一块胶囊，停下时和当前项对齐；
+    换当前项时胶囊滑过去、途中拉长；收起后是图标外的圆形玻璃、鼠标移上去出名字；减少动态效果时不滑动；左栏是渐变底；三种主题截图。"""
+    adm, pid = D["tok"]["admin"], D["pid"]
+    out = pathlib.Path(ROOT) / "qa_shots" / "glassnav"; out.mkdir(parents=True, exist_ok=True)
+    ALIGN = """([box, on, icon]) => { const b = document.querySelector(box); if (!b) return null; const c = b.querySelector(':scope > .gcap'); let t = [...b.querySelectorAll(on)].find((e) => e.offsetWidth > 0 && !e.closest('.gcap') && (box !== '.sub2 .mn' || !e.closest('.l2slot')));
+      if (!c || !t) return { cap: !!c, on: !!t }; if (icon) t = t.querySelector('.it'); const r = c.getBoundingClientRect(), q = t.getBoundingClientRect(), pad = icon ? 5 : 0;
+      return { cap: true, on: true, dx: Math.round(r.left - q.left + pad), dy: Math.round(r.top - q.top + pad), dw: Math.round(r.width - q.width - 2 * pad), dh: Math.round(r.height - q.height - 2 * pad), vis: getComputedStyle(c).opacity }; }"""
+    aligned = lambda m: bool(m) and m.get("cap") and m.get("on") and max(abs(m["dx"]), abs(m["dy"]), abs(m["dw"]), abs(m["dh"])) <= 1 and m["vis"] == "1"
+    SAMPLE = "() => { window.__hs = []; const t0 = performance.now(); (function f() { const c = document.querySelector('.sub2 .mn > .gcap'); if (c) window.__hs.push(c.getBoundingClientRect().height); if (performance.now() - t0 < 900) requestAnimationFrame(f); })(); }"
+    ctx, pg, errs = new_page(br, 1600, 900, token=adm)
+    pg.goto(B + f"/#/p/{pid}/people"); pick_mode(pg); pg.wait_for_selector(".sub2 .l1.on"); pg.wait_for_timeout(900)
+    m = pg.evaluate(ALIGN, [".sub2 .mn", ".l1.on", False])
+    ok(aligned(m), f"[glass] the side menu's current item sits on the glass capsule ({m})")
+    ok(pg.evaluate("getComputedStyle(document.querySelector('.sub2 .l1.on')).backgroundColor") in ("rgba(0, 0, 0, 0)", "transparent"), "[glass] the old white box under the current item is gone (the capsule replaces it)")
+    ok("gradient" in pg.evaluate("getComputedStyle(document.querySelector('.sub2')).backgroundImage"), "[glass] the side menu has the gradient background")
+    m = pg.evaluate(ALIGN, [".top2 .mods", ".mod.on", False])
+    ok(aligned(m), f"[glass] the top bar's current module sits on a capsule ({m})")
+    base = pg.evaluate("document.querySelector('.sub2 .l1.on').getBoundingClientRect().height")
+    pg.evaluate(SAMPLE); pg.locator(".sub2 a.l1", has_text="场次列表").first.click(); pg.wait_for_timeout(1300)
+    hs = pg.evaluate("window.__hs")
+    ok(max(hs or [0]) > base * 1.3, f"[glass] switching pages: the capsule stretches while it slides (tallest {max(hs or [0]):.0f}px, item {base:.0f}px)")
+    m = pg.evaluate(ALIGN, [".sub2 .mn", ".l1.on", False])
+    ok(aligned(m) and "场次列表" in pg.inner_text(".sub2 .l1.on"), f"[glass] after the slide the capsule rests on the new current item ({m})")
+    pg.locator(".sub2 a.l1", has_text="甄别问卷").first.click(); pg.wait_for_timeout(1500)
+    if pg.locator(".sub2 .l2slot:not([hidden]) a.on, .sub2 .l2slot:not([hidden]) button.on, .sub2 .l2slot:not([hidden]) [aria-selected=true]").count():
+        m = pg.evaluate(ALIGN, [".sub2 .l2slot", "a.on, button.on, a[aria-selected='true'], button[aria-selected='true'], a[aria-current='page']", False])
+        ok(aligned(m), f"[glass] the page's own sub-steps under the current item have their own capsule ({m})")
+    pg.screenshot(path=str(out / "light_open.png"))
+    pg.click(".sub2 .fold"); pg.wait_for_timeout(900)
+    m = pg.evaluate(ALIGN, [".sub2 .mn", ".l1.on", True])
+    ok(aligned(m), f"[glass] folded: the capsule is a round glass around the current icon ({m})")
+    pg.locator(".sub2 a.l1").nth(4).hover(); pg.wait_for_timeout(500)
+    ok(pg.locator(".railtip.on").count() == 1 and pg.inner_text(".railtip.on").strip() != "", "[glass] folded: hovering an icon shows its name in a small glass tip")
+    pg.screenshot(path=str(out / "light_folded.png"))
+    pg.click(".sub2 .fold"); pg.wait_for_timeout(700)
+    for t in ("orange", "dark", "light"):
+        pg.click(f".tsw button[data-theme={t}]"); pg.wait_for_timeout(500)
+        m = pg.evaluate(ALIGN, [".sub2 .mn", ".l1.on", False])
+        ok(aligned(m), f"[glass {t}] the capsule still sits on the current item ({m})")
+        audit_page(pg, f"glass/{t}", errs)
+        pg.screenshot(path=str(out / f"{t}.png"))
+    pg.goto(B + "/#/projects"); pg.wait_for_selector(".card"); pg.wait_for_timeout(800)
+    m = pg.evaluate(ALIGN, [".rail2", ".rk.on", False])
+    ok(aligned(m), f"[glass] the left rail's current item (项目) sits on a capsule ({m})")
+    errs[:] = [e for e in errs if "Failed to load resource" not in e]
+    ok(not errs, f"[glass] no console errors: {errs[:2]}")
+    ctx.close()
+    ctx, pg, errs = new_page(br, 1600, 900, token=adm, reduced_motion="reduce")
+    pg.goto(B + f"/#/p/{pid}/rooms"); pg.wait_for_selector(".sub2 .l1.on"); pg.wait_for_timeout(900)
+    base = pg.evaluate("document.querySelector('.sub2 .l1.on').getBoundingClientRect().height")
+    pg.evaluate(SAMPLE); pg.locator(".sub2 a.l1", has_text="报告").first.click(); pg.wait_for_timeout(1300)
+    hs = pg.evaluate("window.__hs")
+    ok(max(hs or [0]) <= base + 1 and aligned(pg.evaluate(ALIGN, [".sub2 .mn", ".l1.on", False])), f"[glass] reduced motion: the capsule jumps without stretching (tallest {max(hs or [0]):.0f}px)")
+    ctx.close()
+
+
 def run():
     os.makedirs(os.path.join(ROOT, "qa_shots"), exist_ok=True)
     D = seed()
@@ -2868,6 +2925,7 @@ def run():
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "fix4_section": guard_section(fix4_section, br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "tabs_section": guard_section(tabs_section, br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "shell_behaviour_section": guard_section(shell_behaviour_section, br, D)
+        if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "glassnav_section": guard_section(glassnav_section, br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "fill_section": guard_section(fill_section, br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "insights_section": guard_section(insights_section, br, D)
         if not os.environ.get("QA_ONLY") or os.environ["QA_ONLY"] == "projects_section": guard_section(projects_section, br, D)
