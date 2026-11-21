@@ -9,6 +9,7 @@
 - 备份分支：`backup/before-glass-nav-20261121`（= 1db88e0，已推送）。
 - 测试：新增 `glassnav_section`（42 项通过：四处胶囊对齐、滑动拉长、收起圆形、小提示、三种主题、减少动态效果、无控制台错误）；另有 3 项“甄别问卷 6 步按钮文字换行”失败，用旧代码重跑同样失败，是原来就有的问题，不是这次引起的。`shell_behaviour_section` 12/0、`tabs_section` 10/0（桌面）。没跑：pytest（没改后端）、全站遍历、手机宽度、e2e。
 - 渐变底下小字对比度：橙色主题底部约 4.6:1、浅色约 5:1。
+- 部署（用户要求线上线下一致）：线上原为 6adf078（307 个文件一致）；0 场次/0 录制/0 AI 会话；备份 `total-20261121-1455.db`（integrity ok）、`app-20261121-1455.tgz`，异地 `total-20261121-065517.db.gz`，镜像标签 `total-app:rollback-6adf078`；覆盖 1c2fcb8 后重建，healthy、重启 0、日志无错误；`/glassnav.js`、`/glassnav.css` 等 200，公网首页已引入 glassnav；表 85；doctor 无必须解决的问题；保留期 dry-run `projects_with_active_interviews: []`；**线上 app 与 1c2fcb8 一致（309 个文件）**。DEPLOYED.txt 仍按第 5 轮规则未写（5.2–5.5 浏览器检查未完成）。
 
 ## 2026-11-20 · 修正方案第 5 轮（7 条）
 - 用户定：预计作答按题型估算；“可以正式开始”合并进“发布这一版”；先做“按任务分配模型 + 测试题”。
